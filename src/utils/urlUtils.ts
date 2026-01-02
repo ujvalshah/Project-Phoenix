@@ -151,4 +151,42 @@ export const shouldAutoGenerateTitle = (contentTypeOrUrl: string): boolean => {
   return false;
 };
 
+/**
+ * Normalize API base URL to ensure it always includes /api suffix
+ * 
+ * Handles both development (relative /api) and production (full URL with /api) cases.
+ * 
+ * @returns Normalized API base URL that always ends with /api
+ * 
+ * Examples:
+ * - undefined → '/api' (development, uses proxy)
+ * - 'https://api.example.com' → 'https://api.example.com/api'
+ * - 'https://api.example.com/' → 'https://api.example.com/api'
+ * - 'https://api.example.com/api' → 'https://api.example.com/api'
+ * - '/api' → '/api'
+ */
+export function getNormalizedApiBase(): string {
+  const envUrl = import.meta.env.VITE_API_URL;
+  
+  // If not set, use relative /api (development mode with proxy)
+  if (!envUrl) {
+    return '/api';
+  }
+  
+  const url = envUrl.trim();
+  
+  // If already ends with /api, return as-is
+  if (url.endsWith('/api')) {
+    return url;
+  }
+  
+  // If ends with /, append 'api'
+  if (url.endsWith('/')) {
+    return `${url}api`;
+  }
+  
+  // Otherwise, append '/api'
+  return `${url}/api`;
+}
+
 

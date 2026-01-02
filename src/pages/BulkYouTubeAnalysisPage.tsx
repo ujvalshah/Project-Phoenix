@@ -38,9 +38,10 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
+import { getNormalizedApiBase } from '@/utils/urlUtils';
 
-// API base URL
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+// API base URL - normalized to always include /api suffix
+const API_BASE = getNormalizedApiBase();
 
 // Helper for delays
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

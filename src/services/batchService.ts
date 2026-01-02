@@ -15,6 +15,7 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { detectProviderFromUrl } from '@/utils/urlUtils';
 import { normalizeCategoryLabel } from '@/utils/formatters';
+import { getNormalizedApiBase } from '@/utils/urlUtils';
 import { unfurlUrl } from './unfurlService';
 import type { Article } from '@/types';
 import type { NuggetMedia } from '@/types';
@@ -480,7 +481,7 @@ export const batchService = {
       throw new Error('Array of nugget IDs is required');
     }
 
-    const API_BASE = import.meta.env.VITE_API_URL || '/api';
+    const API_BASE = getNormalizedApiBase();
     
     // Extract token from localStorage (stored as JSON object)
     let token = '';

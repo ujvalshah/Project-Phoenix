@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Key, AlertCircle, RefreshCw } from 'lucide-react';
+import { getNormalizedApiBase } from '@/utils/urlUtils';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+// API base URL - normalized to always include /api suffix
+const API_BASE = getNormalizedApiBase();
 
 interface KeyStatus {
   total: number;
