@@ -57,7 +57,7 @@
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
-    "lucide-react": "^0.556.0",
+    "lucide-react": "^0.562.0",
     "mongoose": "^9.0.1",
     "morgan": "^1.10.1",
     "multer": "^2.0.0",
