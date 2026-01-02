@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Image } from './Image';
+import { getNormalizedApiBase } from '@/utils/urlUtils';
 
 export interface MediaImageProps {
   mediaId: string;
@@ -46,7 +47,8 @@ export const MediaImage: React.FC<MediaImageProps> = ({
     // Fetch media metadata from backend
     const fetchMedia = async () => {
       try {
-        const response = await fetch(`/api/media/${mediaId}`);
+        const apiBase = getNormalizedApiBase();
+        const response = await fetch(`${apiBase}/media/${mediaId}`);
         if (!response.ok) {
           throw new Error('Failed to fetch media');
         }

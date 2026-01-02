@@ -2,7 +2,15 @@
 // In development, Vite proxies /api to localhost:5000.
 import { recordApiTiming } from '../observability/telemetry.js';
 import { captureException } from '../utils/sentry.js';
-const BASE_URL = '/api';
+import { getNormalizedApiBase } from '../utils/urlUtils.js';
+
+// Normalize API base URL: defaults to '/api', respects VITE_API_URL if set (ensures /api suffix)
+const BASE_URL = getNormalizedApiBase();
+
+// Debug logging for API base URL (build mode only)
+if (import.meta.env.PROD) {
+  console.log(`API Base URL (runtime): ${BASE_URL}`);
+}
 
 const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
 

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { getNormalizedApiBase } from '@/utils/urlUtils';
 
 const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
 
@@ -143,7 +144,8 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
       }
 
       // Upload to backend
-      const response = await fetch('/api/media/upload/cloudinary', {
+      const apiBase = getNormalizedApiBase();
+      const response = await fetch(`${apiBase}/media/upload/cloudinary`, {
         method: 'POST',
         body: formData,
         headers,
