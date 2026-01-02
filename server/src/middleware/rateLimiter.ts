@@ -7,7 +7,29 @@ import { createClient } from 'redis';
  * Only initialized if REDIS_URL is configured
  */
 let redisClient: ReturnType<typeof createClient> | null = null;
-let redisStore: RedisStore | undefined = undefined;
+
+/**
+ * Helper function to create a RedisStore instance with a unique prefix
+ * Each rate limiter must have its own RedisStore instance to avoid conflicts
+ */
+function createRedisStore(prefix: string): RedisStore | undefined {
+  if (!redisClient) {
+    return undefined;
+  }
+  
+  return new RedisStore({
+    prefix: prefix, // Unique prefix for each rate limiter
+    sendCommand: async (...args: string[]) => {
+      if (!redisClient) {
+        throw new Error('Redis client not available');
+      }
+      // Redis v5 sendCommand expects an array: [command, ...args]
+      // rate-limit-redis passes arguments as individual parameters via rest syntax
+      // So args is already an array containing [command, arg1, arg2, ...]
+      return await redisClient.sendCommand(args);
+    },
+  });
+}
 
 // Initialize Redis client if REDIS_URL is provided
 if (process.env.REDIS_URL) {
@@ -24,28 +46,17 @@ if (process.env.REDIS_URL) {
       console.error('Failed to connect to Redis:', err);
       redisClient = null;
     });
-    
-    // Create Redis store for rate limiting
-    // RedisStore expects sendCommand function for Redis v5 compatibility
-    // The sendCommand function receives individual arguments and converts them
-    // to the array format expected by Redis v5's sendCommand method
-    redisStore = new RedisStore({
-      sendCommand: async (...args: string[]) => {
-        if (!redisClient) {
-          throw new Error('Redis client not available');
-        }
-        // Redis v5 sendCommand expects an array: [command, ...args]
-        // rate-limit-redis passes arguments as individual parameters via rest syntax
-        // So args is already an array containing [command, arg1, arg2, ...]
-        return await redisClient.sendCommand(args);
-      },
-    });
   } catch (error) {
     console.error('Failed to initialize Redis:', error);
     redisClient = null;
-    redisStore = undefined;
   }
 }
+
+// Create separate RedisStore instances for each rate limiter with unique prefixes
+const loginRedisStore = createRedisStore('rl:login');
+const signupRedisStore = createRedisStore('rl:signup');
+const unfurlRedisStore = createRedisStore('rl:unfurl');
+const aiRedisStore = createRedisStore('rl:ai');
 
 /**
  * Rate limiter for login endpoint
@@ -54,7 +65,7 @@ if (process.env.REDIS_URL) {
  * Uses Redis store if available for distributed rate limiting
  */
 export const loginLimiter = rateLimit({
-  store: redisStore, // Use Redis if available, otherwise in-memory
+  store: loginRedisStore, // Use Redis if available, otherwise in-memory
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // Limit each IP to 5 requests per windowMs
   message: 'Too many attempts. Please try again later.',
@@ -74,7 +85,7 @@ export const loginLimiter = rateLimit({
  * Uses Redis store if available for distributed rate limiting
  */
 export const signupLimiter = rateLimit({
-  store: redisStore, // Use Redis if available, otherwise in-memory
+  store: signupRedisStore, // Use Redis if available, otherwise in-memory
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10, // Limit each IP to 10 requests per windowMs
   message: 'Too many attempts. Please try again later.',
@@ -97,7 +108,7 @@ export const signupLimiter = rateLimit({
  * Uses Redis store if available for distributed rate limiting
  */
 export const unfurlLimiter = rateLimit({
-  store: redisStore, // Use Redis if available, otherwise in-memory
+  store: unfurlRedisStore, // Use Redis if available, otherwise in-memory
   windowMs: 60 * 1000, // 1 minute
   max: 10, // Default: 10 requests per minute (will be adjusted by skip handler)
   message: 'Too many unfurl requests. Please try again later.',
@@ -131,7 +142,7 @@ export const unfurlLimiter = rateLimit({
  * Uses Redis store if available for distributed rate limiting
  */
 export const aiLimiter = rateLimit({
-  store: redisStore, // Use Redis if available, otherwise in-memory
+  store: aiRedisStore, // Use Redis if available, otherwise in-memory
   windowMs: 60 * 1000, // 1 minute
   max: 10, // Limit each IP to 10 requests per minute
   message: 'Too many AI requests. Please try again later.',
@@ -157,7 +168,6 @@ export async function closeRedisConnection(): Promise<void> {
     try {
       await redisClient.quit();
       redisClient = null;
-      redisStore = undefined;
     } catch (error) {
       console.error('Error closing Redis connection:', error);
     }
