@@ -26,14 +26,18 @@ if (process.env.REDIS_URL) {
     });
     
     // Create Redis store for rate limiting
-    // RedisStore expects a function that sends commands to Redis
-    // Using sendCommand method compatible with Redis v5 client API
+    // RedisStore expects sendCommand function for Redis v5 compatibility
+    // The sendCommand function receives individual arguments and converts them
+    // to the array format expected by Redis v5's sendCommand method
     redisStore = new RedisStore({
-      sendCommand: (...args: string[]) => {
+      sendCommand: async (...args: string[]) => {
         if (!redisClient) {
           throw new Error('Redis client not available');
         }
-        return redisClient.sendCommand(args);
+        // Redis v5 sendCommand expects an array: [command, ...args]
+        // rate-limit-redis passes arguments as individual parameters via rest syntax
+        // So args is already an array containing [command, arg1, arg2, ...]
+        return await redisClient.sendCommand(args);
       },
     });
   } catch (error) {
