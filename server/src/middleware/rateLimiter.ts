@@ -27,12 +27,13 @@ if (process.env.REDIS_URL) {
     
     // Create Redis store for rate limiting
     // RedisStore expects a function that sends commands to Redis
+    // Using sendCommand method compatible with Redis v5 client API
     redisStore = new RedisStore({
-      sendCommand: async (...args: string[]) => {
+      sendCommand: (...args: string[]) => {
         if (!redisClient) {
           throw new Error('Redis client not available');
         }
-        return redisClient.call(args[0] as any, ...args.slice(1)) as Promise<any>;
+        return redisClient.sendCommand(args);
       },
     });
   } catch (error) {
