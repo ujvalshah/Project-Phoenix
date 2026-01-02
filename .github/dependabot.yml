@@ -1,0 +1,83 @@
+# ================================================
+# Dependabot Configuration
+# Automatically creates PRs for dependency updates
+# ================================================
+
+version: 2
+updates:
+  # NPM dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    
+    # Group minor and patch updates to reduce PR noise
+    groups:
+      # Development dependencies (less critical)
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Production patch updates (safe to batch)
+      production-patch:
+        dependency-type: "production"
+        update-types:
+          - "patch"
+      
+      # React ecosystem
+      react:
+        patterns:
+          - "react"
+          - "react-*"
+          - "@types/react*"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # TypeScript ecosystem
+      typescript:
+        patterns:
+          - "typescript"
+          - "@types/*"
+        update-types:
+          - "minor"
+          - "patch"
+    
+    # Ignore major updates for stability (review manually)
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    
+    # Labels for auto-generated PRs
+    labels:
+      - "dependencies"
+      - "automated"
+    
+    # Commit message format
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    commit-message:
+      prefix: "ci"
+
+
+
+

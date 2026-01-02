@@ -1,0 +1,131 @@
+# ================================================
+# Project Nuggets - Local Development Environment
+# ================================================
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose logs -f app    # View app logs
+#   docker-compose down           # Stop all services
+#   docker-compose down -v        # Stop and remove volumes
+# ================================================
+
+version: '3.8'
+
+services:
+  # ============================================
+  # Main Application
+  # ============================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nuggets-app
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      # Override MongoDB URI to use Docker network
+      - MONGO_URI=mongodb://mongo:27017/nuggets
+      # Override Redis URL if using Redis
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - nuggets-network
+
+  # ============================================
+  # MongoDB Database
+  # ============================================
+  mongo:
+    image: mongo:7.0
+    container_name: nuggets-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - nuggets-network
+
+  # ============================================
+  # Redis (for rate limiting across instances)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: nuggets-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - nuggets-network
+
+  # ============================================
+  # Mongo Express (Optional - DB Admin UI)
+  # Access at http://localhost:8081
+  # ============================================
+  mongo-express:
+    image: mongo-express:1.0-20
+    container_name: nuggets-mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017/
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin123
+    depends_on:
+      mongo:
+        condition: service_healthy
+    profiles:
+      - admin
+    restart: unless-stopped
+    networks:
+      - nuggets-network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  mongo_data:
+    name: nuggets-mongo-data
+  mongo_config:
+    name: nuggets-mongo-config
+  redis_data:
+    name: nuggets-redis-data
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  nuggets-network:
+    name: nuggets-network
+    driver: bridge
+
+
+
+

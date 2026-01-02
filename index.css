@@ -1,0 +1,281 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global styles for Nuggets app */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar styles */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #eab308 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  height: 4px;
+  width: 4px;  
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #eab308;
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #ca8a04;
+  cursor: pointer;
+}
+
+.no-scrollbar-visual::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar-visual {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Tag scroll container: Clean horizontal scrollbar for category tags toolbar */
+.tag-scroll-container {
+  /* Single-row layout: prevent wrapping */
+  white-space: nowrap;
+  /* Thin scrollbar for Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+  /* Smooth touch scrolling on iOS */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Improved desktop scrollbar appearance for tag container */
+.tag-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tag-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tag-scroll-container::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+}
+
+.tag-scroll-container::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.7);
+}
+
+/* Dark mode scrollbar for tag container */
+.dark .tag-scroll-container {
+  scrollbar-color: rgba(100, 116, 139, 0.5) transparent;
+}
+
+.dark .tag-scroll-container::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.5);
+}
+
+.dark .tag-scroll-container::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.7);
+}
+
+/* Header stability optimizations */
+header[class*="fixed"] {
+  contain: layout style paint;
+  will-change: transform;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Prevent layout shifts from header */
+body {
+  scroll-padding-top: 64px; /* Match header height */
+}
+
+@media (max-width: 1023px) {
+  body {
+    scroll-padding-top: 56px; /* Match mobile header height */
+  }
+}
+
+/* ============================================
+   Markdown Table Styling (GFM)
+   ============================================ */
+
+/* Table wrapper for horizontal scrolling on small screens */
+.markdown-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Base table styles */
+.markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Table header cells */
+.markdown-table thead th {
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--border-muted, #e2e8f0);
+  background-color: var(--bg-subtle, #f8fafc);
+  white-space: nowrap;
+}
+
+/* Table body cells */
+.markdown-table tbody td {
+  padding: 8px 12px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-muted, #e2e8f0);
+}
+
+/* Alternating row backgrounds */
+.markdown-table tbody tr:nth-child(even) {
+  background-color: var(--bg-subtle, rgba(248, 250, 252, 0.5));
+}
+
+/* Table hover effect */
+.markdown-table tbody tr:hover {
+  background-color: var(--bg-hover, rgba(241, 245, 249, 0.8));
+}
+
+/* Dark mode table styles */
+.dark .markdown-table thead th {
+  border-bottom-color: #475569;
+  background-color: rgba(30, 41, 59, 0.5);
+}
+
+.dark .markdown-table tbody td {
+  border-bottom-color: #334155;
+}
+
+.dark .markdown-table tbody tr:nth-child(even) {
+  background-color: rgba(30, 41, 59, 0.3);
+}
+
+.dark .markdown-table tbody tr:hover {
+  background-color: rgba(51, 65, 85, 0.5);
+}
+
+/* Prevent tables from being clamped in collapsed state */
+.markdown-content .markdown-table-wrapper {
+  /* Tables should not be affected by line-clamp */
+  display: block;
+}
+
+/* When in clamped container, hide tables entirely to prevent broken rendering */
+.line-clamp-3 .markdown-table-wrapper,
+.line-clamp-4 .markdown-table-wrapper,
+.line-clamp-6 .markdown-table-wrapper {
+  display: none;
+}
+
+/* Ensure markdown content in expanded state shows tables */
+.markdown-content:not(.line-clamp-3):not(.line-clamp-4):not(.line-clamp-6) .markdown-table-wrapper {
+  display: block;
+}
+
+/* ============================================
+   Masonry Tile Hover Interaction (Premium Subtle UX)
+   ============================================
+   
+   Applies only to image/media tiles – NOT YouTube thumbnails
+   - Subtle elevation + soft shadow on hover
+   - Very light dim overlay (2-4% max)
+   - Small contextual hover icon fades in (top-right)
+   - Scale: 1.01–1.015 max
+   - Duration: 120–180ms
+   - Easing: ease-out
+   - Disabled on mobile/touch devices
+   ============================================ */
+
+/* Base transition styles for masonry tiles */
+.masonry-tile {
+  transition: transform 0.16s ease-out,
+              box-shadow 0.16s ease-out;
+  position: relative;
+}
+
+/* Hover effects (desktop only - disabled on touch devices) */
+@media (hover: hover) and (pointer: fine) {
+  .masonry-tile:hover {
+    transform: translateY(-2px) scale(1.015);
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.08);
+  }
+  
+  /* Dark mode shadow adjustment */
+  .dark .masonry-tile:hover {
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* Dim overlay (2-4% opacity) */
+.masonry-tile .hover-overlay {
+  opacity: 0;
+  transition: opacity 0.14s linear;
+  border-radius: 0.5rem; /* Match rounded-lg */
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .masonry-tile:hover .hover-overlay {
+    opacity: 0.04;
+  }
+}
+
+/* Hover icon (top-right) */
+.masonry-tile .hover-icon {
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.14s ease-out,
+              transform 0.14s ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .masonry-tile:hover .hover-icon {
+    opacity: 0.9;
+    transform: translateY(0);
+  }
+}
+
+/* Keyboard focus ring (accessible, no scale animation) */
+.masonry-tile:focus-visible {
+  outline: 2px solid rgb(59, 130, 246); /* blue-500 */
+  outline-offset: 2px;
+  transform: none; /* Do not scale on focus */
+  border-radius: 0.5rem; /* Match rounded-lg */
+}
+
+/* Dark mode focus ring */
+.dark .masonry-tile:focus-visible {
+  outline-color: rgb(96, 165, 250); /* blue-400 */
+}
+
+/* PART C: Masonry tile title caption (hover-only) */
+/* Caption uses group-hover:opacity-100 directly in component classes */
+/* No additional CSS needed - handled by Tailwind group-hover utility */
+
+
+
