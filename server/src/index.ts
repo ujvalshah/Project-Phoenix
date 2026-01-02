@@ -82,43 +82,38 @@ app.use(helmet());
 // CRITICAL: Must allow OPTIONS method and proper headers for DELETE requests with body
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // In production, only allow FRONTEND_URL
-    if (env.NODE_ENV === 'production') {
-      if (!origin) {
-        // Audit Phase-2 Fix: Log missing origin header in production
-        const logger = getLogger();
-        logger.warn({ msg: 'CORS: Missing origin header' });
-        callback(new Error('Origin header required'));
-        return;
-      }
-      if (origin !== env.FRONTEND_URL) {
-        // Audit Phase-2 Fix: Log origin mismatch with structured logging
-        const logger = getLogger();
-        logger.warn({ 
-          msg: 'CORS: Origin mismatch', 
-          origin, 
-          expected: env.FRONTEND_URL
-        });
-        callback(new Error('Not allowed by CORS policy'));
-        return;
-      }
+    // Allow requests without origin header (for health checks, curl, etc.)
+    if (!origin) {
       callback(null, true);
-    } else {
-      // In development, allow localhost:3000
-      const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        // Audit Phase-2 Fix: Log CORS rejection in development
-        const logger = getLogger();
-        logger.warn({ 
-          msg: 'CORS: Origin not allowed in development', 
-          origin,
-          allowedOrigins
-        });
-        callback(new Error('Not allowed by CORS policy'));
-      }
+      return;
     }
+
+    // Define allowed origins
+    const allowedOrigins: string[] = [
+      'http://localhost:5173', // Development frontend
+      'https://nugget-cyan.vercel.app', // Production frontend
+    ];
+
+    // Check if origin matches exact allowed origins
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    // Check if origin matches *.vercel.app pattern (all Vercel deployments)
+    if (origin.endsWith('.vercel.app')) {
+      callback(null, true);
+      return;
+    }
+
+    // Origin not allowed - log and reject
+    const logger = getLogger();
+    logger.warn({ 
+      msg: 'CORS: Origin not allowed', 
+      origin,
+      allowedOrigins: [...allowedOrigins, '*.vercel.app']
+    });
+    callback(new Error('Not allowed by CORS policy'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
