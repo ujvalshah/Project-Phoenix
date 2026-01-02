@@ -328,8 +328,8 @@ app.all(/^\/api\/.+/, (req, res) => {
 if (env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../../../dist')));
   // Catch-all handler for React Router (only for non-API routes)
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../../dist/index.html'));
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found' });
   });
 }
 
