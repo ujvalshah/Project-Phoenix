@@ -455,6 +455,18 @@ async function gracefulShutdown(signal: string) {
     }
   }
   
+  // Close Redis connection
+  try {
+    const { closeRedisConnection } = await import('./middleware/rateLimiter.js');
+    await closeRedisConnection();
+    logger.info({ msg: 'Redis connection closed' });
+  } catch (error: any) {
+    // Redis might not be configured, so this is not critical
+    if (error.message && !error.message.includes('Redis')) {
+      logger.warn({ msg: 'Error closing Redis connection', error: error.message });
+    }
+  }
+  
   // Flush Sentry events before exit
   try {
     await Sentry.flush(2000); // Wait up to 2 seconds
