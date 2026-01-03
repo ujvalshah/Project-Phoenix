@@ -36,6 +36,27 @@ const mediaSchema = z.object({
   masonryTitle: z.string().max(80, 'Masonry title must be 80 characters or less').optional(),
 }).optional().nullable();
 
+// Schema for primary media (same structure as media but separate field)
+const primaryMediaSchema = mediaSchema;
+
+// Schema for supporting media item (array of media objects with masonry flags)
+const supportingMediaItemSchema = z.object({
+  type: z.string().optional(),
+  url: z.string().optional(),
+  thumbnail: z.string().optional(),
+  thumbnail_url: z.string().optional(),
+  aspect_ratio: z.string().optional(),
+  filename: z.string().optional(),
+  title: z.string().optional(),
+  previewMetadata: previewMetadataSchema,
+  // Masonry layout visibility flag (optional for backward compatibility)
+  showInMasonry: z.boolean().optional(),
+  // Masonry tile title (optional, max 80 characters, single-line)
+  masonryTitle: z.string().max(80, 'Masonry title must be 80 characters or less').optional(),
+});
+
+const supportingMediaSchema = z.array(supportingMediaItemSchema).optional();
+
 // Schema for document object
 const documentSchema = z.object({
   title: z.string(),
@@ -61,6 +82,9 @@ const baseArticleSchema = z.object({
   visibility: z.enum(['public', 'private']).default('public'),
   // Media and attachment fields
   media: mediaSchema,
+  // Primary and supporting media (computed fields, but can be explicitly set)
+  primaryMedia: primaryMediaSchema,
+  supportingMedia: supportingMediaSchema,
   images: z.array(z.string()).optional(),
   documents: documentSchema,
   source_type: z.string().optional(),

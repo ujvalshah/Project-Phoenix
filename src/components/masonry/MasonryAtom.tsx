@@ -15,6 +15,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 interface MasonryAtomProps {
   article: Article;
+  mediaItemId?: string; // If specified, render only this media item
   onArticleClick: (article: Article) => void;
   onCategoryClick?: (category: string) => void;
   currentUserId?: string;
@@ -31,6 +32,7 @@ interface MasonryAtomProps {
  */
 export const MasonryAtom: React.FC<MasonryAtomProps> = ({
   article,
+  mediaItemId,
   onArticleClick,
   onCategoryClick,
   currentUserId,
@@ -148,6 +150,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
           {hasMedia ? (
             <MediaBlock
               article={article}
+              mediaItemId={mediaItemId}
               onCategoryClick={onCategoryClick}
               onArticleClick={onArticleClick}
             />

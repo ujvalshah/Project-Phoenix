@@ -133,14 +133,8 @@ class AdminTagsService {
   }
 
   async renameTag(id: string, newName: string): Promise<void> {
-    // Log rename attempt for debugging
-    console.log('[AdminTagsService.renameTag] Renaming tag:', { id, newName });
-    
     try {
       const response = await apiClient.put(`/categories/${id}`, { name: newName }, 'adminTagsService.renameTag');
-      
-      // Log successful response
-      console.log('[AdminTagsService.renameTag] Rename successful:', response);
       
       return response;
     } catch (error: any) {

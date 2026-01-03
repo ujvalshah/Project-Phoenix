@@ -266,10 +266,59 @@ export const getArticleById = async (req: Request, res: Response) => {
 };
 
 export const createArticle = async (req: Request, res: Response) => {
+  const requestLogger = createRequestLogger(req.id || 'unknown', (req as any).user?.userId, '/api/articles');
+  
   try {
+    // DIAGNOSTIC LOGGING: Log incoming request body media structure
+    requestLogger.info({
+      msg: '[DIAGNOSTIC] CreateArticle - Incoming request body media',
+      media: req.body.media,
+      mediaType: typeof req.body.media,
+      mediaIsArray: Array.isArray(req.body.media),
+      mediaLength: Array.isArray(req.body.media) ? req.body.media.length : undefined,
+      mediaKeys: req.body.media && typeof req.body.media === 'object' ? Object.keys(req.body.media) : undefined,
+      fullBodyKeys: Object.keys(req.body || {}),
+    });
+    
+    // DIAGNOSTIC LOGGING: If media is an array, log each item structure
+    if (Array.isArray(req.body.media)) {
+      requestLogger.info({
+        msg: '[DIAGNOSTIC] CreateArticle - Media is ARRAY (unexpected)',
+        mediaArrayLength: req.body.media.length,
+        mediaArrayItems: req.body.media.map((item: any, index: number) => ({
+          index,
+          type: typeof item,
+          isNull: item === null,
+          isUndefined: item === undefined,
+          keys: item && typeof item === 'object' ? Object.keys(item) : null,
+          structure: item,
+        })),
+      });
+    }
+    
     // Validate input
     const validationResult = createArticleSchema.safeParse(req.body);
     if (!validationResult.success) {
+      // DIAGNOSTIC LOGGING: Log validation errors related to media
+      const mediaErrors = validationResult.error.errors.filter(err => 
+        err.path.join('.').includes('media')
+      );
+      if (mediaErrors.length > 0) {
+        requestLogger.warn({
+          msg: '[DIAGNOSTIC] CreateArticle - Validation errors related to media',
+          mediaErrors: mediaErrors.map(err => ({
+            path: err.path,
+            message: err.message,
+            code: err.code,
+          })),
+          allErrors: validationResult.error.errors.map(err => ({
+            path: err.path,
+            message: err.message,
+            code: err.code,
+          })),
+        });
+      }
+      
       const errors = validationResult.error.errors.map(err => ({
         path: err.path,
         message: err.message,
@@ -279,6 +328,18 @@ export const createArticle = async (req: Request, res: Response) => {
     }
 
     const data = validationResult.data;
+    
+    // DIAGNOSTIC LOGGING: Log validated media structure
+    requestLogger.info({
+      msg: '[DIAGNOSTIC] CreateArticle - Validated data media structure',
+      media: data.media,
+      mediaType: typeof data.media,
+      mediaIsArray: Array.isArray(data.media),
+      mediaIsNull: data.media === null,
+      mediaIsUndefined: data.media === undefined,
+      mediaKeys: data.media && typeof data.media === 'object' && !Array.isArray(data.media) ? Object.keys(data.media) : undefined,
+      mediaStructure: data.media,
+    });
     
     // CRITICAL FIX: Deduplicate images array to prevent duplicates
     // Also log for debugging image creation flow
@@ -360,6 +421,19 @@ export const createArticle = async (req: Request, res: Response) => {
       // Just use default timestamp
     }
     
+    // DIAGNOSTIC LOGGING: Log data structure before Article.create
+    requestLogger.info({
+      msg: '[DIAGNOSTIC] CreateArticle - Data structure before Article.create',
+      mediaField: data.media,
+      mediaType: typeof data.media,
+      mediaIsArray: Array.isArray(data.media),
+      imagesLength: data.images ? data.images.length : 0,
+      imagesArray: data.images,
+      mediaIdsLength: data.mediaIds ? data.mediaIds.length : 0,
+      mediaIdsArray: data.mediaIds,
+      dataKeys: Object.keys(data),
+    });
+    
     const newArticle = await Article.create({
       ...data,
       categoryIds, // Add resolved Tag ObjectIds
@@ -369,21 +443,37 @@ export const createArticle = async (req: Request, res: Response) => {
     
     res.status(201).json(normalizeDoc(newArticle));
   } catch (error: any) {
-    // Audit Phase-3 Fix: Logging consistency - use createRequestLogger with requestId + route
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any).user?.userId, '/api/articles');
+    // DIAGNOSTIC LOGGING: Enhanced error logging with media context
     requestLogger.error({ 
-      msg: 'Create article error', 
+      msg: '[DIAGNOSTIC] CreateArticle - ERROR CAUGHT', 
       error: { 
         name: error.name,
         message: error.message, 
-        stack: error.stack 
-      } 
+        stack: error.stack,
+      },
+      errorCode: error.code,
+      errorKeyPattern: error.keyPattern,
+      errorKeyValue: error.keyValue,
+      requestBodyMedia: req.body?.media,
+      requestBodyMediaType: typeof req.body?.media,
+      requestBodyMediaIsArray: Array.isArray(req.body?.media),
     });
     
     // Log more details for debugging
     if (error.name === 'ValidationError') {
-      // Audit Phase-3 Fix: Logging consistency - use createRequestLogger
-      requestLogger.warn({ msg: 'Mongoose validation errors', errors: error.errors });
+      // DIAGNOSTIC LOGGING: Enhanced Mongoose validation errors
+      requestLogger.warn({ 
+        msg: '[DIAGNOSTIC] CreateArticle - Mongoose ValidationError',
+        errors: error.errors,
+        errorKeys: Object.keys(error.errors || {}),
+        errorDetails: Object.keys(error.errors || {}).map(key => ({
+          field: key,
+          message: error.errors[key].message,
+          value: error.errors[key].value,
+          kind: error.errors[key].kind,
+          path: error.errors[key].path,
+        })),
+      });
       const errors = Object.keys(error.errors).map(key => ({
         path: key,
         message: error.errors[key].message
@@ -393,8 +483,7 @@ export const createArticle = async (req: Request, res: Response) => {
     
     // Check for BSON size limit (MongoDB document size limit is 16MB)
     if (error.message && error.message.includes('BSON')) {
-      // Audit Phase-3 Fix: Logging consistency - use createRequestLogger
-      requestLogger.warn({ msg: 'Document size limit exceeded' });
+      requestLogger.warn({ msg: '[DIAGNOSTIC] CreateArticle - Document size limit exceeded' });
       return sendPayloadTooLargeError(res, 'Payload too large. Please reduce image sizes or use fewer images.');
     }
     

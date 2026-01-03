@@ -21,7 +21,6 @@ export function initSentry() {
 
   // Disable in development unless explicitly enabled
   if (environment === 'development' && import.meta.env.VITE_SENTRY_ENABLE_DEV !== 'true') {
-    console.log('[Sentry] Disabled in development mode');
     return;
   }
 
@@ -62,8 +61,6 @@ export function initSentry() {
       return event;
     },
   });
-
-  console.log('[Sentry] Initialized for error tracking');
 }
 
 /**

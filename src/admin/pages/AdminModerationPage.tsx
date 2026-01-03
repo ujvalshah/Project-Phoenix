@@ -76,8 +76,6 @@ export const AdminModerationPage: React.FC = () => {
       const cancelKeyReports = `adminModerationPage.listReports.${activeFilter}`;
       const cancelKeyStats = 'adminModerationPage.getStats';
       
-      console.log(`[AdminModeration] Loading data (v${currentVersion}): filter=${activeFilter}, dateFilter=${dateFilter || 'none'}`);
-      
       const [reportsData, statsData] = await Promise.all([
         adminModerationService.listReports(activeFilter, cancelKeyReports),
         adminModerationService.getStats(cancelKeyStats)
@@ -85,7 +83,6 @@ export const AdminModerationPage: React.FC = () => {
       
       // Only update state if this is still the latest request and component is mounted
       if (currentVersion !== requestVersionRef.current || !isMountedRef.current) {
-        console.log(`[AdminModeration] Request v${currentVersion} completed but is stale or component unmounted. Ignoring.`);
         return;
       }
       
@@ -97,11 +94,9 @@ export const AdminModerationPage: React.FC = () => {
 
       setReports(filteredReports);
       setStats(statsData);
-      console.log(`[AdminModeration] Data loaded successfully (v${currentVersion}): ${filteredReports.length} reports, stats=`, statsData);
     } catch (e: any) {
       // Only handle errors if this is still the latest request and component is mounted
       if (currentVersion !== requestVersionRef.current || !isMountedRef.current) {
-        console.log(`[AdminModeration] Request v${currentVersion} error but is stale or component unmounted. Ignoring.`);
         return;
       }
       
@@ -134,7 +129,6 @@ export const AdminModerationPage: React.FC = () => {
       isMountedRef.current = false;
       // Increment version to invalidate any pending requests
       requestVersionRef.current++;
-      console.log('[AdminModeration] Component unmounting, invalidating pending requests');
     };
   }, []);
 

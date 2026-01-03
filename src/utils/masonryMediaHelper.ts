@@ -206,6 +206,8 @@ export function getMasonryVisibleMedia(article: Article): MasonryMediaItem[] {
   // Filter to only items with showInMasonry === true
   // NO FALLBACK: If no items are selected, return empty array
   // This allows users to explicitly exclude all media from Masonry view
-  return allItems.filter(item => item.showInMasonry === true);
+  const visibleItems = allItems.filter(item => item.showInMasonry === true);
+  
+  return visibleItems;
 }
 

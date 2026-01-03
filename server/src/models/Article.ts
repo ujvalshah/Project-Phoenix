@@ -67,6 +67,9 @@ export interface IArticle extends Document {
   
   // Media fields (matching frontend Article interface)
   media?: INuggetMedia | null;
+  // Primary and supporting media (computed fields, but can be explicitly stored)
+  primaryMedia?: INuggetMedia | null;
+  supportingMedia?: INuggetMedia[]; // Array of media items with masonry flags
   images?: string[]; // Legacy field
   video?: string; // Legacy field
   documents?: IDocument[]; // Legacy field
@@ -145,6 +148,9 @@ const ArticleSchema = new Schema<IArticle>({
   
   // Media fields
   media: { type: NuggetMediaSchema, default: null },
+  // Primary and supporting media (computed fields, but can be explicitly stored)
+  primaryMedia: { type: NuggetMediaSchema, required: false },
+  supportingMedia: { type: [NuggetMediaSchema], default: [] },
   images: { type: [String], default: [] }, // Legacy
   video: { type: String }, // Legacy
   documents: { type: [DocumentSchema], default: [] }, // Legacy

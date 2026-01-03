@@ -76,17 +76,14 @@ export const FeedPage: React.FC = () => {
   // Handle article actions (like, bookmark, share)
   const handleLike = useCallback((article: Article) => {
     // TODO: Implement like functionality
-    console.log('Like article:', article.id);
   }, []);
   
   const handleBookmark = useCallback((article: Article) => {
     // TODO: Implement bookmark functionality
-    console.log('Bookmark article:', article.id);
   }, []);
   
   const handleShare = useCallback((article: Article) => {
     // TODO: Implement share functionality
-    console.log('Share article:', article.id);
   }, []);
   
   const isDetailOpen = !!id && !!detailArticle && detailArticle !== undefined;

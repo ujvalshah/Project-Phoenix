@@ -408,7 +408,6 @@ export const BulkYouTubeAnalysisPage: React.FC = () => {
             if (createResponse.ok) {
               const created = await createResponse.json();
               draftId = created.id;
-              console.log(`[AI] Draft created: ${draftId}`);
             } else {
               console.warn('[AI] Failed to create draft:', await createResponse.text());
             }

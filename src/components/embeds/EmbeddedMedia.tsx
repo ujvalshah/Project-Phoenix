@@ -63,23 +63,6 @@ export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) 
   // For Google Drive, the title usually contains the filename with extension
   const filename = media.previewMetadata?.title || extractFilename(url);
   
-  // Debug logging (remove in production)
-  // Wrapped in try-catch to prevent browser extension message channel errors
-  if (process.env.NODE_ENV === 'development') {
-    try {
-      console.log('[EmbeddedMedia]', { 
-        type, 
-        filename, 
-        url: url.substring(0, 80), 
-        hasPreviewMetadata: !!media.previewMetadata,
-        previewTitle: media.previewMetadata?.title,
-        previewImageUrl: media.previewMetadata?.imageUrl
-      });
-    } catch (error) {
-      // Silently ignore console.log errors (can happen with browser extensions)
-      // This prevents "message channel closed" errors from breaking the app
-    }
-  }
   
   // AGGRESSIVE DOCUMENT DETECTION: Check multiple signals
   const urlIsGoogleDrive = url.toLowerCase().includes('drive.google.com') || url.toLowerCase().includes('docs.google.com');
@@ -117,14 +100,6 @@ export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) 
     const finalDocumentType = documentType || 'pdf';
     
     const fileSize = media.previewMetadata?.description?.match(/(\d+\.?\d*\s*(KB|MB|GB))/i)?.[0];
-    
-    if (process.env.NODE_ENV === 'development') {
-      try {
-        console.log('[EmbeddedMedia] Rendering DocumentPreview', { finalDocumentType, filename, fileSize });
-      } catch (error) {
-        // Silently ignore console.log errors
-      }
-    }
     
     return (
       <DocumentPreview

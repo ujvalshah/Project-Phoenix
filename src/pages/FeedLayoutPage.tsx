@@ -36,11 +36,6 @@ export const FeedLayoutPage: React.FC<FeedLayoutPageProps> = ({
   const navigate = useNavigate();
   const { currentUserId } = useAuth();
 
-  // Log feed layout mount for debugging
-  React.useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.info('[FeedLayoutPage] Mounted, location:', location.pathname);
-  }, [location.pathname]);
 
   // Check if we're on a detail route by checking the pathname
   const isDetailActive = location.pathname.startsWith('/feed/') && location.pathname !== '/feed';

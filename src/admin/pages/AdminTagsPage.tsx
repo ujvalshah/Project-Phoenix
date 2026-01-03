@@ -195,27 +195,12 @@ export const AdminTagsPage: React.FC = () => {
       const oldName = renameTarget.name;
       const tagId = renameTarget.id;
       
-      // Log rename attempt
-      console.log('[AdminTagsPage.handleRename] Starting rename:', { 
-        tagId, 
-        oldName, 
-        newName 
-      });
-      
       // Optimistic update: update UI immediately
       setTags(prev => prev.map(t => t.id === tagId ? { ...t, name: newName } : t));
       
       try {
           // Call backend API to persist the rename
           const response = await adminTagsService.renameTag(tagId, newName);
-          
-          // Log successful response
-          console.log('[AdminTagsPage.handleRename] Backend response:', response);
-          
-          // Verify the response contains the updated name
-          if (response && response.name) {
-              console.log('[AdminTagsPage.handleRename] Confirmed updated name in response:', response.name);
-          }
           
           // Invalidate React Query cache for categories/tags to refresh homepage
           // This ensures the category bar shows the new tag name
@@ -244,8 +229,6 @@ export const AdminTagsPage: React.FC = () => {
               queryKey: ['articles'],
               type: 'active'
           });
-          
-          console.log('[AdminTagsPage.handleRename] Cache invalidated and queries refetched');
           
           // Also trigger a manual refetch after a short delay to ensure data is fresh
           setTimeout(() => {

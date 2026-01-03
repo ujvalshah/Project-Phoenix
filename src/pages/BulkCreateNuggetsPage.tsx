@@ -170,8 +170,6 @@ export const BulkCreateNuggetsPage: React.FC = () => {
       return;
     }
     
-    console.log(`Starting batch creation: ${selectedRows.length} rows selected`);
-    
     setIsProcessing(true);
     setBatchProgress({ current: 0, total: selectedRows.length });
     
@@ -186,8 +184,6 @@ export const BulkCreateNuggetsPage: React.FC = () => {
       
       const successCount = result.filter(r => r.status === 'success').length;
       const errorCount = result.filter(r => r.status === 'error').length;
-      
-      console.log(`Batch creation complete: ${successCount} success, ${errorCount} errors`);
       
       // Clear preview data to free memory
       const cleanedRows = result.map(row => ({

@@ -170,7 +170,6 @@ class AdminConfigService {
   async updateRolePermission(role: keyof RolePermissions, services: string[]): Promise<void> {
     await delay(300);
     this.permissions[role] = services as any;
-    console.log(`[Config] Updated permissions for ${String(role)}:`, services);
   }
 
   // --- FLAGS ---
@@ -182,7 +181,6 @@ class AdminConfigService {
   async updateFeatureFlag(key: keyof FeatureFlags, value: boolean): Promise<void> {
     await delay(300);
     this.featureFlags[key] = value;
-    console.log(`[Config] Updated flag ${String(key)} to ${value}`);
   }
 
   // --- SIGNUP CONFIG ---
@@ -194,7 +192,6 @@ class AdminConfigService {
   async updateSignupConfig(key: keyof SignupConfig, rule: Partial<{ show: boolean, required: boolean }>): Promise<void> {
     await delay(300);
     this.signupConfig[key] = { ...this.signupConfig[key], ...rule };
-    console.log(`[Config] Updated signup rule for ${key}:`, this.signupConfig[key]);
   }
 
   // --- LEGAL PAGES ---

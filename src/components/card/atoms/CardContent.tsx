@@ -158,22 +158,6 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
         // 2. There's enough visible content (minimum threshold)
         const shouldTruncate = isOverflowing && hasMinimumContent;
         
-        // 🔍 DETAILED LOGGING for debugging
-        console.log('[TRUNCATION-DEBUG] Overflow Detection:', {
-          textLength: displayContent.length,
-          lineHeight: `${lineHeight}px`,
-          fontSize: `${fontSize}px`,
-          scrollHeight: `${scrollHeight}px`,
-          clientHeight: `${clientHeight}px`,
-          offsetHeight: `${offsetHeight}px`,
-          approximateLineCount: approximateLineCount.toFixed(2),
-          visibleLineCount: visibleLineCount.toFixed(2),
-          hasMinimumContent,
-          isOverflowing,
-          shouldTruncate,
-          maxHeight: el.style.maxHeight || 'none',
-        });
-        
         setHadOverflowWhenCollapsed(shouldTruncate);
         setMeasured(true);
       });
@@ -282,41 +266,6 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
       : 0;
     const visibleLines = lineHeight > 0 ? Math.floor(clientHeight / lineHeight) : 0;
     const MIN_VISIBLE_LINES = 2.5;
-    
-    const truncationData = {
-      // State values
-      isExpanded,
-      allowExpansion,
-      hadOverflowWhenCollapsed,
-      measured,
-      // Measurements
-      scrollHeight,
-      clientHeight,
-      offsetHeight,
-      lineHeight: lineHeight.toFixed(2),
-      visibleLines,
-      MIN_VISIBLE_LINES,
-      // Computed values
-      shouldApplyMaxHeight,
-      shouldClamp,
-      showCollapse,
-      computedMaxHeightApplied: shouldApplyMaxHeight,
-      // Metadata
-      cardType,
-      isHybridCard,
-      hasTable,
-      bodyLineCount,
-      displayContentLength: displayContent.length,
-      // Decision reason
-      reason: !isHybridCard ? 'not-hybrid-card' :
-               !allowExpansion ? 'expansion-not-allowed' :
-               isExpanded ? 'content-expanded' :
-               !measured ? 'measuring-with-max-height' :
-               !hadOverflowWhenCollapsed ? 'no-overflow-detected' :
-               'truncation-applied',
-    };
-    
-    console.log('[TRUNCATION-AUDIT-RUNTIME]', JSON.stringify(truncationData, null, 2));
     
     // Warn if measurement might be wrong (scrollHeight === clientHeight with long content)
     if (measured && !hadOverflowWhenCollapsed && displayContent.length > 200) {

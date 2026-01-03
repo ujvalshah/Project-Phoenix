@@ -125,7 +125,6 @@ export async function fetchYouTubeMetadata(url: string): Promise<YouTubeMetadata
   
   // Check negative cache first (failed recently)
   if (isInNegativeCache(videoId)) {
-    console.debug(`[YouTube Metadata] Skipping fetch for ${videoId} (negative cache)`);
     return null;
   }
   
@@ -142,7 +141,6 @@ export async function fetchYouTubeMetadata(url: string): Promise<YouTubeMetadata
   // Check in-flight requests (deduplication)
   const existingRequest = inFlightRequests.get(videoId);
   if (existingRequest) {
-    console.debug(`[YouTube Metadata] Reusing in-flight request for ${videoId}`);
     return existingRequest;
   }
   

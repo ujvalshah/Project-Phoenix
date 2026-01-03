@@ -269,20 +269,6 @@ export const useNewsCard = ({
   const trimmedBody = contentText.trim();
   const trimmedBodyLineCount = countTextLines(trimmedBody);
   
-  // DIAGNOSTIC: Log image detection BEFORE classification
-  if (hasMedia) {
-    console.log(`[CARD-AUDIT] Image Detection for ${article.id.substring(0, 8)}:`, {
-      allImageUrls: allImageUrls,
-      imageCount: allImageUrls.length,
-      hasMultipleImages: hasMultipleImages,
-      hasLegacyImages: !!(article.images && article.images.length > 0),
-      hasPrimaryMedia: !!article.primaryMedia,
-      hasSupportingMedia: !!(article.supportingMedia && article.supportingMedia.length > 0),
-      primaryMediaType: article.primaryMedia?.type,
-      mediaType: article.media?.type,
-    });
-  }
-  
   // Determine card type with promotion rule
   let cardType: 'hybrid' | 'media-only';
   let classificationReason = '';
@@ -417,36 +403,6 @@ export const useNewsCard = ({
     maxPreviewLines: MAX_PREVIEW_LINES,
     contentPreview: contentText.substring(0, 80) + (contentText.length > 80 ? '...' : ''),
   };
-  
-  // Log as table for better readability - use JSON.stringify to force visibility
-  console.log('[CARD-AUDIT] Classification:', JSON.stringify(auditData, null, 2));
-  console.log('[CARD-AUDIT] Classification (expanded):', auditData);
-  
-  // Also log the enforcement rule check separately for multi-image cards
-  if (hasMultipleImages) {
-    const multiImageCheck = {
-      id: article.id.substring(0, 8) + '...',
-      imageCount: allImageUrls.length,
-      hasText: Boolean(trimmedBody),
-      lineCount: trimmedBodyLineCount,
-      exceedsPreview: trimmedBodyLineCount > MAX_PREVIEW_LINES,
-      shouldBeHybrid: isMultiImageWithLongText,
-      finalCardType: cardType,
-    };
-    console.log(`[CARD-AUDIT] Multi-Image Card Check:`, JSON.stringify(multiImageCheck, null, 2));
-    console.log(`[CARD-AUDIT] Multi-Image Card Check (expanded):`, multiImageCheck);
-  }
-  
-  // CRITICAL: Log if long text should force hybrid
-  if (hasLongText) {
-    console.log(`[CARD-AUDIT] ⚠️ LONG TEXT DETECTED - Should be Hybrid:`, {
-      id: article.id.substring(0, 8) + '...',
-      lineCount: trimmedBodyLineCount,
-      maxPreview: MAX_PREVIEW_LINES,
-      cardType: cardType,
-      isHybrid: cardType === 'hybrid',
-    });
-  }
 
   // ────────────────────────────────────────
   // DATA (formatted/derived)

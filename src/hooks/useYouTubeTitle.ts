@@ -124,7 +124,6 @@ export function useYouTubeTitle(params: UseYouTubeTitleParams | string | null | 
         if (nuggetId) {
           persistYouTubeTitleToBackend(nuggetId, metadata)
             .then(() => {
-              console.debug(`[YouTube Title] Persisted title for video ${videoId} to nugget ${nuggetId}`);
               onTitlePersisted?.(metadata.title);
             })
             .catch(error => {

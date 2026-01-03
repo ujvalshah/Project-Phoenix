@@ -193,28 +193,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         // CRITICAL FIX: Load existing images from ALL sources (not just images array)
         // Cards use getAllImageUrls() which checks: primaryMedia, supportingMedia, images array, and media field
         // We must do the same in edit mode to show all images that appear in cards
-        console.log('[CreateNuggetModal] AUDIT: InitialData received in edit mode:', {
-            articleId: initialData.id,
-            hasImagesArray: !!(initialData.images && initialData.images.length > 0),
-            imagesArray: initialData.images || [],
-            hasPrimaryMedia: !!initialData.primaryMedia,
-            primaryMedia: initialData.primaryMedia,
-            hasSupportingMedia: !!(initialData.supportingMedia && initialData.supportingMedia.length > 0),
-            supportingMedia: initialData.supportingMedia || [],
-            hasMedia: !!initialData.media,
-            media: initialData.media,
-            mediaType: initialData.media?.type,
-            mediaUrl: initialData.media?.url,
-            mediaImageUrl: initialData.media?.previewMetadata?.imageUrl
-        });
-        
         const allExistingImages = getAllImageUrls(initialData);
-        console.log('[CreateNuggetModal] AUDIT: getAllImageUrls result:', {
-            imageCount: allExistingImages.length,
-            images: allExistingImages,
-            fromImagesArray: initialData.images || [],
-            fromGetAllImageUrls: allExistingImages
-        });
         
         if (allExistingImages.length === 0 && (initialData.images?.length > 0 || initialData.primaryMedia || initialData.supportingMedia?.length > 0)) {
             console.error('[CreateNuggetModal] WARNING: Images exist in article but getAllImageUrls returned empty!', {
@@ -228,21 +207,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         
         // Initialize Masonry media items from article
         const mediaItems = collectMasonryMediaItems(initialData);
-        
-        // TEMPORARY: Log loaded media items to verify masonryTitle was loaded
-        console.log('[CreateNuggetModal] Edit mode - Loaded masonry media items:', {
-            articleId: initialData.id,
-            hasMedia: !!initialData.media,
-            mediaMasonryTitle: initialData.media?.masonryTitle,
-            mediaShowInMasonry: initialData.media?.showInMasonry,
-            mediaItemsCount: mediaItems.length,
-            mediaItems: mediaItems.map(item => ({
-                id: item.id,
-                source: item.source,
-                masonryTitle: item.masonryTitle,
-                showInMasonry: item.showInMasonry,
-            })),
-        });
         
         setMasonryMediaItems(mediaItems);
         
@@ -330,7 +294,13 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       setAllCollections(cols || []);
       setAvailableAliases([]); // Content aliases feature not yet implemented
       setSelectedAlias("Custom...");
-    } catch (e) {
+    } catch (e: any) {
+      // Handle request cancellation gracefully - don't log as error if request was cancelled
+      if (e?.message === 'Request cancelled' || e?.name === 'AbortError') {
+        // Request was cancelled (e.g., component unmounted or new request started)
+        // This is expected behavior and doesn't need to be logged
+        return;
+      }
       console.error("Failed to load metadata", e);
     }
   };
@@ -424,7 +394,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             
             // Do NOT store suggestedTitle for YouTube/social networks
             if (isYouTubeOrSocial) {
-              console.log('[CreateNuggetModal] YouTube/social network detected - skipping title suggestion');
               setSuggestedTitle(null);
             } else if (metadata.previewMetadata?.title) {
               const metaTitle = metadata.previewMetadata.title.trim();
@@ -433,15 +402,12 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                                 metaTitle.match(/^[a-z0-9-]+\.[a-z]{2,}$/i) || // Just domain
                                 metaTitle.length < 3; // Too short
               if (!isBadTitle) {
-                console.log('[CreateNuggetModal] Metadata title found, storing as suggestion:', metaTitle);
                 setSuggestedTitle(metaTitle);
                 // CRITICAL: DO NOT call setTitle() here - title must remain empty until user clicks button
               } else {
-                console.log('[CreateNuggetModal] Metadata title rejected as bad title:', metaTitle);
                 setSuggestedTitle(null);
               }
             } else {
-              console.log('[CreateNuggetModal] No metadata title found');
               setSuggestedTitle(null);
             }
           } else {
@@ -534,8 +500,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     const trimmed = urlInput.trim();
     if (!trimmed) return;
     
-    console.log('[CreateNuggetModal] Adding URL:', trimmed);
-    
     // Check if input contains multiple URLs (has newlines or multiple URLs)
     const hasMultipleUrls = trimmed.includes('\n') || 
                            trimmed.includes('\r') || 
@@ -584,10 +548,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           } else if (uniqueUrls.length < parsedUrls.length) {
             toast.warning(`Added ${uniqueUrls.length} URL(s). ${parsedUrls.length - uniqueUrls.length} duplicate(s) skipped.`);
           }
-          console.log(`[CreateNuggetModal] Added ${uniqueUrls.length} unique URL(s) (${parsedUrls.length - uniqueUrls.length} duplicates skipped)`);
         } else {
           toast.warning('All URLs are already added');
-          console.log('[CreateNuggetModal] All URLs were duplicates, none added');
         }
       }
     } else {
@@ -653,10 +615,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             const error = validateContent();
             setContentError(error);
           }
-          console.log('[CreateNuggetModal] URL added successfully:', finalUrl);
         } else {
           toast.warning('This URL is already added');
-          console.log('[CreateNuggetModal] Duplicate URL detected, not added:', finalUrl);
         }
       } catch {
         setError('Please enter a valid URL');
@@ -726,15 +686,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       return;
     }
 
-    console.log('[CreateNuggetModal] Delete image initiated:', {
-      imageUrl,
-      nuggetId: initialData.id,
-      currentImagesCount: existingImages.length
-    });
-
     // Confirm deletion
     if (!window.confirm('Are you sure you want to delete this image?')) {
-      console.log('[CreateNuggetModal] Delete cancelled by user');
       return;
     }
 
@@ -751,10 +704,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     });
     
     setExistingImages(optimisticImages);
-    console.log('[CreateNuggetModal] Optimistic update: Removed image from state');
 
     try {
-      console.log('[CreateNuggetModal] Calling DELETE endpoint:', `/api/articles/${initialData.id}/images`);
 
       // Use apiClient instead of direct fetch to ensure proper proxy routing
       // This avoids CORS issues by using Vite's /api proxy to localhost:5000
@@ -772,12 +723,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         }
       );
       
-      console.log('[CreateNuggetModal] Image deleted successfully. Server response:', {
-        success: result.success,
-        remainingImages: result.images?.length || 0,
-        images: result.images
-      });
-      
       // CRITICAL: Refresh article data to get updated state with all image sources
       // The backend returns updated images array, but we need to recompute from all sources
       // (primaryMedia, supportingMedia, images, media field) to match card behavior
@@ -788,10 +733,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         if (queryData) {
           // Recompute all images using getAllImageUrls (same as cards use)
           const allImages = getAllImageUrls(queryData);
-          console.log('[CreateNuggetModal] Recomputing images from cached article:', {
-            fromGetAllImageUrls: allImages,
-            fromImagesArray: queryData.images || []
-          });
           // Note: This is optimistic - the invalidation below will fetch fresh data
           setExistingImages(allImages);
         } else {
@@ -825,11 +766,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         if (refreshedArticle) {
           // Recompute all images using getAllImageUrls (same as cards use)
           const allImages = getAllImageUrls(refreshedArticle);
-          console.log('[CreateNuggetModal] Refreshed images after deletion:', {
-            fromGetAllImageUrls: allImages,
-            imageCount: allImages.length,
-            fromImagesArray: refreshedArticle.images || []
-          });
           setExistingImages(allImages);
           
           // Update query cache with refreshed article
@@ -848,7 +784,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       
       // Rollback optimistic update on error
       setExistingImages(previousImages);
-      console.log('[CreateNuggetModal] Rolled back optimistic update due to error');
       
       // Detect CORS errors and provide actionable error message
       let errorMessage = error.message || 'Failed to delete image. Please try again.';
@@ -948,8 +883,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
               if (isImage) {
                   try {
                       processedFile = await compressImage(file);
-                      const sizeReduction = ((file.size - processedFile.size) / file.size * 100).toFixed(0);
-                      console.log(`Compressed ${file.name}: ${formatFileSize(file.size)} → ${formatFileSize(processedFile.size)} (${sizeReduction}% reduction)`);
                       
                       // Double-check size after compression
                       if (processedFile.size > MAX_FILE_SIZE_AFTER_COMPRESSION) {
@@ -976,18 +909,12 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
               // Upload image to Cloudinary immediately
               if (isImage) {
                   try {
-                      console.log('[CreateNuggetModal] Uploading image to Cloudinary:', file.name, `(${(file.size / 1024).toFixed(2)}KB)`);
                       const uploadResult = await mediaUpload.upload(file); // Use original file for upload
                       if (uploadResult) {
                           // Update attachment with mediaId and secureUrl
                           attachment.mediaId = uploadResult.mediaId;
                           attachment.secureUrl = uploadResult.secureUrl;
                           attachment.isUploading = false;
-                          console.log('[CreateNuggetModal] Image uploaded successfully:', {
-                              mediaId: uploadResult.mediaId,
-                              publicId: uploadResult.publicId,
-                              secureUrl: uploadResult.secureUrl
-                          });
                       } else {
                           attachment.uploadError = mediaUpload.error || 'Upload failed';
                           attachment.isUploading = false;
@@ -1023,11 +950,79 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Handle Masonry media toggle
   const handleMasonryMediaToggle = (itemId: string, showInMasonry: boolean) => {
-    setMasonryMediaItems(prev => 
-      prev.map(item => 
+    setMasonryMediaItems(prev => {
+      const updated = prev.map(item => 
         item.id === itemId ? { ...item, showInMasonry } : item
-      )
-    );
+      );
+      
+      return updated;
+    });
+  };
+
+  /**
+   * Enrich media item with previewMetadata if missing
+   * Reuses the same enrichment pipeline (unfurlUrl) used when media is initially added
+   * Only enriches when previewMetadata is missing to preserve existing data
+   * 
+   * 🔧 ROOT CAUSE FIX: For image URLs, always create minimal previewMetadata even if unfurl fails
+   * This ensures items marked for Masonry always have previewMetadata (required for rendering)
+   */
+  const enrichMediaItemIfNeeded = async (mediaItem: any): Promise<any> => {
+    // If previewMetadata already exists, return unchanged
+    if (mediaItem.previewMetadata) {
+      return mediaItem;
+    }
+    
+    // Only enrich if URL exists
+    if (!mediaItem.url) {
+      return mediaItem;
+    }
+    
+    // Try to enrich via unfurl API
+    try {
+      const enrichedMetadata = await unfurlUrl(mediaItem.url);
+      if (enrichedMetadata && enrichedMetadata.previewMetadata) {
+        return {
+          ...mediaItem,
+          previewMetadata: enrichedMetadata.previewMetadata,
+          // Preserve type if already set, otherwise use enriched type
+          type: mediaItem.type || enrichedMetadata.type,
+          // Preserve thumbnail if already set (handle both thumbnail and thumbnail_url), otherwise use enriched thumbnail
+          thumbnail: mediaItem.thumbnail || enrichedMetadata.thumbnail_url,
+          thumbnail_url: mediaItem.thumbnail_url || enrichedMetadata.thumbnail_url,
+          aspect_ratio: mediaItem.aspect_ratio || enrichedMetadata.aspect_ratio,
+        };
+      }
+    } catch (error) {
+      console.warn(`[CreateNuggetModal] Failed to enrich media item ${mediaItem.url}:`, error);
+    }
+    
+    // 🔧 ROOT CAUSE FIX: If enrichment failed but this is an image URL, create minimal previewMetadata
+    // This ensures items marked for Masonry always have previewMetadata (required for rendering)
+    // CRITICAL: Only create minimal metadata for image types to avoid polluting non-image URLs
+    const isImageType = mediaItem.type === 'image' || 
+                        (mediaItem.url && (mediaItem.url.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i) || 
+                                          mediaItem.url.includes('cloudinary.com') ||
+                                          mediaItem.url.includes('images.ctfassets.net')));
+    
+    if (isImageType) {
+      const minimalMetadata = {
+        url: mediaItem.url,
+        imageUrl: mediaItem.url, // For images, imageUrl is the same as url
+        mediaType: 'image',
+      };
+      
+      return {
+        ...mediaItem,
+        previewMetadata: minimalMetadata,
+        // Ensure type is set
+        type: mediaItem.type || 'image',
+      };
+    }
+    
+    // For non-image URLs where enrichment failed, return unchanged
+    // (They might not need previewMetadata if not marked for Masonry)
+    return mediaItem;
   };
 
   // Handle Masonry tile title change
@@ -1392,12 +1387,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             // CRITICAL: Add Cloudinary URLs to images array for display
             // Combine: existing images (from state, already filtered) + URL input images + uploaded Cloudinary images
             // FIX: Deduplicate to prevent multiple entries of the same image
-            console.log('[CreateNuggetModal] Edit mode - Combining images:', {
-                existingImages: existingImages.length,
-                imageUrls: imageUrls.length,
-                uploadedImageUrls: uploadedImageUrls.length
-            });
-            
             const allImagesRaw = [...existingImages, ...imageUrls, ...uploadedImageUrls];
             
             // Deduplicate by URL (case-insensitive, normalized)
@@ -1410,16 +1399,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         imageMap.set(normalized, img); // Keep original casing
                     } else {
                         duplicatesRemoved++;
-                        console.log(`[CreateNuggetModal] Edit mode - Duplicate image removed: ${img}`);
                     }
                 }
             }
-            const allImages = Array.from(imageMap.values());
-            
-            if (duplicatesRemoved > 0) {
-                console.log(`[CreateNuggetModal] Edit mode - Removed ${duplicatesRemoved} duplicate image(s)`);
-            }
-            
+            let allImages = Array.from(imageMap.values());
+
             if (allImages.length > 0) {
                 updatePayload.images = allImages;
             }
@@ -1439,9 +1423,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 const mediaItemWithTitle = legacyMediaItem || primaryItem;
                 
                 if (mediaItemWithTitle && initialData.media) {
+                    // Enrich media if previewMetadata is missing before updating
+                    const enrichedMedia = await enrichMediaItemIfNeeded(initialData.media);
                     // Update the media field with masonryTitle and showInMasonry
                     updatePayload.media = {
-                        ...initialData.media,
+                        ...enrichedMedia,
                         showInMasonry: mediaItemWithTitle.showInMasonry,
                         masonryTitle: mediaItemWithTitle.masonryTitle || undefined, // Persist masonry tile title
                     };
@@ -1450,12 +1436,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     // This handles edge cases where primaryMedia exists but media field doesn't
                     const classified = classifyArticleMedia(initialData);
                     if (classified.primaryMedia) {
+                        // Enrich primary media if previewMetadata is missing
+                        const enrichedPrimaryMedia = await enrichMediaItemIfNeeded(classified.primaryMedia);
                         updatePayload.media = {
-                            type: classified.primaryMedia.type,
-                            url: classified.primaryMedia.url,
-                            thumbnail_url: classified.primaryMedia.thumbnail,
-                            aspect_ratio: classified.primaryMedia.aspect_ratio,
-                            previewMetadata: classified.primaryMedia.previewMetadata,
+                            type: enrichedPrimaryMedia.type || classified.primaryMedia.type,
+                            url: enrichedPrimaryMedia.url || classified.primaryMedia.url,
+                            thumbnail_url: enrichedPrimaryMedia.thumbnail_url || classified.primaryMedia.thumbnail,
+                            aspect_ratio: enrichedPrimaryMedia.aspect_ratio || classified.primaryMedia.aspect_ratio,
+                            previewMetadata: enrichedPrimaryMedia.previewMetadata || classified.primaryMedia.previewMetadata,
                             showInMasonry: primaryItem.showInMasonry,
                             masonryTitle: primaryItem.masonryTitle || undefined,
                         };
@@ -1466,56 +1454,185 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 // (These are computed fields, but we preserve them for UI state)
                 if (initialData.primaryMedia) {
                     if (primaryItem) {
+                        // Enrich primary media if previewMetadata is missing
+                        const enrichedPrimaryMedia = await enrichMediaItemIfNeeded(initialData.primaryMedia);
                         updatePayload.primaryMedia = {
-                            ...initialData.primaryMedia,
+                            ...enrichedPrimaryMedia,
                             showInMasonry: primaryItem.showInMasonry,
                             masonryTitle: primaryItem.masonryTitle || undefined,
                         };
                     }
                 }
                 
+                // CRITICAL: Normalize ALL masonry selections into supportingMedia structure
+                // This ensures masonry-selected images from the images array are converted to supportingMedia
+                // and processed through the same normalization pipeline as create mode
+                const normalizedSupportingMedia: any[] = [];
+                
+                // 1. Process existing supportingMedia (if any)
                 if (initialData.supportingMedia && initialData.supportingMedia.length > 0) {
-                    updatePayload.supportingMedia = initialData.supportingMedia.map((media, index) => {
-                        const item = masonryMediaItems.find(item => item.id === `supporting-${index}`);
-                        if (item) {
-                            return {
-                                ...media,
+                    const enrichedExisting = await Promise.all(
+                        initialData.supportingMedia.map(async (media, index) => {
+                            const item = masonryMediaItems.find(item => item.id === `supporting-${index}`);
+                            if (item) {
+                                // Enrich if previewMetadata is missing
+                                const enriched = await enrichMediaItemIfNeeded(media);
+                                return {
+                                    ...enriched,
+                                    showInMasonry: item.showInMasonry,
+                                    masonryTitle: item.masonryTitle || undefined,
+                                };
+                            }
+                            // Also enrich items not in masonryMediaItems (preserve existing behavior)
+                            return await enrichMediaItemIfNeeded(media);
+                        })
+                    );
+                    normalizedSupportingMedia.push(...enrichedExisting);
+                }
+                
+                // 2. Normalize images from images array that are selected for masonry
+                // Find masonry items that come from legacy-image source (images array)
+                const legacyImageItems = masonryMediaItems.filter(item => item.source === 'legacy-image');
+                
+                if (legacyImageItems.length > 0) {
+                    // Convert legacy-image items to supportingMedia format with enrichment
+                    const enrichedLegacyImages = await Promise.all(
+                        legacyImageItems.map(async (item) => {
+                            // Create supportingMedia item structure from legacy-image item
+                            const baseMedia = {
+                                type: 'image' as const,
+                                url: item.url,
+                                thumbnail: item.thumbnail || item.url,
                                 showInMasonry: item.showInMasonry,
                                 masonryTitle: item.masonryTitle || undefined,
                             };
+                            
+                            // Enrich with previewMetadata if missing
+                            const enriched = await enrichMediaItemIfNeeded(baseMedia);
+                            
+                            // 🔧 ROOT CAUSE FIX: Ensure items marked for Masonry have previewMetadata
+                            // If enrichment failed and item is marked for Masonry, create minimal metadata
+                            if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
+                                console.warn('[CreateNuggetModal] STEP 3 FIX: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
+                                    url: enriched.url,
+                                    type: enriched.type,
+                                });
+                                enriched.previewMetadata = {
+                                    url: enriched.url,
+                                    imageUrl: enriched.url,
+                                    mediaType: 'image',
+                                };
+                            }
+                            
+                            return enriched;
+                        })
+                    );
+                    
+                    normalizedSupportingMedia.push(...enrichedLegacyImages);
+                }
+                
+                // 3. Also process other masonry items that might need normalization
+                // (e.g., items from URLs or other sources that should be in supportingMedia)
+                const otherSupportingItems = masonryMediaItems.filter(
+                    item => item.source === 'supporting' && 
+                    !normalizedSupportingMedia.some(existing => existing.url === item.url)
+                );
+                
+                if (otherSupportingItems.length > 0) {
+                    const enrichedOther = await Promise.all(
+                        otherSupportingItems.map(async (item) => {
+                            const baseMedia = {
+                                type: item.type,
+                                url: item.url,
+                                thumbnail: item.thumbnail,
+                                showInMasonry: item.showInMasonry,
+                                masonryTitle: item.masonryTitle || undefined,
+                            };
+                            
+                            // Enrich with previewMetadata if missing
+                            const enriched = await enrichMediaItemIfNeeded(baseMedia);
+                            
+                            // 🔧 ROOT CAUSE FIX: Ensure items marked for Masonry have previewMetadata
+                            // If enrichment failed and item is marked for Masonry, create minimal metadata
+                            if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
+                                console.warn('[CreateNuggetModal] STEP 3 FIX: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
+                                    url: enriched.url,
+                                    type: enriched.type,
+                                });
+                                // For non-image types, create minimal metadata with just URL
+                                enriched.previewMetadata = {
+                                    url: enriched.url,
+                                    mediaType: enriched.type || 'link',
+                                };
+                            }
+                            
+                            return enriched;
+                        })
+                    );
+                    
+                    normalizedSupportingMedia.push(...enrichedOther);
+                }
+                
+                // Only update supportingMedia if we have items to save
+                if (normalizedSupportingMedia.length > 0) {
+                    updatePayload.supportingMedia = normalizedSupportingMedia;
+                    
+                    // 🔧 BROADENED FIX: Remove images from images array that are now in supportingMedia
+                    // This prevents duplicate entries (same image in both images array and supportingMedia)
+                    // CRITICAL: Only remove images that are marked for Masonry (showInMasonry: true)
+                    // Keep images in the array if they're NOT in supportingMedia or NOT marked for Masonry
+                    const supportingMediaImageUrls = new Set(
+                        normalizedSupportingMedia
+                            .filter(item => item.type === 'image' && item.url)
+                            .map(item => item.url.toLowerCase().trim())
+                    );
+                    
+                    if (supportingMediaImageUrls.size > 0 && allImages.length > 0) {
+                        const filteredImages = allImages.filter(img => {
+                            if (!img || typeof img !== 'string') return true;
+                            const normalized = img.toLowerCase().trim();
+                            // Keep image if it's NOT in supportingMedia
+                            return !supportingMediaImageUrls.has(normalized);
+                        });
+                        
+                        if (filteredImages.length !== allImages.length) {
+                            const removedCount = allImages.length - filteredImages.length;
+                            console.log('[CreateNuggetModal] BROADENED FIX: Removed images from images array that are in supportingMedia', {
+                                removedCount,
+                                beforeCount: allImages.length,
+                                afterCount: filteredImages.length,
+                                removedUrls: allImages.filter(img => {
+                                    const normalized = img?.toLowerCase().trim();
+                                    return normalized && supportingMediaImageUrls.has(normalized);
+                                }),
+                            });
+                            allImages = filteredImages;
                         }
-                        return media;
-                    });
+                    }
                 }
             }
-            
-            // TEMPORARY: Log payload before sending to trace masonryTitle flow
-            console.log('[CreateNuggetModal] Edit mode - Update payload media:', {
-                hasMedia: !!updatePayload.media,
-                mediaMasonryTitle: updatePayload.media?.masonryTitle,
-                mediaShowInMasonry: updatePayload.media?.showInMasonry,
-                masonryItemsCount: masonryMediaItems.length,
-                masonryItems: masonryMediaItems.map(item => ({
-                    id: item.id,
-                    source: item.source,
-                    masonryTitle: item.masonryTitle,
-                    showInMasonry: item.showInMasonry,
-                })),
-            });
             
             // Call update
             const updatedArticle = await storageService.updateArticle(initialData.id, updatePayload);
             
-            // TEMPORARY: Log response to verify masonryTitle was saved
-            console.log('[CreateNuggetModal] Edit mode - Updated article media:', {
-                hasMedia: !!updatedArticle?.media,
-                mediaMasonryTitle: updatedArticle?.media?.masonryTitle,
-                mediaShowInMasonry: updatedArticle?.media?.showInMasonry,
-            });
-            
             if (!updatedArticle) {
                 throw new Error('Failed to update nugget');
             }
+                    hasPreviewMetadata: !!updatedArticle.media.previewMetadata,
+                    previewMetadataKeys: updatedArticle.media.previewMetadata ? Object.keys(updatedArticle.media.previewMetadata) : [],
+                } : null,
+                supportingMediaCount: updatedArticle.supportingMedia?.length || 0,
+                supportingMedia: updatedArticle.supportingMedia?.map((item, idx) => ({
+                    index: idx,
+                    url: item.url,
+                    type: item.type,
+                    showInMasonry: item.showInMasonry,
+                    masonryTitle: item.masonryTitle,
+                    hasPreviewMetadata: !!item.previewMetadata,
+                    previewMetadataKeys: item.previewMetadata ? Object.keys(item.previewMetadata) : [],
+                })) || [],
+                imagesCount: updatedArticle.images?.length || 0,
+            });
             
             // CRITICAL: Invalidate and refresh all query caches
             // This ensures feed, drawer, and inline views show updated media
@@ -1559,10 +1676,18 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             // REGRESSION SAFEGUARD: Assert that media has required fields if it exists
             if (updatedArticle.media) {
                 if (!updatedArticle.media.url) {
-                    console.error('[CreateNuggetModal] REGRESSION: Media object exists but missing URL field');
+                    console.error('[CreateNuggetModal] REGRESSION: Media object exists but missing URL field', {
+                        articleId: updatedArticle.id,
+                        media: updatedArticle.media,
+                    });
                 }
                 if (!updatedArticle.media.previewMetadata) {
-                    console.error('[CreateNuggetModal] REGRESSION: Media object exists but missing previewMetadata');
+                    console.error('[CreateNuggetModal] REGRESSION: Media object exists but missing previewMetadata', {
+                        articleId: updatedArticle.id,
+                        mediaType: updatedArticle.media.type,
+                        mediaUrl: updatedArticle.media.url,
+                        mediaKeys: Object.keys(updatedArticle.media),
+                    });
                 }
             }
             
@@ -1675,11 +1800,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         
         // Combine image URLs: from URL input + uploaded Cloudinary images
         // FIX: Deduplicate to prevent multiple entries of the same image
-        console.log('[CreateNuggetModal] Create mode - Combining images:', {
-            imageUrls: imageUrls.length,
-            uploadedImageUrls: uploadedImageUrls.length
-        });
-        
         const allImageUrlsRaw = [...imageUrls, ...uploadedImageUrls];
         
         // Deduplicate by URL (case-insensitive, normalized)
@@ -1692,16 +1812,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     imageMap.set(normalized, img); // Keep original casing
                 } else {
                     duplicatesRemoved++;
-                    console.log(`[CreateNuggetModal] Create mode - Duplicate image removed: ${img}`);
                 }
             }
         }
         const allImageUrls = Array.from(imageMap.values());
-        
-        if (duplicatesRemoved > 0) {
-            console.log(`[CreateNuggetModal] Create mode - Removed ${duplicatesRemoved} duplicate image(s)`);
-        }
-        
+
         const newArticle = await storageService.createArticle({
             title: finalTitle,
             content: content.trim() || '', // Send empty string if no content (allowed when URLs/images exist)
@@ -1724,7 +1839,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             media: (() => {
                 // Find primary media item from masonryMediaItems
                 const primaryItem = masonryMediaItems.find(item => item.source === 'primary');
-                
+
                 const baseMedia = linkMetadata ? {
                     ...linkMetadata,
                     previewMetadata: linkMetadata.previewMetadata ? {
@@ -1753,21 +1868,95 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         title: finalTitle,
                         siteName: customDomain,
                     }
-                } : null));
-                
-                // Apply masonry fields if primary media item exists
+                } : (primaryItem && primaryItem.url ? {
+                    // CRITICAL FIX: For uploaded images (no URL input), create media from primaryItem
+                    // This ensures the first uploaded image gets saved as media with showInMasonry flag
+                    type: primaryItem.type,
+                    url: primaryItem.url,
+                    thumbnail_url: primaryItem.thumbnail,
+                    previewMetadata: primaryItem.previewMetadata || {
+                        url: primaryItem.url,
+                        imageUrl: primaryItem.url,
+                        mediaType: 'image',
+                    },
+                } : null)));
+
+                // Apply masonry fields if primary media exists
                 // CREATE MODE: Primary media defaults to showInMasonry: true (selected by default)
-                // Use value from masonryMediaItems state (user may have unselected it)
-                if (baseMedia && primaryItem) {
-                    return {
-                        ...baseMedia,
-                        // Use value from masonryMediaItems state (defaults to true in Create mode, but user can unselect)
-                        showInMasonry: primaryItem.showInMasonry !== undefined ? primaryItem.showInMasonry : true,
-                        masonryTitle: primaryItem.masonryTitle || undefined,
-                    };
+                // EDIT MODE: Respect stored values (no auto-change)
+                if (baseMedia) {
+                    if (primaryItem) {
+                        // Use value from masonryMediaItems state (user may have unselected it in Create mode)
+                        return {
+                            ...baseMedia,
+                            showInMasonry: primaryItem.showInMasonry !== undefined ? primaryItem.showInMasonry : true,
+                            masonryTitle: primaryItem.masonryTitle || undefined,
+                        };
+                    } else if (mode === 'create') {
+                        // CREATE MODE: If primaryItem doesn't exist but baseMedia does, set default to true
+                        // This ensures primary media is selected by default even if masonryMediaItems state is incomplete
+                        return {
+                            ...baseMedia,
+                            showInMasonry: true,
+                        };
+                    }
                 }
-                
+
                 return baseMedia;
+            })(),
+            // CRITICAL FIX: Create supportingMedia array from masonryMediaItems selections
+            // This ensures multiple media items selected for Masonry are properly structured
+            supportingMedia: await (async () => {
+                // Only process if there are masonry items selected
+                if (masonryMediaItems.length === 0) {
+                    return undefined;
+                }
+
+                const supportingItems: any[] = [];
+
+                // Process all masonry items except primary (primary goes in media field)
+                const nonPrimaryItems = masonryMediaItems.filter(
+                    item => item.source !== 'primary' && item.showInMasonry === true
+                );
+
+                if (nonPrimaryItems.length === 0) {
+                    return undefined;
+                }
+
+                // Convert each selected item to supportingMedia format with enrichment
+                const enrichedItems = await Promise.all(
+                    nonPrimaryItems.map(async (item) => {
+                        const baseMedia = {
+                            type: item.type,
+                            url: item.url,
+                            thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
+                            showInMasonry: item.showInMasonry,
+                            masonryTitle: item.masonryTitle || undefined,
+                        };
+
+                        // Enrich with previewMetadata if missing
+                        const enriched = await enrichMediaItemIfNeeded(baseMedia);
+
+                        // Ensure items marked for Masonry have previewMetadata
+                        if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
+                            console.warn('[CreateNuggetModal] CREATE MODE: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
+                                url: enriched.url,
+                                type: enriched.type,
+                            });
+                            enriched.previewMetadata = {
+                                url: enriched.url,
+                                imageUrl: enriched.type === 'image' ? enriched.url : undefined,
+                                mediaType: enriched.type || 'image',
+                            };
+                        }
+
+                        return enriched;
+                    })
+                );
+
+                supportingItems.push(...enrichedItems);
+
+                return supportingItems.length > 0 ? supportingItems : undefined;
             })(),
             source_type: (primaryUrl || imageUrls.length > 0) ? 'link' : 'text',
             // Store additional URLs in content or a notes field if needed
@@ -1785,7 +1974,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         }
 
         await queryClient.invalidateQueries({ queryKey: ['articles'] });
-        
+
         // REGRESSION SAFEGUARD: Assert that if URL exists, media must be present
         if (primaryUrl && newArticle.media === null) {
             const errorMsg = `[CreateNuggetModal] REGRESSION: URL exists but media is null after create. URL: ${primaryUrl}, ArticleId: ${newArticle.id}`;
@@ -2151,18 +2340,26 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 {/* This ensures images are visible even when no URLs are in the input field */}
                 {(() => {
                     const shouldRender = mode === 'edit' && existingImages.length > 0;
-                    console.log('[CreateNuggetModal] AUDIT: Rendering check for existing images:', {
-                        mode: mode,
-                        existingImagesCount: existingImages.length,
-                        existingImages: existingImages,
-                        shouldRender: shouldRender,
-                        isEditMode: mode === 'edit',
-                        hasImages: existingImages.length > 0
-                    });
                     
                     if (!shouldRender) {
-                        if (mode === 'edit' && existingImages.length === 0) {
-                            console.warn('[CreateNuggetModal] WARNING: Edit mode but no existing images found. Check getAllImageUrls() result.');
+                        // Only show warning if we're in edit mode AND we actually expect images to exist
+                        // (i.e., initialData has images but getAllImageUrls returned empty)
+                        if (mode === 'edit' && existingImages.length === 0 && initialData) {
+                            const hasImagesArray = initialData.images && initialData.images.length > 0;
+                            const hasPrimaryMedia = !!initialData.primaryMedia;
+                            const hasSupportingMedia = initialData.supportingMedia && initialData.supportingMedia.length > 0;
+                            const hasLegacyMedia = !!initialData.media;
+                            
+                            // Only warn if article has media sources but getAllImageUrls found none
+                            if (hasImagesArray || hasPrimaryMedia || hasSupportingMedia || hasLegacyMedia) {
+                                console.warn('[CreateNuggetModal] WARNING: Edit mode but no existing images found. Check getAllImageUrls() result.', {
+                                    hasImagesArray,
+                                    hasPrimaryMedia,
+                                    hasSupportingMedia,
+                                    hasLegacyMedia,
+                                    articleId: initialData.id,
+                                });
+                            }
                         }
                         return null;
                     }
@@ -2176,19 +2373,12 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                             {existingImages.map((imageUrl, idx) => {
                                 const detectedType = detectProviderFromUrl(imageUrl);
                                 const isCloudinaryUrl = imageUrl.includes('cloudinary.com') || imageUrl.includes('res.cloudinary.com');
-                                console.log(`[CreateNuggetModal] Rendering existing image ${idx}:`, {
-                                    url: imageUrl,
-                                    type: detectedType,
-                                    isCloudinary: isCloudinaryUrl,
-                                    mode: mode
-                                });
                                 return (
                                     <div key={`existing-${idx}`} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-sm">
                                         <button 
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 e.preventDefault();
-                                                console.log(`[CreateNuggetModal] Delete button clicked for image ${idx}:`, imageUrl);
                                                 deleteImage(imageUrl);
                                             }} 
                                             className="absolute top-2 right-2 bg-red-600 text-white p-1.5 rounded-full opacity-90 hover:opacity-100 transition-opacity z-10 hover:bg-red-700 shadow-lg"

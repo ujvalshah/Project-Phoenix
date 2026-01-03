@@ -217,6 +217,9 @@ function transformArticle(doc: any): any {
       masonryTitle: rest.media.masonryTitle, // Preserve masonryTitle from DB
       showInMasonry: rest.media.showInMasonry, // Preserve showInMasonry from DB
     } : null,
+    // CRITICAL: Include primaryMedia and supportingMedia for Masonry layout
+    primaryMedia: rest.primaryMedia || undefined,
+    supportingMedia: rest.supportingMedia || [],
     images: rest.images || [],
     video: rest.video,
     documents: rest.documents || [],

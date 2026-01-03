@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Article } from '@/types';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
 import { Image } from '@/components/Image';
-import { getMasonryVisibleMedia, MasonryMediaItem } from '@/utils/masonryMediaHelper';
+import { getMasonryVisibleMedia, collectMasonryMediaItems, MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { ArticleDetail } from '@/components/ArticleDetail';
 import { Maximize2 } from 'lucide-react';
 
 interface MediaBlockProps {
   article: Article;
+  mediaItemId?: string; // If specified, render only this media item (for individual tile rendering)
   onCategoryClick?: (category: string) => void;
   onArticleClick?: (article: Article) => void; // For opening Article Detail drawer
 }
@@ -44,22 +45,37 @@ interface MediaBlockProps {
  */
 export const MediaBlock: React.FC<MediaBlockProps> = ({
   article,
+  mediaItemId,
   onCategoryClick,
   onArticleClick,
 }) => {
-  // Get media items that should be visible in Masonry layout
+  // Get media items that should be visible in Masonry layout (for rendering tiles)
   const visibleMediaItems = getMasonryVisibleMedia(article);
   
   // If no media should be shown, return null
   if (visibleMediaItems.length === 0) return null;
+
+  // If mediaItemId is specified, render only that specific media item (for individual tile rendering)
+  // Otherwise, render all visible items (backward compatibility - shouldn't happen in new code)
+  const itemsToRender = mediaItemId
+    ? visibleMediaItems.filter(item => item.id === mediaItemId)
+    : visibleMediaItems;
+  
+  // If the specified mediaItemId doesn't exist, return null
+  if (itemsToRender.length === 0) return null;
 
   // State for image carousel (lightbox)
   const [showLightbox, setShowLightbox] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [lightboxImages, setLightboxImages] = useState<string[]>([]);
 
-  // Collect all image URLs for carousel (only from visible items that are images)
-  const imageUrls = visibleMediaItems
+  // Collect ALL media items from the nugget (not just visible ones)
+  // This ensures the carousel includes all images, even if they're not marked for masonry display
+  const allMediaItems = collectMasonryMediaItems(article);
+  
+  // Collect ALL image URLs from the complete media list (for carousel)
+  // The carousel shows all images from the nugget, not just the visible masonry tiles
+  const allImageUrls = allMediaItems
     .filter(item => item.type === 'image')
     .map(item => item.url);
 
@@ -74,9 +90,10 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
     e.stopPropagation(); // Prevent parent click handler from firing
     
     if (item.type === 'image') {
-      // Open image carousel viewer
-      setLightboxImages(imageUrls);
-      setLightboxIndex(imageUrls.indexOf(item.url));
+      // Open image carousel viewer with ALL images from the nugget
+      // Find the clicked image's index in the complete list of all images
+      setLightboxImages(allImageUrls);
+      setLightboxIndex(allImageUrls.indexOf(item.url));
       setShowLightbox(true);
     } else {
       // Open Article Detail drawer for non-image media
@@ -103,8 +120,9 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
       e.preventDefault();
       e.stopPropagation();
       if (item.type === 'image') {
-        setLightboxImages(imageUrls);
-        setLightboxIndex(imageUrls.indexOf(item.url));
+        // Open image carousel viewer with ALL images from the nugget
+        setLightboxImages(allImageUrls);
+        setLightboxIndex(allImageUrls.indexOf(item.url));
         setShowLightbox(true);
       } else {
         if (onArticleClick) {
@@ -132,11 +150,11 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
     return title.substring(0, maxLength).trim() + '…';
   };
 
-  // Render each visible media item as an individual tile
+  // Render the media item(s) - typically just one when mediaItemId is specified
+  // When mediaItemId is specified, itemsToRender contains exactly one item
   return (
     <>
-      <div className="w-full space-y-4">
-        {visibleMediaItems.map((item, index) => {
+      {itemsToRender.map((item, index) => {
           const applyHover = shouldApplyHover(item);
           
           return (
@@ -270,14 +288,14 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
             </div>
           );
         })}
-      </div>
 
       {/* Image Lightbox (Carousel Viewer) - Only for images */}
-      {showLightbox && imageUrls.length > 0 && (
+      {/* Shows ALL images from the nugget, not just visible masonry tiles */}
+      {showLightbox && allImageUrls.length > 0 && (
         <ImageLightbox
           isOpen={showLightbox}
           onClose={handleCarouselClose}
-          images={imageUrls}
+          images={allImageUrls}
           initialIndex={lightboxIndex}
           sidebarContent={
             <ArticleDetail

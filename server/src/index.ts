@@ -86,9 +86,73 @@ const allowedOrigins = [
   "https://nugget-cyan.vercel.app"
 ];
 
+// Diagnostic middleware to log request details before CORS check
+app.use((req, res, next) => {
+  // Only log CORS-relevant requests (those with Origin header or preflight)
+  if (req.headers.origin || req.method === 'OPTIONS') {
+    const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
+    requestLogger.info({
+      msg: '[CORS-DIAG] Request details',
+      method: req.method,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      origin: req.headers.origin || '(no origin header)',
+      allowedOrigins: allowedOrigins,
+    });
+  }
+  next();
+});
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Diagnostic logging for origin validation
+    const logger = getLogger();
+    const hasOrigin = !!origin;
+    
+    // Allow requests without origin (same-origin requests)
+    if (!origin) {
+      logger.info({
+        msg: '[CORS-DIAG] Origin validation',
+        origin: '(no origin)',
+        hasOrigin: false,
+        allowedOrigins: allowedOrigins,
+        matchFound: 'no-origin-checked',
+        isAllowed: true,
+        validationRule: '!origin',
+        environment: env.NODE_ENV,
+      });
+      return callback(null, true);
+    }
+    
+    // Check against production allow-list
+    const isInAllowedList = allowedOrigins.includes(origin);
+    
+    // In development mode, also allow localhost and 127.0.0.1 origins
+    let isAllowed = isInAllowedList;
+    let matchFound = isInAllowedList;
+    const isLocalhost = origin.startsWith('http://localhost:') || 
+                        origin.startsWith('http://127.0.0.1:') ||
+                        origin === 'http://localhost' ||
+                        origin === 'http://127.0.0.1';
+    
+    if (env.NODE_ENV === 'development' && isLocalhost) {
+      isAllowed = true;
+      matchFound = 'localhost-allowed-in-dev';
+    }
+    
+    logger.info({
+      msg: '[CORS-DIAG] Origin validation',
+      origin: origin,
+      hasOrigin: true,
+      allowedOrigins: allowedOrigins,
+      matchFound: matchFound,
+      isAllowed: isAllowed,
+      environment: env.NODE_ENV,
+      isLocalhost: isLocalhost,
+      validationRule: env.NODE_ENV === 'development' ? 'allowedOrigins.includes(origin) || isLocalhost' : 'allowedOrigins.includes(origin)',
+    });
+    
+    if (isAllowed) {
       return callback(null, true);
     }
     return callback(new Error("Not allowed by CORS"));
@@ -313,17 +377,35 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     req.path
   );
 
-  // Log error with structured logger
-  requestLogger.error({
-    msg: 'Unhandled server error',
-    error: {
-      message: err.message,
-      stack: err.stack,
-      name: err.name,
-    },
-    method: req.method,
-    path: req.path,
-  });
+  // Enhanced logging for CORS errors
+  if (err.message && err.message.includes('CORS')) {
+    requestLogger.error({
+      msg: '[CORS-DIAG] CORS error detected',
+      error: {
+        message: err.message,
+        stack: err.stack,
+        name: err.name,
+      },
+      method: req.method,
+      path: req.path,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      origin: req.headers.origin || '(no origin header)',
+      allowedOrigins: allowedOrigins,
+    });
+  } else {
+    // Log error with structured logger
+    requestLogger.error({
+      msg: 'Unhandled server error',
+      error: {
+        message: err.message,
+        stack: err.stack,
+        name: err.name,
+      },
+      method: req.method,
+      path: req.path,
+    });
+  }
 
   // Capture in Sentry with context
   captureException(err, {

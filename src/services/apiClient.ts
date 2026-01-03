@@ -7,11 +7,6 @@ import { getNormalizedApiBase } from '../utils/urlUtils.js';
 // Normalize API base URL: defaults to '/api', respects VITE_API_URL if set (ensures /api suffix)
 const BASE_URL = getNormalizedApiBase();
 
-// Debug logging for API base URL (build mode only)
-if (import.meta.env.PROD) {
-  console.log(`API Base URL (runtime): ${BASE_URL}`);
-}
-
 const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
 
 // Helper to extract error message and details from response

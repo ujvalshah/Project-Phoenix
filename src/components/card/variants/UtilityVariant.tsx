@@ -34,38 +34,17 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
 }) => {
   const { data, handlers } = logic;
   
-  // 🔍 AUDIT LOGGING - Card Type Usage in UtilityVariant (Enhanced Diagnostics)
+  // Warn if cardType is media-only but has long text
   React.useEffect(() => {
-    const renderBranch = data.cardType === 'media-only' ? 'TYPE-B-MEDIA-ONLY' : 'TYPE-A-HYBRID';
-    const hasText = Boolean((data.content || data.excerpt || '').trim());
     const textLength = (data.content || data.excerpt || '').length;
-    
-    const renderingData = {
-      id: data.id.substring(0, 8) + '...',
-      renderComponent: 'UtilityVariant',
-      renderBranch,
-      cardType: data.cardType,
-      hasMedia: data.hasMedia,
-      hasText,
-      textLength,
-      shouldShowTitle: data.shouldShowTitle,
-      willUseCardMedia: data.hasMedia,
-      willUseOverlayText: data.cardType === 'media-only' && hasText,
-      willUseTruncation: data.cardType === 'hybrid',
-    };
-    console.log('[CARD-AUDIT] UtilityVariant Rendering:', JSON.stringify(renderingData, null, 2));
-    console.log('[CARD-AUDIT] UtilityVariant Rendering (expanded):', renderingData);
-    
-    // CRITICAL: Warn if cardType is media-only but has long text
     if (data.cardType === 'media-only' && textLength > 200) {
       console.warn('[CARD-AUDIT] ⚠️ MEDIA-ONLY CARD WITH LONG TEXT!', {
         id: data.id.substring(0, 8) + '...',
         cardType: data.cardType,
         contentLength: textLength,
-        renderBranch,
       });
     }
-  }, [data.id, data.cardType, data.hasMedia, data.content, data.excerpt, data.shouldShowTitle]);
+  }, [data.id, data.cardType, data.content, data.excerpt]);
 
   // Generate descriptive aria-label for the card
   const ariaLabelParts: string[] = [];
@@ -126,7 +105,6 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
                 visibility={data.visibility}
                 onMediaClick={(e) => {
                   // UNIFIED BEHAVIOR: Media-only cards use same lightbox behavior as hybrid cards
-                  console.log('[CARD-CLICK] Media-only card image clicked - opening lightbox (UtilityVariant)');
                   handlers.onMediaClick(e);
                 }}
                 className="w-full h-full"

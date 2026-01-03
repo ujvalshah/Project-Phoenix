@@ -13,7 +13,7 @@
 - **Docker:** `docker-compose up --build`
 
 ## 🛡 Production & Security Rules
-- **Phase:** STABILIZATION. Do not add new features.
+- **Phase:** Development
 - **Security:** Ensure `Helmet`, `CORS`, and `express-rate-limit` are correctly configured in `app.ts`.
 - **Validation:** Use `Zod` for all API request body validation.
 - **Errors:** All async code must use try/catch. Use `pino` for logging, never `console.log`.

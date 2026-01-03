@@ -157,11 +157,6 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   }
 
   // Render feed, grid, or utility layout
-  // Debug: Log viewMode to verify it's being passed correctly
-  if (process.env.NODE_ENV === 'development' && viewMode === 'utility') {
-    console.log('[ArticleGrid] Rendering utility viewMode for', articles.length, 'articles');
-  }
-  
   return (
     <div
       className={

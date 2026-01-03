@@ -95,6 +95,9 @@ export class RestAdapter implements IAdapter {
       ...(article.media !== undefined && { media: article.media }),
       // CRITICAL: Include mediaIds for Cloudinary-uploaded media
       ...(article.mediaIds && article.mediaIds.length > 0 && { mediaIds: article.mediaIds }),
+      // CRITICAL: Include primaryMedia and supportingMedia for Masonry layout
+      ...(article.primaryMedia !== undefined && { primaryMedia: article.primaryMedia }),
+      ...(article.supportingMedia && article.supportingMedia.length > 0 && { supportingMedia: article.supportingMedia }),
       ...(article.source_type && { source_type: article.source_type }),
       ...(article.displayAuthor && { displayAuthor: article.displayAuthor }),
       // Admin-only: Custom creation date (if provided)
@@ -139,6 +142,9 @@ export class RestAdapter implements IAdapter {
     if (updates.documents !== undefined) payload.documents = updates.documents;
     // CRITICAL: Include mediaIds for Cloudinary-uploaded media
     if (updates.mediaIds !== undefined) payload.mediaIds = updates.mediaIds;
+    // CRITICAL: Include primaryMedia and supportingMedia for Masonry layout
+    if (updates.primaryMedia !== undefined) payload.primaryMedia = updates.primaryMedia;
+    if (updates.supportingMedia !== undefined) payload.supportingMedia = updates.supportingMedia;
     if (updates.source_type !== undefined) payload.source_type = updates.source_type;
     if (updates.displayAuthor !== undefined) payload.displayAuthor = updates.displayAuthor;
     // Admin-only: Custom creation date (if provided)

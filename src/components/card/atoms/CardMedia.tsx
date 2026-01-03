@@ -143,21 +143,6 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
       }
     }
     
-    const mediaData = {
-      id: article.id?.substring(0, 8) + '...' || 'unknown',
-      renderComponent: 'CardMedia',
-      mediaVariant,
-      hasPrimaryMedia: !!primaryMedia,
-      primaryMediaType: primaryMedia?.type || 'none',
-      hasTwitterOrLinkedInEmbed,
-      twitterLinkedInType: article.media?.type || 'none',
-      hasThumbnail: !!thumbnailUrl,
-      shouldRenderMultiImageGrid,
-      imageCount: allImageUrls.length,
-      className: className || 'none',
-    };
-    console.log('[CARD-AUDIT] CardMedia Rendering:', JSON.stringify(mediaData, null, 2));
-    console.log('[CARD-AUDIT] CardMedia Rendering (expanded):', mediaData);
   }, [article.id, hasMedia, primaryMedia, hasTwitterOrLinkedInEmbed, article.media, thumbnailUrl, shouldRenderMultiImageGrid, allImageUrls.length, className]);
 
   // PHASE 1: Consistent fixed aspect ratio across all cards (16:9 for uniformity)

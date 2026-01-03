@@ -1,8 +1,18 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Article } from '@/types';
 import { MasonryAtom } from './masonry/MasonryAtom';
 import { useMasonry } from '@/hooks/useMasonry';
 import { Loader2 } from 'lucide-react';
+import { getMasonryVisibleMedia } from '@/utils/masonryMediaHelper';
+
+/**
+ * Expanded masonry entry: one per selected media item
+ * Allows multiple tiles from the same article when multiple media items are selected
+ */
+interface MasonryEntry {
+  article: Article;
+  mediaItemId?: string; // If specified, render only this media item; otherwise render all visible items (backward compatibility)
+}
 
 interface MasonryGridProps {
   articles: Article[];
@@ -101,8 +111,34 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
   isFetchingNextPage = false,
   onLoadMore,
 }) => {
+  // Expand articles into masonry entries: one entry per selected media item
+  // If an article has multiple selected media items, it creates multiple independent tiles
+  const masonryEntries = useMemo(() => {
+    const entries: MasonryEntry[] = [];
+    
+    for (const article of articles) {
+      const visibleMediaItems = getMasonryVisibleMedia(article);
+      
+      if (visibleMediaItems.length === 0) {
+        // Skip articles with no selected media items
+        continue;
+      }
+      
+      // Create one entry per selected media item
+      // Each entry represents one tile in the masonry grid
+      for (const mediaItem of visibleMediaItems) {
+        entries.push({
+          article,
+          mediaItemId: mediaItem.id,
+        });
+      }
+    }
+    
+    return entries;
+  }, [articles]);
+
   // Layer 1: Layout logic (delegated to hook)
-  const { columns, columnCount } = useMasonry(articles, {
+  const { columns, columnCount } = useMasonry(masonryEntries, {
     breakpoints: [
       { minWidth: 0, columnCount: 1 },      // < 768px: 1 column
       { minWidth: 768, columnCount: 3 },    // 768-1024: 3 columns (tablet)
@@ -138,17 +174,24 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
   return (
     <>
       <div className="flex gap-4 w-full">
-        {columns.map((columnArticles, colIdx) => (
+        {columns.map((columnEntries, colIdx) => (
           <div key={colIdx} className="flex-1 flex flex-col gap-4">
-            {columnArticles.map((article) => (
-              <MasonryAtom
-                key={article.id}
-                article={article}
-                onArticleClick={onArticleClick}
-                onCategoryClick={onCategoryClick}
-                currentUserId={currentUserId}
-              />
-            ))}
+            {columnEntries.map((entry, entryIdx) => {
+              // Ensure unique React keys even if mediaItemId is duplicate
+              // Use entryIdx in addition to mediaItemId to guarantee uniqueness
+              const uniqueKey = `${entry.article.id}-${entry.mediaItemId || 'all'}-${entryIdx}-${columnEntries.length}`;
+              
+              return (
+                <MasonryAtom
+                  key={uniqueKey}
+                  article={entry.article}
+                  mediaItemId={entry.mediaItemId}
+                  onArticleClick={onArticleClick}
+                  onCategoryClick={onCategoryClick}
+                  currentUserId={currentUserId}
+                />
+              );
+            })}
           </div>
         ))}
       </div>

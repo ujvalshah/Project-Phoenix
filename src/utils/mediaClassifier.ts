@@ -120,6 +120,7 @@ function convertToPrimaryMedia(media: NuggetMedia): PrimaryMedia {
 
 /**
  * Convert legacy NuggetMedia to SupportingMediaItem format
+ * CRITICAL: Preserves showInMasonry and masonryTitle flags for masonry layout
  */
 function convertToSupportingMedia(media: NuggetMedia): SupportingMediaItem {
   return {
@@ -129,6 +130,10 @@ function convertToSupportingMedia(media: NuggetMedia): SupportingMediaItem {
     filename: media.filename,
     title: media.previewMetadata?.title,
     previewMetadata: media.previewMetadata,
+    // CRITICAL: Preserve masonry flags when converting from NuggetMedia
+    // These flags determine which media items appear in masonry layout
+    showInMasonry: (media as any).showInMasonry,
+    masonryTitle: (media as any).masonryTitle,
   };
 }
 
@@ -158,9 +163,11 @@ export function classifyArticleMedia(article: Article): {
   primaryMedia: PrimaryMedia | null;
   supportingMedia: SupportingMediaItem[];
 } {
+  const hasExplicitMedia = article.primaryMedia !== undefined || article.supportingMedia !== undefined;
+  
   // If article already has explicit primary/supporting media, use those
   // NEVER re-infer once classified (deterministic guarantee)
-  if (article.primaryMedia !== undefined || article.supportingMedia !== undefined) {
+  if (hasExplicitMedia) {
     return {
       primaryMedia: article.primaryMedia || null,
       supportingMedia: article.supportingMedia || [],
@@ -313,10 +320,12 @@ export function classifyArticleMedia(article: Article): {
     }
   }
   
-  return {
+  const result = {
     primaryMedia,
     supportingMedia,
   };
+  
+  return result;
 }
 
 /**

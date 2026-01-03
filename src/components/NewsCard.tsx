@@ -63,11 +63,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
     const { logic, modals, refs, article: originalArticle, isOwner, isAdmin } = hookResult;
 
     // Switch on viewMode to render the appropriate variant
-    // Debug: Log viewMode to verify it's being passed correctly
-    if (process.env.NODE_ENV === 'development' && viewMode === 'utility') {
-      console.log('[NewsCard] Rendering utility variant for article:', article.id);
-    }
-    
     let variant;
     switch (viewMode) {
       case 'grid':
