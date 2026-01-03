@@ -82,7 +82,8 @@ app.use(helmet());
 // CORS Configuration - Strict policy based on environment
 const allowedOrigins = [
   "https://nuggetnews.app",
-  "https://www.nuggetnews.app"
+  "https://www.nuggetnews.app",
+  "https://nugget-cyan.vercel.app"
 ];
 
 app.use(cors({
@@ -94,6 +95,8 @@ app.use(cors({
   },
   credentials: true
 }));
+
+app.options(/.*/, cors());
 
 // Request ID Middleware - MUST be early to ensure all logs have request ID
 app.use(requestIdMiddleware);
