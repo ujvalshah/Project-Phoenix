@@ -1618,21 +1618,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             if (!updatedArticle) {
                 throw new Error('Failed to update nugget');
             }
-                    hasPreviewMetadata: !!updatedArticle.media.previewMetadata,
-                    previewMetadataKeys: updatedArticle.media.previewMetadata ? Object.keys(updatedArticle.media.previewMetadata) : [],
-                } : null,
-                supportingMediaCount: updatedArticle.supportingMedia?.length || 0,
-                supportingMedia: updatedArticle.supportingMedia?.map((item, idx) => ({
-                    index: idx,
-                    url: item.url,
-                    type: item.type,
-                    showInMasonry: item.showInMasonry,
-                    masonryTitle: item.masonryTitle,
-                    hasPreviewMetadata: !!item.previewMetadata,
-                    previewMetadataKeys: item.previewMetadata ? Object.keys(item.previewMetadata) : [],
-                })) || [],
-                imagesCount: updatedArticle.images?.length || 0,
-            });
             
             // CRITICAL: Invalidate and refresh all query caches
             // This ensures feed, drawer, and inline views show updated media
