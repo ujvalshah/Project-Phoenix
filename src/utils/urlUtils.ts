@@ -156,19 +156,31 @@ export const shouldAutoGenerateTitle = (contentTypeOrUrl: string): boolean => {
  * 
  * Handles both development (relative /api) and production (full URL with /api) cases.
  * 
+ * In development mode, always uses relative /api paths (Vite proxy handles routing).
+ * In production mode, respects VITE_API_URL if set, otherwise uses relative /api.
+ * 
  * @returns Normalized API base URL that always ends with /api
  * 
- * Examples:
- * - undefined → '/api' (development, uses proxy)
+ * Examples (Development):
+ * - Always returns '/api' (uses Vite proxy to localhost:5000)
+ * 
+ * Examples (Production):
+ * - undefined → '/api' (relative path, same domain)
  * - 'https://api.example.com' → 'https://api.example.com/api'
  * - 'https://api.example.com/' → 'https://api.example.com/api'
  * - 'https://api.example.com/api' → 'https://api.example.com/api'
  * - '/api' → '/api'
  */
 export function getNormalizedApiBase(): string {
+  // In development, always use relative /api (Vite proxy handles it)
+  if (import.meta.env.DEV) {
+    return '/api';
+  }
+  
+  // In production, respect VITE_API_URL if set
   const envUrl = import.meta.env.VITE_API_URL;
   
-  // If not set, use relative /api (development mode with proxy)
+  // If not set, use relative /api (same domain deployment)
   if (!envUrl) {
     return '/api';
   }

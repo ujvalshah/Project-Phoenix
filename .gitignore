@@ -34,3 +34,6 @@ dist-ssr
 *.zip
 *_EXTRACT.txt
 *_EXTRACT*.txt
+
+.vercel
+.env*.local
