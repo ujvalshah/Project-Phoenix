@@ -79,19 +79,22 @@ app.use(compression({
 app.use(helmet());
 
 // CORS Configuration - Strict policy based on environment
-// CRITICAL: Must allow OPTIONS method and proper headers for DELETE requests with body
+const allowedOrigins = [
+  "https://nuggetnews.app",
+  "https://www.nuggetnews.app"
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://nugget-cyan.vercel.app',
-    /\.vercel\.app$/  // Allow all Vercel deployments
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 86400 // 24 hours (preflight cache duration)
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true
 }));
+
+app.options("*", cors());
 
 // Request ID Middleware - MUST be early to ensure all logs have request ID
 app.use(requestIdMiddleware);
