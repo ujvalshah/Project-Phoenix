@@ -6,6 +6,7 @@
  */
 
 import * as Sentry from '@sentry/node';
+import { httpIntegration, expressIntegration } from '@sentry/node';
 import { getEnv } from '../config/envValidation.js';
 
 // Track whether Sentry was successfully initialized
@@ -45,9 +46,9 @@ export function initSentry() {
     tracesSampleRate: env.NODE_ENV === 'production' ? 0.1 : 1.0, // 10% in prod, 100% in dev
     integrations: [
       // Enable HTTP instrumentation
-      new Sentry.Integrations.Http({ tracing: true }),
+      httpIntegration({ tracing: true }),
       // Enable Express integration
-      new Sentry.Integrations.Express({ app: undefined as any }),
+      expressIntegration(),
     ],
     beforeSend(event, hint) {
       // Sanitize sensitive data
