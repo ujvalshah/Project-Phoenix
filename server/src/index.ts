@@ -69,8 +69,9 @@ app.use(compression({
     if (req.headers['x-no-compression']) {
       return false;
     }
-    // Use compression filter function
-    return compression.filter(req, res);
+    // Default compression filter logic - compress JSON and text responses
+    const contentType = res.getHeader('content-type') as string;
+    return !contentType || /json|text|javascript|css|xml|html/.test(contentType);
   },
   level: 6 // Balance between compression and CPU (0-9, 6 is good default)
 }));
@@ -93,8 +94,6 @@ app.use(cors({
   },
   credentials: true
 }));
-
-app.options("*", cors());
 
 // Request ID Middleware - MUST be early to ensure all logs have request ID
 app.use(requestIdMiddleware);
