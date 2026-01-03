@@ -80,49 +80,18 @@ app.use(helmet());
 
 // CORS Configuration - Strict policy based on environment
 // CRITICAL: Must allow OPTIONS method and proper headers for DELETE requests with body
-const corsOptions = {
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests without origin header (for health checks, curl, etc.)
-    if (!origin) {
-      callback(null, true);
-      return;
-    }
-
-    // Define allowed origins
-    const allowedOrigins: string[] = [
-      'http://localhost:5173', // Development frontend
-      'https://nugget-cyan.vercel.app', // Production frontend
-    ];
-
-    // Check if origin matches exact allowed origins
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    // Check if origin matches *.vercel.app pattern (all Vercel deployments)
-    if (origin.endsWith('.vercel.app')) {
-      callback(null, true);
-      return;
-    }
-
-    // Origin not allowed - log and reject
-    const logger = getLogger();
-    logger.warn({ 
-      msg: 'CORS: Origin not allowed', 
-      origin,
-      allowedOrigins: [...allowedOrigins, '*.vercel.app']
-    });
-    callback(new Error('Not allowed by CORS policy'));
-  },
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://nugget-cyan.vercel.app',
+    /\.vercel\.app$/  // Allow all Vercel deployments
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400 // 24 hours (preflight cache duration)
-};
-
-app.use(cors(corsOptions));
+}));
 
 // Request ID Middleware - MUST be early to ensure all logs have request ID
 app.use(requestIdMiddleware);
