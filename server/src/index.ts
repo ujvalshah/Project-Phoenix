@@ -97,10 +97,7 @@ app.use(cors({
 app.use(requestIdMiddleware);
 
 // Sentry Request Handler - MUST be before routes (only if Sentry is enabled)
-if (isSentryEnabled()) {
-  app.use(Sentry.Handlers.requestHandler());
-  app.use(Sentry.Handlers.tracingHandler());
-}
+
 
 // Body Parsing
 app.use(express.json({ limit: '10mb' }));
@@ -299,8 +296,9 @@ if (env.NODE_ENV === 'production') {
 
 // Sentry Error Handler - MUST be before other error handlers (only if Sentry is enabled)
 if (isSentryEnabled()) {
-  app.use(Sentry.Handlers.errorHandler());
+  Sentry.setupExpressErrorHandler(app);
 }
+
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
