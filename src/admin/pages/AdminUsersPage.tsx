@@ -129,8 +129,8 @@ export const AdminUsersPage: React.FC = () => {
       let valB: any = b[sortKey as keyof AdminUser] || '';
 
       if (sortKey === 'name') {
-        valA = a.name.toLowerCase();
-        valB = b.name.toLowerCase();
+        valA = (a.name || '').toLowerCase();
+        valB = (b.name || '').toLowerCase();
       } else if (sortKey === 'joinedAt') {
         valA = new Date(a.joinedAt).getTime();
         valB = new Date(b.joinedAt).getTime();

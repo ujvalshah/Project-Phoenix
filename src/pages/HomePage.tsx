@@ -188,6 +188,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     allArticles.forEach(article => {
       article.categories?.forEach(cat => {
         // Use canonical name (lowercase) for counting to group case variants
+        if (!cat) return;
         const canonical = cat.toLowerCase().trim();
         const count = categoryCountMap.get(canonical) || 0;
         categoryCountMap.set(canonical, count + 1);

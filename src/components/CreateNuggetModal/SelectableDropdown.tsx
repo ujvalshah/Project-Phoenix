@@ -73,13 +73,19 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
   const comboboxRef = externalComboboxRef || internalComboboxRef;
   const listboxRef = externalListboxRef || internalListboxRef;
 
-  const filteredOptions = filterOptions 
+  const filteredOptions = filterOptions
     ? filterOptions(options, searchValue)
-    : options.filter(opt => getOptionLabel(opt).toLowerCase().includes(searchValue.toLowerCase()));
+    : options.filter(opt => {
+        const label = getOptionLabel(opt);
+        return label && typeof label === 'string' && label.toLowerCase().includes(searchValue.toLowerCase());
+      });
 
-  const showCreateOption = onCreateNew && canCreateNew 
+  const showCreateOption = onCreateNew && canCreateNew
     ? canCreateNew(searchValue, options)
-    : onCreateNew && searchValue && !options.some(opt => getOptionLabel(opt).toLowerCase() === searchValue.toLowerCase());
+    : onCreateNew && searchValue && !options.some(opt => {
+        const label = getOptionLabel(opt);
+        return label && typeof label === 'string' && label.toLowerCase() === searchValue.toLowerCase();
+      });
 
   const totalOptions = filteredOptions.length + (showCreateOption ? 1 : 0);
 
@@ -149,9 +155,12 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
         // If no item is highlighted but text exists, try to create new
         else if (focusedIndex === -1 && trimmedSearch && trimmedSearch.length > 1) {
           // Check if we can create new (not a duplicate)
-          const canCreate = canCreateNew 
+          const canCreate = canCreateNew
             ? canCreateNew(trimmedSearch, options)
-            : !options.some(opt => getOptionLabel(opt).toLowerCase() === trimmedSearch.toLowerCase());
+            : !options.some(opt => {
+                const label = getOptionLabel(opt);
+                return label && typeof label === 'string' && label.toLowerCase() === trimmedSearch.toLowerCase();
+              });
           
           if (canCreate && onCreateNew) {
             onCreateNew(trimmedSearch);

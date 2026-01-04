@@ -141,7 +141,9 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
 
   if (!isOpen) return null;
 
-  const filteredCollections = collections.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredCollections = collections.filter(c =>
+    c.name && typeof c.name === 'string' && c.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
   
   // Check if all articles are in a collection
   const isAllInCollection = (collection: Collection) => {

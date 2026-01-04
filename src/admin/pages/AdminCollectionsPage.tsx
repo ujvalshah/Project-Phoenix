@@ -91,8 +91,8 @@ export const AdminCollectionsPage: React.FC = () => {
       let valB: any = b[sortKey as keyof AdminCollection] || '';
 
       if (sortKey === 'creator') {
-        valA = a.creator.name.toLowerCase();
-        valB = b.creator.name.toLowerCase();
+        valA = (a.creator?.name || '').toLowerCase();
+        valB = (b.creator?.name || '').toLowerCase();
       } else if (sortKey === 'createdAt') {
         valA = new Date(a.createdAt).getTime();
         valB = new Date(b.createdAt).getTime();

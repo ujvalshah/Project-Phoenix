@@ -105,8 +105,8 @@ export const BookmarkFoldersBar: React.FC<BookmarkFoldersBarProps> = ({
   const filteredMoreFolders = useMemo(() => {
     if (!moreSearchQuery.trim()) return moreFolders;
     const query = moreSearchQuery.toLowerCase();
-    return moreFolders.filter(folder => 
-      folder.name.toLowerCase().includes(query)
+    return moreFolders.filter(folder =>
+      folder.name && typeof folder.name === 'string' && folder.name.toLowerCase().includes(query)
     );
   }, [moreFolders, moreSearchQuery]);
 

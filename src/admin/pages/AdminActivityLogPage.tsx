@@ -56,9 +56,9 @@ export const AdminActivityLogPage: React.FC = () => {
     }
     if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        result = result.filter(l => 
-            l.action.toLowerCase().includes(q) || 
-            l.actor.name.toLowerCase().includes(q) ||
+        result = result.filter(l =>
+            (l.action || '').toLowerCase().includes(q) ||
+            (l.actor?.name || '').toLowerCase().includes(q) ||
             (l.target && l.target.toLowerCase().includes(q))
         );
     }
@@ -69,8 +69,8 @@ export const AdminActivityLogPage: React.FC = () => {
         let valB: any = b[sortKey as keyof AdminActivityEvent] || '';
 
         if (sortKey === 'actor') {
-            valA = a.actor.name.toLowerCase();
-            valB = b.actor.name.toLowerCase();
+            valA = (a.actor?.name || '').toLowerCase();
+            valB = (b.actor?.name || '').toLowerCase();
         } else if (sortKey === 'timestamp') {
             valA = new Date(a.timestamp).getTime();
             valB = new Date(b.timestamp).getTime();

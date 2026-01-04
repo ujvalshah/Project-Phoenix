@@ -126,8 +126,8 @@ export function CollectionSelector({
   };
 
   const filterOptions = (options: SelectableDropdownOption[], search: string): SelectableDropdownOption[] => {
-    return options.filter(opt => 
-      opt.label.toLowerCase().includes(search.toLowerCase())
+    return options.filter(opt =>
+      opt.label && typeof opt.label === 'string' && opt.label.toLowerCase().includes(search.toLowerCase())
     );
   };
 
@@ -137,7 +137,9 @@ export function CollectionSelector({
     if (!trimmed || trimmed.length <= 1) return false;
     
     // Check against both options and selected items (case-insensitive)
-    const existsInOptions = options.some(opt => opt.label.toLowerCase().trim() === trimmed.toLowerCase().trim());
+    const existsInOptions = options.some(opt =>
+      opt.label && typeof opt.label === 'string' && opt.label.toLowerCase().trim() === trimmed.toLowerCase().trim()
+    );
     const existsInSelected = isDuplicate(trimmed);
     
     return !existsInOptions && !existsInSelected;

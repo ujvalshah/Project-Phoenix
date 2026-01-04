@@ -131,9 +131,9 @@ export const AdminNuggetsPage: React.FC = () => {
     // Search
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(n => 
-        n.title.toLowerCase().includes(q) || 
-        n.author.name.toLowerCase().includes(q)
+      result = result.filter(n =>
+        (n.title || '').toLowerCase().includes(q) ||
+        (n.author?.name || '').toLowerCase().includes(q)
       );
     }
 
@@ -149,8 +149,8 @@ export const AdminNuggetsPage: React.FC = () => {
       let valB: any = b[sortKey as keyof AdminNugget] || '';
 
       if (sortKey === 'author.name') {
-        valA = a.author.name.toLowerCase();
-        valB = b.author.name.toLowerCase();
+        valA = (a.author?.name || '').toLowerCase();
+        valB = (b.author?.name || '').toLowerCase();
       } else if (sortKey === 'createdAt') {
         valA = new Date(a.createdAt).getTime();
         valB = new Date(b.createdAt).getTime();

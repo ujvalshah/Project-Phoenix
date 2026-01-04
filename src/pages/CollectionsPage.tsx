@@ -132,7 +132,10 @@ export const CollectionsPage: React.FC = () => {
     let result = [...collections];
     if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        result = result.filter(c => c.name.toLowerCase().includes(q) || (c.description && c.description.toLowerCase().includes(q)));
+        result = result.filter(c =>
+          (c.name || '').toLowerCase().includes(q) ||
+          (c.description && c.description.toLowerCase().includes(q))
+        );
     }
     result.sort((a, b) => {
         let valA: any, valB: any;
@@ -141,7 +144,7 @@ export const CollectionsPage: React.FC = () => {
             case 'updated': valA = new Date(a.updatedAt || a.createdAt).getTime(); valB = new Date(b.updatedAt || b.createdAt).getTime(); break;
             case 'followers': valA = a.followersCount; valB = b.followersCount; break;
             case 'nuggets': valA = a.validEntriesCount ?? a.entries?.length ?? 0; valB = b.validEntriesCount ?? b.entries?.length ?? 0; break;
-            case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
+            case 'name': valA = (a.name || '').toLowerCase(); valB = (b.name || '').toLowerCase(); break;
             default: return 0;
         }
         return sortDirection === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);

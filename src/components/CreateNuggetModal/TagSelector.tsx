@@ -132,7 +132,9 @@ export function TagSelector({
     const cleanCat = normalized.replace(/^#/, '');
     
     // Check against both options and selected items (case-insensitive)
-    const existsInOptions = options.some(opt => opt.label.toLowerCase().trim() === cleanCat.toLowerCase().trim());
+    const existsInOptions = options.some(opt =>
+      opt.label && typeof opt.label === 'string' && opt.label.toLowerCase().trim() === cleanCat.toLowerCase().trim()
+    );
     const existsInSelected = isDuplicate(cleanCat);
     
     return !existsInOptions && !existsInSelected;
