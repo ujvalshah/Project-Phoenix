@@ -139,3 +139,4 @@ if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
 - The fix is minimal and targeted: only affects the enrichment pipeline, no schema changes
 - Trace logs can be removed after verification (currently enabled for debugging)
 
+

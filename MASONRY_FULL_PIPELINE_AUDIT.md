@@ -234,3 +234,4 @@ The trace will show exactly where items are dropped:
    - Which items are dropped and why
    - Final render count per nugget
 
+
