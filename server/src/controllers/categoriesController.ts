@@ -31,17 +31,37 @@ export const getCategories = async (req: Request, res: Response) => {
       const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 500);
       const skip = (page - 1) * limit;
       
-      const [tags, total] = await Promise.all([
-        Tag.find({ status: 'active' })
-          .sort({ rawName: 1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        Tag.countDocuments({ status: 'active' })
-      ]);
-      
-      // Calculate actual usage count from articles using helper function
-      const usageCounts = await calculateTagUsageCounts(tags);
+      let tags, total, usageCounts;
+      try {
+        [tags, total] = await Promise.all([
+          Tag.find({ status: 'active' })
+            .sort({ rawName: 1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+          Tag.countDocuments({ status: 'active' })
+        ]);
+        
+        // Calculate actual usage count from articles using helper function
+        usageCounts = await calculateTagUsageCounts(tags);
+      } catch (dbErr: any) {
+        requestLogger.error({
+          msg: '[Categories] Database query failure (format=full)',
+          error: {
+            message: dbErr.message,
+            stack: dbErr.stack,
+            name: dbErr.name,
+          },
+          query: {
+            format: 'full',
+            page,
+            limit,
+            skip,
+            tagQuery: { status: 'active' },
+          },
+        });
+        throw dbErr;
+      }
       
       // Add usage counts to tags
       const tagsWithUsage = tags.map((tag) => {
@@ -88,14 +108,34 @@ export const getCategories = async (req: Request, res: Response) => {
       const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 500);
       const skip = (page - 1) * limit;
       
-      const [tags, total] = await Promise.all([
-        Tag.find({ status: 'active' })
-          .sort({ rawName: 1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        Tag.countDocuments({ status: 'active' })
-      ]);
+      let tags, total;
+      try {
+        [tags, total] = await Promise.all([
+          Tag.find({ status: 'active' })
+            .sort({ rawName: 1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+          Tag.countDocuments({ status: 'active' })
+        ]);
+      } catch (dbErr: any) {
+        requestLogger.error({
+          msg: '[Categories] Database query failure (format=simple)',
+          error: {
+            message: dbErr.message,
+            stack: dbErr.stack,
+            name: dbErr.name,
+          },
+          query: {
+            format: 'simple',
+            page,
+            limit,
+            skip,
+            tagQuery: { status: 'active' },
+          },
+        });
+        throw dbErr;
+      }
       
       const tagNames = tags.map(tag => tag.rawName || tag.name);
       
@@ -128,11 +168,32 @@ export const getCategories = async (req: Request, res: Response) => {
       note: 'Aggregating tags from articles, not querying Tag model',
     });
     
-    const tags = await Article.aggregate([
-      { $unwind: "$tags" },
-      { $group: { _id: "$tags", count: { $sum: 1 } } },
-      { $sort: { count: -1 } }
-    ]);
+    let tags;
+    try {
+      tags = await Article.aggregate([
+        { $unwind: "$tags" },
+        { $group: { _id: "$tags", count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ]);
+    } catch (dbErr: any) {
+      requestLogger.error({
+        msg: '[Categories] Database aggregation failure (legacy mode)',
+        error: {
+          message: dbErr.message,
+          stack: dbErr.stack,
+          name: dbErr.name,
+        },
+        query: {
+          format: undefined,
+          aggregation: [
+            { $unwind: "$tags" },
+            { $group: { _id: "$tags", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+          ],
+        },
+      });
+      throw dbErr;
+    }
 
     const response = {
       source: "tags-unified-endpoint",
@@ -155,20 +216,31 @@ export const getCategories = async (req: Request, res: Response) => {
     return res.json(response);
 
   } catch (err: any) {
-    // Audit Phase-1 Fix: Use structured logging and Sentry capture
+    // Enhanced error logging with full context
     requestLogger.error({
-      msg: '[Categories] Get categories error',
+      msg: '[Categories] Get categories error - 500 response',
       error: {
         message: err.message,
         stack: err.stack,
+        name: err.name,
       },
       query: {
         format: req.query.format,
         q: req.query.q,
+        page: req.query.page,
+        limit: req.query.limit,
+      },
+      payload: {
+        queryParams: req.query,
+        path: req.path,
+        method: req.method,
       },
     });
     captureException(err instanceof Error ? err : new Error(String(err)), { requestId: req.id, route: req.path });
-    res.status(500).json({ message: "Failed to fetch tags" });
+    res.status(500).json({ 
+      message: "Failed to fetch tags",
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 

@@ -194,14 +194,42 @@ export const getArticles = async (req: Request, res: Response) => {
     // Add secondary sort by _id for deterministic ordering when publishedAt values are identical
     const sortOrder = sortMap[sort as string] || { publishedAt: -1, _id: -1 }; // Default: latest first
     
-    const [articles, total] = await Promise.all([
-      Article.find(query)
-        .sort(sortOrder)
-        .skip(skip)
-        .limit(limit)
-        .lean(), // Use lean() for read-only queries
-      Article.countDocuments(query)
-    ]);
+    let articles, total;
+    try {
+      [articles, total] = await Promise.all([
+        Article.find(query)
+          .sort(sortOrder)
+          .skip(skip)
+          .limit(limit)
+          .lean(), // Use lean() for read-only queries
+        Article.countDocuments(query)
+      ]);
+    } catch (dbErr: any) {
+      const requestLogger = createRequestLogger(req.id || 'unknown', getOptionalUserId(req), '/api/articles');
+      requestLogger.error({
+        msg: '[Articles] Database query failure',
+        error: {
+          message: dbErr.message,
+          stack: dbErr.stack,
+          name: dbErr.name,
+        },
+        query: {
+          mongoQuery: query,
+          sortOrder,
+          skip,
+          limit,
+          page,
+        },
+        payload: {
+          queryParams: req.query,
+          authorId,
+          q,
+          sort,
+          tags,
+        },
+      });
+      throw dbErr;
+    }
 
     res.json({
       data: normalizeDocs(articles),
@@ -211,9 +239,21 @@ export const getArticles = async (req: Request, res: Response) => {
       hasMore: page * limit < total
     });
   } catch (error: any) {
-    // Audit Phase-3 Fix: Logging consistency - use createRequestLogger with requestId + route
+    // Enhanced error logging with full context
     const requestLogger = createRequestLogger(req.id || 'unknown', getOptionalUserId(req), '/api/articles');
-    requestLogger.error({ msg: 'Get articles error', error: { message: error.message, stack: error.stack } });
+    requestLogger.error({ 
+      msg: '[Articles] Get articles error - 500 response',
+      error: { 
+        message: error.message, 
+        stack: error.stack,
+        name: error.name,
+      },
+      payload: {
+        queryParams: req.query,
+        path: req.path,
+        method: req.method,
+      },
+    });
     sendInternalError(res);
   }
 };
