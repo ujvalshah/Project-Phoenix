@@ -64,13 +64,12 @@ const AdminPanelPage = lazy(() =>
 const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then(module => ({ default: module.VerifyEmailPage })));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage').then(module => ({ default: module.ResetPasswordPage })));
 const BulkCreateNuggetsPage = lazy(() => import('@/pages/BulkCreateNuggetsPage').then(module => ({ default: module.BulkCreateNuggetsPage })));
-const BulkYouTubeAnalysisPage = lazy(() => import('@/pages/BulkYouTubeAnalysisPage').then(module => ({ default: module.BulkYouTubeAnalysisPage })));
 
 const AppContent: React.FC = () => {
   const [isDark, setIsDark] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'feed' | 'masonry' | 'utility'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'masonry' | 'utility'>('grid');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<SortOrder>('latest');
@@ -193,11 +192,8 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           } />
 
-          <Route path="/youtube-analysis" element={
-            <ProtectedRoute>
-              <BulkYouTubeAnalysisPage />
-            </ProtectedRoute>
-          } />
+          {/* Redirect old YT Analysis route to home */}
+          <Route path="/youtube-analysis" element={<Navigate to="/" replace />} />
 
           {/* Legal Pages - Dynamic Routing */}
           <Route path="/about" element={<LegalPageRenderer />} />

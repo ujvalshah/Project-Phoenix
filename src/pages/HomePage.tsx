@@ -13,7 +13,6 @@
  * 
  * VIEW MODES:
  * - grid: 4-column ArticleGrid (default)
- * - feed: 3-column layout with sidebars (Topics, Collections)
  * - masonry: Masonry-style ArticleGrid
  * - utility: Compact utility ArticleGrid
  * 
@@ -26,25 +25,20 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Article, SortOrder, Collection } from '@/types';
-import { useArticles } from '@/hooks/useArticles';
+import { Article, SortOrder } from '@/types';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
-import { Loader2, AlertCircle, TrendingUp, Folder, Hash } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
-import { Feed } from '@/components/Feed';
 import { CategoryFilterBar } from '@/components/header/CategoryFilterBar';
 import { PageStack } from '@/components/layouts/PageStack';
 import { storageService } from '@/services/storageService';
-import { TagPill } from '@/components/card/atoms/CardTags';
 import { useAuth } from '@/hooks/useAuth';
-import { Link } from 'react-router-dom';
-import { twMerge } from 'tailwind-merge';
 
 interface HomePageProps {
   searchQuery: string;
-  viewMode: 'grid' | 'feed' | 'masonry' | 'utility';
-  setViewMode: (mode: 'grid' | 'feed' | 'masonry' | 'utility') => void;
+  viewMode: 'grid' | 'masonry' | 'utility';
+  setViewMode: (mode: 'grid' | 'masonry' | 'utility') => void;
   selectedCategories: string[];
   setSelectedCategories: (c: string[]) => void;
   selectedTag: string | null;
@@ -68,52 +62,6 @@ export const HomePage: React.FC<HomePageProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { currentUserId } = useAuth();
-
-  // Sidebar Data
-  const [allCategories, setAllCategories] = useState<string[]>([]);
-  const [featuredCollections, setFeaturedCollections] = useState<Collection[]>([]);
-
-  useEffect(() => {
-    let isMounted = true;
-    
-    const loadSidebarData = async () => {
-        try {
-            const cats = await storageService.getCategories();
-            const cols = await storageService.getCollections();
-            
-            // Only update state if component is still mounted
-            if (!isMounted) return;
-            
-            setAllCategories(cats);
-            
-            // Sort by nugget count (descending) and take top 10
-            const sortedCols = cols
-                .filter(c => c.type === 'public')
-                .sort((a, b) => {
-                    const countA = a.validEntriesCount ?? a.entries?.length ?? 0;
-                    const countB = b.validEntriesCount ?? b.entries?.length ?? 0;
-                    return countB - countA;
-                })
-                .slice(0, 10);
-                
-            setFeaturedCollections(sortedCols);
-        } catch (error: any) {
-            // Ignore cancellation errors - they're expected when component unmounts or new requests start
-            if (error.message === 'Request cancelled') {
-                return;
-            }
-            // Log other errors for debugging but don't show to user (sidebar data is non-critical)
-            console.warn('Failed to load sidebar data:', error);
-        }
-    };
-    
-    loadSidebarData();
-    
-    // Cleanup: mark component as unmounted
-    return () => {
-        isMounted = false;
-    };
-  }, []);
 
   // Determine active category from selectedCategories (needed for useInfiniteArticles)
   const activeCategory = useMemo(() => {
@@ -231,25 +179,6 @@ export const HomePage: React.FC<HomePageProps> = ({
       .map(([label, count]) => ({ label, count }));
   }, [allArticles]);
 
-  // Compute "Today's Nuggets" count (Agent Level)
-  // Finance-grade: Editorial context, not analytics
-  const todaysCount = useMemo(() => {
-    if (!allArticles || allArticles.length === 0) return 0;
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(today);
-    todayEnd.setHours(23, 59, 59, 999);
-    
-    const count = allArticles.filter(article => {
-      if (!article.publishedAt) return false;
-      const publishedDate = new Date(article.publishedAt);
-      return publishedDate >= today && publishedDate <= todayEnd;
-    }).length;
-    
-    return count;
-  }, [allArticles]);
-
   // Handle tag filtering client-side (backend doesn't support tag filtering)
   // "Today" filter is now handled by backend - no client-side filtering needed
   const articles = useMemo(() => {
@@ -364,166 +293,22 @@ export const HomePage: React.FC<HomePageProps> = ({
             />
           }
           mainContent={
-            <>
-              {/* Power User Feed Layout - Content-first, high density */}
-              {/* STABILITY RULE: Use stable grid-cols-{n} classes, NOT arbitrary templates */}
-              {viewMode === 'feed' ? (
-                <div className="max-w-[1400px] mx-auto px-4 lg:px-6 pb-4">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 items-start">
-                
-                {/* Left Sidebar: Topics Widget - Fixed width on desktop */}
-                {/* Offset: Header (56px) + CategoryFilterBar (44px) + gap = ~104px */}
-                <div className="hidden lg:block lg:w-[220px] sticky top-[104px] max-h-[calc(100vh-7rem)] overflow-y-auto custom-scrollbar pr-2 space-y-4">
-                    {/* Today's Nuggets Indicator - Editorial context, not analytics */}
-                    {todaysCount > 0 && (
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-gray-100 dark:border-slate-800">
-                            <button
-                                onClick={() => {
-                                    handleCategorySelect('Today');
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                }}
-                                className={twMerge(
-                                    'w-full text-left text-sm text-slate-600 dark:text-slate-400 transition-colors',
-                                    activeCategory === 'Today'
-                                        ? 'font-medium underline decoration-slate-400 dark:decoration-slate-500 underline-offset-4'
-                                        : 'font-normal hover:text-slate-800 dark:hover:text-slate-300'
-                                )}
-                            >
-                                Today · {todaysCount} new
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-gray-100 dark:border-slate-800">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Hash size={12} className="text-slate-400 dark:text-slate-500" />
-                            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Topics</h3>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                            {allCategories.map(cat => (
-                                <TagPill 
-                                    key={cat} 
-                                    label={cat}
-                                    onClick={() => toggleCategory(cat)}
-                                />
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Tags Widget - Including "General" virtual tag */}
-                    {tagsWithCounts.length > 0 && (
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-gray-100 dark:border-slate-800">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Hash size={12} className="text-slate-400 dark:text-slate-500" />
-                                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Tags</h3>
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                                {tagsWithCounts.map(tag => (
-                                    <TagPill 
-                                        key={tag.label} 
-                                        label={`${tag.label} (${tag.count})`}
-                                        onClick={() => {
-                                            // Toggle tag selection: click again to deselect
-                                            setSelectedTag(selectedTag === tag.label ? null : tag.label);
-                                        }}
-                                    />
-                                ))}
-                            </div>
-                            {selectedTag && (
-                                <button
-                                    onClick={() => setSelectedTag(null)}
-                                    className="mt-3 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                                >
-                                    Clear tag filter
-                                </button>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Site Footer Links - Moved to Left for visibility on MD */}
-                    <div className="px-2">
-                        <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                            <Link to="/about" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">About</Link>
-                            <Link to="/terms" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Terms</Link>
-                            <Link to="/privacy" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Privacy</Link>
-                            <Link to="/guidelines" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Guidelines</Link>
-                            <Link to="/contact" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Contact</Link>
-                        </div>
-                        <div className="mt-3 text-[10px] text-slate-300 dark:text-slate-600">
-                            © {new Date().getFullYear()} Nuggets. All rights reserved.
-                        </div>
-                    </div>
-                </div>
-
-                {/* Center: Feed */}
-                {/* Phase 3 Complete: Feed uses unified useInfiniteArticles hook with React Query */}
-                {/* Note: Tag filtering is handled client-side in HomePage articles useMemo */}
-                <div className="w-full">
-                    <Feed
-                        activeCategory={activeCategory}
-                        searchQuery={searchQuery}
-                        sortOrder={sortOrder}
-                        selectedTag={selectedTag}
-                        onArticleClick={setSelectedArticle}
-                        onCategoryClick={toggleCategory}
-                        onTagClick={(t) => setSelectedTag(t)}
-                        currentUserId={currentUserId}
-                    />
-                </div>
-
-                {/* Right Sidebar: Collections & Footer - Fixed width on desktop */}
-                {/* Offset: Header (56px) + CategoryFilterBar (44px) + gap = ~104px */}
-                <div className="hidden lg:block lg:w-[260px] sticky top-[104px] max-h-[calc(100vh-7rem)] overflow-y-auto custom-scrollbar pl-2 space-y-4">
-                    {/* Collections Widget */}
-                    {/* Finance-grade: Hide collections with 0 nuggets */}
-                    {featuredCollections.filter(col => (col.validEntriesCount ?? col.entries?.length ?? 0) > 0).length > 0 && (
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-gray-100 dark:border-slate-800">
-                            <div className="flex items-center gap-2 mb-3">
-                                <TrendingUp size={12} className="text-slate-400 dark:text-slate-500" />
-                                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Collections</h3>
-                            </div>
-                            <div className="space-y-1">
-                                {featuredCollections
-                                    .filter(col => (col.validEntriesCount ?? col.entries?.length ?? 0) > 0)
-                                    .map(col => (
-                                        <div key={col.id} className="group cursor-pointer p-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center text-primary-600 dark:text-primary-400 shrink-0">
-                                                    <Folder size={14} />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate group-hover:text-primary-600 transition-colors">{col.name}</div>
-                                                    <div className="text-[10px] text-slate-400 font-medium">{col.validEntriesCount ?? col.entries?.length ?? 0} nuggets</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-              </div>
-            </div>
-            ) : (
             // Grid/Masonry/Utility View: Full-width for maximum content density
             <div className="max-w-[1800px] mx-auto px-4 lg:px-6 pb-4">
-                <ArticleGrid 
-                    articles={articles}
-                    viewMode={viewMode}
-                    isLoading={isLoadingArticles}
-                    onArticleClick={setSelectedArticle}
-                    onTagClick={(t) => setSelectedTag(t)}
-                    onCategoryClick={(c) => toggleCategory(c)}
-                    currentUserId={currentUserId}
-                    // Infinite Scroll Props
-                    hasNextPage={hasNextPage}
-                    isFetchingNextPage={isFetchingNextPage}
-                    onLoadMore={fetchNextPage}
-                />
-                </div>
-              )}
-            </>
+              <ArticleGrid 
+                articles={articles}
+                viewMode={viewMode}
+                isLoading={isLoadingArticles}
+                onArticleClick={setSelectedArticle}
+                onTagClick={(t) => setSelectedTag(t)}
+                onCategoryClick={(c) => toggleCategory(c)}
+                currentUserId={currentUserId}
+                // Infinite Scroll Props
+                hasNextPage={hasNextPage}
+                isFetchingNextPage={isFetchingNextPage}
+                onLoadMore={fetchNextPage}
+              />
+            </div>
           }
         />
       </div>

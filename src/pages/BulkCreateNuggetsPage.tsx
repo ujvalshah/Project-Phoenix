@@ -7,7 +7,7 @@
  * - Excel files
  * 
  * NO AI features - just metadata fetching and batch creation.
- * For AI-powered YouTube analysis, use /youtube-analysis instead.
+ * Note: AI-powered YouTube analysis feature has been removed.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
