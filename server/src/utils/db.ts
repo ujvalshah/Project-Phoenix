@@ -206,7 +206,8 @@ function transformArticle(doc: any): any {
       },
     publishedAt: rest.publishedAt || new Date().toISOString(),
     // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
-    tags: rest.tags || [],
+    tags: rest.tags || [], // Legacy: string array (Phase 1-2: dual-write, Phase 3: remove)
+    tagIds: rest.tagIds ? rest.tagIds.map((id: any) => id.toString()) : [], // New: ObjectId array (Phase 1+)
     readTime: rest.readTime || calculateReadTime(rest.content || ''),
     visibility: rest.visibility || 'public',
     // Preserve media and metadata fields (including masonryTitle)

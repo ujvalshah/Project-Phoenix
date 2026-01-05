@@ -12,6 +12,9 @@ interface PaginatedResponse<T> {
 }
 
 class AdminCollectionsService {
+  // In-flight request guard to prevent duplicate concurrent stats requests
+  private inFlightStatsRequest: Promise<{ totalCommunity: number; totalNuggetsInCommunity: number }> | null = null;
+
   async listCollections(query?: string): Promise<AdminCollection[]> {
     try {
       // Request high limit (100) to get all collections for admin panel
@@ -42,33 +45,46 @@ class AdminCollectionsService {
   }
 
   async getStats(): Promise<{ totalCommunity: number; totalNuggetsInCommunity: number }> {
-    try {
-      // Use backend count for community collections (public only)
-      // Request high limit (100) to get accurate stats
-      const response = await apiClient.get<PaginatedResponse<Collection>>(
-        '/collections?type=public&limit=100', 
-        undefined, 
-        'adminCollectionsService.getStats'
-      );
-      
-      // Backend always returns paginated response format { data: [...], total, ... }
-      const collections = response?.data || [];
-      const totalCommunity = response?.total || collections.length;
-      
-      if (!Array.isArray(collections)) {
-        console.error('[AdminCollectionsService.getStats] Expected collections array but got:', typeof collections, response);
-        return { totalCommunity: 0, totalNuggetsInCommunity: 0 };
-      }
-      
-      // All collections returned are public (filtered by type=public query param)
-      return {
-        totalCommunity: totalCommunity, // Use backend total count
-        totalNuggetsInCommunity: collections.reduce((acc, c) => acc + (c.validEntriesCount ?? c.entries?.length ?? 0), 0)
-      };
-    } catch (error: any) {
-      console.error('[AdminCollectionsService.getStats] Error fetching stats:', error);
-      throw error;
+    // Reuse in-flight request if one exists (prevents duplicate concurrent fetches)
+    if (this.inFlightStatsRequest) {
+      return this.inFlightStatsRequest;
     }
+
+    // Create and store the in-flight request
+    this.inFlightStatsRequest = (async () => {
+      try {
+        // Use backend count for community collections (public only)
+        // Request high limit (100) to get accurate stats
+        const response = await apiClient.get<PaginatedResponse<Collection>>(
+          '/collections?type=public&limit=100', 
+          undefined, 
+          'adminCollectionsService.getStats'
+        );
+        
+        // Backend always returns paginated response format { data: [...], total, ... }
+        const collections = response?.data || [];
+        const totalCommunity = response?.total || collections.length;
+        
+        if (!Array.isArray(collections)) {
+          console.error('[AdminCollectionsService.getStats] Expected collections array but got:', typeof collections, response);
+          return { totalCommunity: 0, totalNuggetsInCommunity: 0 };
+        }
+        
+        // All collections returned are public (filtered by type=public query param)
+        return {
+          totalCommunity: totalCommunity, // Use backend total count
+          totalNuggetsInCommunity: collections.reduce((acc, c) => acc + (c.validEntriesCount ?? c.entries?.length ?? 0), 0)
+        };
+      } catch (error: any) {
+        console.error('[AdminCollectionsService.getStats] Error fetching stats:', error);
+        throw error;
+      } finally {
+        // Clear in-flight request when done (success or error)
+        this.inFlightStatsRequest = null;
+      }
+    })();
+
+    return this.inFlightStatsRequest;
   }
 
   async updateCollection(id: string, updates: Partial<AdminCollection>): Promise<void> {

@@ -73,11 +73,7 @@ export const FeedPage: React.FC = () => {
     }
   }, [navigate, fromFeed]);
   
-  // Handle article actions (like, share)
-  const handleLike = useCallback((article: Article) => {
-    // TODO: Implement like functionality
-  }, []);
-  
+  // Handle article actions (share)
   const handleShare = useCallback((article: Article) => {
     // TODO: Implement share functionality
   }, []);
@@ -92,7 +88,6 @@ export const FeedPage: React.FC = () => {
         isLoading={isLoading}
         gap={16}
         overscan={3}
-        onLike={handleLike}
         onShare={handleShare}
       />
       
@@ -102,7 +97,6 @@ export const FeedPage: React.FC = () => {
           article={detailArticle}
           isOpen={isDetailOpen}
           onClose={handleDetailClose}
-          onLike={handleLike}
           onShare={handleShare}
         />
       )}

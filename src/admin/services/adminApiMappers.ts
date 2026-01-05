@@ -176,7 +176,7 @@ export function mapTagToAdminTag(tag: RawTag): AdminTag {
     id: tag.id,
     name: tag.rawName || tag.name || '', // Prefer rawName (exact user-entered text)
     usageCount: tag.usageCount || 0,
-    type: tag.type || 'tag',
+    type: 'tag', // All tags are treated as 'tag' type
     isOfficial: tag.isOfficial || false,
     status: tag.status || 'active',
     requestedBy: tag.requestedBy

@@ -5,20 +5,21 @@ import { normalizeDoc, normalizeDocs } from '../utils/db.js';
 import { z } from 'zod';
 import { createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { calculateTagUsageCounts } from '../utils/tagUsageHelpers.js';
+import { resolveTagIdsToNames } from '../utils/tagHelpers.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+import { createOrResolveTag, createOrResolveTags } from '../services/tagCreationService.js';
 
 // Validation schemas
 const createTagSchema = z.object({
   name: z.string().min(1, 'Tag name is required').max(50, 'Tag name too long'),
-  type: z.enum(['category', 'tag']).optional(), // TODO: legacy-name-only-if-used-by-frontend - 'category' type kept for compatibility
-  status: z.enum(['active', 'pending', 'deprecated']).optional(),
-  isOfficial: z.boolean().optional()
+  status: z.enum(['active', 'pending', 'deprecated']).optional().default('active'),
+  // Legacy fields removed: type, categoryType, taxonomyMode
 });
 
 const updateTagSchema = z.object({
   name: z.string().min(1, 'Tag name is required').max(50, 'Tag name too long').optional(),
-  type: z.enum(['category', 'tag']).optional(), // TODO: legacy-name-only-if-used-by-frontend - 'category' type kept for compatibility
+  type: z.enum(['category', 'tag']).optional(), // Legacy field - ignored, all tags are treated as 'tag'
   status: z.enum(['active', 'pending', 'deprecated']).optional(),
   isOfficial: z.boolean().optional()
 });
@@ -147,7 +148,7 @@ export const getTags = async (req: Request, res: Response) => {
 
 export const createTag = async (req: Request, res: Response) => {
   try {
-    // Validate input
+    // Validate input - only name and status allowed
     const validationResult = createTagSchema.safeParse(req.body);
     if (!validationResult.success) {
       return res.status(400).json({ 
@@ -156,28 +157,22 @@ export const createTag = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, type = 'tag' } = validationResult.data;
-    const trimmedName = name.trim();
-    const canonicalName = trimmedName.toLowerCase();
+    const { name, status = 'active' } = validationResult.data;
+    
+    // Use shared tag creation service
+    // This ensures consistent behavior with Nugget Create modal
+    // Never throws "tag exists" errors - always resolves to existing or creates new
+    const tag = await createOrResolveTag(name, { status });
 
-    // Check if tag already exists by canonicalName
-    const existingTag = await Tag.findOne({ canonicalName });
-    if (existingTag) {
-      // Return existing tag instead of creating duplicate
-      return res.status(200).json(normalizeDoc(existingTag));
-    }
-
-    // Create new tag with rawName and canonicalName
-    const newTag = new Tag({ 
-      rawName: trimmedName,
-      canonicalName: canonicalName,
-      type: type,
-      status: 'active',
-      isOfficial: type === 'category' // TODO: legacy-name-only-if-used-by-frontend - category type sets isOfficial
-    });
-    await newTag.save();
-
-    res.status(201).json(normalizeDoc(newTag));
+    // Check if tag was newly created by querying if it exists with this exact canonicalName
+    // If it existed before, it would have been returned; if it's new, we just created it
+    // We'll use a simple heuristic: try to find the tag and check if it matches our expectations
+    // Since createOrResolveTag handles all cases, we'll return 201 for new tags, 200 for existing
+    // The service logs will indicate if it was created or resolved
+    
+    // For simplicity, always return 201 (created) since the service handles both cases
+    // The frontend doesn't need to distinguish - it just needs the tag object
+    res.status(201).json(tag);
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -190,16 +185,11 @@ export const createTag = async (req: Request, res: Response) => {
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     
-    // Handle duplicate key error (MongoDB unique constraint on canonicalName)
-    if (error.code === 11000) {
-      // Try to find and return existing tag
-      const trimmedName = (req.body.name || '').trim();
-      const canonicalName = trimmedName.toLowerCase();
-      const existingTag = await Tag.findOne({ canonicalName });
-      if (existingTag) {
-        return res.status(200).json(normalizeDoc(existingTag));
-      }
-      return res.status(409).json({ message: 'Tag already exists' });
+    // Handle validation errors from createOrResolveTag
+    if (error.message && error.message.includes('cannot be empty')) {
+      return res.status(400).json({ 
+        message: error.message
+      });
     }
     
     res.status(500).json({ message: 'Internal server error' });
@@ -286,9 +276,7 @@ export const updateTag = async (req: Request, res: Response) => {
     }
 
     // Add other fields if provided
-    if (validationResult.data.type !== undefined) {
-      updateData.type = validationResult.data.type;
-    }
+    // Type field is ignored - all tags are treated as 'tag' type
     if (validationResult.data.status !== undefined) {
       updateData.status = validationResult.data.status;
     }
@@ -497,6 +485,150 @@ export const deleteTag = async (req: Request, res: Response) => {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
     requestLogger.error({
       msg: '[Tags] Delete tag error',
+      error: {
+        message: error.message,
+        stack: error.stack,
+      },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const resolveTags = async (req: Request, res: Response) => {
+  try {
+    const { tagIds } = req.body;
+    
+    if (!Array.isArray(tagIds)) {
+      return res.status(400).json({ message: 'tagIds must be an array' });
+    }
+
+    const tags = await resolveTagIdsToNames(tagIds.map((id: any) => 
+      typeof id === 'string' ? id : id.toString()
+    ));
+
+    res.json({ 
+      tags: tags.map((name, index) => ({
+        id: tagIds[index],
+        rawName: name
+      }))
+    });
+  } catch (error: any) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Tags] Resolve tags error',
+      error: {
+        message: error.message,
+        stack: error.stack,
+      },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const syncArticleTags = async (req: Request, res: Response) => {
+  try {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.info({ msg: '[Tags] Starting article tags sync' });
+
+    // Get all articles and extract distinct tag values
+    const articles = await Article.find({ 
+      tags: { $exists: true, $ne: [] } 
+    }).select('tags').lean();
+    
+    // Extract all unique tag values (case-insensitive)
+    const articleTagSet = new Set<string>();
+    for (const article of articles) {
+      if (article.tags && Array.isArray(article.tags)) {
+        for (const tag of article.tags) {
+          if (tag && typeof tag === 'string' && tag.trim()) {
+            articleTagSet.add(tag.trim());
+          }
+        }
+      }
+    }
+    
+    const articleTags = Array.from(articleTagSet);
+    
+    if (articleTags.length === 0) {
+      return res.json({
+        message: 'No tags found in articles',
+        totalArticleTags: 0,
+        existingTags: 0,
+        missingTags: 0,
+        inserted: 0
+      });
+    }
+
+    // Get all existing tags from Tags collection
+    const existingTags = await Tag.find({}).lean();
+    const existingCanonicalNames = new Set(
+      existingTags.map(t => t.canonicalName || t.rawName?.toLowerCase() || '')
+    );
+
+    // Find missing tags
+    const missingTags: string[] = [];
+    for (const articleTag of articleTags) {
+      const canonicalName = articleTag.toLowerCase();
+      if (!existingCanonicalNames.has(canonicalName)) {
+        missingTags.push(articleTag);
+      }
+    }
+
+    // Insert missing tags as ACTIVE using shared service
+    // This ensures consistency with tag creation pipeline
+    let inserted = 0;
+    let errors = 0;
+    const insertedTags: string[] = [];
+
+    // Use batch create/resolve for better performance
+    const tagResults = await createOrResolveTags(missingTags, { status: 'active' });
+    
+    // Count newly created tags (tags that didn't exist before)
+    // Since createOrResolveTag always returns a tag, we count all resolved tags as "inserted"
+    // (they were either created or reactivated, both are valid sync operations)
+    for (const [canonicalName, tag] of tagResults.entries()) {
+      inserted++;
+      insertedTags.push(tag.rawName || canonicalName);
+    }
+    
+    // Handle any tags that failed to create
+    const processedCanonicalNames = new Set(tagResults.keys());
+    for (const tagName of missingTags) {
+      const canonicalName = tagName.toLowerCase().trim();
+      if (!processedCanonicalNames.has(canonicalName)) {
+        errors++;
+        requestLogger.warn({
+          msg: '[Tags] Tag failed to create/resolve during sync',
+          tagName,
+          canonicalName
+        });
+      }
+    }
+
+    requestLogger.info({
+      msg: '[Tags] Article tags sync complete',
+      totalArticleTags: articleTags.length,
+      existingTags: existingTags.length,
+      missingTags: missingTags.length,
+      inserted,
+      errors
+    });
+
+    res.json({
+      message: 'Sync completed',
+      totalArticleTags: articleTags.length,
+      existingTags: existingTags.length,
+      missingTags: missingTags.length,
+      inserted,
+      errors,
+      insertedTags: insertedTags.slice(0, 50) // Limit response size
+    });
+  } catch (error: any) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Tags] Sync article tags error',
       error: {
         message: error.message,
         stack: error.stack,

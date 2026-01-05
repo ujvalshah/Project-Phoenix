@@ -11,13 +11,16 @@ interface PaginatedResponse<T> {
 }
 
 class AdminTagsService {
+  // In-flight request guard to prevent duplicate concurrent stats requests
+  private inFlightStatsRequest: Promise<{ total: number; totalTags: number; pending: number }> | null = null;
+
   async listTags(query?: string): Promise<AdminTag[]> {
     try {
-      // Get all tags (without format=simple to get full objects)
+      // Get all tags with format=full to get paginated response with full tag objects
       // Request high limit (100) to get all tags for admin panel
       const endpoint = query 
-        ? `/categories?q=${encodeURIComponent(query)}&limit=100` 
-        : '/categories?limit=100';
+        ? `/categories?format=full&q=${encodeURIComponent(query)}&limit=100` 
+        : '/categories?format=full&limit=100';
       const response = await apiClient.get<PaginatedResponse<RawTag>>(endpoint, undefined, 'adminTagsService.listTags');
       
       // Backend always returns paginated response format { data: [...], total, ... }
@@ -28,7 +31,7 @@ class AdminTagsService {
         return [];
       }
       
-      // Filter out pending
+      // Include all tags (active, deprecated) but filter out pending (those are in requests)
       const filtered = tags.filter(t => t.status !== 'pending');
       
       return filtered.map(mapTagToAdminTag).sort((a, b) => b.usageCount - a.usageCount);
@@ -40,9 +43,9 @@ class AdminTagsService {
 
   async listRequests(): Promise<AdminTagRequest[]> {
     try {
-      // Get all tags and filter for pending
+      // Get all tags with format=full and filter for pending
       // Request high limit (100) to get all tags
-      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?limit=100');
+      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?format=full&limit=100');
       const tags = response?.data || [];
       
       if (!Array.isArray(tags)) {
@@ -68,33 +71,45 @@ class AdminTagsService {
     }
   }
 
-  async getStats(): Promise<{ total: number; totalTags: number; pending: number; categories: number }> {
-    try {
-      // Request high limit (100) to get accurate stats
-      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?limit=100', undefined, 'adminTagsService.getStats');
-      const tags = response?.data || [];
-      
-      if (!Array.isArray(tags)) {
-        console.error('[AdminTagsService.getStats] Expected tags array but got:', typeof tags, response);
-        return { total: 0, totalTags: 0, pending: 0, categories: 0 };
-      }
-      
-      return {
-        total: response?.total || tags.length,
-        totalTags: tags.filter(t => t.status !== 'pending').length,
-        pending: tags.filter(t => t.status === 'pending').length,
-        categories: tags.filter(t => t.type === 'category' && t.status !== 'pending').length
-      };
-    } catch (error: any) {
-      console.error('[AdminTagsService.getStats] Error fetching stats:', error);
-      throw error;
+  async getStats(): Promise<{ total: number; totalTags: number; pending: number }> {
+    // Reuse in-flight request if one exists (prevents duplicate concurrent fetches)
+    if (this.inFlightStatsRequest) {
+      return this.inFlightStatsRequest;
     }
+
+    // Create and store the in-flight request
+    this.inFlightStatsRequest = (async () => {
+      try {
+        // Request high limit (100) with format=full to get accurate stats
+        const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?format=full&limit=100', undefined, 'adminTagsService.getStats');
+        const tags = response?.data || [];
+        
+        if (!Array.isArray(tags)) {
+          console.error('[AdminTagsService.getStats] Expected tags array but got:', typeof tags, response);
+          return { total: 0, totalTags: 0, pending: 0 };
+        }
+        
+        return {
+          total: response?.total || tags.length,
+          totalTags: tags.filter(t => t.status !== 'pending').length,
+          pending: tags.filter(t => t.status === 'pending').length
+        };
+      } catch (error: any) {
+        console.error('[AdminTagsService.getStats] Error fetching stats:', error);
+        throw error;
+      } finally {
+        // Clear in-flight request when done (success or error)
+        this.inFlightStatsRequest = null;
+      }
+    })();
+
+    return this.inFlightStatsRequest;
   }
 
   async toggleOfficialStatus(id: string): Promise<void> {
     try {
-      // Get current tag
-      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?limit=100');
+      // Get current tag with format=full
+      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?format=full&limit=100');
       const tags = response?.data || [];
       
       if (!Array.isArray(tags)) {
@@ -119,9 +134,7 @@ class AdminTagsService {
     if (updates.name !== undefined) {
       payload.name = updates.name;
     }
-    if (updates.type !== undefined) {
-      payload.type = updates.type;
-    }
+    // Type field removed - all tags are treated as 'tag' type
     if (updates.status !== undefined) {
       payload.status = updates.status;
     }
@@ -145,8 +158,8 @@ class AdminTagsService {
 
   async deleteTag(id: string): Promise<void> {
     try {
-      // Get tag name first
-      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?limit=100');
+      // Get tag name first with format=full
+      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?format=full&limit=100');
       const tags = response?.data || [];
       
       if (!Array.isArray(tags)) {
@@ -156,7 +169,7 @@ class AdminTagsService {
       const tag = tags.find(t => t.id === id);
       if (!tag) throw new Error('Tag not found');
       
-      const tagName = tag.name || tag.rawName || '';
+      const tagName = tag.rawName || tag.name || '';
       if (!tagName) {
         throw new Error('Tag name not found');
       }
@@ -170,8 +183,8 @@ class AdminTagsService {
 
   async approveRequest(id: string): Promise<void> {
     try {
-      // Get tag and update status
-      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?limit=100');
+      // Get tag and update status with format=full
+      const response = await apiClient.get<PaginatedResponse<RawTag>>('/categories?format=full&limit=100');
       const tags = response?.data || [];
       
       if (!Array.isArray(tags)) {
@@ -199,6 +212,20 @@ class AdminTagsService {
     // Backend doesn't support tag merging
     // This would need backend support
     throw new Error('Tag merging not supported by backend');
+  }
+
+  async createTag(name: string): Promise<AdminTag> {
+    try {
+      // Payload only includes name and status - no legacy fields
+      const response = await apiClient.post<RawTag>('/tags', { 
+        name: name.trim(),
+        status: 'active'
+      }, 'adminTagsService.createTag');
+      return mapTagToAdminTag(response);
+    } catch (error: any) {
+      console.error('[AdminTagsService.createTag] Error:', error);
+      throw error;
+    }
   }
 }
 

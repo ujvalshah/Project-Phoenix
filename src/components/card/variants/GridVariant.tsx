@@ -206,7 +206,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
             {data.tags && data.tags.length > 0 && (
               <CardTags
                 tags={data.tags}
-                onTagClick={handlers.onCategoryClick}
+                onTagClick={handlers.onTagClick}
                 showTagPopover={showTagPopover}
                 onToggleTagPopover={handlers.onToggleTagPopover}
                 tagPopoverRef={tagPopoverRef}

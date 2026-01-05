@@ -5,7 +5,7 @@ import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
 import { AdminTag } from '../types/admin';
 import { adminTagsService } from '../services/adminTagsService';
-import { Trash2, Plus, Edit2, Hash, Tag, Layers, GitMerge } from 'lucide-react';
+import { Trash2, Plus, Edit2, Hash, Tag, GitMerge } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { AdminDrawer } from '../components/AdminDrawer';
 import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
@@ -67,7 +67,7 @@ const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: (
             <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-6 animate-in zoom-in-95 border border-slate-200 dark:border-slate-800">
                 <div className="mb-4">
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">Rename Tag</h3>
-                    <p className="text-sm text-slate-500 mt-1">This will update the tag across all existing nuggets.</p>
+                    <p className="text-sm text-slate-500 mt-1">This will update the tag name in the Tags collection. Article references will be updated automatically.</p>
                 </div>
                 <input 
                     autoFocus
@@ -89,7 +89,7 @@ export const AdminTagsPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
   const [tags, setTags] = useState<AdminTag[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState({ totalTags: 0, pending: 0, categories: 0 });
+  const [stats, setStats] = useState({ totalTags: 0, pending: 0 });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   // Table State
@@ -117,8 +117,8 @@ export const AdminTagsPage: React.FC = () => {
 
   useEffect(() => {
     setPageHeader(
-      "Tags & Taxonomy", 
-      "Manage global categories and review user-suggested tags.",
+      "Tags", 
+      "Manage tags and review user-suggested tags.",
       <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-slate-900 rounded-lg text-sm font-bold hover:bg-primary-400 shadow-sm transition-colors">
           <Plus size={16} /> Create Tag
       </button>
@@ -179,9 +179,11 @@ export const AdminTagsPage: React.FC = () => {
   // -- Actions --
 
   const handleInlineUpdate = async (id: string, updates: Partial<AdminTag>) => {
-      setTags(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+      // Remove type from updates - all tags are treated as 'tag' type
+      const { type, ...updatesWithoutType } = updates;
+      setTags(prev => prev.map(t => t.id === id ? { ...t, ...updatesWithoutType } : t));
       try {
-          await adminTagsService.updateTag(id, updates);
+          await adminTagsService.updateTag(id, updatesWithoutType);
           toast.success("Tag updated");
       } catch (e) {
           toast.error("Update failed");
@@ -297,17 +299,47 @@ export const AdminTagsPage: React.FC = () => {
   };
 
   const saveDrawer = async () => {
-      const newTag: AdminTag = {
-          id: `t-${Date.now()}`,
-          name: tagNameInput,
-          type: 'tag',
-          usageCount: 0,
-          isOfficial: false,
-          status: 'active'
-      };
-      setTags(prev => [newTag, ...prev]);
-      toast.success("Tag created");
-      setIsDrawerOpen(false);
+      if (!tagNameInput.trim()) {
+          toast.error("Tag name is required");
+          return;
+      }
+      const trimmedName = tagNameInput.trim();
+      
+      // Check if tag already exists in current list (case-insensitive)
+      const existingTag = tags.find(t => 
+          t.name.toLowerCase().trim() === trimmedName.toLowerCase().trim()
+      );
+      
+      if (existingTag) {
+          toast.error(`Tag "${existingTag.name}" already exists`);
+          return;
+      }
+      
+      try {
+          const createdTag = await adminTagsService.createTag(trimmedName);
+          // If tag was created or already existed, show success
+          toast.success(createdTag ? `Tag "${createdTag.name}" created` : "Tag created");
+          setIsDrawerOpen(false);
+          setTagNameInput('');
+          loadData();
+      } catch (e: any) {
+          // Handle specific error messages
+          const errorMessage = e?.response?.data?.message || e?.message || "Failed to create tag";
+          const existingTag = e?.response?.data?.existingTag;
+          
+          // Check if it's a duplicate error
+          if (errorMessage.toLowerCase().includes('already exists') || 
+              errorMessage.toLowerCase().includes('duplicate')) {
+              if (existingTag) {
+                  const status = existingTag.status || 'unknown';
+                  toast.error(`Tag "${existingTag.rawName || existingTag.name}" already exists (status: ${status})`);
+              } else {
+                  toast.error(errorMessage);
+              }
+          } else {
+              toast.error(errorMessage);
+          }
+      }
   };
 
   // -- Columns --
@@ -320,45 +352,14 @@ export const AdminTagsPage: React.FC = () => {
       sticky: 'left',
       sortable: true,
       render: (t) => (
-        <div className="flex items-center gap-2 group/name">
+        <div className="flex items-center gap-2">
             <span className="text-slate-400 font-bold">#</span>
             <span className="font-bold text-slate-900 dark:text-white">{t.name || 'Unnamed Tag'}</span>
-            <button 
-                onClick={(e) => { e.stopPropagation(); setRenameTarget(t); }}
-                className="opacity-0 group-hover/name:opacity-100 p-1 text-slate-400 hover:text-primary-600 transition-all"
-            >
-                <Edit2 size={12} />
-            </button>
             {t.requestedBy && (
                 <span className="ml-2 text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
                     Request
                 </span>
             )}
-        </div>
-      )
-    },
-    {
-      key: 'type',
-      header: 'Type',
-      width: 'w-40',
-      minWidth: '150px',
-      sortable: true,
-      render: (t) => (
-        <div className="relative w-32" onClick={e => e.stopPropagation()}>
-            <select 
-                value={t.type}
-                onChange={(e) => handleInlineUpdate(t.id, { type: e.target.value as any })}
-                className={`
-                    appearance-none w-full pl-2 pr-6 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide border cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500/50
-                    ${t.type === 'category' 
-                        ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800' 
-                        : 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-                    }
-                `}
-            >
-                <option value="tag">Tag</option>
-                <option value="category">Category</option>
-            </select>
         </div>
       )
     },
@@ -402,14 +403,22 @@ export const AdminTagsPage: React.FC = () => {
       key: 'actions',
       header: 'Actions',
       align: 'right',
-      width: 'w-24',
-      minWidth: '100px',
+      width: 'w-32',
+      minWidth: '120px',
       sticky: 'right',
       render: (t) => (
         <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
             <button 
+                onClick={() => setRenameTarget(t)} 
+                className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                title="Rename tag"
+            >
+                <Edit2 size={14} />
+            </button>
+            <button 
                 onClick={() => setDeleteId(t.id)} 
                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                title="Delete tag"
             >
                 <Trash2 size={14} />
             </button>
@@ -438,9 +447,19 @@ export const AdminTagsPage: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex-1" />
+        <button 
+          onClick={openCreate} 
+          className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-slate-900 rounded-lg text-sm font-bold hover:bg-primary-400 shadow-sm transition-colors"
+        >
+          <Plus size={16} /> Create Tag
+        </button>
+      </div>
+
       {pendingDelete && (
         <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>Deleted “{pendingDelete.tag.name}”. Undo?</span>
+          <span>Deleted "{pendingDelete.tag.name}". Undo?</span>
           <div className="flex gap-2 items-center">
             <button
               onClick={() => {
@@ -472,7 +491,6 @@ export const AdminTagsPage: React.FC = () => {
         items={[
             { label: 'Total Tags', value: stats.totalTags, icon: <Hash size={18} /> },
             { label: 'Pending Requests', value: stats.pending, icon: <Tag size={18} /> },
-            { label: 'Categories', value: stats.categories, icon: <Layers size={18} /> },
         ]}
         isLoading={isLoading}
       />
@@ -537,7 +555,7 @@ export const AdminTagsPage: React.FC = () => {
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-primary-500 font-bold" 
                     placeholder="e.g. Finance"
                   />
-                  <p className="text-xs text-slate-400 mt-2">New tags are created as 'Active' standard tags by default. You can change the type in the table later.</p>
+                  <p className="text-xs text-slate-400 mt-2">New tags are created as 'Active' tags by default.</p>
               </div>
           </div>
       </AdminDrawer>

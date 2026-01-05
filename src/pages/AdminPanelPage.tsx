@@ -9,7 +9,6 @@ import { AdminCollectionsPage } from '../admin/pages/AdminCollectionsPage';
 import { AdminTagsPage } from '../admin/pages/AdminTagsPage';
 import { AdminConfigPage } from '../admin/pages/AdminConfigPage';
 import { AdminModerationPage } from '../admin/pages/AdminModerationPage';
-import { AdminActivityLogPage } from '../admin/pages/AdminActivityLogPage';
 import { AdminFeedbackPage } from '../admin/pages/AdminFeedbackPage';
 import { AdminDownloadsPage } from '../admin/pages/AdminDownloadsPage';
 import { AdminLegalPages } from '../admin/pages/AdminLegalPages';
@@ -29,7 +28,6 @@ export const AdminPanelPage: React.FC = () => {
             <Route path="collections" element={<AdminCollectionsPage />} />
             <Route path="tags" element={<AdminTagsPage />} />
             <Route path="moderation" element={<AdminModerationPage />} />
-            <Route path="activity" element={<AdminActivityLogPage />} />
             <Route path="config" element={<AdminConfigPage />} />
             <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="downloads" element={<AdminDownloadsPage />} />

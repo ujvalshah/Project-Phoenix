@@ -40,7 +40,6 @@ export interface FeedContainerProps {
   /** Handler for article click - now uses navigation, but kept for compatibility */
   onArticleClick?: (article: Article) => void;
   /** Optional action handlers */
-  onLike?: (article: Article) => void;
   onShare?: (article: Article) => void;
   /** Card spacing */
   gap?: number;
@@ -81,7 +80,6 @@ export const FeedContainer: React.FC<FeedContainerProps> = ({
   articles,
   isLoading = false,
   onArticleClick,
-  onLike,
   onShare,
   gap = 16,
   overscan = 3,

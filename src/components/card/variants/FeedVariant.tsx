@@ -123,7 +123,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
               <div onClick={(e) => e.stopPropagation()} className="mb-2">
                 <CardTags
                   tags={data.tags}
-                  onTagClick={handlers.onCategoryClick}
+                  onTagClick={handlers.onTagClick}
                   showTagPopover={showTagPopover}
                   onToggleTagPopover={handlers.onToggleTagPopover}
                   tagPopoverRef={tagPopoverRef}

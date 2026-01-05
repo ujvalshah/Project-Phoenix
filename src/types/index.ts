@@ -48,7 +48,6 @@ export interface NuggetMedia {
 }
 
 export interface Engagement {
-  likes: number;
   bookmarks: number;
   shares: number;
   views: number;

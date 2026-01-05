@@ -146,7 +146,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
               <div className="flex-1 min-w-0">
                 <CardTags
                   tags={data.tags}
-                  onTagClick={handlers.onCategoryClick}
+                  onTagClick={handlers.onTagClick}
                   showTagPopover={showTagPopover}
                   onToggleTagPopover={handlers.onToggleTagPopover}
                   tagPopoverRef={tagPopoverRef}

@@ -197,7 +197,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/articles', articlesRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/collections', collectionsRouter);
-app.use('/api/categories', tagsRouter);
+app.use('/api/categories', tagsRouter); // Legacy endpoint - kept for backward compatibility
+app.use('/api/tags', tagsRouter); // New endpoint
 app.use('/api/legal', legalRouter);
 // AI routes removed - legacy AI creation system has been fully removed
 // Safeguard: Return 410 Gone for any attempts to access removed AI endpoints

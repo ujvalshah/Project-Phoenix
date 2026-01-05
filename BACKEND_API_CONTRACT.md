@@ -134,7 +134,6 @@
   video?: string,  // Legacy
   documents?: Array<{ title: string, url: string, type: string, size: string }>,  // Legacy
   engagement?: {
-    likes: number,
     bookmarks: number,
     shares: number,
     views: number

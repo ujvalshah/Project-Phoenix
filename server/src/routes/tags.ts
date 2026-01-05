@@ -17,6 +17,12 @@ router.put('/:id', authenticateToken, tagsController.updateTag);
 // DELETE /api/categories/:name - Delete a tag (legacy endpoint name, uses tags)
 router.delete('/:name', authenticateToken, tagsController.deleteTag);
 
+// POST /api/categories/sync - Sync article tags to Tags collection (admin only)
+router.post('/sync', authenticateToken, tagsController.syncArticleTags);
+
+// POST /api/categories/resolve - Resolve tagIds to tag names (Phase 2+)
+router.post('/resolve', tagsController.resolveTags);
+
 export default router;
 
 

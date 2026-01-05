@@ -9,6 +9,7 @@ import { verifyToken } from '../utils/jwt.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import { normalizeTags } from '../utils/normalizeTags.js';
+import { resolveTagNamesToIds, isTagIdsWriteEnabled, isTagIdsReadEnabled } from '../utils/tagHelpers.js';
 // CATEGORY PHASE-OUT: Removed normalizeCategories import - categories are no longer supported
 import {
   sendErrorResponse,
@@ -130,22 +131,44 @@ export const getArticles = async (req: Request, res: Response) => {
         .map((tag: string) => tag.trim());
       
       if (validTags.length > 0) {
-        // For case-insensitive tag matching on string arrays, use $or with $regex
-        // Each tag gets its own regex condition that matches any element in the tags array
-        const tagConditions = validTags.map(tag => {
+        // PHASE 1-2: Support both tagIds (new) and tags[] (legacy) filtering
+        // Resolve tag names to Tag documents to get tagIds
+        const tagDocs = await Tag.find({
+          $or: [
+            { rawName: { $in: validTags } },
+            { canonicalName: { $in: validTags.map(t => t.toLowerCase().trim()) } }
+          ],
+          status: 'active'
+        });
+        
+        const tagIds = tagDocs.map(t => t._id);
+        
+        // Build filter conditions: support both tagIds (new) and tags[] (legacy)
+        const tagConditions: any[] = [];
+        
+        // New way: filter by tagIds
+        if (isTagIdsReadEnabled() && tagIds.length > 0) {
+          tagConditions.push({ tagIds: { $in: tagIds } });
+        }
+        
+        // Legacy way: filter by tags[] strings (case-insensitive regex)
+        const legacyTagConditions = validTags.map(tag => {
           const escapedTag = escapeRegExp(tag);
           return { tags: { $regex: new RegExp(`^${escapedTag}$`, 'i') } };
         });
+        tagConditions.push({ $or: legacyTagConditions });
         
-        // Combine with existing query conditions
+        // Combine tag filter with existing query conditions
+        const combinedTagFilter = tagConditions.length === 1 ? tagConditions[0] : { $or: tagConditions };
+        
         if (query.$and) {
           // We already have $and (privacy + search), add tag filter to it
-          query.$and.push({ $or: tagConditions });
+          query.$and.push(combinedTagFilter);
         } else if (query.$or) {
           // We have $or (privacy or search), need to combine with $and
           query.$and = [
             { $or: query.$or },
-            { $or: tagConditions }
+            combinedTagFilter
           ];
           delete query.$or;
         } else {
@@ -339,6 +362,26 @@ export const createArticle = async (req: Request, res: Response) => {
     
     // Update data with normalized values
     data.tags = normalizedTags;
+    
+    // PHASE 1: Dual-write - Resolve tag names to tagIds
+    // This ensures both tags[] (legacy) and tagIds[] (new) are populated
+    if (isTagIdsWriteEnabled() && normalizedTags.length > 0) {
+      try {
+        const tagIds = await resolveTagNamesToIds(normalizedTags);
+        (createData as any).tagIds = tagIds;
+        requestLogger.info({
+          msg: '[Articles] Create: Resolved tags to tagIds',
+          tagCount: normalizedTags.length,
+          tagIdCount: tagIds.length,
+        });
+      } catch (tagError: any) {
+        // Log error but don't fail article creation - tags[] will still work
+        requestLogger.warn({
+          msg: '[Articles] Create: Failed to resolve tagIds (falling back to tags[] only)',
+          error: { message: tagError.message, stack: tagError.stack },
+        });
+      }
+    }
     
     // DIAGNOSTIC LOGGING: Log validated media structure
     requestLogger.info({
@@ -605,6 +648,27 @@ export const updateArticle = async (req: Request, res: Response) => {
       }
       
       validationResult.data.tags = normalizedTags;
+      
+      // PHASE 1: Dual-write - Resolve tag names to tagIds
+      if (isTagIdsWriteEnabled() && normalizedTags.length > 0) {
+        try {
+          const tagIds = await resolveTagNamesToIds(normalizedTags);
+          (validationResult.data as any).tagIds = tagIds;
+          requestLogger.info({
+            msg: '[Articles] Update: Resolved tags to tagIds',
+            articleId: req.params.id,
+            tagCount: normalizedTags.length,
+            tagIdCount: tagIds.length,
+          });
+        } catch (tagError: any) {
+          // Log error but don't fail article update - tags[] will still work
+          requestLogger.warn({
+            msg: '[Articles] Update: Failed to resolve tagIds (falling back to tags[] only)',
+            articleId: req.params.id,
+            error: { message: tagError.message, stack: tagError.stack },
+          });
+        }
+      }
     }
 
     // CRITICAL FIX: Deduplicate images array to prevent duplicates

@@ -131,6 +131,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   }, []);
 
   // CATEGORY PHASE-OUT: Calculate tag counts from articles (tags are now the only classification field)
+  // CRITICAL FIX: Only show tags that exist in the Tag collection to prevent discrepancy with admin page
   const tagsWithCountsForFilter = useMemo(() => {
     const tagCountMap = new Map<string, number>();
     
@@ -140,22 +141,32 @@ export const HomePage: React.FC<HomePageProps> = ({
         // Use canonical name (lowercase) for counting to group case variants
         if (!tag) return;
         const canonical = tag.toLowerCase().trim();
+        
+        // CRITICAL FIX: Only count tags that exist in the Tag collection
+        // This ensures filter bar matches admin page tags
+        if (!tagNameMap.has(canonical)) {
+          return; // Skip tags that don't exist in Tag collection
+        }
+        
         const count = tagCountMap.get(canonical) || 0;
         tagCountMap.set(canonical, count + 1);
       });
     });
 
     // Map back to correct casing using tagNameMap
-    return Array.from(tagCountMap.entries()).map(([canonical, count]) => {
-      // Get correct casing from tagNameMap, fallback to original if not found
-      const correctLabel = tagNameMap.get(canonical) || canonical;
-      
-      return {
-        id: canonical.replace(/\s+/g, '-'),
-        label: correctLabel, // Use correct casing from backend tags
-        count,
-      };
-    });
+    // Filter to only include tags that exist in Tag collection
+    return Array.from(tagCountMap.entries())
+      .filter(([canonical]) => tagNameMap.has(canonical)) // Double-check: only include tags in Tag collection
+      .map(([canonical, count]) => {
+        // Get correct casing from tagNameMap (guaranteed to exist due to filter above)
+        const correctLabel = tagNameMap.get(canonical) || canonical;
+        
+        return {
+          id: canonical.replace(/\s+/g, '-'),
+          label: correctLabel, // Use correct casing from backend tags
+          count,
+        };
+      });
   }, [allArticles, tagNameMap]);
 
   // NOTE: Tags are mandatory - all nuggets must have at least one tag

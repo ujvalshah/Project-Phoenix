@@ -40,12 +40,10 @@ export interface NewsCardData {
 }
 
 export interface NewsCardFlags {
-  isLiked: boolean;
   isRead: boolean;
 }
 
 export interface NewsCardHandlers {
-  onLike: (() => void) | undefined;
   onShare: (() => void) | undefined;
   onClick: (() => void) | undefined;
   onMediaClick: (e: React.MouseEvent, imageIndex?: number) => void;
@@ -430,8 +428,6 @@ export const useNewsCard = ({
   // ────────────────────────────────────────
   const flags: NewsCardFlags = {
     // Deferred feature — backend support pending
-    isLiked: false, // TODO: Implement like functionality if needed
-    // Deferred feature — backend support pending
     isRead: false, // TODO: Implement read tracking if needed
   };
 
@@ -648,7 +644,6 @@ export const useNewsCard = ({
   // When in preview mode, disable all mutation handlers to prevent API calls
   const handlers: NewsCardHandlers = isPreview
     ? {
-        onLike: undefined,
         onShare: undefined,
         onClick: undefined,
         onMediaClick: (e: React.MouseEvent) => handleMediaClick(e), // Allow media click for preview (opens URL)
@@ -665,10 +660,6 @@ export const useNewsCard = ({
         onReadMore: () => setShowFullModal(true), // Allow read more (modal only)
       }
     : {
-        // Deferred feature — backend support pending
-        onLike: () => {
-          // TODO: Implement like functionality
-        },
         onShare: handleShare,
         onClick: handleClick,
         onMediaClick: handleMediaClick,

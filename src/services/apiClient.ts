@@ -255,16 +255,16 @@ class ApiClient {
       success = true;
       return response.json();
     } catch (error: any) {
-      // Handle AbortError (request was cancelled) - don't treat as error
-      if (error.name === 'AbortError') {
+      // SAFETY PATCH: Treat request cancellations as non-errors
+      if (error?.name === 'AbortError' || error?.message?.includes('Request cancelled')) {
         // Only clean up if this controller is still the active one (not replaced by newer request)
         const currentController = this.activeControllers.get(cancelKey);
         if (currentController === abortController) {
           this.activeControllers.delete(cancelKey);
         }
-        // Return a rejected promise that won't trigger error handlers
+        // Intentional cancellation — no action needed, return silently
         aborted = true;
-        return Promise.reject(new Error('Request cancelled'));
+        return undefined as T;
       }
       
       // Handle network errors (connection refused, timeout, etc.)

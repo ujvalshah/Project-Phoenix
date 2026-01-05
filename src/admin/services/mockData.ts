@@ -1,4 +1,4 @@
-import { AdminUser, AdminNugget, AdminCollection, AdminTag, AdminReport, AdminActivityEvent, AdminFeedback } from '../types/admin';
+import { AdminUser, AdminNugget, AdminCollection, AdminTag, AdminReport, AdminFeedback } from '../types/admin';
 
 export const MOCK_ADMIN_USERS: AdminUser[] = Array.from({ length: 25 }).map((_, i) => {
   const totalNuggets = Math.floor(Math.random() * 50);
@@ -150,11 +150,3 @@ export const MOCK_FEEDBACK: AdminFeedback[] = [
   },
 ];
 
-export const MOCK_ACTIVITY_LOG: AdminActivityEvent[] = [
-  { id: 'ev-1', actor: { id: 'u-1', name: 'Akash Solanki' }, action: 'suspended', target: 'u-bad', metadata: 'Spam activity detected', timestamp: new Date(Date.now() - 300000).toISOString(), type: 'danger' },
-  { id: 'ev-2', actor: { id: 'u-1', name: 'Akash Solanki' }, action: 'approved tag', target: '#IndiaGrowth', timestamp: new Date(Date.now() - 3600000).toISOString(), type: 'success' },
-  { id: 'ev-3', actor: { id: 'u-1', name: 'Akash Solanki' }, action: 'updated config', target: 'Feature Flags', metadata: 'Enabled beta search', timestamp: new Date(Date.now() - 86400000).toISOString(), type: 'warning' },
-  { id: 'ev-4', actor: { id: 'u-1', name: 'Akash Solanki' }, action: 'resolved report', target: 'r-3', timestamp: new Date(Date.now() - 172800000).toISOString(), type: 'info' },
-  { id: 'ev-5', actor: { id: 'u-1', name: 'Akash Solanki' }, action: 'login', timestamp: new Date(Date.now() - 200000000).toISOString(), type: 'info' },
-  { id: 'ev-6', actor: { id: 'u-admin-2', name: 'Sarah Admin' }, action: 'deleted nugget', target: 'n-291', metadata: 'Copyright violation', timestamp: new Date(Date.now() - 250000000).toISOString(), type: 'danger' },
-];

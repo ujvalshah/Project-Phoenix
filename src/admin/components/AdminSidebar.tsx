@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Layers, Hash, Settings, LogOut, Flag, Activity, MessageSquare, Download, Scale } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Layers, Hash, Settings, LogOut, Flag, MessageSquare, Download, Scale } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 interface AdminSidebarProps {
@@ -17,7 +17,6 @@ const NAV_ITEMS = [
   { path: '/admin/tags', label: 'Tags', icon: Hash },
   { path: '/admin/moderation', label: 'Moderation', icon: Flag },
   { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
-  { path: '/admin/activity', label: 'Activity Log', icon: Activity },
   { path: '/admin/downloads', label: 'Data Export', icon: Download },
   { path: '/admin/legal', label: 'Legal Pages', icon: Scale },
   { path: '/admin/config', label: 'Settings & Access', icon: Settings },

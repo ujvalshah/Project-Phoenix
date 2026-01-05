@@ -17,7 +17,6 @@ export type AdminPermission =
   | 'admin.tags.manage'
   | 'admin.config.manage'
   | 'admin.moderation.view'
-  | 'admin.activity.view'
   | 'admin.feedback.view';
 
 // --- Service Privilege Types ---
@@ -128,7 +127,7 @@ export interface AdminTag {
   id: string;
   name: string;
   usageCount: number;
-  type: 'category' | 'tag';
+  type?: 'category' | 'tag'; // Legacy field - all tags are treated as 'tag'
   isOfficial: boolean;
   status: 'active' | 'deprecated' | 'pending';
   requestedBy?: string;
@@ -176,20 +175,6 @@ export interface AdminFeedback {
   content: string;
   status: 'new' | 'read' | 'archived';
   createdAt: string;
-}
-
-export interface AdminActivityEvent {
-  id: string;
-  actor: {
-    id: string;
-    name: string;
-    avatar?: string;
-  };
-  action: string;
-  target?: string;
-  metadata?: string;
-  timestamp: string;
-  type: 'info' | 'warning' | 'danger' | 'success';
 }
 
 export interface AdminStat {

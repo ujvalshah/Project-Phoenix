@@ -7,14 +7,14 @@
  * - Sticky bottom positioning
  * - Safe-area insets (mobile-first)
  * - Thumb-reachable actions
- * - Like, Share actions
+ * - Share action
  * - Source link
  * 
  * ============================================================================
  */
 
 import React from 'react';
-import { Heart, Share2, ExternalLink } from 'lucide-react';
+import { Share2, ExternalLink } from 'lucide-react';
 import { Article } from '@/types';
 import { SourceBadge } from '../shared/SourceBadge';
 import { twMerge } from 'tailwind-merge';
@@ -24,8 +24,6 @@ export interface ActionDockProps {
   article: Article;
   /** Source URL */
   sourceUrl?: string;
-  /** Like handler */
-  onLike?: () => void;
   /** Share handler */
   onShare?: () => void;
 }
@@ -33,12 +31,8 @@ export interface ActionDockProps {
 export const ActionDock: React.FC<ActionDockProps> = ({
   article,
   sourceUrl,
-  onLike,
   onShare,
 }) => {
-  // Check if article is liked (placeholder - replace with actual state)
-  const isLiked = false;
-  
   const handleSourceClick = () => {
     if (sourceUrl) {
       window.open(sourceUrl, '_blank', 'noopener,noreferrer');
@@ -86,26 +80,6 @@ export const ActionDock: React.FC<ActionDockProps> = ({
       
       {/* Action Buttons */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* Like */}
-        {onLike && (
-          <button
-            onClick={onLike}
-            className={twMerge(
-              'p-3 rounded-full',
-              'transition-colors',
-              isLiked
-                ? 'text-red-500 bg-red-50 dark:bg-red-950/30'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            )}
-            aria-label={isLiked ? 'Unlike' : 'Like'}
-          >
-            <Heart
-              size={20}
-              className={isLiked ? 'fill-current' : ''}
-            />
-          </button>
-        )}
-        
         {/* Share */}
         {onShare && (
           <button

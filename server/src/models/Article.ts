@@ -38,7 +38,6 @@ export interface INuggetMedia {
 }
 
 export interface IEngagement {
-  likes: number;
   bookmarks: number;
   shares: number;
   views: number;
@@ -60,7 +59,8 @@ export interface IArticle extends Document {
   // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
   // Tags are now the only classification field
   publishedAt: string;
-  tags: string[];
+  tags: string[]; // Legacy: string array (Phase 1-2: dual-write, Phase 3: remove)
+  tagIds?: mongoose.Types.ObjectId[]; // New: ObjectId references to Tag collection (Phase 1+)
   readTime?: number; // Estimated read time in minutes
   visibility?: 'public' | 'private'; // Default: public
   
@@ -118,7 +118,6 @@ const NuggetMediaSchema = new Schema<INuggetMedia>({
 }, { _id: false });
 
 const EngagementSchema = new Schema<IEngagement>({
-  likes: { type: Number, default: 0 },
   bookmarks: { type: Number, default: 0 },
   shares: { type: Number, default: 0 },
   views: { type: Number, default: 0 }
@@ -143,7 +142,8 @@ const ArticleSchema = new Schema<IArticle>({
   // This field is NOT validated, NOT saved on create/update, and NOT exposed in API responses
   // categoryIds: { type: [String] }, // Deprecated - kept in DB schema only for backward compatibility
   publishedAt: { type: String, required: true },
-  tags: { type: [String], default: [] },
+  tags: { type: [String], default: [] }, // Legacy: string array (Phase 1-2: dual-write, Phase 3: remove)
+  tagIds: [{ type: Schema.Types.ObjectId, ref: 'Tag', index: true }], // New: ObjectId references
   readTime: { type: Number }, // Optional read time
   visibility: { type: String, enum: ['public', 'private'], default: 'public' },
   
@@ -177,7 +177,9 @@ ArticleSchema.index({ publishedAt: -1 }); // List sorting (latest first)
 ArticleSchema.index({ createdAt: -1 }); // List sorting (if using created_at)
 ArticleSchema.index({ visibility: 1, publishedAt: -1 }); // Visibility filters with sorting
 // CATEGORY PHASE-OUT: Removed category and categoryIds indexes
-ArticleSchema.index({ tags: 1 }); // Tag filtering
+ArticleSchema.index({ tags: 1 }); // Tag filtering (legacy)
+ArticleSchema.index({ tagIds: 1 }); // Tag filtering (new - Phase 1+)
+ArticleSchema.index({ tagIds: 1, publishedAt: -1 }); // Compound index for tag-filtered feed queries
 // Audit Phase-2 Fix: Add compound index for authorId + visibility (common privacy filtering pattern)
 ArticleSchema.index({ authorId: 1, visibility: 1 }); // User's articles by visibility
 // Audit Phase-2 Fix: Add index for media.url field (for YouTube cache lookup in AI controller)
