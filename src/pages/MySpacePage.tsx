@@ -6,7 +6,7 @@ import { ProfileCard } from '@/components/profile/ProfileCard';
 import { TabsBar } from '@/components/profile/TabsBar';
 import { NewsCard } from '@/components/NewsCard';
 import { CollectionsGrid } from '@/components/profile/CollectionsGrid';
-import { Loader2, Layers, CheckSquare, X, Trash2, Lock, Globe, FolderPlus, ChevronDown, Info, Plus } from 'lucide-react';
+import { Loader2, CheckSquare, X, Trash2, Lock, Globe, FolderPlus, ChevronDown, Info, Plus } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { AddToCollectionModal } from '@/components/AddToCollectionModal';
 import { useToast } from '@/hooks/useToast';
@@ -684,25 +684,14 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                                 </div>
                             ) : (
                                 // --- DEFAULT STATE ---
-                                <>
-                                    <Tooltip content="Import links or CSV files">
-                                        <button 
-                                            onClick={() => navigate('/bulk-create')}
-                                            className="flex items-center gap-2 px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white rounded-xl text-xs font-bold transition-colors"
-                                        >
-                                            <Layers size={16} /> Batch Import
-                                        </button>
-                                    </Tooltip>
-                                    
-                                    <Tooltip content="Select multiple items to organize or delete">
-                                        <button 
-                                            onClick={toggleSelectionMode}
-                                            className="flex items-center gap-2 px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100 dark:bg-yellow-900/10 dark:text-yellow-400 dark:border-yellow-900/30 rounded-xl text-xs font-bold transition-all shadow-sm"
-                                        >
-                                            <CheckSquare size={16} /> Select
-                                        </button>
-                                    </Tooltip>
-                                </>
+                                <Tooltip content="Select multiple items to organize or delete">
+                                    <button 
+                                        onClick={toggleSelectionMode}
+                                        className="flex items-center gap-2 px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100 dark:bg-yellow-900/10 dark:text-yellow-400 dark:border-yellow-900/30 rounded-xl text-xs font-bold transition-all shadow-sm"
+                                    >
+                                        <CheckSquare size={16} /> Select
+                                    </button>
+                                </Tooltip>
                             )}
                         </div>
                     )}

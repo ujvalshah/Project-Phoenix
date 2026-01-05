@@ -55,7 +55,6 @@ import moderationRouter from './routes/moderation.js';
 import adminRouter from './routes/admin.js';
 import unfurlRouter from './routes/unfurl.js';
 import bookmarkFoldersRouter from './routes/bookmarkFolders.js';
-import batchRouter from './routes/batchRoutes.js';
 import mediaRouter from './routes/media.js';
 
 const app = express();
@@ -210,7 +209,6 @@ app.use('/api/moderation', moderationRouter);
 app.use('/api/unfurl', longOperationTimeout, unfurlRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/bookmark-folders', bookmarkFoldersRouter);
-app.use('/api/batch', batchRouter);
 app.use('/api/media', mediaRouter);
 
 // Health Check - Enhanced to verify DB connectivity

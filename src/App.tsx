@@ -63,7 +63,6 @@ const AdminPanelPage = lazy(() =>
 );
 const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then(module => ({ default: module.VerifyEmailPage })));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage').then(module => ({ default: module.ResetPasswordPage })));
-const BulkCreateNuggetsPage = lazy(() => import('@/pages/BulkCreateNuggetsPage').then(module => ({ default: module.BulkCreateNuggetsPage })));
 
 const AppContent: React.FC = () => {
   const [isDark, setIsDark] = useState(false);
@@ -186,11 +185,8 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           } />
 
-          <Route path="/bulk-create" element={
-            <ProtectedRoute>
-              <BulkCreateNuggetsPage />
-            </ProtectedRoute>
-          } />
+          {/* Redirect old batch import route to home (backwards compatible) */}
+          <Route path="/bulk-create" element={<Navigate to="/" replace />} />
 
           {/* Redirect old YT Analysis route to home */}
           <Route path="/youtube-analysis" element={<Navigate to="/" replace />} />

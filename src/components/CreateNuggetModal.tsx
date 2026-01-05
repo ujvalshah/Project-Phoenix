@@ -2552,7 +2552,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         <FormFooter
             fileInputRef={fileInputRef}
             onFileSelect={handleFileUpload}
-            onBulkCreate={() => { handleClose(); navigate('/bulk-create'); }}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             canSubmit={

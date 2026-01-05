@@ -171,30 +171,17 @@ export const Header: React.FC<HeaderProps> = ({
                 </Link>
               )}
               {isAdmin && (
-                <>
-                  <Link
-                    to="/bulk-create"
-                    className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
-                      currentPath === '/bulk-create'
-                        ? 'bg-white text-gray-900'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                    aria-current={currentPath === '/bulk-create' ? 'page' : undefined}
-                  >
-                    Batch Import
-                  </Link>
-                  <Link
-                    to="/admin"
-                    className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
-                      currentPath.startsWith('/admin')
-                        ? 'bg-white text-gray-900'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                    aria-current={currentPath.startsWith('/admin') ? 'page' : undefined}
-                  >
-                    Admin
-                  </Link>
-                </>
+                <Link
+                  to="/admin"
+                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
+                    currentPath.startsWith('/admin')
+                      ? 'bg-white text-gray-900'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  aria-current={currentPath.startsWith('/admin') ? 'page' : undefined}
+                >
+                  Admin
+                </Link>
               )}
             </nav>
           </div>
@@ -426,14 +413,6 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Shield size={16} />
                 Admin Panel
-              </Link>
-              <Link
-                to="/bulk-create"
-                onClick={() => setIsUserMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 transition-colors"
-              >
-                <Layers size={16} />
-                Batch Import
               </Link>
             </>
           )}
@@ -727,9 +706,6 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Admin</p>
                <Link to="/admin" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-900 text-white shadow-md font-bold text-sm mb-1">
                   <Shield size={18} /> Admin Panel
-               </Link>
-               <Link to="/bulk-create" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
-                  <Layers size={18} /> Batch Import
                </Link>
              </>
            )}

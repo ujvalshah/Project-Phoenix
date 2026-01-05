@@ -1,10 +1,9 @@
 import React, { useCallback } from 'react';
-import { Paperclip, Layers, Check, Loader2 } from 'lucide-react';
+import { Paperclip, Check, Loader2 } from 'lucide-react';
 
 interface FormFooterProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onBulkCreate: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
   canSubmit: boolean;
@@ -13,7 +12,6 @@ interface FormFooterProps {
 export const FormFooter = React.memo(function FormFooter({
   fileInputRef,
   onFileSelect,
-  onBulkCreate,
   onSubmit,
   isSubmitting,
   canSubmit,
@@ -47,15 +45,6 @@ export const FormFooter = React.memo(function FormFooter({
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          onClick={onBulkCreate}
-          className="text-slate-500 hover:text-slate-900 dark:hover:text-white text-xs font-bold flex items-center gap-1.5 mr-2"
-          title="Bulk Import"
-        >
-          <Layers size={14} />
-          <span>Bulk Create</span>
-        </button>
-
         <button
           onClick={onSubmit}
           disabled={isSubmitting || !canSubmit}
