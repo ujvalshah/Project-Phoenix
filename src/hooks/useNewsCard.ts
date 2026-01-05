@@ -283,29 +283,10 @@ export const useNewsCard = ({
   const hasLongText = Boolean(trimmedBody) && trimmedBodyLineCount > MAX_PREVIEW_LINES;
   const isMultiImageWithLongText = hasMultipleImages && hasLongText;
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // EMBED MEDIA RULE: YouTube/Twitter/LinkedIn with text → MUST be Hybrid
-  // ═══════════════════════════════════════════════════════════════════════
-  // Embed media types (YouTube, Twitter, LinkedIn) should always be Hybrid cards
-  // when they have ANY text content. This ensures "Read more" is available.
-  // Without this rule, short-text embed cards become media-only with no expansion.
-  const isEmbedMedia = article.media?.type === 'youtube' ||
-                       article.media?.type === 'twitter' ||
-                       article.media?.type === 'linkedin' ||
-                       article.primaryMedia?.type === 'youtube' ||
-                       article.primaryMedia?.type === 'twitter' ||
-                       article.primaryMedia?.type === 'linkedin';
-  const isEmbedWithText = isEmbedMedia && Boolean(trimmedBody);
-
   if (!hasMedia) {
     // No media = always Hybrid (text-only is a subset of Hybrid without media)
     cardType = 'hybrid';
     classificationReason = 'no-media';
-  } else if (isEmbedWithText) {
-    // ENFORCEMENT: Embed media (YouTube/Twitter/LinkedIn) with ANY text → MUST be Hybrid
-    // This ensures users can always expand and read full content via "Read more"
-    cardType = 'hybrid';
-    classificationReason = `embed-with-text (${article.media?.type || article.primaryMedia?.type})`;
   } else if (hasLongText) {
     // ENFORCEMENT: Any media + long text → MUST be Hybrid
     // This ensures truncation + fade apply for all cards with long text
