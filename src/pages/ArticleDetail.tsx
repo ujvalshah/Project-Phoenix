@@ -32,9 +32,16 @@ export const ArticleDetailPage: React.FC = () => {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
-  // Handle close - navigate back to feed
+  // Handle close - navigate back (feed layout feature removed)
+  // Using navigate(-1) to go back in history, with fallback to home if no history exists
   const handleClose = () => {
-    navigate('/feed', { replace: true });
+    // Try to go back in history first
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      // Fallback to home if no history available
+      navigate('/', { replace: true });
+    }
   };
 
   // If articleId is missing, show fallback
@@ -55,7 +62,8 @@ export const ArticleDetailPage: React.FC = () => {
   }
 
   // Show loading state
-  // Note: No HeaderSpacer needed - parent ResponsiveLayoutShell handles header offset
+  // Note: ArticleDetailPage was previously used in nested route within FeedLayoutPage
+  // Feed layout feature removed - component now unused in routing
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[200px]">

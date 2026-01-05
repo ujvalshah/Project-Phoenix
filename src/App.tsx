@@ -34,8 +34,6 @@ const HashRedirect: React.FC = () => {
 
 // Lazy Load Pages
 const HomePage = lazy(() => import('@/pages/HomePage').then(module => ({ default: module.HomePage })));
-const FeedLayoutPage = lazy(() => import('@/pages/FeedLayoutPage').then(module => ({ default: module.default || module.FeedLayoutPage })));
-const ArticleDetailPage = lazy(() => import('@/pages/ArticleDetail').then(module => ({ default: module.ArticleDetailPage })));
 const CollectionsPage = lazy(() => import('@/pages/CollectionsPage').then(module => ({ default: module.CollectionsPage })));
 const CollectionDetailPage = lazy(() => import('@/pages/CollectionDetailPage').then(module => ({ default: module.CollectionDetailPage })));
 const MySpacePage = lazy(() => import('@/pages/MySpacePage').then(module => ({ default: module.MySpacePage })));
@@ -151,15 +149,9 @@ const AppContent: React.FC = () => {
             </ErrorBoundary>
           } />
           
-          {/* Feed Routes - Grid Layout with Nested Routing */}
-          {/* /feed renders FeedLayoutPage, /feed/:articleId renders detail via Outlet */}
-          <Route path="/feed" element={
-            <ErrorBoundary>
-              <FeedLayoutPage />
-            </ErrorBoundary>
-          }>
-            <Route path=":articleId" element={<ArticleDetailPage />} />
-          </Route>
+          {/* Feed Routes - Redirected to home (feed layout feature removed) */}
+          <Route path="/feed" element={<Navigate to="/" replace />} />
+          <Route path="/feed/:articleId" element={<Navigate to="/" replace />} />
           
           <Route path="/collections" element={
             <ErrorBoundary>
