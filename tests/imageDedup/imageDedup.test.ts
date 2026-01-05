@@ -18,6 +18,20 @@ import {
   dedupeImagesForEdit,
 } from '../../src/shared/articleNormalization/imageDedup';
 
+/**
+ * ============================================================================
+ * IMAGE PRESERVATION INVARIANT TESTS
+ * ============================================================================
+ * 
+ * These tests verify the strict invariant:
+ * "No image should ever be removed unless the user explicitly deletes it."
+ * 
+ * Test scenarios:
+ * 1. Promote then Demote - Image should return to images[] when masonry deselected
+ * 2. Explicit Delete - Image should be removed from ALL sources when explicitly deleted
+ * 3. Duplicate Re-Add - No duplicates should occur when promoting/demoting repeatedly
+ */
+
 describe('normalizeImageUrl', () => {
   it('should normalize URLs by removing query params and hash', () => {
     expect(normalizeImageUrl('https://example.com/image.jpg?w=100&h=200#hash'))
@@ -347,6 +361,157 @@ describe('dedupeImagesForEdit', () => {
     expect(result.deduplicated).toContain('https://example.com/existing3.jpg');
     expect(result.deduplicated).toContain('https://example.com/new1.jpg');
     expect(result.deduplicated).toContain('https://example.com/new2.jpg');
+  });
+});
+
+describe('IMAGE PRESERVATION INVARIANT: Image Lifecycle Tests', () => {
+  /**
+   * Test 1: Promote then Demote
+   * 
+   * Scenario:
+   * - Start with image in images[]
+   * - Promote to supportingMedia via masonry flag (showInMasonry: true)
+   * - Remove from masonry (showInMasonry: false)
+   * - Save and reload
+   * 
+   * Expected: image returns to images[]
+   */
+  it('Test 1 - Promote then Demote: Image should return to images[] when masonry deselected', () => {
+    const existingImages = ['https://example.com/image1.jpg'];
+    const newImages: string[] = [];
+    
+    // Step 1: Image is promoted to supportingMedia (tracked in imagesBackup)
+    const imagesBackup = new Set(['https://example.com/image1.jpg']);
+    
+    // Step 2: Image is removed from supportingMedia (masonry deselected)
+    // supportingMedia is now empty (no images with showInMasonry: true)
+    const supportingMedia: any[] = [];
+    
+    // Step 3: Deduplication should restore image from backup
+    const result = dedupeImagesForEdit(
+      existingImages,
+      newImages,
+      supportingMedia,
+      imagesBackup,
+      undefined // No explicit delete
+    );
+    
+    // Expected: Image is restored to images[]
+    expect(result.restored).toContain('https://example.com/image1.jpg');
+    expect(result.deduplicated).toContain('https://example.com/image1.jpg');
+    expect(result.deduplicated.length).toBe(1);
+    expect(result.movedToSupporting.length).toBe(0);
+  });
+
+  /**
+   * Test 2: Explicit Delete
+   * 
+   * Scenario:
+   * - Start with image in images[]
+   * - Promote to supportingMedia
+   * - Delete via explicit delete action
+   * 
+   * Expected: image removed from ALL sources (not restored)
+   */
+  it('Test 2 - Explicit Delete: Image should be removed from ALL sources when explicitly deleted', () => {
+    const existingImages = ['https://example.com/image1.jpg'];
+    const newImages: string[] = [];
+    
+    // Step 1: Image was promoted to supportingMedia (tracked in imagesBackup)
+    const imagesBackup = new Set(['https://example.com/image1.jpg']);
+    
+    // Step 2: Image is removed from supportingMedia (masonry deselected)
+    const supportingMedia: any[] = [];
+    
+    // Step 3: Image was explicitly deleted by user
+    const explicitlyDeletedImages = new Set(['https://example.com/image1.jpg']);
+    
+    // Step 4: Deduplication should NOT restore explicitly deleted image
+    const result = dedupeImagesForEdit(
+      existingImages,
+      newImages,
+      supportingMedia,
+      imagesBackup,
+      explicitlyDeletedImages
+    );
+    
+    // Expected: Image is NOT restored (explicitly deleted)
+    expect(result.restored.length).toBe(0);
+    expect(result.deduplicated).not.toContain('https://example.com/image1.jpg');
+    expect(result.deduplicated.length).toBe(0);
+  });
+
+  /**
+   * Test 3: Duplicate Re-Add Behavior
+   * 
+   * Scenario:
+   * - Promote image from images[] → supportingMedia
+   * - Demote image from supportingMedia → images[] (restored)
+   * - Promote again from images[] → supportingMedia
+   * 
+   * Expected: no duplicates, image still persists
+   */
+  it('Test 3 - Duplicate Re-Add: No duplicates when promoting/demoting repeatedly', () => {
+    const existingImages = ['https://example.com/image1.jpg'];
+    const newImages: string[] = [];
+    const imageUrl = 'https://example.com/image1.jpg';
+    const normalizedUrl = imageUrl.toLowerCase().trim();
+    
+    // Step 1: First promotion - image moved to supportingMedia
+    const imagesBackup1 = new Set([normalizedUrl]);
+    const supportingMedia1: any[] = [
+      { type: 'image', url: imageUrl, showInMasonry: true }
+    ];
+    
+    const result1 = dedupeImagesForEdit(
+      existingImages,
+      newImages,
+      supportingMedia1,
+      imagesBackup1,
+      undefined
+    );
+    
+    // Image should be removed from images[] (moved to supportingMedia)
+    expect(result1.deduplicated).not.toContain(imageUrl);
+    expect(result1.movedToSupporting).toContain(imageUrl);
+    
+    // Step 2: Demotion - image removed from supportingMedia (masonry deselected)
+    const supportingMedia2: any[] = []; // Empty - masonry deselected
+    
+    const result2 = dedupeImagesForEdit(
+      existingImages,
+      newImages,
+      supportingMedia2,
+      imagesBackup1, // Still in backup from first promotion
+      undefined
+    );
+    
+    // Image should be restored to images[]
+    expect(result2.restored).toContain(imageUrl);
+    expect(result2.deduplicated).toContain(imageUrl);
+    
+    // Step 3: Second promotion - image moved to supportingMedia again
+    const imagesBackup2 = new Set([normalizedUrl]); // Updated backup
+    const supportingMedia3: any[] = [
+      { type: 'image', url: imageUrl, showInMasonry: true }
+    ];
+    
+    const result3 = dedupeImagesForEdit(
+      result2.deduplicated, // Use restored images as existing
+      newImages,
+      supportingMedia3,
+      imagesBackup2,
+      undefined
+    );
+    
+    // Image should be removed from images[] again (moved to supportingMedia)
+    expect(result3.deduplicated).not.toContain(imageUrl);
+    expect(result3.movedToSupporting).toContain(imageUrl);
+    
+    // Verify no duplicates in any step
+    expect(result1.deduplicated.filter(img => img === imageUrl).length).toBe(0);
+    expect(result2.deduplicated.filter(img => img === imageUrl).length).toBe(1);
+    expect(result3.deduplicated.filter(img => img === imageUrl).length).toBe(0);
   });
 });
 

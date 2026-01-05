@@ -125,6 +125,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // Admin-only: Custom creation date
   const [customCreatedAt, setCustomCreatedAt] = useState<string>('');
   
+  // IMAGE PRESERVATION INVARIANT: Track explicitly deleted images
+  // This ensures images deleted via explicit delete action are NOT restored
+  // even if they were previously promoted to supportingMedia
+  const [explicitlyDeletedImages, setExplicitlyDeletedImages] = useState<Set<string>>(new Set());
+  
   // Data Source State
   // CATEGORY PHASE-OUT: Renamed availableCategories to availableTags
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -706,6 +711,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     });
     
     setExistingImages(optimisticImages);
+    
+    // IMAGE PRESERVATION INVARIANT: Mark this image as explicitly deleted
+    // This prevents it from being restored even if it was in imagesBackup
+    setExplicitlyDeletedImages(prev => {
+      const next = new Set(prev);
+      next.add(normalizedImageUrl);
+      return next;
+    });
 
     try {
 
@@ -1326,6 +1339,9 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     initialData,
                     existingMedia: initialData.media || null,
                     existingSupportingMedia: initialData.supportingMedia || [],
+                    // IMAGE PRESERVATION INVARIANT: Pass explicitly deleted images
+                    // This prevents restoration of images that were explicitly deleted
+                    explicitlyDeletedImages,
                 },
                 {
                     mode: 'edit',

@@ -137,15 +137,24 @@ export function dedupeImagesForCreate(images: string[]): {
  * - Preserves existing images
  * - Adds new images
  * - NEVER removes images without explicit intent
+ * 
+ * IMAGE PRESERVATION INVARIANT:
+ * - If an image was promoted from images[] → supportingMedia[] (tracked in imagesBackup)
+ * - And it's later removed from supportingMedia WITHOUT explicit delete
+ * - It MUST be restored to images[] instead of being lost
+ * - Explicit delete operations are the ONLY way images are removed from the system
  */
 export function dedupeImagesForEdit(
   existingImages: string[],
   newImages: string[],
-  supportingMedia?: any[]
+  supportingMedia?: any[],
+  imagesBackup?: Set<string>,
+  explicitlyDeletedImages?: Set<string>
 ): {
   deduplicated: string[];
   removed: string[];
   movedToSupporting: string[];
+  restored: string[]; // Images restored from imagesBackup
   logs: Array<{ action: string; reason: string; url?: string }>;
 } {
   const existingImagesSet = new Set(
@@ -157,6 +166,7 @@ export function dedupeImagesForEdit(
   const imageMap = new Map<string, string>();
   const removed: string[] = [];
   const movedToSupporting: string[] = [];
+  const restored: string[] = [];
   const logs: Array<{ action: string; reason: string; url?: string }> = [];
   
   // Build set of image URLs in supportingMedia (for pruning check)
@@ -170,6 +180,45 @@ export function dedupeImagesForEdit(
     }
   }
   
+  // IMAGE PRESERVATION INVARIANT: Check for images that should be restored
+  // If an image was in imagesBackup (promoted from images[] to supportingMedia[])
+  // but is no longer in supportingMedia (masonry deselection), restore it to images[]
+  // UNLESS it was explicitly deleted by the user
+  if (imagesBackup && imagesBackup.size > 0) {
+    for (const backupUrl of imagesBackup) {
+      const normalized = backupUrl.toLowerCase().trim();
+      
+      // Skip if explicitly deleted
+      if (explicitlyDeletedImages && explicitlyDeletedImages.has(normalized)) {
+        logs.push({
+          action: 'skipped',
+          reason: 'explicitly-deleted',
+          url: backupUrl,
+        });
+        continue;
+      }
+      
+      // If image is NOT in supportingMedia anymore (masonry deselected), restore it
+      if (!supportingMediaImageUrls.has(normalized)) {
+        // Find original URL from existingImages to preserve casing
+        // If not found in existingImages, use the backup URL (it was promoted from there)
+        const originalUrl = existingImages.find(img => 
+          img && typeof img === 'string' && img.toLowerCase().trim() === normalized
+        ) || backupUrl; // Fallback to backup URL if not in existingImages
+        
+        if (originalUrl && !imageMap.has(normalized)) {
+          imageMap.set(normalized, originalUrl);
+          restored.push(originalUrl);
+          logs.push({
+            action: 'restored',
+            reason: 'masonry-deselected',
+            url: originalUrl,
+          });
+        }
+      }
+    }
+  }
+  
   // Combine existing and new images
   const allImages = [...existingImages, ...newImages];
   const beforeCount = allImages.length;
@@ -177,6 +226,18 @@ export function dedupeImagesForEdit(
   for (const img of allImages) {
     if (img && typeof img === 'string' && img.trim()) {
       const normalized = img.toLowerCase().trim();
+      
+      // IMAGE PRESERVATION INVARIANT: Skip explicitly deleted images
+      // Explicit delete operations are the ONLY way images are removed from the system
+      if (explicitlyDeletedImages && explicitlyDeletedImages.has(normalized)) {
+        removed.push(img);
+        logs.push({
+          action: 'removed',
+          reason: 'explicitly-deleted',
+          url: img,
+        });
+        continue;
+      }
       
       // Check if this image already exists in the article
       if (existingImagesSet.has(normalized)) {
@@ -241,6 +302,7 @@ export function dedupeImagesForEdit(
     deduplicated: imagesAfterDedup,
     removed,
     movedToSupporting,
+    restored,
     logs,
   };
 }

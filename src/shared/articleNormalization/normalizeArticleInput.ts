@@ -10,6 +10,30 @@
  * - Preserves all defaults and quirks exactly as-is
  * - Do NOT simplify logic yet
  * - Do NOT unify behavior
+ * 
+ * ============================================================================
+ * IMAGE PRESERVATION INVARIANT (STRICT ENFORCEMENT)
+ * ============================================================================
+ * 
+ * "No image should ever be removed unless the user explicitly deletes it."
+ * 
+ * This invariant ensures that images are never lost during normalization,
+ * even when they move between images[], supportingMedia[], and masonryMediaItems.
+ * 
+ * Implementation:
+ * 1. When an image is promoted from images[] → supportingMedia[], store it in
+ *    imagesBackup (internal, non-rendered field for safety).
+ * 2. If an image is later removed from supportingMedia WITHOUT an explicit
+ *    delete action (e.g., masonry deselection), it MUST be restored to images[].
+ * 3. Explicit delete operations (marked with explicitDelete=true) are the
+ *    ONLY way images are removed from the system.
+ * 
+ * Rationale:
+ * - Users may toggle masonry selection on/off without intending to delete images
+ * - Images should persist across UI state changes unless explicitly deleted
+ * - This prevents accidental data loss during edit operations
+ * 
+ * ============================================================================
  */
 
 import { detectProviderFromUrl } from '@/utils/urlUtils';
@@ -49,6 +73,10 @@ export interface ArticleInputData {
   initialData?: Article;
   existingMedia?: NuggetMedia | null;
   existingSupportingMedia?: any[];
+  
+  // Image preservation invariant tracking
+  imagesBackup?: Set<string>; // Internal field: tracks images promoted from images[] to supportingMedia[]
+  explicitlyDeletedImages?: Set<string>; // Internal field: tracks images explicitly deleted by user
 }
 
 /**
@@ -81,6 +109,9 @@ export interface NormalizedArticleInput {
   
   // Edit mode specific
   hasEmptyTagsError?: boolean;
+  
+  // Image preservation invariant tracking (internal, not persisted)
+  imagesBackup?: Set<string>; // Images that were promoted from images[] to supportingMedia[]
 }
 
 /**
@@ -443,13 +474,21 @@ async function buildSupportingMediaCreate(
 /**
  * Build supportingMedia array for EDIT mode
  * Matches exact logic from CreateNuggetModal.tsx lines 1470-1613
+ * 
+ * IMAGE PRESERVATION INVARIANT:
+ * - When an image is promoted from images[] → supportingMedia[], store it in imagesBackup
+ * - This allows restoration if the image is later removed from supportingMedia without explicit delete
  */
 async function buildSupportingMediaEdit(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
-): Promise<{ supportingMedia?: any[]; imagesToRemove?: Set<string> }> {
-  const { masonryMediaItems, existingSupportingMedia, initialData } = input;
+): Promise<{ supportingMedia?: any[]; imagesToRemove?: Set<string>; imagesBackup?: Set<string> }> {
+  const { masonryMediaItems, existingSupportingMedia, initialData, existingImages = [] } = input;
   const { enrichMediaItemIfNeeded } = options;
+  
+  // Initialize imagesBackup to track images promoted from images[] to supportingMedia[]
+  // This is an internal safety mechanism to prevent image loss during normalization
+  const imagesBackup = new Set<string>();
   
   if (masonryMediaItems.length === 0) {
     return {};
@@ -484,7 +523,13 @@ async function buildSupportingMediaEdit(
   }
   
   // 2. Normalize images from images array that are selected for masonry
+  // IMAGE PRESERVATION: Track images being promoted from images[] to supportingMedia[]
   const legacyImageItems = masonryMediaItems.filter(item => item.source === 'legacy-image');
+  
+  // Build set of existing image URLs for promotion tracking
+  const existingImagesSet = new Set(
+    existingImages.map(img => img && typeof img === 'string' ? img.toLowerCase().trim() : '').filter(Boolean)
+  );
   
   if (legacyImageItems.length > 0) {
     const enrichedLegacyImages = await Promise.all(
@@ -496,6 +541,12 @@ async function buildSupportingMediaEdit(
           showInMasonry: item.showInMasonry,
           masonryTitle: item.masonryTitle || undefined,
         };
+        
+        // IMAGE PRESERVATION INVARIANT: If this image came from images[], add to backup
+        // This ensures we can restore it if masonry selection is removed later
+        if (item.url && existingImagesSet.has(item.url.toLowerCase().trim())) {
+          imagesBackup.add(item.url.toLowerCase().trim());
+        }
         
         const enriched = await enrichMediaItemIfNeeded(baseMedia);
         
@@ -565,6 +616,7 @@ async function buildSupportingMediaEdit(
   return {
     supportingMedia: normalizedSupportingMedia.length > 0 ? normalizedSupportingMedia : undefined,
     imagesToRemove,
+    imagesBackup: imagesBackup.size > 0 ? imagesBackup : undefined,
   };
 }
 
@@ -642,17 +694,26 @@ export async function normalizeArticleInput(
   // Build supportingMedia first (needed for EDIT mode pruning)
   let supportingMedia: any[] | undefined;
   let imagesToRemove: Set<string> | undefined;
+  let imagesBackup: Set<string> | undefined;
   if (mode === 'create') {
     supportingMedia = await buildSupportingMediaCreate(input, options);
   } else {
     const supportingResult = await buildSupportingMediaEdit(input, options);
     supportingMedia = supportingResult.supportingMedia;
     imagesToRemove = supportingResult.imagesToRemove;
+    imagesBackup = supportingResult.imagesBackup;
+    
+    // Merge with existing imagesBackup from input (if any)
+    if (input.imagesBackup) {
+      imagesBackup = imagesBackup 
+        ? new Set([...imagesBackup, ...input.imagesBackup])
+        : new Set(input.imagesBackup);
+    }
   }
 
   // Combine and deduplicate images using shared module (different logic for CREATE vs EDIT)
   let allImages: string[];
-  let dedupResult: { deduplicated: string[]; removed: string[]; movedToSupporting?: string[]; logs: Array<{ action: string; reason: string; url?: string }> };
+  let dedupResult: { deduplicated: string[]; removed: string[]; movedToSupporting?: string[]; restored?: string[]; logs: Array<{ action: string; reason: string; url?: string }> };
   
   if (mode === 'create') {
     const allImageUrlsRaw = [...separatedImageUrls, ...uploadedImageUrls];
@@ -660,7 +721,15 @@ export async function normalizeArticleInput(
     allImages = dedupResult.deduplicated;
   } else {
     const allImageUrlsRaw = [...separatedImageUrls, ...uploadedImageUrls];
-    dedupResult = dedupeImagesForEdit(existingImages, allImageUrlsRaw, supportingMedia);
+    // IMAGE PRESERVATION INVARIANT: Pass imagesBackup and explicitlyDeletedImages to dedupeImagesForEdit
+    // This enables restoration of images when masonry selection is removed
+    dedupResult = dedupeImagesForEdit(
+      existingImages, 
+      allImageUrlsRaw, 
+      supportingMedia,
+      imagesBackup,
+      input.explicitlyDeletedImages
+    );
     allImages = dedupResult.deduplicated;
   }
 
