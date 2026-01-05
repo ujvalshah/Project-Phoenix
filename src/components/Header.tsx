@@ -111,13 +111,13 @@ export const Header: React.FC<HeaderProps> = ({
     <>
       {/* Power User Header - Full-bleed, unified with category bar */}
       {/* No bottom border - category bar provides the visual separation */}
-      <header className={`fixed top-0 left-0 right-0 w-full bg-white ${LAYOUT_CLASSES.HEADER_HEIGHT}`} style={{ zIndex: Z_INDEX.HEADER }}>
+      <header className={`fixed top-0 left-0 right-0 w-full pt-[env(safe-area-inset-top)] bg-white ${LAYOUT_CLASSES.HEADER_HEIGHT}`} style={{ zIndex: Z_INDEX.HEADER }}>
         <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full flex items-center gap-3`}>
           {/* Left: Menu + Logo + Navigation */}
           <div className="flex items-center gap-3 min-w-0 shrink-0">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
               aria-label="Open Menu"
             >
               <Menu size={16} />
@@ -206,7 +206,7 @@ export const Header: React.FC<HeaderProps> = ({
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-20 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="absolute right-20 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center p-1 text-gray-400 hover:text-gray-600 transition-colors"
                   aria-label="Clear search"
                 >
                   <X size={14} />
@@ -220,7 +220,7 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation();
                     setIsFilterPopoverOpen(!isFilterPopoverOpen);
                   }}
-                  className={`p-2 rounded transition-all relative ${
+                  className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all relative ${
                     isFilterPopoverOpen || 
                     selectedCategories.length > 0 || 
                     filterState.favorites || 
@@ -264,7 +264,7 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation();
                     setIsSortOpen(!isSortOpen);
                   }}
-                  className="p-2 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded text-gray-400 hover:text-gray-600 transition-colors"
                   aria-label="Sort"
                   title="Sort"
                 >
@@ -278,7 +278,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center justify-end gap-2 min-w-0 shrink-0">
             <button
               onClick={withAuth(onCreateNugget)}
-              className="px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
             >
               <Sparkles size={16} strokeWidth={2.5} className="text-yellow-500" fill="currentColor" />
             </button>
@@ -286,7 +286,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-100">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-2 rounded transition-all ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
                   viewMode === 'grid'
                     ? 'bg-white text-gray-900'
                     : 'text-gray-500 hover:text-gray-700'
@@ -297,7 +297,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
               <button
                 onClick={() => setViewMode('masonry')}
-                className={`p-2 rounded transition-all ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
                   viewMode === 'masonry'
                     ? 'bg-white text-gray-900'
                     : 'text-gray-500 hover:text-gray-700'
@@ -308,7 +308,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
               <button
                 onClick={() => setViewMode('utility')}
-                className={`p-2 rounded transition-all ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
                   viewMode === 'utility'
                     ? 'bg-white text-gray-900'
                     : 'text-gray-500 hover:text-gray-700'
@@ -321,7 +321,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={toggleFullScreen}
-              className="p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
               title="Toggle Fullscreen"
               aria-label="Toggle Fullscreen"
             >
@@ -330,7 +330,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={toggleTheme}
-              className="p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
               title="Toggle Theme"
               aria-label="Toggle Theme"
             >

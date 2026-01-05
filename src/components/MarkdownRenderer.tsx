@@ -32,7 +32,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     // Table wrapper for horizontal scrolling
     table: ({ children }) => (
       <div className="markdown-table-wrapper overflow-x-auto -mx-1 px-1">
-        <table className="markdown-table w-full border-collapse my-3 text-xs">
+        <table className="markdown-table w-full border-collapse my-3 text-xs sm:text-sm">
           {children}
         </table>
       </div>
@@ -43,12 +43,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
       </thead>
     ),
     th: ({ children }) => (
-      <th className="text-left font-bold px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 whitespace-nowrap text-xs">
+      <th className="text-left font-bold px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 whitespace-nowrap text-xs sm:text-sm">
         {children}
       </th>
     ),
     td: ({ children }) => (
-      <td className="px-2.5 py-1.5 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 align-top text-xs">
+      <td className="px-2.5 py-1.5 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 align-top text-xs sm:text-sm">
         {children}
       </td>
     ),
@@ -89,14 +89,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         {children}
       </p>
     ),
-    // Lists - PHASE 1: Compact spacing, no nested structure issues
+    // Lists - Improved spacing for better mobile readability
     ul: ({ children }) => (
-      <ul className="list-disc list-outside ml-4 mb-2 space-y-0.5">
+      <ul className="list-disc list-outside ml-4 mb-2 space-y-1">
         {children}
       </ul>
     ),
     ol: ({ children }) => (
-      <ol className="list-decimal list-outside ml-4 mb-2 space-y-0.5">
+      <ol className="list-decimal list-outside ml-4 mb-2 space-y-1">
         {children}
       </ol>
     ),

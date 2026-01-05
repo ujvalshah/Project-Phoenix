@@ -120,7 +120,7 @@ export const ToastContainer: React.FC = () => {
   const { toasts, removeToast } = useToastContext();
 
   return (
-    <div className="fixed z-[100] inset-x-0 bottom-0 p-4 pointer-events-none flex flex-col items-center sm:items-end gap-3 sm:bottom-6 sm:right-6">
+    <div className="fixed z-[100] inset-x-0 bottom-0 pb-4 pointer-events-none flex flex-col items-center sm:items-end gap-3 sm:bottom-6 sm:right-6" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onRemove={removeToast} />
       ))}

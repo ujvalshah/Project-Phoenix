@@ -140,7 +140,7 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
           {/* Close button (right) */}
           <button
             onClick={onClose}
-            className="text-white hover:text-slate-300 transition-colors p-2 hover:bg-white/10 rounded-full"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white hover:text-slate-300 transition-colors p-2 hover:bg-white/10 rounded-full"
             aria-label="Close image viewer"
           >
             <X size={24} />
@@ -156,7 +156,7 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
                 e.stopPropagation();
                 goToPrevious();
               }}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 text-white hover:text-slate-300 transition-colors p-3 hover:bg-white/10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 min-h-[44px] min-w-[44px] flex items-center justify-center text-white hover:text-slate-300 transition-colors p-3 hover:bg-white/10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Previous image"
             >
               <ChevronLeft size={32} strokeWidth={2.5} />
@@ -191,7 +191,7 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
                 e.stopPropagation();
                 goToNext();
               }}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 text-white hover:text-slate-300 transition-colors p-3 hover:bg-white/10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 min-h-[44px] min-w-[44px] flex items-center justify-center text-white hover:text-slate-300 transition-colors p-3 hover:bg-white/10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Next image"
             >
               <ChevronRight size={32} strokeWidth={2.5} />

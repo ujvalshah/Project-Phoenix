@@ -44,9 +44,8 @@ export const CardActions: React.FC<CardActionsProps> = ({
   isPreview = false,
   variant = 'grid',
 }) => {
-  // PHASE 2: Consistent 8-pt aligned action buttons (w-8 = 32px, h-8 = 32px)
-  const isFeed = variant === 'feed';
-  const buttonSize = isFeed ? 'w-9 h-9' : 'w-8 h-8';
+  // Mobile UX: Minimum 44px tap targets for better touch ergonomics
+  const buttonSize = 'min-h-[44px] min-w-[44px]';
   const iconSize = 16;
   const textColor = 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300';
   const hoverBg = 'hover:bg-slate-100 dark:hover:bg-slate-800';

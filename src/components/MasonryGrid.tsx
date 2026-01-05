@@ -140,10 +140,10 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
   // Layer 1: Layout logic (delegated to hook)
   const { columns, columnCount } = useMasonry(masonryEntries, {
     breakpoints: [
-      { minWidth: 0, columnCount: 1 },      // < 768px: 1 column
-      { minWidth: 768, columnCount: 3 },    // 768-1024: 3 columns (tablet)
-      { minWidth: 1024, columnCount: 4 },  // 1024-1536: 4 columns (desktop)
-      { minWidth: 1536, columnCount: 5 },  // >= 1536: 5 columns (large desktop)
+      { minWidth: 0, columnCount: 1 },      // < 640px: 1 column (mobile)
+      { minWidth: 640, columnCount: 2 },    // 640-1024: 2 columns (tablet)
+      { minWidth: 1024, columnCount: 3 },  // 1024-1536: 3 columns (desktop)
+      { minWidth: 1536, columnCount: 4 },  // >= 1536: 4 columns (large desktop)
     ],
     defaultColumns: 1, // SSR-safe default (mobile-first, reduces CLS)
     debounceMs: 100,

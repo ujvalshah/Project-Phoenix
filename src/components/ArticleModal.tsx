@@ -48,6 +48,7 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({
       className="fixed inset-0 z-[60] flex justify-end isolation-auto"
       role="dialog"
       aria-modal="true"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       {/* Backdrop */}
       <div 
@@ -57,11 +58,10 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({
       />
       
       {/* Drawer Container - Right Aligned, Full Height
-          Width: 50% on desktop with min/max constraints for optimal reading
-          Mobile uses inline expansion, so drawer is tablet/desktop only */}
+          Width: Full width on mobile, 50% on desktop with max constraint for optimal reading */}
       <div 
         className="
-          relative w-full md:w-1/2 min-w-[600px] max-w-[1000px] h-full 
+          relative w-full md:w-1/2 max-w-[1000px] h-full 
           bg-white dark:bg-slate-950 shadow-2xl 
           flex flex-col border-l border-slate-200 dark:border-slate-800
           animate-in slide-in-from-right duration-300 ease-out
