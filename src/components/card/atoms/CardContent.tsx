@@ -223,28 +223,32 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   }, []);
 
   // TRUNCATION LOGIC (Two-Card Architecture):
-  // - Hybrid cards: Apply truncation + fade + expand/collapse ONLY when content overflows
-  // - Media-Only cards: NO truncation, NO fade, NO expand/collapse (just render content)
+  // - Both Hybrid and Media-Only cards: Apply truncation + fade + expand/collapse when content overflows
+  // - This ensures "Read more" is available for any card with overflowing content
   // NOTE: Tables use a different max-height (200px vs 180px) but still get truncation + fade
   const isHybridCard = cardType === 'hybrid';
-  
+  const isMediaOnlyCard = cardType === 'media-only';
+
   // CRITICAL FIX: We need max-height APPLIED to measure overflow correctly.
   // The flow is:
   // 1. Apply max-height constraint (always, until measurement completes)
   // 2. Measure scrollHeight vs clientHeight
   // 3. If overflow detected → keep max-height, show "Read more"
   // 4. If no overflow → remove max-height, hide "Read more"
-  
+
   // shouldApplyMaxHeight: Apply constraint during measurement OR when overflow confirmed
   // This breaks the circular dependency by ensuring max-height exists for measurement
-  const shouldApplyMaxHeight = isHybridCard && allowExpansion && !isExpanded && (!measured || hadOverflowWhenCollapsed);
-  
+  // Now applies to BOTH hybrid and media-only cards when allowExpansion is true
+  const shouldApplyMaxHeight = allowExpansion && !isExpanded && (!measured || hadOverflowWhenCollapsed);
+
   // shouldClamp: Show fade + "Read more" button only when:
   // - Measurement is complete AND overflow was detected
-  const shouldClamp = isHybridCard && allowExpansion && !isExpanded && hadOverflowWhenCollapsed && measured;
-  
-  // Show collapse control when: Hybrid card, expanded, AND allowExpansion, AND content had overflow
-  const showCollapse = isHybridCard && allowExpansion && isExpanded && hadOverflowWhenCollapsed;
+  // Now applies to BOTH hybrid and media-only cards
+  const shouldClamp = allowExpansion && !isExpanded && hadOverflowWhenCollapsed && measured;
+
+  // Show collapse control when: expanded, AND allowExpansion, AND content had overflow
+  // Now applies to BOTH hybrid and media-only cards
+  const showCollapse = allowExpansion && isExpanded && hadOverflowWhenCollapsed;
   
   // 🔍 AUDIT LOGGING - Truncation Application
   // Calculate approximate line count for body text

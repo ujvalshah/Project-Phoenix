@@ -6,7 +6,9 @@
       "Bash(npm run build:*)",
       "Bash(npm run dev:server:*)",
       "Bash(git stash pop:*)",
-      "Bash(git stash drop:*)"
+      "Bash(git stash drop:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nRevert: Remove forced hybrid classification for embed media\n\nYouTube/Twitter/LinkedIn cards now follow standard classification rules:\n- Short text \\(≤200 chars, ≤3 lines\\) → media-only card\n- Long text \\(>3 lines\\) → hybrid card with \"Read more\"\n\nThis allows compact media-only cards while still promoting to hybrid\nwhen text actually overflows.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

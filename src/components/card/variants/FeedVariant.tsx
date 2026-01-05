@@ -79,13 +79,14 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
               <div className="bg-gradient-to-t from-black/80 via-black/60 to-transparent dark:from-black/80 dark:via-black/60 dark:to-transparent pointer-events-none">
                 {/* Caption container - bottom-left aligned, small padding */}
                 {/* Allow pointer events on content so links are clickable */}
-                <div className="px-2 py-1 text-white drop-shadow-sm line-clamp-3 [&_*]:text-white pointer-events-auto [&_a]:pointer-events-auto">
+                {/* NOTE: Removed line-clamp-3 - CardContent handles overflow detection and "Read more" */}
+                <div className="px-2 py-1 text-white drop-shadow-sm [&_*]:text-white pointer-events-auto [&_a]:pointer-events-auto">
                   <CardContent
                     excerpt={data.excerpt}
                     content={data.content}
                     isTextNugget={data.isTextNugget}
                     variant="feed"
-                    allowExpansion={false}
+                    allowExpansion={true}
                     cardType="media-only"
                   />
                 </div>
