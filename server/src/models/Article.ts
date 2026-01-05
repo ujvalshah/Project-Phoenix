@@ -57,9 +57,8 @@ export interface IArticle extends Document {
   content: string;
   authorId: string;
   authorName: string;
-  category: string; // Single category (legacy)
-  categories?: string[]; // Array of categories (new) - display names
-  categoryIds?: string[]; // Array of Tag ObjectIds for stable references
+  // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
+  // Tags are now the only classification field
   publishedAt: string;
   tags: string[];
   readTime?: number; // Estimated read time in minutes
@@ -138,9 +137,8 @@ const ArticleSchema = new Schema<IArticle>({
   content: { type: String, default: '' }, // Optional - validation handled by Zod schema
   authorId: { type: String, required: true },
   authorName: { type: String, required: true },
-  category: { type: String, required: true }, // Keep for backward compatibility
-  categories: { type: [String], default: [] }, // Display names
-  categoryIds: { type: [String], default: [] }, // Tag ObjectIds for stable matching
+  // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
+  // Tags are now the only classification field
   publishedAt: { type: String, required: true },
   tags: { type: [String], default: [] },
   readTime: { type: Number }, // Optional read time
@@ -175,12 +173,10 @@ ArticleSchema.index({ authorId: 1 }); // Ownership queries
 ArticleSchema.index({ publishedAt: -1 }); // List sorting (latest first)
 ArticleSchema.index({ createdAt: -1 }); // List sorting (if using created_at)
 ArticleSchema.index({ visibility: 1, publishedAt: -1 }); // Visibility filters with sorting
-ArticleSchema.index({ 'categories': 1 }); // Category filtering
+// CATEGORY PHASE-OUT: Removed category and categoryIds indexes
 ArticleSchema.index({ tags: 1 }); // Tag filtering
 // Audit Phase-2 Fix: Add compound index for authorId + visibility (common privacy filtering pattern)
 ArticleSchema.index({ authorId: 1, visibility: 1 }); // User's articles by visibility
-// Audit Phase-2 Fix: Add index for categoryIds array field (for stable category references)
-ArticleSchema.index({ categoryIds: 1 });
 // Audit Phase-2 Fix: Add index for media.url field (for YouTube cache lookup in AI controller)
 ArticleSchema.index({ 'media.url': 1 });
 

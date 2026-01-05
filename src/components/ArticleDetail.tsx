@@ -251,12 +251,12 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
            <div className={`${isModal ? "max-w-none px-5 py-6" : "w-full px-0"} space-y-6`}>
                {/* Title & Meta */}
                <div>
-                   {/* Categories - Matches card styling */}
-                   {article?.categories && article.categories.length > 0 && (
+                   {/* CATEGORY PHASE-OUT: Tags - Matches card styling */}
+                   {article?.tags && article.tags.length > 0 && (
                        <div className="flex flex-wrap gap-1 mb-3">
-                           {article.categories.map(cat => (
-                               <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-slate-50 border border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
-                                   {cat}
+                           {article.tags.map(tag => (
+                               <span key={tag} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-slate-50 border border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
+                                   {tag}
                                </span>
                            ))}
                        </div>

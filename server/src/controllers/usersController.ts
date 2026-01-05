@@ -271,26 +271,23 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Get user's interested categories from nested preferences
-    const categories = user.preferences?.interestedCategories || [];
+    // CATEGORY PHASE-OUT: Use tags instead of categories for personalized feed
+    // Get user's interested tags from nested preferences (previously interestedCategories)
+    const tags = user.preferences?.interestedCategories || []; // Keep field name for backward compatibility
     const lastVisit = user.appState?.lastLoginAt 
       ? new Date(user.appState.lastLoginAt) 
       : new Date(0);
     
     // Build MongoDB query for articles matching user's interests
     // PRIVACY FIX: Only show public articles in personalized feed
-    // The $or was incorrectly structured - it would match ANY condition, including private articles
     const articleQuery: any = {
       visibility: 'public', // Only public articles in personalized feed
-      $or: [
-        { categories: { $in: categories } },
-        { category: { $in: categories } }
-      ]
+      tags: { $in: tags } // Use tags instead of categories
     };
     
-    // If user has no categories, show all public articles
-    if (categories.length === 0) {
-      delete articleQuery.$or;
+    // If user has no tags, show all public articles
+    if (tags.length === 0) {
+      delete articleQuery.tags;
       articleQuery.visibility = 'public';
     }
     

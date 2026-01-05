@@ -4,7 +4,11 @@
  * Implements CACHE-FIRST logic:
  * 1. Check if videoId exists in database
  * 2. If found, return cached nugget with cacheHit: true
- * 3. If not found, call Gemini and save as 'ai-draft'
+ * 3. If not found, call Gemini and return intelligence only
+ * 
+ * AI auto-draft article creation has been permanently removed — analysis-only endpoint.
+ * This endpoint ONLY returns enrichment/intelligence and NEVER creates articles.
+ * Article creation is now always user-initiated via CreateNuggetModal.
  */
 
 import { Request, Response } from 'express';
@@ -77,13 +81,13 @@ async function getCachedIntelligence(videoId: string): Promise<{ article: any; i
     ];
 
     // Find article with matching YouTube URL in media.url
+    // Check any article with this YouTube URL (manual or AI-created) for cached intelligence
     const cachedArticle = await Article.findOne({
       $or: [
         { 'media.url': { $regex: urlPatterns[0] } },
         { 'media.url': { $regex: urlPatterns[1] } },
         { 'media.url': { $regex: urlPatterns[2] } },
       ],
-      source_type: { $in: ['ai-draft', 'ai-published'] },
     }).sort({ created_at: -1 }); // Get most recent
 
     if (!cachedArticle) return null;
@@ -94,7 +98,10 @@ async function getCachedIntelligence(videoId: string): Promise<{ article: any; i
       metadata: {
         source: cachedArticle.media?.previewMetadata?.providerName || 'YouTube',
         speaker: cachedArticle.media?.previewMetadata?.authorName || 'Unknown',
-        category: (cachedArticle.category as NuggetIntelligence['metadata']['category']) || 'Tech',
+        // CATEGORY PHASE-OUT: Use first tag instead of category
+        category: (cachedArticle.tags && cachedArticle.tags.length > 0 
+          ? cachedArticle.tags[0] as NuggetIntelligence['metadata']['category']
+          : 'Tech'),
         sentiment: 'Neutral',
       },
       abstract: cachedArticle.excerpt || '',
@@ -201,18 +208,21 @@ function extractTags(intel: NuggetIntelligence): string[] {
 }
 
 // ============================================================================
-// MAIN ENDPOINT: Process YouTube (Cache-First + Save)
+// MAIN ENDPOINT: Process YouTube (Cache-First, Intelligence Only)
 // ============================================================================
 
 /**
- * Process YouTube video with cache-first logic and auto-save
+ * Process YouTube video with cache-first logic - returns intelligence only
  * POST /api/ai/process-youtube
  * Body: { videoUrl: string }
  * 
  * CACHE-FIRST:
  * 1. Check if video exists in MongoDB
- * 2. If found, return cached data (cacheHit: true)
- * 3. If not found, call Gemini and save as 'ai-draft'
+ * 2. If found, return cached intelligence (cacheHit: true)
+ * 3. If not found, call Gemini and return intelligence only (no article creation)
+ * 
+ * AI auto-creation disabled - returns intelligence/metadata for UI population only.
+ * User must submit create form to create article.
  * 
  * Requires authentication (uses req.user for authorId)
  */
@@ -259,7 +269,7 @@ export const processYouTube = async (req: Request, res: Response) => {
       return res.json({
         success: true,
         data: cached.intelligence,
-        articleId: cached.article._id.toString(),
+        metadata: cached.article.media?.previewMetadata || {},
         cacheHit: true,
         keyStatus: getKeyStatus()
       });
@@ -272,49 +282,20 @@ export const processYouTube = async (req: Request, res: Response) => {
     
     const intelligence = await extractNuggetIntelligence(videoUrl);
     
-    // =========================================================================
-    // SAVE AS AI-DRAFT
-    // =========================================================================
-    const articleData = {
+    // Return intelligence only - no article creation (analysis-only endpoint)
+    // Build metadata object for response (for UI population)
+    const metadata = {
+      url: videoUrl,
       title: intelligence.title,
-      excerpt: intelligence.abstract,
-      content: formatIntelligenceAsContent(intelligence),
-      authorId: user.id,
-      authorName: user.name || user.email || 'Unknown',
-      category: intelligence.metadata.category,
-      categories: [intelligence.metadata.category],
-      tags: [
-        intelligence.metadata.category.toLowerCase(),
-        intelligence.metadata.sentiment.toLowerCase(),
-        ...extractTags(intelligence)
-      ],
-      publishedAt: new Date().toISOString(),
-      visibility: 'private',
-      source_type: 'ai-draft',
-      
-      media: {
-        type: 'youtube' as const,
-        url: videoUrl,
-        previewMetadata: {
-          url: videoUrl,
-          title: intelligence.title,
-          description: intelligence.abstract,
-          providerName: intelligence.metadata.source,
-          authorName: intelligence.metadata.speaker,
-        }
-      },
-      
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      description: intelligence.abstract,
+      providerName: intelligence.metadata.source,
+      authorName: intelligence.metadata.speaker,
     };
-
-    const savedArticle = await Article.create(articleData);
-    console.log(`[AI] ✓ DRAFT saved: ${savedArticle._id}`);
     
     res.json({
       success: true,
       data: intelligence,
-      articleId: savedArticle._id.toString(),
+      metadata,
       cacheHit: false,
       keyStatus: getKeyStatus()
     });

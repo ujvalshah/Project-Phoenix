@@ -69,6 +69,22 @@ export class RestAdapter implements IAdapter {
       return Promise.reject(new Error('At least one tag is required to create a nugget'));
     }
     
+    // CATEGORY PHASE-OUT: Safety log if categories are still being produced
+    if (article.categories && article.categories.length > 0) {
+      console.warn('[RestAdapter.createArticle] ⚠️ CATEGORY PHASE-OUT: Categories detected in create payload but will not be sent. Use tags instead.', {
+        categories: article.categories,
+        tags: tags,
+        articleId: (article as any).id,
+      });
+    }
+    if (article.categoryIds && article.categoryIds.length > 0) {
+      console.warn('[RestAdapter.createArticle] ⚠️ CATEGORY PHASE-OUT: categoryIds detected in create payload but will not be sent. Use tags instead.', {
+        categoryIds: article.categoryIds,
+        tags: tags,
+        articleId: (article as any).id,
+      });
+    }
+    
     const payload: any = {
       title: article.title,
       content: article.content,
@@ -77,13 +93,8 @@ export class RestAdapter implements IAdapter {
       // CRITICAL: Include mediaIds if present (Cloudinary-uploaded media)
       mediaIds: article.mediaIds,
       authorName: article.author?.name || '',
-      // Server requires 'category' (singular, required string), use first category or 'General'
-      category: article.categories && article.categories.length > 0 
-        ? article.categories[0] 
-        : 'General',
-      categories: article.categories || [],
-      // Phase 2: Include categoryIds if present (for stable ID references)
-      ...(article.categoryIds && article.categoryIds.length > 0 && { categoryIds: article.categoryIds }),
+      // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
+      // Tags are now the only classification field
       tags: tags, // Use validated tags array
       readTime: article.readTime,
       visibility: article.visibility || 'public',
@@ -115,15 +126,27 @@ export class RestAdapter implements IAdapter {
     if (updates.title !== undefined) payload.title = updates.title;
     if (updates.content !== undefined) payload.content = updates.content;
     if (updates.excerpt !== undefined) payload.excerpt = updates.excerpt;
+    
+    // CATEGORY PHASE-OUT: Safety log if categories are still being produced
     if (updates.categories !== undefined) {
-      payload.categories = updates.categories;
-      // Backend also requires category (singular) - use first category or 'General'
-      payload.category = updates.categories && updates.categories.length > 0 
-        ? updates.categories[0] 
-        : 'General';
+      console.warn('[RestAdapter.updateArticle] ⚠️ CATEGORY PHASE-OUT: Categories detected in update payload but will not be sent. Use tags instead.', {
+        categories: updates.categories,
+        tags: updates.tags,
+        articleId: id,
+      });
+      // Do not include categories in payload
     }
-    // Phase 2: Include categoryIds if present
-    if (updates.categoryIds !== undefined) payload.categoryIds = updates.categoryIds;
+    if (updates.categoryIds !== undefined) {
+      console.warn('[RestAdapter.updateArticle] ⚠️ CATEGORY PHASE-OUT: categoryIds detected in update payload but will not be sent. Use tags instead.', {
+        categoryIds: updates.categoryIds,
+        tags: updates.tags,
+        articleId: id,
+      });
+      // Do not include categoryIds in payload
+    }
+    
+    // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
+    // Tags are now the only classification field
     if (updates.visibility !== undefined) payload.visibility = updates.visibility;
     // CRITICAL: Preserve masonryTitle when updating media field
     // masonryTitle must flow through all layers to persist correctly

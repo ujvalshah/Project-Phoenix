@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "scanDate": "2026-01-05T08:59:56.137Z",
+    "mode": "apply",
+    "totalArticles": 54,
+    "articlesModified": 0,
+    "articlesSkipped": 54,
+    "executionTimeMs": 484
+  },
+  "summary": [],
+  "breakdownBySourceType": {},
+  "breakdownByYear": {},
+  "affectedRecords": [],
+  "executionStats": {
+    "batchesProcessed": 0,
+    "recordsPerBatch": 500,
+    "errors": 0
+  }
+}

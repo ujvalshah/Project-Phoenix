@@ -4,8 +4,11 @@
  * Dedicated routes for AI-powered content analysis.
  * Separated from batch processing for clean architecture.
  * 
+ * AI auto-draft article creation has been permanently removed — analysis-only endpoints.
+ * These endpoints ONLY return enrichment/intelligence and NEVER create articles.
+ * 
  * Endpoints:
- * - POST /api/ai/process-youtube - Process YouTube video (cache-first)
+ * - POST /api/ai/process-youtube - Process YouTube video (cache-first, no article creation)
  * - POST /api/ai/extract-intelligence - Extract NuggetIntelligence
  * - POST /api/ai/summarize - Text summarization (legacy)
  * - POST /api/ai/takeaways - Generate takeaways (legacy)
@@ -29,8 +32,11 @@ const router = Router();
  * 
  * Process a YouTube video with CACHE-FIRST logic:
  * 1. Check MongoDB for existing processed video
- * 2. If found, return cached nugget (cacheHit: true)
- * 3. If not found, call Gemini and save as 'ai-draft'
+ * 2. If found, return cached intelligence (cacheHit: true)
+ * 3. If not found, call Gemini and return intelligence only (no article creation)
+ * 
+ * This endpoint no longer creates articles. It returns intelligence/metadata for UI population only.
+ * User must submit create form to create article.
  * 
  * Requires authentication.
  * 

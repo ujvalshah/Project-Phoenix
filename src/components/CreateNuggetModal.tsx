@@ -31,6 +31,8 @@ import { MasonryMediaToggle } from './CreateNuggetModal/MasonryMediaToggle';
 import { collectMasonryMediaItems, MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import type { Article } from '@/types';
+import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeArticleInput';
+import { normalizeTags } from '@/shared/articleNormalization/normalizeTags';
 
 interface CreateNuggetModalProps {
   isOpen: boolean;
@@ -109,7 +111,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   // Metadata State
-  const [categories, setCategories] = useState<string[]>([]);
+  // CATEGORY PHASE-OUT: Removed categories state - using tags only
+  const [tags, setTags] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   
@@ -123,7 +126,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const [customCreatedAt, setCustomCreatedAt] = useState<string>('');
   
   // Data Source State
-  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  // CATEGORY PHASE-OUT: Renamed availableCategories to availableTags
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [allCollections, setAllCollections] = useState<Collection[]>([]);
   
   // UI State
@@ -156,7 +160,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         setIsTitleUserEdited(!!initialData.title); // PHASE 6: Mark as edited if title exists
         setSuggestedTitle(null); // PHASE 3: Clear suggestion in edit mode
         setContent(initialData.content || '');
-        setCategories(initialData.categories || []);
+        // CATEGORY PHASE-OUT: Use tags instead of categories
+        setTags(initialData.tags || []);
         // Initialize customCreatedAt if article has isCustomCreatedAt flag (admin only)
         if (isAdmin && (initialData as any).isCustomCreatedAt && initialData.publishedAt) {
           // Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
@@ -284,13 +289,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   const loadData = async () => {
     try {
-      const [cats, cols] = await Promise.all([
-        storageService.getCategories(),
+      // CATEGORY PHASE-OUT: Use getCategories (which now returns tags) instead of categories
+      const [tagNames, cols] = await Promise.all([
+        storageService.getCategories(), // This method name is kept for backward compatibility but returns tags
         storageService.getCollections()
       ]);
-      // Filter out any non-string or empty category values
-      const validCategories = (cats || []).filter((cat): cat is string => typeof cat === 'string' && cat.trim() !== '');
-      setAvailableCategories(validCategories);
+      // Filter out any non-string or empty tag values
+      const validTags = (tagNames || []).filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '');
+      setAvailableTags(validTags);
       setAllCollections(cols || []);
       setAvailableAliases([]); // Content aliases feature not yet implemented
       setSelectedAlias("Custom...");
@@ -315,7 +321,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setDetectedLink(null);
     setLinkMetadata(null);
     setAttachments([]);
-    setCategories([]);
+    setTags([]);
     setVisibility('public');
     setSelectedCollections([]);
     // categoryInput and collectionInput are now managed by components
@@ -808,8 +814,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // addCategory and toggleCollection are now handled by TagSelector and CollectionSelector components
 
   // Field-level validation functions
+  // Use shared normalization to ensure consistency
   const validateTags = (): string | null => {
-    if (categories.length === 0) {
+    // Use shared normalizeTags utility for consistency
+    const normalizedTags = normalizeTags(tags);
+    if (normalizedTags.length === 0) {
       return "Please add at least one tag. Tags enable smarter news discovery.";
     }
     return null;
@@ -826,13 +835,13 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     return null;
   };
 
-  // Validate tags when categories change (if touched)
+  // Validate tags when tags change (if touched)
   useEffect(() => {
     if (tagsTouched) {
       const error = validateTags();
       setTagsError(error);
     }
-  }, [categories, tagsTouched]);
+  }, [tags, tagsTouched]);
 
   // Validate content when relevant fields change (if touched)
   useEffect(() => {
@@ -1193,14 +1202,21 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             setContentError(error);
         }
         
-        // Add unique categories safely
+        // CATEGORY PHASE-OUT: Add unique tags safely
+        // Use shared normalization utility for consistency
         const returnedTags = Array.isArray(summary.tags) ? summary.tags : [];
-        // Filter to only include valid string tags
-        const validTags = returnedTags.filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '');
-        const newCats = validTags.filter(tag => !categories.includes(tag));
+        const normalizedReturnedTags = normalizeTags(returnedTags);
         
-        if (newCats.length > 0) {
-            setCategories(prev => [...prev, ...newCats]);
+        // Case-insensitive duplicate check against existing tags
+        const existingTagsNormalized = new Set(
+          tags.map(tag => tag.toLowerCase().trim())
+        );
+        const newTags = normalizedReturnedTags.filter(tag => 
+          !existingTagsNormalized.has(tag.toLowerCase().trim())
+        );
+        
+        if (newTags.length > 0) {
+            setTags(prev => [...prev, ...newTags]);
             if (!tagsTouched) setTagsTouched(true);
             // Clear tags error immediately when AI adds tags
             if (tagsError) {
@@ -1208,9 +1224,17 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 setTagsError(error);
             }
             // Optimistically add to available if missing
-            newCats.forEach(cat => {
-                if (!availableCategories.includes(cat)) {
-                    setAvailableCategories(prev => [...prev, cat].filter((c): c is string => typeof c === 'string' && c.trim() !== '').sort());
+            // Use shared normalization for consistency
+            newTags.forEach(tag => {
+                const normalizedTag = tag.trim();
+                const exists = availableTags.some(
+                    existing => existing.toLowerCase().trim() === normalizedTag.toLowerCase()
+                );
+                if (!exists && normalizedTag.length > 0) {
+                    setAvailableTags(prev => {
+                        const normalized = normalizeTags([...prev, normalizedTag]);
+                        return normalized.sort();
+                    });
                 }
             });
         }
@@ -1223,6 +1247,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         setIsAiLoading(false);
     }
   };
+
 
   const handleSubmit = async () => {
     // Mark all fields as touched to show validation errors
@@ -1269,7 +1294,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         const wordCount = content.trim().split(/\s+/).length;
         const readTime = Math.max(1, Math.ceil(wordCount / 200));
 
-        // Handle edit mode - only update editable fields
+        // EDIT MODE — normalized pipeline (Phase-2 complete, legacy removed)
         if (mode === 'edit' && initialData) {
             // CRITICAL: Wait for metadata fetch if in progress
             // This ensures media is included when URL is added during edit
@@ -1290,327 +1315,121 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 }
             }
             
-            // Prepare update payload with only editable fields
-            // FIX: Include readTime in update payload to ensure it updates when content changes.
-            // This matches create-mode behavior where readTime is calculated and included.
-            // The readTime calculation uses the same formula (200 words per minute) as create mode.
-            const updatePayload: Partial<Article> = {
-                title: finalTitle,
-                content: content.trim() || '',
-                categories,
-                visibility,
-                readTime, // Recalculated readTime based on updated content (matches create-mode behavior)
-            };
-            
-            // Admin-only: Custom creation date
-            if (isAdmin && customCreatedAt) {
-                (updatePayload as any).customCreatedAt = new Date(customCreatedAt).toISOString();
-            }
-            
-            // Update excerpt if content changed
-            const excerptText = content.trim() || finalTitle || '';
-            updatePayload.excerpt = excerptText.length > 150 ? excerptText.substring(0, 150) + '...' : excerptText;
-            
-            // Handle URLs/media updates using shared utility
-            const imageUrls: string[] = [];
-            const linkUrls: string[] = [];
-            
-            for (const url of urls) {
-                const urlType = detectProviderFromUrl(url);
-                if (urlType === 'image') {
-                    imageUrls.push(url);
-                } else {
-                    linkUrls.push(url);
-                }
-            }
-            
-            // Use shared getPrimaryUrl function (SINGLE SOURCE OF TRUTH)
-            const primaryUrl = getPrimaryUrl(urls) || detectedLink;
-            
-            // CRITICAL: Always update media if URLs exist or were changed
-            // This ensures media appears after adding URL via Edit
-            if (primaryUrl) {
-                if (finalMetadata) {
-                    // Use fetched metadata
-                    updatePayload.media = {
-                        ...finalMetadata,
-                        previewMetadata: finalMetadata.previewMetadata ? {
-                            ...finalMetadata.previewMetadata,
-                            url: finalMetadata.previewMetadata.url || primaryUrl || '',
-                            siteName: customDomain || finalMetadata.previewMetadata.siteName,
-                        } : {
-                            url: primaryUrl || '',
-                            title: finalTitle,
-                            siteName: customDomain || undefined,
-                        }
-                    };
-                } else {
-                    // Create minimal media object if metadata not available
-                    // This ensures media field is set even if fetch failed
-                    updatePayload.media = {
-                        type: detectProviderFromUrl(primaryUrl),
-                        url: primaryUrl,
-                        previewMetadata: {
-                            url: primaryUrl,
-                            title: finalTitle,
-                            siteName: customDomain || undefined,
-                        }
-                    };
-                }
-            } else if (urls.length === 0) {
-                // URLs were removed, clear media
-                updatePayload.media = null;
-            }
-            // If primaryUrl is null but urls exist (all images), don't update media
-            
-            // Collect mediaIds and secureUrls from successfully uploaded images in edit mode
+            // Collect mediaIds and uploadedImageUrls for normalizeArticleInput
             const mediaIds: string[] = [];
             const uploadedImageUrls: string[] = [];
             for (const att of attachments) {
                 if (att.type === 'image' && att.mediaId) {
                     mediaIds.push(att.mediaId);
-                    // Also collect Cloudinary URLs for display
                     if (att.secureUrl) {
                         uploadedImageUrls.push(att.secureUrl);
                     }
                 }
             }
             
-            // Include existing mediaIds from initialData
-            const existingMediaIds = initialData.mediaIds || [];
-            const allMediaIds = [...existingMediaIds, ...mediaIds];
+            // Build payload using shared normalizeArticleInput
+            const normalizedInput = await normalizeArticleInput(
+                {
+                    title: finalTitle,
+                    content,
+                    categories: tags, // CATEGORY PHASE-OUT: Pass tags as categories for backward compatibility with normalizeArticleInput
+                    visibility,
+                    urls,
+                    detectedLink: detectedLink || null,
+                    linkMetadata: finalMetadata,
+                    imageUrls: [], // Will be separated from urls by normalizeArticleInput
+                    uploadedImageUrls,
+                    mediaIds,
+                    uploadedDocs: attachments.filter(att => att.type === 'document').map(att => ({
+                        url: att.secureUrl || att.previewUrl,
+                        name: att.name,
+                        type: att.type,
+                    })),
+                    customDomain,
+                    masonryMediaItems,
+                    customCreatedAt: customCreatedAt || null,
+                    isAdmin,
+                    // Edit mode specific
+                    existingImages,
+                    existingMediaIds: initialData.mediaIds || [],
+                    initialData,
+                    existingMedia: initialData.media || null,
+                    existingSupportingMedia: initialData.supportingMedia || [],
+                },
+                {
+                    mode: 'edit',
+                    enrichMediaItemIfNeeded,
+                    classifyArticleMedia,
+                }
+            );
             
-            if (allMediaIds.length > 0) {
-                updatePayload.mediaIds = allMediaIds;
+            // PHASE 1: Validate tags are not empty (same rule as CREATE mode)
+            // If tags become empty after normalization, prevent submission
+            if (normalizedInput.hasEmptyTagsError) {
+                setTagsError("Please add at least one tag. Tags enable smarter news discovery.");
+                setIsSubmitting(false);
+                // Scroll to tags field
+                tagsComboboxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                return;
             }
             
-            // CRITICAL: Add Cloudinary URLs to images array for display
-            // Combine: existing images (from state, already filtered) + URL input images + uploaded Cloudinary images
-            // FIX: Deduplicate to prevent multiple entries of the same image
-            const allImagesRaw = [...existingImages, ...imageUrls, ...uploadedImageUrls];
-            
-            // Deduplicate by URL (case-insensitive, normalized)
-            const imageMap = new Map<string, string>();
-            let duplicatesRemoved = 0;
-            for (const img of allImagesRaw) {
-                if (img && typeof img === 'string' && img.trim()) {
-                    const normalized = img.toLowerCase().trim();
-                    if (!imageMap.has(normalized)) {
-                        imageMap.set(normalized, img); // Keep original casing
-                    } else {
-                        duplicatesRemoved++;
-                    }
-                }
-            }
-            let allImages = Array.from(imageMap.values());
-
-            if (allImages.length > 0) {
-                updatePayload.images = allImages;
+            // CATEGORY PHASE-OUT: Safety log if categories are still being produced
+            if (normalizedInput.categories && normalizedInput.categories.length > 0) {
+                console.warn('[CreateNuggetModal] ⚠️ CATEGORY PHASE-OUT: Categories detected in normalized input (EDIT mode) but will not be sent. Use tags instead.', {
+                    categories: normalizedInput.categories,
+                    tags: normalizedInput.tags,
+                    articleId: initialData.id,
+                });
             }
             
-            // Apply showInMasonry flags and masonryTitle from masonryMediaItems state
-            // CRITICAL: Backend only stores media in the 'media' field, not primaryMedia/supportingMedia
-            // We need to map masonryTitle to the actual 'media' field that gets persisted
-            if (masonryMediaItems.length > 0) {
-                // CRITICAL FIX: Update the 'media' field with masonryTitle
-                // The backend Article model only has 'media' field, not primaryMedia/supportingMedia
-                // masonryTitle must be stored in article.media.masonryTitle
-                const primaryItem = masonryMediaItems.find(item => item.source === 'primary');
-                const legacyMediaItem = masonryMediaItems.find(item => item.source === 'legacy-media');
-                
-                // Determine which media item should have masonryTitle
-                // Priority: legacy-media > primary (if legacy-media exists, it's the actual stored media)
-                const mediaItemWithTitle = legacyMediaItem || primaryItem;
-                
-                if (mediaItemWithTitle && initialData.media) {
-                    // Enrich media if previewMetadata is missing before updating
-                    const enrichedMedia = await enrichMediaItemIfNeeded(initialData.media);
-                    // Update the media field with masonryTitle and showInMasonry
-                    updatePayload.media = {
-                        ...enrichedMedia,
-                        showInMasonry: mediaItemWithTitle.showInMasonry,
-                        masonryTitle: mediaItemWithTitle.masonryTitle || undefined, // Persist masonry tile title
-                    };
-                } else if (mediaItemWithTitle && !updatePayload.media && primaryItem) {
-                    // If media doesn't exist yet but we have primary media, create it
-                    // This handles edge cases where primaryMedia exists but media field doesn't
-                    const classified = classifyArticleMedia(initialData);
-                    if (classified.primaryMedia) {
-                        // Enrich primary media if previewMetadata is missing
-                        const enrichedPrimaryMedia = await enrichMediaItemIfNeeded(classified.primaryMedia);
-                        updatePayload.media = {
-                            type: enrichedPrimaryMedia.type || classified.primaryMedia.type,
-                            url: enrichedPrimaryMedia.url || classified.primaryMedia.url,
-                            thumbnail_url: enrichedPrimaryMedia.thumbnail_url || classified.primaryMedia.thumbnail,
-                            aspect_ratio: enrichedPrimaryMedia.aspect_ratio || classified.primaryMedia.aspect_ratio,
-                            previewMetadata: enrichedPrimaryMedia.previewMetadata || classified.primaryMedia.previewMetadata,
-                            showInMasonry: primaryItem.showInMasonry,
-                            masonryTitle: primaryItem.masonryTitle || undefined,
-                        };
-                    }
-                }
-                
-                // Also update primaryMedia/supportingMedia for frontend consistency
-                // (These are computed fields, but we preserve them for UI state)
-                if (initialData.primaryMedia) {
-                    if (primaryItem) {
-                        // Enrich primary media if previewMetadata is missing
-                        const enrichedPrimaryMedia = await enrichMediaItemIfNeeded(initialData.primaryMedia);
-                        updatePayload.primaryMedia = {
-                            ...enrichedPrimaryMedia,
-                            showInMasonry: primaryItem.showInMasonry,
-                            masonryTitle: primaryItem.masonryTitle || undefined,
-                        };
-                    }
-                }
-                
-                // CRITICAL: Normalize ALL masonry selections into supportingMedia structure
-                // This ensures masonry-selected images from the images array are converted to supportingMedia
-                // and processed through the same normalization pipeline as create mode
-                const normalizedSupportingMedia: any[] = [];
-                
-                // 1. Process existing supportingMedia (if any)
-                if (initialData.supportingMedia && initialData.supportingMedia.length > 0) {
-                    const enrichedExisting = await Promise.all(
-                        initialData.supportingMedia.map(async (media, index) => {
-                            const item = masonryMediaItems.find(item => item.id === `supporting-${index}`);
-                            if (item) {
-                                // Enrich if previewMetadata is missing
-                                const enriched = await enrichMediaItemIfNeeded(media);
-                                return {
-                                    ...enriched,
-                                    showInMasonry: item.showInMasonry,
-                                    masonryTitle: item.masonryTitle || undefined,
-                                };
-                            }
-                            // Also enrich items not in masonryMediaItems (preserve existing behavior)
-                            return await enrichMediaItemIfNeeded(media);
-                        })
-                    );
-                    normalizedSupportingMedia.push(...enrichedExisting);
-                }
-                
-                // 2. Normalize images from images array that are selected for masonry
-                // Find masonry items that come from legacy-image source (images array)
-                const legacyImageItems = masonryMediaItems.filter(item => item.source === 'legacy-image');
-                
-                if (legacyImageItems.length > 0) {
-                    // Convert legacy-image items to supportingMedia format with enrichment
-                    const enrichedLegacyImages = await Promise.all(
-                        legacyImageItems.map(async (item) => {
-                            // Create supportingMedia item structure from legacy-image item
-                            const baseMedia = {
-                                type: 'image' as const,
-                                url: item.url,
-                                thumbnail: item.thumbnail || item.url,
-                                showInMasonry: item.showInMasonry,
-                                masonryTitle: item.masonryTitle || undefined,
-                            };
-                            
-                            // Enrich with previewMetadata if missing
-                            const enriched = await enrichMediaItemIfNeeded(baseMedia);
-                            
-                            // 🔧 ROOT CAUSE FIX: Ensure items marked for Masonry have previewMetadata
-                            // If enrichment failed and item is marked for Masonry, create minimal metadata
-                            if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
-                                console.warn('[CreateNuggetModal] STEP 3 FIX: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
-                                    url: enriched.url,
-                                    type: enriched.type,
-                                });
-                                enriched.previewMetadata = {
-                                    url: enriched.url,
-                                    imageUrl: enriched.url,
-                                    mediaType: 'image',
-                                };
-                            }
-                            
-                            return enriched;
-                        })
-                    );
-                    
-                    normalizedSupportingMedia.push(...enrichedLegacyImages);
-                }
-                
-                // 3. Also process other masonry items that might need normalization
-                // (e.g., items from URLs or other sources that should be in supportingMedia)
-                const otherSupportingItems = masonryMediaItems.filter(
-                    item => item.source === 'supporting' && 
-                    !normalizedSupportingMedia.some(existing => existing.url === item.url)
-                );
-                
-                if (otherSupportingItems.length > 0) {
-                    const enrichedOther = await Promise.all(
-                        otherSupportingItems.map(async (item) => {
-                            const baseMedia = {
-                                type: item.type,
-                                url: item.url,
-                                thumbnail: item.thumbnail,
-                                showInMasonry: item.showInMasonry,
-                                masonryTitle: item.masonryTitle || undefined,
-                            };
-                            
-                            // Enrich with previewMetadata if missing
-                            const enriched = await enrichMediaItemIfNeeded(baseMedia);
-                            
-                            // 🔧 ROOT CAUSE FIX: Ensure items marked for Masonry have previewMetadata
-                            // If enrichment failed and item is marked for Masonry, create minimal metadata
-                            if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
-                                console.warn('[CreateNuggetModal] STEP 3 FIX: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
-                                    url: enriched.url,
-                                    type: enriched.type,
-                                });
-                                // For non-image types, create minimal metadata with just URL
-                                enriched.previewMetadata = {
-                                    url: enriched.url,
-                                    mediaType: enriched.type || 'link',
-                                };
-                            }
-                            
-                            return enriched;
-                        })
-                    );
-                    
-                    normalizedSupportingMedia.push(...enrichedOther);
-                }
-                
-                // Only update supportingMedia if we have items to save
-                if (normalizedSupportingMedia.length > 0) {
-                    updatePayload.supportingMedia = normalizedSupportingMedia;
-                    
-                    // 🔧 BROADENED FIX: Remove images from images array that are now in supportingMedia
-                    // This prevents duplicate entries (same image in both images array and supportingMedia)
-                    // CRITICAL: Only remove images that are marked for Masonry (showInMasonry: true)
-                    // Keep images in the array if they're NOT in supportingMedia or NOT marked for Masonry
-                    const supportingMediaImageUrls = new Set(
-                        normalizedSupportingMedia
-                            .filter(item => item.type === 'image' && item.url)
-                            .map(item => item.url.toLowerCase().trim())
-                    );
-                    
-                    if (supportingMediaImageUrls.size > 0 && allImages.length > 0) {
-                        const filteredImages = allImages.filter(img => {
-                            if (!img || typeof img !== 'string') return true;
-                            const normalized = img.toLowerCase().trim();
-                            // Keep image if it's NOT in supportingMedia
-                            return !supportingMediaImageUrls.has(normalized);
-                        });
-                        
-                        if (filteredImages.length !== allImages.length) {
-                            const removedCount = allImages.length - filteredImages.length;
-                            console.log('[CreateNuggetModal] BROADENED FIX: Removed images from images array that are in supportingMedia', {
-                                removedCount,
-                                beforeCount: allImages.length,
-                                afterCount: filteredImages.length,
-                                removedUrls: allImages.filter(img => {
-                                    const normalized = img?.toLowerCase().trim();
-                                    return normalized && supportingMediaImageUrls.has(normalized);
-                                }),
-                            });
-                            allImages = filteredImages;
-                        }
-                    }
-                }
+            // Convert normalized output to partial update payload
+            // CRITICAL: Only include fields that have changed (EDIT mode semantics)
+            const updatePayload: Partial<Article> = {
+                title: normalizedInput.title,
+                content: normalizedInput.content,
+                // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
+                visibility: normalizedInput.visibility,
+                readTime: normalizedInput.readTime,
+                excerpt: normalizedInput.excerpt,
+                tags: normalizedInput.tags, // Include normalized tags
+            };
+            
+            // Add optional fields only if they exist (preserve EDIT mode partial update semantics)
+            if (normalizedInput.images !== undefined) {
+                updatePayload.images = normalizedInput.images;
             }
+            if (normalizedInput.mediaIds !== undefined) {
+                updatePayload.mediaIds = normalizedInput.mediaIds;
+            }
+            if (normalizedInput.documents !== undefined) {
+                updatePayload.documents = normalizedInput.documents;
+            }
+            
+            // Handle media field (null vs undefined semantics)
+            // EDIT mode: undefined = don't update, null = clear field
+            if (normalizedInput.media !== undefined) {
+                updatePayload.media = normalizedInput.media;
+            }
+            
+            if (normalizedInput.supportingMedia !== undefined) {
+                updatePayload.supportingMedia = normalizedInput.supportingMedia;
+            }
+            
+            if (normalizedInput.customCreatedAt !== undefined) {
+                updatePayload.customCreatedAt = normalizedInput.customCreatedAt;
+            }
+            
+            // Final debug log before submit
+            const includedFields = Object.keys(updatePayload);
+            console.log('[EDIT FINALIZED] Edit payload built from normalizeArticleInput', {
+                includedFields,
+                hasMedia: updatePayload.media !== undefined,
+                hasSupportingMedia: updatePayload.supportingMedia !== undefined,
+                imagesCount: updatePayload.images?.length || 0,
+            });
+            
+            // Preserve primaryUrl for regression safeguard check
+            const primaryUrl = getPrimaryUrl(urls) || detectedLink;
             
             // Call update
             const updatedArticle = await storageService.updateArticle(initialData.id, updatePayload);
@@ -1729,10 +1548,13 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             }
         }
 
-        // Separate image URLs from regular URLs
+        const finalAliasName = selectedAlias === 'Custom...' ? customAlias : selectedAlias;
+
+        // PHASE 1: Extract normalization logic to shared module
+        // Use normalizeArticleInput to handle ALL normalization logic
+        // Separate image URLs from regular URLs (done internally by normalization, but we need it for source_type calculation)
         const imageUrls: string[] = [];
         const linkUrls: string[] = [];
-        
         for (const url of urls) {
             const urlType = detectProviderFromUrl(url);
             if (urlType === 'image') {
@@ -1742,211 +1564,65 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             }
         }
 
-        // Note: Image URLs are handled separately via media field
-        // They are not added to mediaIds array
-
-        const finalAliasName = selectedAlias === 'Custom...' ? customAlias : selectedAlias;
-
-        // Use shared getPrimaryUrl function (SINGLE SOURCE OF TRUTH)
-        const primaryUrl = getPrimaryUrl(urls) || detectedLink;
-        
-        // Generate excerpt from content if available, otherwise use title or empty
-        const excerptText = content.trim() || finalTitle || '';
-        const excerpt = excerptText.length > 150 ? excerptText.substring(0, 150) + '...' : excerptText;
-        
-        /**
-         * PHASE 4: Tag Data Contract
-         * 
-         * Tags are stored in the 'categories' state variable in the frontend.
-         * When submitting to the backend, we must send them as 'tags' (string[]).
-         * 
-         * Contract:
-         * - Frontend state: categories (string[])
-         * - Backend field: tags (string[])
-         * - Minimum requirement: >= 1 non-empty string
-         * - Validation: Frontend validates before submit, backend validates on receive
-         * 
-         * This normalization ensures:
-         * 1. Only valid string tags are sent (filters out null/undefined/empty)
-         * 2. Tags match categories (single source of truth)
-         * 3. Backend receives the expected format
-         */
-        const validTags = categories.filter((tag): tag is string => 
-            typeof tag === 'string' && tag.trim().length > 0
+        const normalized = await normalizeArticleInput(
+            {
+                title: finalTitle,
+                content,
+                categories: tags, // CATEGORY PHASE-OUT: Pass tags as categories for backward compatibility with normalizeArticleInput
+                visibility,
+                urls,
+                detectedLink,
+                linkMetadata,
+                imageUrls, // Pass separated imageUrls (normalization function will handle deduplication)
+                uploadedImageUrls,
+                mediaIds,
+                uploadedDocs,
+                customDomain,
+                masonryMediaItems,
+                customCreatedAt,
+                isAdmin,
+            },
+            {
+                mode: 'create',
+                enrichMediaItemIfNeeded,
+                classifyArticleMedia,
+            }
         );
-        
+
         // PHASE 5: Regression safeguard - defensive assertion
         // This should never trigger if validation works correctly, but prevents silent failures
-        if (validTags.length === 0) {
+        if (normalized.hasEmptyTagsError) {
             setTagsError("Please add at least one tag. Tags enable smarter news discovery.");
             setIsSubmitting(false);
             return;
         }
-        
-        // Combine image URLs: from URL input + uploaded Cloudinary images
-        // FIX: Deduplicate to prevent multiple entries of the same image
-        const allImageUrlsRaw = [...imageUrls, ...uploadedImageUrls];
-        
-        // Deduplicate by URL (case-insensitive, normalized)
-        const imageMap = new Map<string, string>();
-        let duplicatesRemoved = 0;
-        for (const img of allImageUrlsRaw) {
-            if (img && typeof img === 'string' && img.trim()) {
-                const normalized = img.toLowerCase().trim();
-                if (!imageMap.has(normalized)) {
-                    imageMap.set(normalized, img); // Keep original casing
-                } else {
-                    duplicatesRemoved++;
-                }
-            }
-        }
-        const allImageUrls = Array.from(imageMap.values());
 
+        // CATEGORY PHASE-OUT: Safety log if categories are still being produced
+        if (normalized.categories && normalized.categories.length > 0) {
+            console.warn('[CreateNuggetModal] ⚠️ CATEGORY PHASE-OUT: Categories detected in normalized input but will not be sent. Use tags instead.', {
+                categories: normalized.categories,
+                tags: normalized.tags,
+            });
+        }
+        
         const newArticle = await storageService.createArticle({
-            title: finalTitle,
-            content: content.trim() || '', // Send empty string if no content (allowed when URLs/images exist)
-            excerpt: excerpt,
+            title: normalized.title,
+            content: normalized.content, // Send empty string if no content (allowed when URLs/images exist)
+            excerpt: normalized.excerpt,
             author: { id: currentUserId, name: authorName },
             displayAuthor: (postAs === 'alias' && finalAliasName.trim()) ? { name: finalAliasName.trim() } : undefined,
-            categories,
-            tags: validTags, // FIX: Use categories (tags) instead of empty array 
-            readTime,
-            mediaIds: mediaIds.length > 0 ? mediaIds : undefined, // CRITICAL: Send mediaIds instead of Base64 images
-            images: allImageUrls.length > 0 ? allImageUrls : undefined, // CRITICAL: Cloudinary URLs for display
-            documents: uploadedDocs,
-            visibility,
+            // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
+            tags: normalized.tags,
+            readTime: normalized.readTime,
+            mediaIds: normalized.mediaIds, // CRITICAL: Send mediaIds instead of Base64 images
+            images: normalized.images, // CRITICAL: Cloudinary URLs for display
+            documents: normalized.documents,
+            visibility: normalized.visibility,
             // Admin-only: Custom creation date
-            ...(isAdmin && customCreatedAt ? { customCreatedAt: new Date(customCreatedAt).toISOString() } : {}),
-            // Store multiple URLs in a custom field if supported, or use first URL for media
-            // For now, using first URL for media compatibility
-            // Also create media object for text nuggets if customDomain is set (for source badge display)
-            // CRITICAL: Apply masonry fields from masonryMediaItems state
-            media: (() => {
-                // Find primary media item from masonryMediaItems
-                const primaryItem = masonryMediaItems.find(item => item.source === 'primary');
-
-                const baseMedia = linkMetadata ? {
-                    ...linkMetadata,
-                    previewMetadata: linkMetadata.previewMetadata ? {
-                        ...linkMetadata.previewMetadata,
-                        url: linkMetadata.previewMetadata.url || primaryUrl || '',
-                        siteName: customDomain || linkMetadata.previewMetadata.siteName,
-                    } : {
-                        url: primaryUrl || '',
-                        title: finalTitle,
-                        siteName: customDomain || undefined,
-                    }
-                } : (primaryUrl ? {
-                    type: detectProviderFromUrl(primaryUrl),
-                    url: primaryUrl,
-                    previewMetadata: {
-                        url: primaryUrl,
-                        title: finalTitle,
-                        siteName: customDomain || undefined,
-                    }
-                } : (customDomain ? {
-                    // For text nuggets with custom domain, create minimal media object for source badge
-                    type: 'link' as const,
-                    url: `https://${customDomain}`,
-                    previewMetadata: {
-                        url: `https://${customDomain}`,
-                        title: finalTitle,
-                        siteName: customDomain,
-                    }
-                } : (primaryItem && primaryItem.url ? {
-                    // CRITICAL FIX: For uploaded images (no URL input), create media from primaryItem
-                    // This ensures the first uploaded image gets saved as media with showInMasonry flag
-                    type: primaryItem.type,
-                    url: primaryItem.url,
-                    thumbnail_url: primaryItem.thumbnail,
-                    previewMetadata: primaryItem.previewMetadata || {
-                        url: primaryItem.url,
-                        imageUrl: primaryItem.url,
-                        mediaType: 'image',
-                    },
-                } : null)));
-
-                // Apply masonry fields if primary media exists
-                // CREATE MODE: Primary media defaults to showInMasonry: true (selected by default)
-                // EDIT MODE: Respect stored values (no auto-change)
-                if (baseMedia) {
-                    if (primaryItem) {
-                        // Use value from masonryMediaItems state (user may have unselected it in Create mode)
-                        return {
-                            ...baseMedia,
-                            showInMasonry: primaryItem.showInMasonry !== undefined ? primaryItem.showInMasonry : true,
-                            masonryTitle: primaryItem.masonryTitle || undefined,
-                        };
-                    } else if (mode === 'create') {
-                        // CREATE MODE: If primaryItem doesn't exist but baseMedia does, set default to true
-                        // This ensures primary media is selected by default even if masonryMediaItems state is incomplete
-                        return {
-                            ...baseMedia,
-                            showInMasonry: true,
-                        };
-                    }
-                }
-
-                return baseMedia;
-            })(),
-            // CRITICAL FIX: Create supportingMedia array from masonryMediaItems selections
-            // This ensures multiple media items selected for Masonry are properly structured
-            supportingMedia: await (async () => {
-                // Only process if there are masonry items selected
-                if (masonryMediaItems.length === 0) {
-                    return undefined;
-                }
-
-                const supportingItems: any[] = [];
-
-                // Process all masonry items except primary (primary goes in media field)
-                const nonPrimaryItems = masonryMediaItems.filter(
-                    item => item.source !== 'primary' && item.showInMasonry === true
-                );
-
-                if (nonPrimaryItems.length === 0) {
-                    return undefined;
-                }
-
-                // Convert each selected item to supportingMedia format with enrichment
-                const enrichedItems = await Promise.all(
-                    nonPrimaryItems.map(async (item) => {
-                        const baseMedia = {
-                            type: item.type,
-                            url: item.url,
-                            thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
-                            showInMasonry: item.showInMasonry,
-                            masonryTitle: item.masonryTitle || undefined,
-                        };
-
-                        // Enrich with previewMetadata if missing
-                        const enriched = await enrichMediaItemIfNeeded(baseMedia);
-
-                        // Ensure items marked for Masonry have previewMetadata
-                        if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
-                            console.warn('[CreateNuggetModal] CREATE MODE: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
-                                url: enriched.url,
-                                type: enriched.type,
-                            });
-                            enriched.previewMetadata = {
-                                url: enriched.url,
-                                imageUrl: enriched.type === 'image' ? enriched.url : undefined,
-                                mediaType: enriched.type || 'image',
-                            };
-                        }
-
-                        return enriched;
-                    })
-                );
-
-                supportingItems.push(...enrichedItems);
-
-                return supportingItems.length > 0 ? supportingItems : undefined;
-            })(),
-            source_type: (primaryUrl || imageUrls.length > 0) ? 'link' : 'text',
-            // Store additional URLs in content or a notes field if needed
-            // For now, we'll append URLs to content if they're not already there
-            // This is a temporary solution until we add a proper urls field to Article type
+            ...(normalized.customCreatedAt ? { customCreatedAt: normalized.customCreatedAt } : {}),
+            media: normalized.media,
+            supportingMedia: normalized.supportingMedia,
+            source_type: normalized.source_type,
         });
 
         const allCols = await storageService.getCollections();
@@ -1974,7 +1650,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         console.error("Failed to create nugget", e);
         
         // Use unified error handling
-        logError('CreateNuggetModal', e, { title, attachmentsCount: attachments.length, urlsCount: urls.length, categoriesCount: categories.length });
+        logError('CreateNuggetModal', e, { title, attachmentsCount: attachments.length, urlsCount: urls.length, tagsCount: tags.length });
         
         const apiError = formatApiError(e);
         const baseErrorMessage = getUserFriendlyMessage(apiError);
@@ -2129,10 +1805,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 {/* Organization Rows - Tags and Collections/Bookmarks */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                     <TagSelector
-                        selected={categories}
-                        availableCategories={availableCategories}
-                        onSelectedChange={setCategories}
-                        onAvailableCategoriesChange={setAvailableCategories}
+                        selected={tags}
+                        availableCategories={availableTags}
+                        onSelectedChange={setTags}
+                        onAvailableCategoriesChange={setAvailableTags}
                         error={tagsError}
                         touched={tagsTouched}
                         onTouchedChange={setTagsTouched}
@@ -2556,7 +2232,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             isSubmitting={isSubmitting}
             canSubmit={
                 // PHASE 5: Regression safeguard - disable submit if tags are empty
-                categories.length > 0 && 
+                tags.length > 0 && 
                 !!(content.trim() || title.trim() || urls.length > 0 || attachments.length > 0)
             }
         />

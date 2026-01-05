@@ -171,7 +171,7 @@ export function sanitizeArticle(article: any): any {
       name: article.author?.name || article.authorName || 'Unknown',
       avatar_url: article.author?.avatar_url || article.author?.avatarUrl,
     },
-    categories: Array.isArray(article.categories) ? article.categories : (article.category ? [article.category] : []),
+    // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
     tags: Array.isArray(article.tags) ? article.tags : [],
     images: Array.isArray(article.images) ? article.images : [],
     publishedAt: article.publishedAt || new Date().toISOString(),

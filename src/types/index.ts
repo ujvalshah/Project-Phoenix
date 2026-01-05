@@ -154,8 +154,7 @@ export interface Article {
   displayAuthor?: DisplayAuthor;
   
   publishedAt: string; // ISO date string
-  categories: string[]; // Display names (user-facing)
-  categoryIds?: string[]; // Phase 2: Tag ObjectIds for stable references
+  // CATEGORY PHASE-OUT: Removed categories and categoryIds fields - tags are now the only classification field
   tags: string[];
   readTime: number; 
   visibility?: 'public' | 'private';

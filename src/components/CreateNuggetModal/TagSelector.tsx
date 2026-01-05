@@ -7,9 +7,9 @@ import { removeTag } from '@/utils/tagUtils';
 
 interface TagSelectorProps {
   selected: string[];
-  availableCategories: string[];
+  availableCategories: string[]; // CATEGORY PHASE-OUT: Kept prop name for backward compatibility, but represents tags
   onSelectedChange: (selected: string[]) => void;
-  onAvailableCategoriesChange: (categories: string[]) => void;
+  onAvailableCategoriesChange: (tags: string[]) => void; // CATEGORY PHASE-OUT: Kept prop name but represents tags
   error: string | null;
   touched: boolean;
   onTouchedChange: (touched: boolean) => void;
@@ -20,9 +20,9 @@ interface TagSelectorProps {
 
 export function TagSelector({
   selected,
-  availableCategories,
+  availableCategories, // CATEGORY PHASE-OUT: This prop represents tags, not categories
   onSelectedChange,
-  onAvailableCategoriesChange,
+  onAvailableCategoriesChange, // CATEGORY PHASE-OUT: This prop represents tags, not categories
   error,
   touched,
   onTouchedChange,
@@ -47,9 +47,10 @@ export function TagSelector({
     }
   }, [selected, touched, onErrorChange]);
 
+  // CATEGORY PHASE-OUT: availableCategories prop represents tags
   const tagOptions: SelectableDropdownOption[] = availableCategories
-    .filter(c => typeof c === 'string' && c.trim() !== '')
-    .map(cat => ({ id: cat, label: cat }));
+    .filter(tag => typeof tag === 'string' && tag.trim() !== '')
+    .map(tag => ({ id: tag, label: tag }));
 
   /**
    * Checks if a tag already exists (case-insensitive comparison)
@@ -73,12 +74,12 @@ export function TagSelector({
           const newError = validateTags();
           onErrorChange(newError);
         }
-        // Add to available categories if missing (case-insensitive check)
-        const categoryExists = availableCategories.some(
-          cat => cat.toLowerCase().trim() === cleanCat.toLowerCase().trim()
+        // CATEGORY PHASE-OUT: Add to available tags if missing (case-insensitive check)
+        const tagExists = availableCategories.some(
+          tag => tag.toLowerCase().trim() === cleanCat.toLowerCase().trim()
         );
-        if (!categoryExists) {
-          await storageService.addCategory(cleanCat);
+        if (!tagExists) {
+          await storageService.addCategory(cleanCat); // Method name kept for backward compatibility but creates tags
           onAvailableCategoriesChange([...availableCategories, cleanCat].sort());
         }
       }
@@ -89,7 +90,7 @@ export function TagSelector({
     // Use case-insensitive removal to handle rawName casing differences
     onSelectedChange(removeTag(selected, optionId));
     if (!touched) onTouchedChange(true);
-    // Validate tags when category is removed
+    // Validate tags when tag is removed
     if (touched) {
       const newError = validateTags();
       onErrorChange(newError);

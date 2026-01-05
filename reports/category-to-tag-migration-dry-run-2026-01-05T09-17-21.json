@@ -1,0 +1,1723 @@
+{
+  "metadata": {
+    "scanDate": "2026-01-05T09:17:21.541Z",
+    "mode": "dry-run",
+    "totalArticles": 54,
+    "articlesModified": 48,
+    "articlesSkipped": 6,
+    "articlesWithErrors": 0,
+    "executionTimeMs": 455
+  },
+  "summary": {
+    "totalCategoriesMigrated": 86,
+    "totalTagsAdded": 86,
+    "totalTagsNormalized": 0,
+    "totalTagsDeduplicated": 0,
+    "articlesWithCategories": 54,
+    "articlesWithCategoriesNotInTags": 48
+  },
+  "breakdownBySourceType": {
+    "link": 23,
+    "text": 25
+  },
+  "breakdownByYear": {
+    "2025": 36,
+    "2026": 12
+  },
+  "affectedRecords": [
+    {
+      "articleId": "6943eccb24eb23cb4f77cc79",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Business"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Business",
+          "uncategorized"
+        ],
+        "categories": [
+          "Business"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Business"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "69455aa25ffbd7879628755b",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Geopolitics",
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Geopolitics"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6948076f264d3244732be53a",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Macros"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Macros",
+          "uncategorized"
+        ],
+        "categories": [
+          "Macros"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Macros"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694943d1264d3244732be621",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Business"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Business",
+          "uncategorized"
+        ],
+        "categories": [
+          "Business"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Business"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694ae9adf7188e0f4142cafe",
+      "title": "Apollo 2026 Outlook: The Year Ahead  in 14 Sparks",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Credit",
+          "Economy",
+          "Outlook 2026"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Credit",
+          "Economy",
+          "Outlook 2026",
+          "uncategorized"
+        ],
+        "categories": [
+          "Credit",
+          "Economy",
+          "Outlook 2026"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 3,
+        "tagsAdded": [
+          "Credit",
+          "Economy",
+          "Outlook 2026"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694b9078c769902632558575",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Silver",
+          "Gold",
+          "Commodities"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Gold",
+          "Silver",
+          "uncategorized"
+        ],
+        "categories": [
+          "Silver",
+          "Gold",
+          "Commodities"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 3,
+        "tagsAdded": [
+          "Silver",
+          "Gold",
+          "Commodities"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694cd70b42d086e15e055449",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Copper",
+          "Commodities"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Copper",
+          "uncategorized"
+        ],
+        "categories": [
+          "Copper",
+          "Commodities"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Copper",
+          "Commodities"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694ce6bf42d086e15e055514",
+      "title": "KKR 2026 Outlook: High Grading",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Outlook 2026"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Outlook 2026",
+          "uncategorized"
+        ],
+        "categories": [
+          "Outlook 2026"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Outlook 2026"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694d19d542d086e15e05560a",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Outlook 2026"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Outlook 2026",
+          "uncategorized"
+        ],
+        "categories": [
+          "Outlook 2026"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Outlook 2026"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694ed56242d086e15e055887",
+      "title": "Citi: The Still-Rising U.S. Public Debt",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Credit"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Credit",
+          "uncategorized"
+        ],
+        "categories": [
+          "Credit"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Credit"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694ee23c42d086e15e055940",
+      "title": "AI Enterprise - Databricks & Glean | BG2 Guest Interview",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "uncategorized"
+        ],
+        "categories": [
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694fb931825d3b951ca9ec00",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "uncategorized"
+        ],
+        "categories": [
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "694fdcea825d3b951ca9ee71",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Silver"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Silver",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Silver"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Commodities",
+          "Silver"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950c7453d9175611b6a412c",
+      "title": "Oil Prices Poised to Keep Falling With World Awash in Supply [Bloomberg Podcast]",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Oil"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Oil",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Oil"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Commodities",
+          "Oil"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950ca443d9175611b6a415c",
+      "title": "[The reason Venezuela matters](https://www.youtube.com/watch?v=Pgwny1BiCYk)",
+      "source_type": "link",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Oil",
+          "Commodities",
+          "Geopolitics"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Geopolitics",
+          "Oil",
+          "uncategorized"
+        ],
+        "categories": [
+          "Oil",
+          "Commodities",
+          "Geopolitics"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 3,
+        "tagsAdded": [
+          "Oil",
+          "Commodities",
+          "Geopolitics"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950cbeb3d9175611b6a417c",
+      "title": "[Stocks, Bonds & Gold In 2026 - Ed Yardeni](https://www.youtube.com/watch?v=PRGiduzQOr8)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Outlook 2026",
+          "Equity",
+          "Gold",
+          "Usa"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Equity",
+          "Gold",
+          "Outlook 2026",
+          "Usa",
+          "uncategorized"
+        ],
+        "categories": [
+          "Outlook 2026",
+          "Equity",
+          "Gold",
+          "Usa"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 4,
+        "tagsAdded": [
+          "Outlook 2026",
+          "Equity",
+          "Gold",
+          "Usa"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950cf0b3d9175611b6a418f",
+      "title": "[# Bill Gurley — The AI Era, 10 Days in China, & Life Lessons from Bob Dylan, Jerry Seinfeld, and Mo",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "PE/VC",
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950d7a93d9175611b6a41e9",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Silver"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Silver",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Silver"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Commodities",
+          "Silver"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950d8b03d9175611b6a420f",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Silver",
+          "Commodities"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Silver",
+          "uncategorized"
+        ],
+        "categories": [
+          "Silver",
+          "Commodities"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Silver",
+          "Commodities"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950dad93d9175611b6a4241",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Geopolitics"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Geopolitics",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Geopolitics"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Commodities",
+          "Geopolitics"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950f56397ca6e6b8f706d5e",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Commodities"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6950fbda97ca6e6b8f706d85",
+      "title": "[Henry Kravis on Building KKR, Deal-Making, and the Future of AI in Private Equity - Elad Gill](http",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC"
+        ]
+      },
+      "after": {
+        "tags": [
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "PE/VC"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6951153d97ca6e6b8f706e2c",
+      "title": "[What Makes Great Investors | David Rubenstein | Podcast | In Good Company](https://www.youtube.com/",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC"
+        ]
+      },
+      "after": {
+        "tags": [
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "PE/VC"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695116a097ca6e6b8f706e77",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "PE/VC",
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6951182897ca6e6b8f706eeb",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "PE/VC",
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "69511dbf97ca6e6b8f706f1b",
+      "title": "[Luke Gromen: We Are Facing \"The Mother of All Crises\" (And It’s Physical)](https://www.youtube.com/",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Macros",
+          "Usa"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Macros",
+          "Usa",
+          "uncategorized"
+        ],
+        "categories": [
+          "Macros",
+          "Usa"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Macros",
+          "Usa"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6951285647aa0819a74cf765",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Geopolitics",
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Geopolitics"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6952359b79e950fefda0bf33",
+      "title": "[NYLife Insurance making a 5–20% allocation to Gold/Commodites](https://x.com/calvinfroedge/status/2",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Gold"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Gold",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Gold"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Commodities",
+          "Gold"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695277ca79e950fefda0c062",
+      "title": "[The Silver Squeeze](https://www.campbellramble.ai/p/the-silver-squeeze)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Silver"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Silver",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Silver"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Commodities",
+          "Silver"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "69527f8679e950fefda0c0d4",
+      "title": "Why the Dutch pension fund reform matters for markets? - \"Structural loss in demand\" for long-dated ",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Fixed Income"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Fixed Income",
+          "uncategorized"
+        ],
+        "categories": [
+          "Fixed Income"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Fixed Income"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6953ae0979e950fefda0c212",
+      "title": "Vista Equity's AI Investment Landscape Primer (2025)",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "PE/VC",
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6953b08979e950fefda0c247",
+      "title": "[Battery Venture's State of Enterprise Tech Spending (Dec 2025)](https://www.battery.com/blog/survey",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC",
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "PE/VC",
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6953c31f79e950fefda0c28a",
+      "title": "The Daily Spark by Apollo Global (Dec 30 '25)",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Apollo",
+          "Macros",
+          "USA"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Apollo",
+          "Macros",
+          "USA",
+          "uncategorized"
+        ],
+        "categories": [
+          "Apollo",
+          "Macros",
+          "USA"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 3,
+        "tagsAdded": [
+          "Apollo",
+          "Macros",
+          "USA"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6953d44579e950fefda0c2bf",
+      "title": "Ricky Sandler - Investing Through Perception Shifts and Market Cycles [Value Investing With Legends ",
+      "source_type": "link",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC"
+        ]
+      },
+      "after": {
+        "tags": [
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "PE/VC"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6953da2479e950fefda0c313",
+      "title": "[Ronald Stöferle: The Big Long - Pullback or Peak? (Nov 25)](https://www.youtube.com/watch?v=Myr6By-",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Gold",
+          "Silver"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Gold",
+          "Silver",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Gold",
+          "Silver"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 3,
+        "tagsAdded": [
+          "Commodities",
+          "Gold",
+          "Silver"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "69540c0379e950fefda0c4a1",
+      "title": "[India Inc Must Now Build for the World (Sep '25) - 3One4 Capital](https://www.linkedin.com/pulse/in",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "India",
+          "PE/VC",
+          "Reports",
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "India",
+          "PE/VC",
+          "Reports",
+          "uncategorized"
+        ],
+        "categories": [
+          "India",
+          "PE/VC",
+          "Reports",
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 4,
+        "tagsAdded": [
+          "India",
+          "PE/VC",
+          "Reports",
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "69541d54754f002a82e8179b",
+      "title": "The US 250 Report",
+      "source_type": "text",
+      "year": "2025",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC"
+        ]
+      },
+      "after": {
+        "tags": [
+          "PE/VC",
+          "uncategorized"
+        ],
+        "categories": [
+          "PE/VC"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "PE/VC"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695905433fc2d01f024fe45c",
+      "title": "The Daily Spark by Apollo Global (Jan 02 '26)",
+      "source_type": "text",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Apollo",
+          "USA"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Apollo",
+          "USA",
+          "uncategorized"
+        ],
+        "categories": [
+          "Apollo",
+          "USA"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Apollo",
+          "USA"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695991749e10edf066cb22a5",
+      "title": "Self-driving cars will transform urban economies",
+      "source_type": "link",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Tech"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Tech",
+          "uncategorized"
+        ],
+        "categories": [
+          "Tech"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Tech"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695995ca29f0584b95b2a33f",
+      "title": "**[Battery Ventures: State of AI Report 2025](https://www.battery.com/blog/state-of-ai-2025/)**",
+      "source_type": "link",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "AI",
+          "Tech"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "Tech",
+          "uncategorized"
+        ],
+        "categories": [
+          "AI",
+          "Tech"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "AI",
+          "Tech"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "6959973b29f0584b95b2a3c9",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics",
+          "Oil",
+          "Commodities"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "Geopolitics",
+          "Oil",
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics",
+          "Oil",
+          "Commodities"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 3,
+        "tagsAdded": [
+          "Geopolitics",
+          "Oil",
+          "Commodities"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "69599a2b29f0584b95b2a408",
+      "title": "[🔗 Stone Ridge 2025 Investor Letter](https://www.stoneridgeam.com/insights/stone-ridge-2025-investo",
+      "source_type": "text",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Economy",
+          "Reports"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Economy",
+          "Reports",
+          "uncategorized"
+        ],
+        "categories": [
+          "Economy",
+          "Reports"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Economy",
+          "Reports"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "69599bbc29f0584b95b2a47c",
+      "title": "The Thinking Game | Documentary",
+      "source_type": "link",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "AI"
+        ]
+      },
+      "after": {
+        "tags": [
+          "AI",
+          "uncategorized"
+        ],
+        "categories": [
+          "AI"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "AI"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695a033629f0584b95b2a740",
+      "title": "(No title)",
+      "source_type": "link",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Geopolitics",
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Geopolitics"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695a04a529f0584b95b2a794",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Geopolitics",
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Geopolitics"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695a17ca29f0584b95b2a817",
+      "title": "Josef Schachter: Oil Prices to Hit US$80+ in 2026...",
+      "source_type": "link",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Oil",
+          "LNG"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Commodities",
+          "LNG",
+          "Oil",
+          "uncategorized"
+        ],
+        "categories": [
+          "Commodities",
+          "Oil",
+          "LNG"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 3,
+        "tagsAdded": [
+          "Commodities",
+          "Oil",
+          "LNG"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695a450129f0584b95b2aa7b",
+      "title": "(No title)",
+      "source_type": "text",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "after": {
+        "tags": [
+          "Geopolitics",
+          "uncategorized"
+        ],
+        "categories": [
+          "Geopolitics"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 1,
+        "tagsAdded": [
+          "Geopolitics"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    },
+    {
+      "articleId": "695a543529f0584b95b2ac4b",
+      "title": "The Real Estate Bust Was the Plan | Louis-Vincent Gave on China's Brute Force Growth Strategy | Exce",
+      "source_type": "link",
+      "year": "2026",
+      "before": {
+        "tags": [
+          "uncategorized"
+        ],
+        "categories": [
+          "Economy",
+          "China"
+        ]
+      },
+      "after": {
+        "tags": [
+          "China",
+          "Economy",
+          "uncategorized"
+        ],
+        "categories": [
+          "Economy",
+          "China"
+        ]
+      },
+      "changes": {
+        "categoriesMigrated": 2,
+        "tagsAdded": [
+          "Economy",
+          "China"
+        ],
+        "tagsNormalized": 0,
+        "tagsDeduplicated": 0
+      },
+      "skipped": false
+    }
+  ],
+  "executionStats": {
+    "batchesProcessed": 1,
+    "recordsPerBatch": 500,
+    "errors": 0,
+    "errorRate": 0
+  }
+}

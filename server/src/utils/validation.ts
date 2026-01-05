@@ -74,8 +74,11 @@ const baseArticleSchema = z.object({
   content: z.string().default(''),
   authorId: z.string().min(1, 'Author ID is required'),
   authorName: z.string().min(1, 'Author name is required'),
-  category: z.string().min(1, 'Category is required'),
+  // CATEGORY PHASE-OUT: Removed category and categories validation
+  // Tags are now the only classification field
+  // Compatibility: categories and categoryIds are accepted but ignored (with warning)
   categories: z.array(z.string()).optional(),
+  categoryIds: z.array(z.string()).optional(),
   publishedAt: z.string().optional(),
   tags: z.array(z.string()).default([]),
   readTime: z.number().optional(),

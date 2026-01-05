@@ -160,7 +160,7 @@ export class LocalAdapter implements IAdapter {
       publishedAt: new Date().toISOString(),
       readTime: article.readTime || 5,
       images: article.images || [],
-      categories: article.categories || [],
+      // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
       tags: article.tags || [],
       visibility: article.visibility || 'public',
       displayAuthor: article.displayAuthor
@@ -276,7 +276,8 @@ export class LocalAdapter implements IAdapter {
     const lastVisit = user.lastFeedVisit ? new Date(user.lastFeedVisit).getTime() : 0;
     let filtered = interests.length === 0 
       ? articles 
-      : articles.filter(a => a.categories.some(c => interests.includes(c)));
+      // CATEGORY PHASE-OUT: Use tags instead of categories for personalized feed
+      : articles.filter(a => (a.tags || []).some(tag => interests.includes(tag)));
     filtered.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
     const newCount = filtered.reduce((acc, a) => new Date(a.publishedAt).getTime() > lastVisit ? acc + 1 : acc, 0);
     return { articles: filtered, newCount };

@@ -204,9 +204,7 @@ function transformArticle(doc: any): any {
         avatar_url: rest.author?.avatar_url || undefined
       },
     publishedAt: rest.publishedAt || new Date().toISOString(),
-    categories: rest.categories && rest.categories.length > 0 
-      ? rest.categories 
-      : (rest.category ? [rest.category] : []), // Convert single category to array
+    // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
     tags: rest.tags || [],
     readTime: rest.readTime || calculateReadTime(rest.content || ''),
     visibility: rest.visibility || 'public',

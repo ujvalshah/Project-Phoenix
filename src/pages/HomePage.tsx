@@ -30,7 +30,7 @@ import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
-import { CategoryFilterBar } from '@/components/header/CategoryFilterBar';
+import { TagFilterBar } from '@/components/header/TagFilterBar';
 import { PageStack } from '@/components/layouts/PageStack';
 import { storageService } from '@/services/storageService';
 import { useAuth } from '@/hooks/useAuth';
@@ -39,7 +39,7 @@ interface HomePageProps {
   searchQuery: string;
   viewMode: 'grid' | 'masonry' | 'utility';
   setViewMode: (mode: 'grid' | 'masonry' | 'utility') => void;
-  selectedCategories: string[];
+  selectedCategories: string[]; // CATEGORY PHASE-OUT: Kept name for backward compatibility, but now represents tags
   setSelectedCategories: (c: string[]) => void;
   selectedTag: string | null;
   setSelectedTag: (t: string | null) => void;
@@ -63,7 +63,8 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const { currentUserId } = useAuth();
 
-  // Determine active category from selectedCategories (needed for useInfiniteArticles)
+  // CATEGORY PHASE-OUT: Determine active tag from selectedCategories (needed for useInfiniteArticles)
+  // Note: selectedCategories is kept for backward compatibility but now represents tags
   const activeCategory = useMemo(() => {
     if (selectedCategories.length === 0) return 'All';
     if (selectedCategories.includes('Today')) return 'Today';
@@ -97,7 +98,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   };
 
 
-  // Fetch tags to get correct casing (rawName) for category display
+  // CATEGORY PHASE-OUT: Fetch tags to get correct casing (rawName) for tag display
   const [tagNameMap, setTagNameMap] = useState<Map<string, string>>(new Map());
   
   useEffect(() => {
@@ -129,22 +130,23 @@ export const HomePage: React.FC<HomePageProps> = ({
     loadTagNames();
   }, []);
 
-  // Calculate category counts from articles with correct casing from tags
-  const categoriesWithCounts = useMemo(() => {
-    const categoryCountMap = new Map<string, number>();
+  // CATEGORY PHASE-OUT: Calculate tag counts from articles (tags are now the only classification field)
+  const tagsWithCountsForFilter = useMemo(() => {
+    const tagCountMap = new Map<string, number>();
     
     allArticles.forEach(article => {
-      article.categories?.forEach(cat => {
+      const articleTags = article.tags || [];
+      articleTags.forEach(tag => {
         // Use canonical name (lowercase) for counting to group case variants
-        if (!cat) return;
-        const canonical = cat.toLowerCase().trim();
-        const count = categoryCountMap.get(canonical) || 0;
-        categoryCountMap.set(canonical, count + 1);
+        if (!tag) return;
+        const canonical = tag.toLowerCase().trim();
+        const count = tagCountMap.get(canonical) || 0;
+        tagCountMap.set(canonical, count + 1);
       });
     });
 
     // Map back to correct casing using tagNameMap
-    return Array.from(categoryCountMap.entries()).map(([canonical, count]) => {
+    return Array.from(tagCountMap.entries()).map(([canonical, count]) => {
       // Get correct casing from tagNameMap, fallback to original if not found
       const correctLabel = tagNameMap.get(canonical) || canonical;
       
@@ -156,28 +158,8 @@ export const HomePage: React.FC<HomePageProps> = ({
     });
   }, [allArticles, tagNameMap]);
 
-  // Calculate tag counts from articles
   // NOTE: Tags are mandatory - all nuggets must have at least one tag
-  const tagsWithCounts = useMemo(() => {
-    const tagCountMap = new Map<string, number>();
-    
-    allArticles.forEach(article => {
-      const tags = article.tags || [];
-      // Count each tag (all nuggets should have tags since they're mandatory)
-      tags.forEach(tag => {
-        const count = tagCountMap.get(tag) || 0;
-        tagCountMap.set(tag, count + 1);
-      });
-    });
-
-    // Sort tags by count (descending) then alphabetically
-    return Array.from(tagCountMap.entries())
-      .sort((a, b) => {
-        if (b[1] !== a[1]) return b[1] - a[1]; // Count descending
-        return a[0].localeCompare(b[0]); // Alphabetical ascending
-      })
-      .map(([label, count]) => ({ label, count }));
-  }, [allArticles]);
+  // tagsWithCountsForFilter is used for the filter bar (above)
 
   // Handle tag filtering client-side (backend doesn't support tag filtering)
   // "Today" filter is now handled by backend - no client-side filtering needed
@@ -196,16 +178,16 @@ export const HomePage: React.FC<HomePageProps> = ({
     return filtered;
   }, [allArticles, activeCategory, selectedTag]);
 
-  // Handle category selection from CategoryFilterBar with toggle behavior
+  // CATEGORY PHASE-OUT: Handle tag selection from TagFilterBar with toggle behavior
   // TOGGLE LOGIC: Clicking the currently selected tag unselects it (sets to null/empty)
   // Clicking an unselected tag selects it. Only one tag can be active at a time.
-  const handleCategorySelect = (categoryLabel: string) => {
-    // If clicking the currently active category, unselect it (toggle off)
-    if (activeCategory === categoryLabel) {
+  const handleTagSelect = (tagLabel: string) => {
+    // If clicking the currently active tag, unselect it (toggle off)
+    if (activeCategory === tagLabel) {
       setSelectedCategories([]); // Clear selection - will show "All" as active
     } else {
-      // Select the clicked category (single-select pattern)
-      setSelectedCategories([categoryLabel]);
+      // Select the clicked tag (single-select pattern)
+      setSelectedCategories([tagLabel]);
     }
   };
 
@@ -242,7 +224,8 @@ export const HomePage: React.FC<HomePageProps> = ({
     touchStartRef.current = 0;
   };
 
-  const toggleCategory = (cat: string) => {
+  // CATEGORY PHASE-OUT: Renamed toggleCategory to toggleTag
+  const toggleTag = (tag: string) => {
       setSelectedCategories(
           selectedCategories.includes(cat) 
             ? selectedCategories.filter(c => c !== cat) 
@@ -286,10 +269,10 @@ export const HomePage: React.FC<HomePageProps> = ({
         */}
         <PageStack
           categoryToolbar={
-            <CategoryFilterBar
-              categories={categoriesWithCounts}
-              activeCategory={activeCategory}
-              onSelect={handleCategorySelect}
+            <TagFilterBar
+              tags={tagsWithCountsForFilter}
+              activeTag={activeCategory}
+              onSelect={handleTagSelect}
             />
           }
           mainContent={
@@ -301,7 +284,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 isLoading={isLoadingArticles}
                 onArticleClick={setSelectedArticle}
                 onTagClick={(t) => setSelectedTag(t)}
-                onCategoryClick={(c) => toggleCategory(c)}
+                onCategoryClick={(c) => toggleTag(c)} // CATEGORY PHASE-OUT: onCategoryClick now handles tags
                 currentUserId={currentUserId}
                 // Infinite Scroll Props
                 hasNextPage={hasNextPage}

@@ -8,6 +8,8 @@ import { escapeRegExp, createSearchRegex, createExactMatchRegex } from '../utils
 import { verifyToken } from '../utils/jwt.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+import { normalizeTags } from '../utils/normalizeTags.js';
+// CATEGORY PHASE-OUT: Removed normalizeCategories import - categories are no longer supported
 import {
   sendErrorResponse,
   sendValidationError,
@@ -46,43 +48,22 @@ function getOptionalUserId(req: Request): string | undefined {
   }
 }
 
-/**
- * Phase 2: Resolve tag IDs from category names
- * Maps category names to Tag ObjectIds for stable references
- */
-async function resolveCategoryIds(categoryNames: string[]): Promise<string[]> {
-  if (!categoryNames || categoryNames.length === 0) {
-    return [];
-  }
-
-  try {
-    // Find tags by canonical name (case-insensitive)
-    const canonicalNames = categoryNames.map(name => name.trim().toLowerCase());
-    const tags = await Tag.find({
-      canonicalName: { $in: canonicalNames }
-    }).lean();
-
-    // Map found tags to their ObjectIds
-    const tagMap = new Map(tags.map(tag => [tag.canonicalName, tag._id.toString()]));
-    
-    // Return IDs in the same order as input names
-    const categoryIds = canonicalNames
-      .map(canonical => tagMap.get(canonical))
-      .filter((id): id is string => id !== undefined);
-
-    // Audit Phase-3 Fix: Logging consistency - use structured logging (no req context here, so skip requestId)
-    return categoryIds;
-  } catch (error: any) {
-    // Audit Phase-3 Fix: Logging consistency - use structured logger (no req context in helper function)
-    const { getLogger } = await import('../utils/logger.js');
-    getLogger().warn({ msg: 'Error resolving category IDs', error: { message: error.message } });
-    return []; // Fail gracefully - categoryIds is optional
-  }
-}
+// CATEGORY PHASE-OUT: Removed resolveCategoryIds function - categories are no longer supported
 
 export const getArticles = async (req: Request, res: Response) => {
   try {
     const { authorId, q, category, categories, sort } = req.query;
+    
+    // CATEGORY PHASE-OUT: Compatibility layer - log warning if category/categories are used
+    if (category || categories) {
+      const { getLogger } = await import('../utils/logger.js');
+      getLogger().warn({
+        msg: '⚠️ CATEGORY PHASE-OUT: category/categories query params detected but will be ignored. Use tags instead.',
+        category,
+        categories,
+        requestId: req.id || 'unknown',
+      });
+    }
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
     const skip = (page - 1) * limit;
@@ -141,26 +122,24 @@ export const getArticles = async (req: Request, res: Response) => {
       }
     }
     
-    // Category filter (case-insensitive, supports both single and array)
-    // SECURITY: createExactMatchRegex escapes user input to prevent ReDoS
-    // SPECIAL CASE: "Today" category requires date filtering instead of category matching
+    // CATEGORY PHASE-OUT: Convert category/categories to tags filter
+    // Support "Today" special case for date filtering
     if (category && typeof category === 'string' && category === 'Today') {
-      // "Today" category: filter by publishedAt date (start of today to end of today)
+      // "Today" special case: filter by publishedAt date (start of today to end of today)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayEnd = new Date(today);
       todayEnd.setHours(23, 59, 59, 999);
       
-      // Filter by publishedAt date range (ISO string comparison)
       query.publishedAt = {
         $gte: today.toISOString(),
         $lte: todayEnd.toISOString()
       };
     } else if (category && typeof category === 'string') {
-      // Single category: case-insensitive exact match
-      query.categories = { $in: [createExactMatchRegex(category)] };
+      // Single category: convert to tag filter (case-insensitive exact match)
+      query.tags = { $in: [createExactMatchRegex(category)] };
     } else if (categories) {
-      // Multiple categories: handle both string and array
+      // Multiple categories: convert to tags filter
       const categoryArray = Array.isArray(categories) 
         ? categories 
         : [categories];
@@ -182,19 +161,19 @@ export const getArticles = async (req: Request, res: Response) => {
           $lte: todayEnd.toISOString()
         };
         
-        // Also filter by other categories if any
+        // Also filter by other categories as tags if any
         const otherCategories = categoryArray.filter((cat: any) => 
           typeof cat === 'string' && cat !== 'Today'
         );
         
         if (otherCategories.length > 0) {
-          query.categories = { 
+          query.tags = { 
             $in: otherCategories.map((cat: string) => createExactMatchRegex(cat))
           };
         }
       } else {
-        // No "Today" in array, apply normal category filter
-        query.categories = { 
+        // No "Today" in array, apply normal tag filter
+        query.tags = { 
           $in: categoryArray
             .filter((cat): cat is string => typeof cat === 'string')
             .map((cat: string) => createExactMatchRegex(cat))
@@ -329,6 +308,54 @@ export const createArticle = async (req: Request, res: Response) => {
 
     const data = validationResult.data;
     
+    // CATEGORY PHASE-OUT: Compatibility layer - log warning if categories are provided
+    if (data.categories && Array.isArray(data.categories) && data.categories.length > 0) {
+      requestLogger.warn({
+        msg: '⚠️ CATEGORY PHASE-OUT: categories field detected in create payload but will be ignored. Use tags instead.',
+        categories: data.categories,
+        tags: data.tags,
+      });
+      // Remove categories from data to prevent it from being saved
+      delete data.categories;
+    }
+    if (data.categoryIds && Array.isArray(data.categoryIds) && data.categoryIds.length > 0) {
+      requestLogger.warn({
+        msg: '⚠️ CATEGORY PHASE-OUT: categoryIds field detected in create payload but will be ignored. Use tags instead.',
+        categoryIds: data.categoryIds,
+        tags: data.tags,
+      });
+      // Remove categoryIds from data to prevent it from being saved
+      delete data.categoryIds;
+    }
+    
+    // PHASE 1: Normalize tags using shared utilities
+    // This ensures consistency with frontend normalization
+    const normalizedTags = normalizeTags(data.tags || []);
+    
+    // Safety logging: Check if normalization changed tags
+    if (data.tags && normalizedTags.length !== data.tags.length) {
+      requestLogger.warn({
+        msg: '[Articles] Create: Tags normalized (duplicates/whitespace removed)',
+        originalCount: data.tags.length,
+        normalizedCount: normalizedTags.length,
+        originalTags: data.tags,
+        normalizedTags,
+      });
+    }
+    
+    // Validation: Tags MUST NOT be empty (same rule as frontend)
+    // Note: Zod schema already validates this, but we add defensive check for logging
+    if (normalizedTags.length === 0) {
+      requestLogger.warn({
+        msg: '[Articles] Create: Empty tags detected after normalization',
+        originalTags: data.tags,
+      });
+      // Zod schema will reject this, but we log for audit
+    }
+    
+    // Update data with normalized values
+    data.tags = normalizedTags;
+    
     // DIAGNOSTIC LOGGING: Log validated media structure
     requestLogger.info({
       msg: '[DIAGNOSTIC] CreateArticle - Validated data media structure',
@@ -373,8 +400,7 @@ export const createArticle = async (req: Request, res: Response) => {
       }
     }
     
-    // Phase 2: Resolve categoryIds from category names
-    const categoryIds = await resolveCategoryIds(data.categories || []);
+    // CATEGORY PHASE-OUT: Removed categoryIds resolution - categories are no longer supported
     
     // Admin-only: Handle custom creation date
     const currentUserId = (req as any).user?.userId;
@@ -436,7 +462,7 @@ export const createArticle = async (req: Request, res: Response) => {
     
     const newArticle = await Article.create({
       ...data,
-      categoryIds, // Add resolved Tag ObjectIds
+      // CATEGORY PHASE-OUT: Removed categoryIds - categories are no longer supported
       publishedAt,
       isCustomCreatedAt
     });
@@ -492,6 +518,8 @@ export const createArticle = async (req: Request, res: Response) => {
 };
 
 export const updateArticle = async (req: Request, res: Response) => {
+  const requestLogger = createRequestLogger(req.id || 'unknown', (req as any).user?.userId, '/api/articles/:id');
+  
   try {
     // Get current user from authentication middleware
     const currentUserId = (req as any).user?.userId;
@@ -523,6 +551,75 @@ export const updateArticle = async (req: Request, res: Response) => {
         code: err.code
       }));
       return sendValidationError(res, 'Validation failed', errors);
+    }
+
+    // CATEGORY PHASE-OUT: Compatibility layer - log warning if categories are provided
+    if (validationResult.data.categories !== undefined) {
+      requestLogger.warn({
+        msg: '⚠️ CATEGORY PHASE-OUT: categories field detected in update payload but will be ignored. Use tags instead.',
+        articleId: req.params.id,
+        categories: validationResult.data.categories,
+        tags: validationResult.data.tags,
+      });
+      // Remove categories from update to prevent it from being saved
+      delete validationResult.data.categories;
+    }
+    if (validationResult.data.categoryIds !== undefined) {
+      requestLogger.warn({
+        msg: '⚠️ CATEGORY PHASE-OUT: categoryIds field detected in update payload but will be ignored. Use tags instead.',
+        articleId: req.params.id,
+        categoryIds: validationResult.data.categoryIds,
+        tags: validationResult.data.tags,
+      });
+      // Remove categoryIds from update to prevent it from being saved
+      delete validationResult.data.categoryIds;
+    }
+    
+    // PHASE 1: Normalize tags using shared utilities
+    
+    // Normalize tags if provided
+    if (validationResult.data.tags !== undefined) {
+      const normalizedTags = normalizeTags(validationResult.data.tags);
+      
+      // Safety logging: Check if normalization would result in empty tags
+      const existingTags = existingArticle.tags || [];
+      if (normalizedTags.length === 0) {
+        if (existingTags.length > 0) {
+          // Tags would become empty - this should be prevented by frontend, but log for audit
+          requestLogger.warn({
+            msg: '[Articles] Update: Tags would become empty after normalization',
+            articleId: req.params.id,
+            originalTags: existingTags,
+            providedTags: validationResult.data.tags,
+            normalizedTags,
+          });
+          // Reject empty tags (same rule as CREATE mode)
+          return sendValidationError(res, 'At least one tag is required', [{
+            path: ['tags'],
+            message: 'At least one tag is required',
+            code: 'custom'
+          }]);
+        } else {
+          // Article already has empty tags - log for audit but allow update (temporary compatibility)
+          requestLogger.warn({
+            msg: '[Articles] Update: Article already has empty tags (allowing update for compatibility)',
+            articleId: req.params.id,
+            existingTags,
+            providedTags: validationResult.data.tags,
+          });
+          // Allow update but log the discrepancy
+        }
+      } else if (normalizedTags.length !== validationResult.data.tags.length) {
+        // Normalization removed duplicates/whitespace - log for audit
+        requestLogger.info({
+          msg: '[Articles] Update: Tags normalized (duplicates/whitespace removed)',
+          articleId: req.params.id,
+          originalCount: validationResult.data.tags.length,
+          normalizedCount: normalizedTags.length,
+        });
+      }
+      
+      validationResult.data.tags = normalizedTags;
     }
 
     // CRITICAL FIX: Deduplicate images array to prevent duplicates
@@ -638,12 +735,7 @@ export const updateArticle = async (req: Request, res: Response) => {
       delete mongoUpdate.customCreatedAt;
     }
     
-    // Phase 2: Resolve categoryIds if categories are being updated
-    if (updates.categories && Array.isArray(updates.categories)) {
-      const categoryIds = await resolveCategoryIds(updates.categories);
-      mongoUpdate.categoryIds = categoryIds;
-      console.log(`[Articles] Update: Resolved ${updates.categories.length} categories to ${categoryIds.length} IDs`);
-    }
+    // CATEGORY PHASE-OUT: Removed categoryIds resolution - categories are no longer supported
     
     if (updates.media && !updates.media.type && !updates.media.url && updates.media.previewMetadata) {
       // This is a partial media update (only previewMetadata) - use dot notation

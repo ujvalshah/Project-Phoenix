@@ -7,13 +7,14 @@ export type { PaginatedArticlesResponse };
 export const articleService = {
   getArticles: async (filters: FilterState, page: number = 1): Promise<PaginatedArticlesResponse> => {
     // Backend pagination is the single source of truth
-    // Backend supports: q (search), category, sort, page, limit
-    // Backend does NOT support: tag filter (still ignored)
-    // Note: Only first category is sent (single-select pattern)
+    // CATEGORY PHASE-OUT: Backend now supports tags instead of categories
+    // Backend supports: q (search), category (converted to tags), sort, page, limit
+    // Note: category query param is converted to tags filter on backend
     
     const limit = filters.limit || 25;
     
-    // Extract category (single-select: use first category if available)
+    // CATEGORY PHASE-OUT: Extract tag from categories filter (single-select: use first tag if available)
+    // filters.categories now represents tags for backward compatibility
     const category = filters.categories && filters.categories.length > 0 
       ? filters.categories[0] 
       : undefined;

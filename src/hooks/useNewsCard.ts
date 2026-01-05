@@ -416,7 +416,8 @@ export const useNewsCard = ({
     authorName: article.author.name,
     authorId: article.author.id,
     authorAvatarUrl: article.author.avatar_url, // Phase 3: Include avatar URL
-    categories: article.categories || [],
+    // CATEGORY PHASE-OUT: Use tags for both categories and tags props (backward compatibility)
+    categories: article.tags || [], // CardTags component expects categories prop but receives tags
     tags: article.tags || [],
     hasMedia,
     isLink,

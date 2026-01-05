@@ -335,41 +335,24 @@ export const updateTag = async (req: Request, res: Response) => {
         // so we use case-insensitive matching via aggregation pipeline
         const oldNameLower = oldName.toLowerCase();
         
+        // CATEGORY PHASE-OUT: Only search tags, not categories
         // Use aggregation to find articles with case-insensitive matching
         const articlesToUpdate = await Article.aggregate([
           {
             $match: {
-              $or: [
-                { categories: { $exists: true, $ne: [] } },
-                { tags: { $exists: true, $ne: [] } },
-                { category: { $exists: true, $ne: '' } }
-              ]
+              tags: { $exists: true, $ne: [] }
             }
           },
           {
             $addFields: {
               hasMatch: {
-                $or: [
-                  {
-                    $anyElementTrue: {
-                      $map: {
-                        input: { $ifNull: ['$categories', []] },
-                        as: 'cat',
-                        in: { $eq: [{ $toLower: '$$cat' }, oldNameLower] }
-                      }
-                    }
-                  },
-                  {
-                    $anyElementTrue: {
-                      $map: {
-                        input: { $ifNull: ['$tags', []] },
-                        as: 'tag',
-                        in: { $eq: [{ $toLower: '$$tag' }, oldNameLower] }
-                      }
-                    }
-                  },
-                  { $eq: [{ $toLower: { $ifNull: ['$category', ''] } }, oldNameLower] }
-                ]
+                $anyElementTrue: {
+                  $map: {
+                    input: { $ifNull: ['$tags', []] },
+                    as: 'tag',
+                    in: { $eq: [{ $toLower: '$$tag' }, oldNameLower] }
+                  }
+                }
               }
             }
           },
@@ -390,29 +373,13 @@ export const updateTag = async (req: Request, res: Response) => {
           console.log('[Tags] No articles found with old tag name - this is normal if no articles use this tag');
         }
         
-        let categoriesUpdated = 0;
+        // CATEGORY PHASE-OUT: Only update tags, not categories
         let tagsUpdated = 0;
-        let categoryUpdated = 0;
         
         // Update each article individually to ensure all occurrences are replaced
         for (const article of articlesToUpdateDocs) {
           let modified = false;
           const updateFields: any = {};
-          
-          // Update categories array - replace all occurrences (case-insensitive) of oldName with newName
-          if (article.categories && Array.isArray(article.categories)) {
-            // Use case-insensitive comparison to find matches
-            const hasOldName = article.categories.some((cat: string) => 
-              cat.toLowerCase() === oldName.toLowerCase()
-            );
-            if (hasOldName) {
-              updateFields.categories = article.categories.map((cat: string) => 
-                cat.toLowerCase() === oldName.toLowerCase() ? newName : cat
-              );
-              categoriesUpdated++;
-              modified = true;
-            }
-          }
           
           // Update tags array - replace all occurrences (case-insensitive) of oldName with newName
           if (article.tags && Array.isArray(article.tags)) {
@@ -427,13 +394,6 @@ export const updateTag = async (req: Request, res: Response) => {
               tagsUpdated++;
               modified = true;
             }
-          }
-          
-          // Update legacy category field (case-insensitive)
-          if (article.category && article.category.toLowerCase() === oldName.toLowerCase()) {
-            updateFields.category = newName;
-            categoryUpdated++;
-            modified = true;
           }
           
           if (modified) {
@@ -467,10 +427,8 @@ export const updateTag = async (req: Request, res: Response) => {
         
         console.log('[Tags] Articles update summary:', {
           totalArticlesFound: articlesToUpdateDocs.length,
-          categoriesUpdated,
           tagsUpdated,
-          categoryUpdated,
-          totalUpdated: categoriesUpdated + tagsUpdated + categoryUpdated
+          totalUpdated: tagsUpdated
         });
       } catch (articleUpdateError: any) {
         // Log error but don't fail the tag rename - tag update succeeded
