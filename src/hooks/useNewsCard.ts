@@ -454,23 +454,26 @@ export const useNewsCard = ({
   const handleMediaClick = (e: React.MouseEvent, imageIndex?: number) => {
     e?.stopPropagation();
     
-    // Media acts as source citation - always try to open source URL if available
+    // IMAGES: Always open in-app viewer (never new tab)
+    // This follows progressive-disclosure UX: images stay in context
+    if (article.media?.type === 'image' || (article.images && article.images.length > 0)) {
+      // Store image index for initial display if provided
+      if (imageIndex !== undefined) {
+        setLightboxInitialIndex(imageIndex);
+      }
+      setShowLightbox(true);
+      return;
+    }
+    
+    // NON-IMAGE MEDIA: Preserve existing behavior
+    // Links, documents, etc. can still open source URLs
     const linkUrl = article.media?.previewMetadata?.url || article.media?.url;
     if (linkUrl) {
-      // Open source URL in new tab
+      // Open source URL in new tab (for non-image media only)
       window.open(linkUrl, '_blank', 'noopener,noreferrer');
     } else {
-      // Fallback: Open images in lightbox if no URL available
-      if (article.media?.type === 'image' || (article.images && article.images.length > 0)) {
-        // Store image index for initial display if provided
-        if (imageIndex !== undefined) {
-          setLightboxInitialIndex(imageIndex);
-        }
-        setShowLightbox(true);
-      } else {
-        // For other media types without URL, open full modal
-        setShowFullModal(true);
-      }
+      // For other media types without URL, open full modal
+      setShowFullModal(true);
     }
   };
 

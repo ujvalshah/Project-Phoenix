@@ -20,7 +20,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { Article } from '@/types';
 import { Image } from '@/components/Image';
-import { Lock, Layers } from 'lucide-react';
+import { Lock, Layers, ExternalLink } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { classifyArticleMedia, getThumbnailUrl, getSupportingMediaCount, getAllImageUrls } from '@/utils/mediaClassifier';
 import { useYouTubeTitle } from '@/hooks/useYouTubeTitle';
@@ -93,6 +93,24 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   // Check if we have any media: primary media OR legacy images
   // This ensures legacy images are rendered even when primaryMedia is null
   const hasMedia = !!primaryMedia || allImageUrls.length > 0;
+
+  // Determine if we should show the link badge
+  // Show ONLY if: nugget has URL AND is NOT YouTube
+  const shouldShowLinkBadge = useMemo(() => {
+    // Get URL from media (previewMetadata.url takes priority, fallback to media.url)
+    const url = article.media?.previewMetadata?.url || article.media?.url;
+    if (!url) return false;
+    
+    // Don't show badge for YouTube nuggets
+    if (primaryMedia?.type === 'youtube') return false;
+    
+    return true;
+  }, [article.media, primaryMedia]);
+
+  // Get the URL for the link badge
+  const linkUrl = useMemo(() => {
+    return article.media?.previewMetadata?.url || article.media?.url || null;
+  }, [article.media]);
 
   // ============================================================================
   // MULTI-IMAGE GRID LOGIC
@@ -201,6 +219,8 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
           images={allImageUrls}
           articleTitle={article.title}
           onGridClick={onMediaClick}
+          showLinkBadge={shouldShowLinkBadge}
+          linkUrl={linkUrl}
         />
       ) : (
         /* MODE 2B: Single Thumbnail (YouTube, Image, Document - existing behavior) */
@@ -261,6 +281,21 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Link Badge - Single Image: Show on top-right if URL exists and not YouTube */}
+              {shouldShowLinkBadge && linkUrl && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent triggering image click
+                    window.open(linkUrl, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-10"
+                  aria-label="Open link in new tab"
+                >
+                  <ExternalLink size={10} />
+                  <span>Link</span>
+                </button>
               )}
             </div>
           )}

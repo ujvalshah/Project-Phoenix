@@ -28,17 +28,22 @@
 
 import React from 'react';
 import { Image } from '@/components/Image';
+import { ExternalLink } from 'lucide-react';
 
 interface CardThumbnailGridProps {
   images: string[];
   articleTitle?: string;
   onGridClick?: (e: React.MouseEvent) => void;
+  showLinkBadge?: boolean;
+  linkUrl?: string | null;
 }
 
 export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
   images,
   articleTitle,
   onGridClick,
+  showLinkBadge = false,
+  linkUrl,
 }) => {
   // We expect at least 2 images for grid display
   if (!images || images.length < 2) return null;
@@ -71,6 +76,20 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
               alt={getAltText(idx)}
               className="w-full h-full object-contain transition-transform duration-300 group-hover/media:scale-105"
             />
+            {/* Link Badge - Multi-Image: Show ONLY on first image (index 0) */}
+            {showLinkBadge && linkUrl && idx === 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent triggering grid click
+                  window.open(linkUrl, '_blank', 'noopener,noreferrer');
+                }}
+                className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-10"
+                aria-label="Open link in new tab"
+              >
+                <ExternalLink size={10} />
+                <span>Link</span>
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -95,6 +114,20 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
             alt={getAltText(0)}
             className="w-full h-full object-contain transition-transform duration-300 group-hover/media:scale-105"
           />
+          {/* Link Badge - Multi-Image: Show ONLY on first image (index 0) */}
+          {showLinkBadge && linkUrl && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent triggering grid click
+                window.open(linkUrl, '_blank', 'noopener,noreferrer');
+              }}
+              className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-10"
+              aria-label="Open link in new tab"
+            >
+              <ExternalLink size={10} />
+              <span>Link</span>
+            </button>
+          )}
         </div>
         
         {/* Right side: Images 2 and 3 stacked vertically */}
@@ -135,6 +168,21 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
             alt={getAltText(idx)}
             className="w-full h-full object-contain transition-transform duration-300 group-hover/media:scale-105"
           />
+          
+          {/* Link Badge - Multi-Image: Show ONLY on first image (index 0) */}
+          {showLinkBadge && linkUrl && idx === 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent triggering grid click
+                window.open(linkUrl, '_blank', 'noopener,noreferrer');
+              }}
+              className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-10"
+              aria-label="Open link in new tab"
+            >
+              <ExternalLink size={10} />
+              <span>Link</span>
+            </button>
+          )}
           
           {/* "+N" overlay on 4th cell if more than 4 images */}
           {idx === 3 && remainingCount > 0 && (

@@ -124,7 +124,7 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
       />
       
       {/* Modal Content Container */}
-      <div className="relative w-full h-full max-w-7xl max-h-screen p-4 md:p-8 flex flex-col">
+      <div className="relative w-full h-full max-w-full max-h-full p-4 md:p-8 flex flex-col overflow-hidden">
         {/* Header: Close button + Counter */}
         <div className="flex items-center justify-between mb-4 z-10">
           {/* Image counter (left) */}
@@ -169,18 +169,23 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
               - Fits within viewport
               - Centered horizontally and vertically */}
           <div 
-            className="relative w-full h-full flex items-center justify-center"
+            className="relative w-full h-full flex items-center justify-center overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <Image
               src={currentImage}
               alt={currentTitle || `Image ${currentIndex + 1} of ${images.length}`}
-              className="max-w-full max-h-full w-auto h-auto object-contain"
+              className="max-w-full max-h-full w-auto h-auto object-contain select-none"
               style={{
                 // Ensure image never exceeds viewport
                 maxWidth: '100%',
                 maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                display: 'block'
               }}
+              draggable={false}
             />
           </div>
           
