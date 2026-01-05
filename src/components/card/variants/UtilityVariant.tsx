@@ -51,8 +51,8 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
   if (data.title) {
     ariaLabelParts.push(data.title);
   }
-  if (data.categories.length > 0) {
-    ariaLabelParts.push(`Tagged with ${data.categories.join(', ')}`);
+  if (data.tags.length > 0) {
+    ariaLabelParts.push(`Tagged with ${data.tags.join(', ')}`);
   }
   if (data.authorName) {
     ariaLabelParts.push(`by ${data.authorName}`);
@@ -145,8 +145,8 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
             <div className="flex justify-between items-start gap-2">
               <div className="flex-1 min-w-0">
                 <CardTags
-                  categories={data.categories}
-                  onCategoryClick={handlers.onCategoryClick}
+                  tags={data.tags}
+                  onTagClick={handlers.onCategoryClick}
                   showTagPopover={showTagPopover}
                   onToggleTagPopover={handlers.onToggleTagPopover}
                   tagPopoverRef={tagPopoverRef}

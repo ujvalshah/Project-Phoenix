@@ -1,4 +1,5 @@
 /**
+ * TODO: LEGACY MIGRATION SCRIPT - Can be removed after migration is complete
  * Phase-2 Tag & Category Cleanup Migration Script
  * 
  * SAFE migration script to fix tag/category integrity issues detected in Phase-2 audit.
@@ -12,6 +13,7 @@
  * - Assign "uncategorized" fallback if tags become empty
  * 
  * IMPORTANT: Does NOT modify categoryIds (this phase is tag/category string only)
+ * ⚠️ DEPRECATION NOTICE: categoryIds field is deprecated and no longer used in runtime.
  * 
  * Mode: DRY-RUN by default (no data modifications)
  * Apply: Use --apply flag to write changes to database
@@ -47,18 +49,14 @@ interface CleanupResult {
   year: string;
   before: {
     tags: string[];
-    categories?: string[];
   };
   after: {
     tags: string[];
-    categories?: string[];
   };
   changes: {
     tagsTrimmed: number;
     tagsDeduplicated: number;
     tagsNormalized: number;
-    categoriesTrimmed: number;
-    categoriesRemoved: number;
     fallbackTagAdded: boolean;
   };
   skipped: boolean;
@@ -159,40 +157,6 @@ function cleanTags(tags: string[]): { tags: string[]; changes: { trimmed: number
   };
 }
 
-/**
- * Clean and normalize categories array
- * - Trim whitespace
- * - Remove empty/whitespace categories
- * - Preserve order and casing
- */
-function cleanCategories(categories: string[] | undefined): { categories: string[]; changes: { trimmed: number; removed: number } } {
-  if (!Array.isArray(categories) || categories.length === 0) {
-    return { categories: [], changes: { trimmed: 0, removed: 0 } };
-  }
-
-  const cleaned: string[] = [];
-  let trimmed = 0;
-  let removed = 0;
-
-  for (const cat of categories) {
-    if (isWhitespaceOnly(cat)) {
-      removed++;
-      continue;
-    }
-
-    const trimmedCat = cat.trim();
-    cleaned.push(trimmedCat);
-
-    if (cat !== trimmedCat) {
-      trimmed++;
-    }
-  }
-
-  return {
-    categories: cleaned,
-    changes: { trimmed, removed }
-  };
-}
 
 /**
  * Get year from ISO date string
@@ -259,13 +223,11 @@ async function runCleanup(): Promise<void> {
 
     // Initialize trackers
     const affectedRecords: CleanupResult[] = [];
-    const backupRecords: Array<{ _id: string; title: string; tags: string[]; categories?: string[] }> = [];
+    const backupRecords: Array<{ _id: string; title: string; tags: string[] }> = [];
     const issueCounts: Record<string, number> = {
       tagsTrimmed: 0,
       tagsDeduplicated: 0,
       tagsNormalized: 0,
-      categoriesTrimmed: 0,
-      categoriesRemoved: 0,
       fallbackTagAdded: 0,
     };
     const breakdownBySourceType: Record<string, number> = {};
@@ -297,21 +259,15 @@ async function runCleanup(): Promise<void> {
         const year = getYear(publishedAt);
 
         const originalTags = Array.isArray(article.tags) ? [...article.tags] : [];
-        const originalCategories = Array.isArray(article.categories) ? [...article.categories] : undefined;
 
         // Clean tags
         const tagsResult = cleanTags(originalTags);
         const cleanedTags = tagsResult.tags;
 
-        // Clean categories
-        const categoriesResult = cleanCategories(originalCategories);
-        const cleanedCategories = categoriesResult.categories.length > 0 ? categoriesResult.categories : undefined;
-
         // Check if anything changed
         const tagsChanged = JSON.stringify(originalTags) !== JSON.stringify(cleanedTags);
-        const categoriesChanged = JSON.stringify(originalCategories) !== JSON.stringify(cleanedCategories);
 
-        if (!tagsChanged && !categoriesChanged) {
+        if (!tagsChanged) {
           articlesSkipped++;
           continue;
         }
@@ -321,8 +277,6 @@ async function runCleanup(): Promise<void> {
         if (tagsResult.changes.deduplicated > 0) issueCounts.tagsDeduplicated++;
         if (tagsResult.changes.normalized > 0) issueCounts.tagsNormalized++;
         if (tagsResult.changes.fallbackAdded) issueCounts.fallbackTagAdded++;
-        if (categoriesResult.changes.trimmed > 0) issueCounts.categoriesTrimmed++;
-        if (categoriesResult.changes.removed > 0) issueCounts.categoriesRemoved++;
 
         const result: CleanupResult = {
           articleId,
@@ -331,18 +285,14 @@ async function runCleanup(): Promise<void> {
           year,
           before: {
             tags: originalTags,
-            categories: originalCategories,
           },
           after: {
             tags: cleanedTags,
-            categories: cleanedCategories,
           },
           changes: {
             tagsTrimmed: tagsResult.changes.trimmed,
             tagsDeduplicated: tagsResult.changes.deduplicated,
             tagsNormalized: tagsResult.changes.normalized,
-            categoriesTrimmed: categoriesResult.changes.trimmed,
-            categoriesRemoved: categoriesResult.changes.removed,
             fallbackTagAdded: tagsResult.changes.fallbackAdded,
           },
           skipped: false,
@@ -358,7 +308,6 @@ async function runCleanup(): Promise<void> {
             _id: articleId,
             title: title.substring(0, 100),
             tags: originalTags,
-            categories: originalCategories,
           });
         }
 
@@ -367,11 +316,6 @@ async function runCleanup(): Promise<void> {
           const updateData: any = {
             tags: cleanedTags,
           };
-
-          // Only update categories if they exist (preserve undefined if originally undefined)
-          if (cleanedCategories !== undefined) {
-            updateData.categories = cleanedCategories.length > 0 ? cleanedCategories : [];
-          }
 
           await Article.updateOne(
             { _id: article._id },
@@ -441,8 +385,6 @@ async function runCleanup(): Promise<void> {
       { issueType: 'Tags Trimmed (Whitespace)', fixedCount: issueCounts.tagsTrimmed },
       { issueType: 'Tags Deduplicated', fixedCount: issueCounts.tagsDeduplicated },
       { issueType: 'Tags Normalized (Casing)', fixedCount: issueCounts.tagsNormalized },
-      { issueType: 'Categories Trimmed', fixedCount: issueCounts.categoriesTrimmed },
-      { issueType: 'Categories Removed (Empty)', fixedCount: issueCounts.categoriesRemoved },
       { issueType: 'Fallback Tag Added', fixedCount: issueCounts.fallbackTagAdded },
     ].filter(item => item.fixedCount > 0);
 
@@ -534,8 +476,8 @@ async function runCleanup(): Promise<void> {
     let verificationResults: Array<{
       articleId: string;
       verified: boolean;
-      expected: { tags: string[]; categories?: string[] };
-      actual: { tags: string[]; categories?: string[] };
+      expected: { tags: string[] };
+      actual: { tags: string[] };
       errors: string[];
     }> = [];
 
@@ -555,33 +497,27 @@ async function runCleanup(): Promise<void> {
               articleId: sample.articleId,
               verified: false,
               expected: sample.after,
-              actual: { tags: [], categories: undefined },
+              actual: { tags: [] },
               errors: ['Article not found after update'],
             });
             continue;
           }
 
           const actualTags = Array.isArray(article.tags) ? [...article.tags] : [];
-          const actualCategories = Array.isArray(article.categories) ? [...article.categories] : undefined;
           
           const tagsMatch = JSON.stringify(actualTags) === JSON.stringify(sample.after.tags);
-          const categoriesMatch = JSON.stringify(actualCategories) === JSON.stringify(sample.after.categories);
           
           const errors: string[] = [];
           if (!tagsMatch) {
             errors.push(`Tags mismatch: expected ${JSON.stringify(sample.after.tags)}, got ${JSON.stringify(actualTags)}`);
           }
-          if (!categoriesMatch) {
-            errors.push(`Categories mismatch: expected ${JSON.stringify(sample.after.categories)}, got ${JSON.stringify(actualCategories)}`);
-          }
 
           verificationResults.push({
             articleId: sample.articleId,
-            verified: tagsMatch && categoriesMatch,
+            verified: tagsMatch,
             expected: sample.after,
             actual: {
               tags: actualTags,
-              categories: actualCategories,
             },
             errors,
           });
@@ -590,7 +526,7 @@ async function runCleanup(): Promise<void> {
             articleId: sample.articleId,
             verified: false,
             expected: sample.after,
-            actual: { tags: [], categories: undefined },
+            actual: { tags: [] },
             errors: [`Error querying article: ${error.message}`],
           });
         }

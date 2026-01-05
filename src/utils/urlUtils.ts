@@ -45,16 +45,12 @@ export const isImageUrl = (url: string): boolean => {
   return false;
 };
 
-export const detectProviderFromUrl = (url: string): 'image' | 'video' | 'document' | 'link' | 'text' | 'youtube' | 'twitter' | 'linkedin' | 'instagram' | 'tiktok' | 'rich' => {
+export const detectProviderFromUrl = (url: string): 'image' | 'video' | 'document' | 'link' | 'text' | 'youtube' => {
   if (!url) return 'link';
   
   const lowerUrl = url.toLowerCase();
   
   if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) return 'youtube';
-  if (lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) return 'twitter';
-  if (lowerUrl.includes('linkedin.com')) return 'linkedin';
-  if (lowerUrl.includes('instagram.com')) return 'instagram';
-  if (lowerUrl.includes('tiktok.com')) return 'tiktok';
   
   // Use shared image detection logic
   if (isImageUrl(url)) return 'image';
@@ -70,8 +66,7 @@ export const detectProviderFromUrl = (url: string): 'image' | 'video' | 'documen
 
 /**
  * Check if a URL should have metadata fetched
- * Only fetch metadata for social networks and video sites where it provides significant value:
- * - Social: Twitter, LinkedIn, Instagram, TikTok (have rich oEmbed APIs)
+ * Only fetch metadata for video sites where it provides significant value:
  * - Video: YouTube (rich video metadata with thumbnails, titles, descriptions)
  * 
  * Skip metadata fetching for:
@@ -79,6 +74,7 @@ export const detectProviderFromUrl = (url: string): 'image' | 'video' | 'documen
  * - News sites (often blocked by paywalls, generic metadata, users prefer custom titles)
  * - Regular blogs/articles (low value, high latency, users can add their own content)
  * - Generic links (minimal benefit, adds 2-5s delay)
+ * - Social networks (no longer supported)
  * 
  * @param url - The URL to check
  * @returns true if metadata should be fetched, false otherwise
@@ -92,16 +88,10 @@ export const shouldFetchMetadata = (url: string): boolean => {
   
   const lowerUrl = url.toLowerCase();
   
-  // Social networks - rich oEmbed APIs with valuable previews
-  if (lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) return true;
-  if (lowerUrl.includes('linkedin.com')) return true;
-  if (lowerUrl.includes('instagram.com')) return true;
-  if (lowerUrl.includes('tiktok.com')) return true;
-  
   // Video platforms - rich metadata with thumbnails and descriptions
   if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) return true;
   
-  // All other URLs (news sites, blogs, generic links) - skip metadata fetching
+  // All other URLs (news sites, blogs, generic links, social networks) - skip metadata fetching
   return false;
 };
 
@@ -134,11 +124,7 @@ export const shouldAutoGenerateTitle = (contentTypeOrUrl: string): boolean => {
   // If it's a URL, check if it's a social or video platform
   const lowerUrl = contentTypeOrUrl.toLowerCase();
   
-  // Social networks
-  if (lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) return true;
-  if (lowerUrl.includes('linkedin.com')) return true;
-  if (lowerUrl.includes('instagram.com')) return true;
-  if (lowerUrl.includes('tiktok.com')) return true;
+  // Social networks (limited support)
   if (lowerUrl.includes('facebook.com')) return true;
   if (lowerUrl.includes('threads.net')) return true;
   if (lowerUrl.includes('reddit.com')) return true;

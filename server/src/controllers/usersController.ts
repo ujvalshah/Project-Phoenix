@@ -271,7 +271,7 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // CATEGORY PHASE-OUT: Use tags instead of categories for personalized feed
+    // TODO: legacy-name-only-if-used-by-frontend - interestedCategories is user preference field (not article field)
     // Get user's interested tags from nested preferences (previously interestedCategories)
     const tags = user.preferences?.interestedCategories || []; // Keep field name for backward compatibility
     const lastVisit = user.appState?.lastLoginAt 

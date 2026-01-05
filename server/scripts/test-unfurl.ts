@@ -3,7 +3,6 @@
  * 
  * Tests:
  * - YouTube URLs
- * - Twitter/X URLs
  * - Article URLs
  * 
  * Usage: tsx server/scripts/test-unfurl.ts
@@ -37,16 +36,6 @@ const testCases: TestCase[] = [
     name: 'YouTube Short URL',
     url: 'https://youtu.be/dQw4w9WgXcQ',
     expectedContentType: 'video',
-  },
-  {
-    name: 'Twitter/X Post',
-    url: 'https://twitter.com/user/status/1234567890',
-    expectedContentType: 'social',
-  },
-  {
-    name: 'X.com Post',
-    url: 'https://x.com/user/status/1234567890',
-    expectedContentType: 'social',
   },
   {
     name: 'Article (Medium)',

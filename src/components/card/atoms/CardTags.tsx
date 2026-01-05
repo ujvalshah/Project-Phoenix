@@ -30,8 +30,8 @@ export const TagPill: React.FC<TagPillProps> = ({ label, onClick }) => {
 };
 
 interface CardTagsProps {
-  categories: string[]; // CATEGORY PHASE-OUT: Kept prop name for backward compatibility, but represents tags
-  onCategoryClick: (tag: string) => void; // CATEGORY PHASE-OUT: Kept prop name but handles tags
+  tags: string[];
+  onTagClick: (tag: string) => void;
   showTagPopover?: boolean;
   onToggleTagPopover?: (e: React.MouseEvent) => void;
   tagPopoverRef?: React.RefObject<HTMLDivElement | null>;
@@ -40,19 +40,19 @@ interface CardTagsProps {
 }
 
 export const CardTags: React.FC<CardTagsProps> = ({
-  categories, // CATEGORY PHASE-OUT: This prop represents tags
-  onCategoryClick, // CATEGORY PHASE-OUT: This handler receives tags
+  tags,
+  onTagClick,
   showTagPopover,
   onToggleTagPopover,
   tagPopoverRef,
   className,
   variant = 'default',
 }) => {
-  if (!categories || categories.length === 0) return null;
+  if (!tags || tags.length === 0) return null;
 
   // PHASE 1: Max 3 visible tags per card spec
-  const visibleTags = categories.slice(0, 3);
-  const remainingCount = categories.length - 3;
+  const visibleTags = tags.slice(0, 3);
+  const remainingCount = tags.length - 3;
 
   // Compact spacing between pills (gap-1 or gap-1.5)
   // Grid/Feed variant: no background container, just flex layout
@@ -71,7 +71,7 @@ export const CardTags: React.FC<CardTagsProps> = ({
           label={tag}
           onClick={(e) => {
             e.stopPropagation();
-            onCategoryClick(tag); // CATEGORY PHASE-OUT: onCategoryClick receives tags
+            onTagClick(tag);
           }}
         />
       ))}
@@ -88,15 +88,15 @@ export const CardTags: React.FC<CardTagsProps> = ({
           >
             +{remainingCount}
           </button>
-          {showTagPopover && categories.length > 3 && (
+          {showTagPopover && tags.length > 3 && (
             <div className="absolute top-full left-0 mt-1 w-40 z-30 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl p-2 animate-in fade-in zoom-in-95 duration-200">
               <div className="flex flex-col gap-1">
-                {categories.slice(3).map((tag) => (
+                {tags.slice(3).map((tag) => (
                   <button
                     key={tag}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onCategoryClick(tag); // CATEGORY PHASE-OUT: onCategoryClick receives tags
+                      onTagClick(tag);
                       if (onToggleTagPopover) {
                         onToggleTagPopover(e);
                       }

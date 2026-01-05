@@ -10,9 +10,6 @@
 import { User } from '../../models/User.js';
 import { Article } from '../../models/Article.js';
 import { Collection } from '../../models/Collection.js';
-import { Bookmark } from '../../models/Bookmark.js';
-import { BookmarkFolder } from '../../models/BookmarkFolder.js';
-import { BookmarkFolderLink } from '../../models/BookmarkFolderLink.js';
 import { Report } from '../../models/Report.js';
 import { ModerationAuditLog } from '../../models/ModerationAuditLog.js';
 import { Feedback } from '../../models/Feedback.js';
@@ -79,45 +76,7 @@ export async function verifyDatabaseIntegrity(): Promise<VerificationResult> {
       details: { orphanedCount: orphanedEntryCount }
     });
 
-    // Check 3: All bookmarks reference valid users and articles
-    const bookmarks = await Bookmark.find({}).lean();
-    const orphanedBookmarks = bookmarks.filter(
-      b => !validUserIds.has(b.userId) || !validArticleIds.has(b.nuggetId)
-    );
-
-    result.checks.push({
-      name: 'Bookmark References',
-      passed: orphanedBookmarks.length === 0,
-      message: orphanedBookmarks.length === 0
-        ? 'All bookmarks reference valid users and articles'
-        : `Found ${orphanedBookmarks.length} orphaned bookmarks (should have been cleaned)`,
-      details: { orphanedCount: orphanedBookmarks.length }
-    });
-
-    // Check 4: All bookmark folder links reference valid entities
-    const validBookmarkIds = new Set(
-      (await Bookmark.find({}, '_id').lean()).map(b => b._id.toString())
-    );
-    const validFolderIds = new Set(
-      (await BookmarkFolder.find({}, '_id').lean()).map(f => f._id.toString())
-    );
-    const links = await BookmarkFolderLink.find({}).lean();
-    const orphanedLinks = links.filter(
-      l => !validUserIds.has(l.userId) || 
-           !validBookmarkIds.has(l.bookmarkId) || 
-           !validFolderIds.has(l.folderId)
-    );
-
-    result.checks.push({
-      name: 'Bookmark Folder Link References',
-      passed: orphanedLinks.length === 0,
-      message: orphanedLinks.length === 0
-        ? 'All bookmark folder links reference valid entities'
-        : `Found ${orphanedLinks.length} orphaned bookmark folder links (should have been cleaned)`,
-      details: { orphanedCount: orphanedLinks.length }
-    });
-
-    // Check 5: Collection followers are valid
+    // Check 3: Collection followers are valid
     let orphanedFollowerCount = 0;
     for (const collection of collections) {
       if (collection.followers && Array.isArray(collection.followers)) {

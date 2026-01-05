@@ -182,7 +182,7 @@ function transformArticle(doc: any): any {
       return null;
     }
     
-    const { _id, __v, ...rest } = plainDoc;
+    const { _id, __v, categoryIds, ...rest } = plainDoc; // Explicitly exclude deprecated categoryIds
     
     // Ensure author data exists (critical for frontend)
     const authorId = rest.authorId || '';
@@ -193,6 +193,7 @@ function transformArticle(doc: any): any {
     }
     
     // Build frontend-compatible article with safe defaults
+    // CRITICAL: categoryIds is explicitly excluded - never expose in API responses
     const article: any = {
       id,
       title: rest.title || undefined, // Preserve empty titles (display layer handles fallbacks)
@@ -238,6 +239,53 @@ function transformArticle(doc: any): any {
 }
 
 /**
+ * Create defensive proxy that intercepts legacy category field access
+ * Returns empty arrays for categories/categoryIds with warning
+ */
+function createDefensiveProxy(obj: any): any {
+  return new Proxy(obj, {
+    get(target: any, prop: string | symbol) {
+      // Intercept access to legacy category fields
+      if (prop === 'categories' || prop === 'categoryIds') {
+        console.warn('Legacy category field accessed — ignored', { field: prop });
+        return [];
+      }
+      // Forward all other property access
+      return target[prop];
+    },
+    has(target: any, prop: string | symbol) {
+      // Return true for categories/categoryIds to prevent "in" operator errors
+      if (prop === 'categories' || prop === 'categoryIds') {
+        return true;
+      }
+      return prop in target;
+    },
+    ownKeys(target: any) {
+      // Include categories/categoryIds in ownKeys to prevent Object.keys() errors
+      const keys = Reflect.ownKeys(target);
+      if (!keys.includes('categories')) {
+        keys.push('categories');
+      }
+      if (!keys.includes('categoryIds')) {
+        keys.push('categoryIds');
+      }
+      return keys;
+    },
+    getOwnPropertyDescriptor(target: any, prop: string | symbol) {
+      // Return descriptor for categories/categoryIds to prevent enumeration errors
+      if (prop === 'categories' || prop === 'categoryIds') {
+        return {
+          enumerable: true,
+          configurable: true,
+          value: []
+        };
+      }
+      return Reflect.getOwnPropertyDescriptor(target, prop);
+    }
+  });
+}
+
+/**
  * Normalize MongoDB document to API response format
  * Converts _id to id and transforms to frontend format
  */
@@ -246,23 +294,39 @@ export function normalizeDoc(doc: any): any {
   
   // Transform article documents specially
   if (doc.title && doc.content) {
-    return transformArticle(doc);
+    const transformed = transformArticle(doc);
+    // Wrap in defensive proxy to intercept legacy category field access
+    return transformed ? createDefensiveProxy(transformed) : null;
   }
   
   // Handle other documents (User, Collection, Report, etc.)
   if (doc.toObject) {
     const obj = doc.toObject();
     const { _id, __v, ...rest } = obj;
-    return { id: _id?.toString() || doc.id, ...rest };
+    const normalized = { id: _id?.toString() || doc.id, ...rest };
+    // Only wrap in proxy if it looks like an article (has title/content)
+    if (normalized.title && normalized.content) {
+      return createDefensiveProxy(normalized);
+    }
+    return normalized;
   }
   
   // Handle plain object
   if (doc._id) {
     const { _id, __v, ...rest } = doc;
-    return { id: _id.toString(), ...rest };
+    const normalized = { id: _id.toString(), ...rest };
+    // Only wrap in proxy if it looks like an article (has title/content)
+    if (normalized.title && normalized.content) {
+      return createDefensiveProxy(normalized);
+    }
+    return normalized;
   }
   
   // Already normalized or has id
+  // Wrap in proxy if it looks like an article
+  if (doc.title && doc.content) {
+    return createDefensiveProxy(doc);
+  }
   return doc;
 }
 

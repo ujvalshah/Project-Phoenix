@@ -119,11 +119,11 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
             )}
 
             {/* 2. Tags - Visually demoted (1-2 max, muted pills) */}
-            {data.categories && data.categories.length > 0 && (
+            {data.tags && data.tags.length > 0 && (
               <div onClick={(e) => e.stopPropagation()} className="mb-2">
                 <CardTags
-                  categories={data.categories}
-                  onCategoryClick={handlers.onCategoryClick}
+                  tags={data.tags}
+                  onTagClick={handlers.onCategoryClick}
                   showTagPopover={showTagPopover}
                   onToggleTagPopover={handlers.onToggleTagPopover}
                   tagPopoverRef={tagPopoverRef}

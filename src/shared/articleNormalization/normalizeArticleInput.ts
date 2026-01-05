@@ -16,6 +16,11 @@ import { detectProviderFromUrl } from '@/utils/urlUtils';
 import { getPrimaryUrl } from '@/utils/processNuggetUrl';
 import type { NuggetMedia, Article } from '@/types';
 import { normalizeTags } from './normalizeTags';
+import { 
+  detectDuplicateImages, 
+  dedupeImagesForCreate, 
+  dedupeImagesForEdit 
+} from './imageDedup';
 // CATEGORY PHASE-OUT: Removed normalizeCategories import - using normalizeTags directly
 
 /**
@@ -24,7 +29,7 @@ import { normalizeTags } from './normalizeTags';
 export interface ArticleInputData {
   title: string;
   content: string;
-  categories: string[]; // CATEGORY PHASE-OUT: This field represents tags, kept name for backward compatibility
+  tags: string[];
   visibility: 'public' | 'private';
   urls: string[];
   detectedLink?: string | null;
@@ -63,7 +68,6 @@ export interface NormalizedArticleInput {
   content: string;
   excerpt: string;
   readTime: number;
-  categories: string[];
   tags: string[];
   visibility: 'public' | 'private';
   images?: string[];
@@ -73,6 +77,7 @@ export interface NormalizedArticleInput {
   supportingMedia?: any[];
   source_type?: string;
   customCreatedAt?: string;
+  primaryUrl?: string | null;
   
   // Edit mode specific
   hasEmptyTagsError?: boolean;
@@ -99,57 +104,86 @@ function generateExcerpt(content: string, title: string): string {
 // Tag normalization now uses shared utility (normalizeTags from './normalizeTags')
 
 /**
- * Deduplicate image URLs (case-insensitive, normalized)
- * Matches exact logic from CreateNuggetModal.tsx (CREATE mode)
+ * ============================================================================
+ * IMAGE DEDUPLICATION - PHASE 2 (REFACTORED TO SHARED MODULE)
+ * ============================================================================
+ * Image deduplication logic has been moved to ./imageDedup.ts
+ * Functions are imported and used here to maintain backward compatibility.
  */
-function deduplicateImages(imageUrls: string[]): string[] {
-  const imageMap = new Map<string, string>();
-  for (const img of imageUrls) {
-    if (img && typeof img === 'string' && img.trim()) {
-      const normalized = img.toLowerCase().trim();
-      if (!imageMap.has(normalized)) {
-        imageMap.set(normalized, img); // Keep original casing
+
+/**
+ * Write audit log entry to markdown file (Node.js only)
+ */
+async function writeAuditLogEntry(entry: {
+  mode: 'create' | 'edit';
+  articleId?: string;
+  totalInputImages: number;
+  totalOutputImages: number;
+  duplicatesDetected: number;
+  normalizedPairs: Array<{ original: string; normalized: string }>;
+  imagesRemoved: number;
+  movedToSupportingMedia: number;
+  duplicateTypes: string[];
+  editModeEvents?: string[];
+  createModeEvents?: string[];
+}): Promise<void> {
+  const timestamp = new Date().toISOString();
+  const logEntry = `
+## ${timestamp} - ${entry.mode.toUpperCase()} Mode
+
+- **Article ID**: ${entry.articleId || 'N/A (new article)'}
+- **Input Images**: ${entry.totalInputImages}
+- **Output Images**: ${entry.totalOutputImages}
+- **Duplicates Detected**: ${entry.duplicatesDetected}
+- **Images Removed**: ${entry.imagesRemoved}
+- **Moved to Supporting Media**: ${entry.movedToSupportingMedia}
+- **Duplicate Types**: ${entry.duplicateTypes.join(', ') || 'none'}
+
+${entry.editModeEvents && entry.editModeEvents.length > 0 ? `### Edit Mode Events\n${entry.editModeEvents.map(e => `- ${e}`).join('\n')}\n` : ''}
+${entry.createModeEvents && entry.createModeEvents.length > 0 ? `### Create Mode Events\n${entry.createModeEvents.map(e => `- ${e}`).join('\n')}\n` : ''}
+
+${entry.normalizedPairs.length > 0 ? `### Normalized Pairs\n${entry.normalizedPairs.map(p => `- \`${p.original}\` → \`${p.normalized}\``).join('\n')}\n` : ''}
+
+---
+
+`;
+
+  // Try to write to file if in Node.js environment
+  if (typeof window === 'undefined' && typeof process !== 'undefined') {
+    try {
+      // Use dynamic import for Node.js fs module
+      const fsModule = await import('fs');
+      const pathModule = await import('path');
+      const fs = fsModule.default || fsModule;
+      const path = pathModule.default || pathModule;
+      const logDir = path.join(process.cwd(), 'logs');
+      const logFile = path.join(logDir, 'image-dedup-audit.md');
+
+      // Ensure logs directory exists
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
       }
+
+      // Append to log file
+      fs.appendFileSync(logFile, logEntry, 'utf-8');
+      console.log(`[IMAGE_DEDUP_AUDIT] ✅ Audit log entry written to ${logFile}`);
+      console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved} | Moved to supportingMedia: ${entry.movedToSupportingMedia}`);
+    } catch (error) {
+      // File writing failed, just log to console
+      console.warn('[IMAGE_DEDUP_AUDIT] Failed to write log file (browser environment or file system unavailable):', error);
+      // Still log summary to console
+      console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved} | Moved to supportingMedia: ${entry.movedToSupportingMedia}`);
     }
+  } else {
+    // Browser environment - just log summary to console
+    console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved} | Moved to supportingMedia: ${entry.movedToSupportingMedia}`);
   }
-  return Array.from(imageMap.values());
 }
 
 /**
- * Deduplicate images for EDIT mode (checks against existing images)
- * Matches exact logic from CreateNuggetModal.tsx (EDIT mode)
+ * Legacy deduplication functions removed - now using imageDedup module
+ * These functions are preserved as wrappers for backward compatibility during transition
  */
-function deduplicateImagesForEdit(
-  newImages: string[],
-  existingImages: string[]
-): string[] {
-  const existingImagesSet = new Set(
-    existingImages.map((img: string) => 
-      img && typeof img === 'string' ? img.toLowerCase().trim() : ''
-    ).filter(Boolean)
-  );
-  
-  const imageMap = new Map<string, string>();
-  
-  for (const img of newImages) {
-    if (img && typeof img === 'string' && img.trim()) {
-      const normalized = img.toLowerCase().trim();
-      
-      // Check if this image already exists in the article
-      if (existingImagesSet.has(normalized)) {
-        // Keep it - it's an existing image that should remain
-        if (!imageMap.has(normalized)) {
-          imageMap.set(normalized, img);
-        }
-      } else if (!imageMap.has(normalized)) {
-        // New image, add it
-        imageMap.set(normalized, img);
-      }
-    }
-  }
-  
-  return Array.from(imageMap.values());
-}
 
 /**
  * Separate image URLs from regular URLs
@@ -546,7 +580,7 @@ export async function normalizeArticleInput(
   const { 
     title, 
     content, 
-    categories, 
+    tags: inputTags, 
     visibility, 
     urls,
     imageUrls,
@@ -565,9 +599,8 @@ export async function normalizeArticleInput(
   // Generate excerpt (same for both modes)
   const excerpt = generateExcerpt(content, title);
 
-  // CATEGORY PHASE-OUT: Normalize tags directly (categories parameter now represents tags)
-  // The categories parameter is kept for backward compatibility but represents tags
-  const tags = normalizeTags(categories);
+  // Normalize tags
+  const tags = normalizeTags(inputTags);
   
   // Validation: tags MUST NOT be empty for both CREATE and EDIT
   // For CREATE: prevent submission (hasEmptyTagsError flag)
@@ -580,7 +613,6 @@ export async function normalizeArticleInput(
     if (existingTags.length > 0) {
       console.warn('[normalizeArticleInput] EDIT MODE: Tags would become empty after normalization', {
         originalTags: existingTags,
-        normalizedCategories,
         normalizedTags: tags,
         articleId: input.initialData?.id,
       });
@@ -596,14 +628,63 @@ export async function normalizeArticleInput(
   // Separate image URLs from regular URLs (always separate from urls to ensure consistency)
   const { imageUrls: separatedImageUrls } = separateImageUrls(urls);
 
-  // Combine and deduplicate images (different logic for CREATE vs EDIT)
+  // ============================================================================
+  // IMAGE DEDUPLICATION - PHASE 2 (USING SHARED MODULE)
+  // ============================================================================
+  // Capture raw input for audit comparison
+  const rawInputImages: string[] = [];
+  if (mode === 'create') {
+    rawInputImages.push(...separatedImageUrls, ...uploadedImageUrls);
+  } else {
+    rawInputImages.push(...existingImages, ...separatedImageUrls, ...uploadedImageUrls);
+  }
+
+  // Build supportingMedia first (needed for EDIT mode pruning)
+  let supportingMedia: any[] | undefined;
+  let imagesToRemove: Set<string> | undefined;
+  if (mode === 'create') {
+    supportingMedia = await buildSupportingMediaCreate(input, options);
+  } else {
+    const supportingResult = await buildSupportingMediaEdit(input, options);
+    supportingMedia = supportingResult.supportingMedia;
+    imagesToRemove = supportingResult.imagesToRemove;
+  }
+
+  // Combine and deduplicate images using shared module (different logic for CREATE vs EDIT)
   let allImages: string[];
+  let dedupResult: { deduplicated: string[]; removed: string[]; movedToSupporting?: string[]; logs: Array<{ action: string; reason: string; url?: string }> };
+  
   if (mode === 'create') {
     const allImageUrlsRaw = [...separatedImageUrls, ...uploadedImageUrls];
-    allImages = deduplicateImages(allImageUrlsRaw);
+    dedupResult = dedupeImagesForCreate(allImageUrlsRaw);
+    allImages = dedupResult.deduplicated;
   } else {
-    const allImageUrlsRaw = [...existingImages, ...separatedImageUrls, ...uploadedImageUrls];
-    allImages = deduplicateImagesForEdit(allImageUrlsRaw, existingImages);
+    const allImageUrlsRaw = [...separatedImageUrls, ...uploadedImageUrls];
+    dedupResult = dedupeImagesForEdit(existingImages, allImageUrlsRaw, supportingMedia);
+    allImages = dedupResult.deduplicated;
+  }
+
+  // Fallback behavior: If output differs unexpectedly, preserve original behavior
+  const imagesBeforeDedup = mode === 'create' 
+    ? [...separatedImageUrls, ...uploadedImageUrls]
+    : [...existingImages, ...separatedImageUrls, ...uploadedImageUrls];
+  
+  // Safety check: If we lost images unexpectedly, log warning and preserve original
+  const expectedMinCount = mode === 'edit' ? existingImages.length : 0;
+  if (allImages.length < expectedMinCount) {
+    console.warn('[IMAGE_DEDUP] Fallback: preserved legacy behavior - unexpected image count reduction', {
+      mode,
+      before: imagesBeforeDedup.length,
+      after: allImages.length,
+      expectedMin: expectedMinCount,
+    });
+    // Fallback: Use original images if we lost existing images in EDIT mode
+    if (mode === 'edit' && allImages.length < existingImages.length) {
+      allImages = [...existingImages, ...allImages.filter(img => 
+        !existingImages.some(existing => existing.toLowerCase().trim() === img.toLowerCase().trim())
+      )];
+      console.warn('[IMAGE_DEDUP] Fallback: restored existing images to prevent data loss');
+    }
   }
 
   // Merge mediaIds (CREATE: only new, EDIT: merge with existing)
@@ -622,26 +703,115 @@ export async function normalizeArticleInput(
   } else {
     media = await buildMediaObjectEdit(input, options);
   }
-
-  // Build supportingMedia (different logic for CREATE vs EDIT)
-  let supportingMedia: any[] | undefined;
-  let imagesToRemove: Set<string> | undefined;
-  if (mode === 'create') {
-    supportingMedia = await buildSupportingMediaCreate(input, options);
-    // Remove images that are in supportingMedia (CREATE mode doesn't need this, but preserve structure)
-  } else {
-    const supportingResult = await buildSupportingMediaEdit(input, options);
-    supportingMedia = supportingResult.supportingMedia;
-    imagesToRemove = supportingResult.imagesToRemove;
+  
+  // ============================================================================
+  // IMAGE DEDUPLICATION AUDIT - PHASE 2 (STRUCTURED LOGGING)
+  // ============================================================================
+  const finalImages = allImages.length > 0 ? allImages : [];
+  const totalInputImages = rawInputImages.length;
+  const totalOutputImages = finalImages.length;
+  const imagesRemoved = dedupResult.removed.length;
+  const movedToSupportingMedia = dedupResult.movedToSupporting?.length || 0;
+  
+  // Detect duplicates in raw input (for audit purposes)
+  const duplicateDetection = detectDuplicateImages(rawInputImages);
+  const duplicatesDetected = duplicateDetection.duplicates.length;
+  
+  // Mode-specific audit events
+  const editModeEvents: string[] = [];
+  const createModeEvents: string[] = [];
+  
+  if (mode === 'edit') {
+    // EDIT-mode specific audit checks
+    const existingImagesSet = new Set(
+      (existingImages || []).map(img => img && typeof img === 'string' ? img.toLowerCase().trim() : '').filter(Boolean)
+    );
     
-    // Remove images from images array that are now in supportingMedia
-    if (imagesToRemove && imagesToRemove.size > 0 && allImages.length > 0) {
-      allImages = allImages.filter(img => {
-        if (!img || typeof img !== 'string') return true;
-        const normalized = img.toLowerCase().trim();
-        return !imagesToRemove!.has(normalized);
-      });
+    // Check which existing images were kept
+    const keptExistingImages = finalImages.filter(img => {
+      if (!img || typeof img !== 'string') return false;
+      return existingImagesSet.has(img.toLowerCase().trim());
+    });
+    
+    if (keptExistingImages.length > 0) {
+      editModeEvents.push(`${keptExistingImages.length} existing image(s) implicitly kept: ${keptExistingImages.slice(0, 3).join(', ')}${keptExistingImages.length > 3 ? '...' : ''}`);
     }
+    
+    // Check if uploaded images override legacy images
+    const uploadedSet = new Set(uploadedImageUrls.map(img => img && typeof img === 'string' ? img.toLowerCase().trim() : '').filter(Boolean));
+    const overriddenImages = (existingImages || []).filter(img => {
+      if (!img || typeof img !== 'string') return false;
+      const normalized = img.toLowerCase().trim();
+      return uploadedSet.has(normalized) && !finalImages.some(f => f.toLowerCase().trim() === normalized);
+    });
+    
+    if (overriddenImages.length > 0) {
+      editModeEvents.push(`${overriddenImages.length} legacy image(s) overridden by uploaded images: ${overriddenImages.slice(0, 3).join(', ')}${overriddenImages.length > 3 ? '...' : ''}`);
+    }
+    
+    // Check images moved to supportingMedia
+    if (movedToSupportingMedia > 0) {
+      editModeEvents.push(`${movedToSupportingMedia} image(s) removed from images array (moved to supportingMedia)`);
+    }
+  } else {
+    // CREATE-mode specific audit checks
+    const uploadedSet = new Set(uploadedImageUrls.map(img => img && typeof img === 'string' ? img.toLowerCase().trim() : '').filter(Boolean));
+    
+    // Check if pasted URL duplicates uploaded image
+    const pastedDuplicates = separatedImageUrls.filter(img => {
+      if (!img || typeof img !== 'string') return false;
+      return uploadedSet.has(img.toLowerCase().trim());
+    });
+    
+    if (pastedDuplicates.length > 0) {
+      createModeEvents.push(`${pastedDuplicates.length} pasted URL(s) duplicate uploaded image(s): ${pastedDuplicates.slice(0, 3).join(', ')}${pastedDuplicates.length > 3 ? '...' : ''}`);
+    }
+    
+    // Check if same image appears via URL + masonry
+    const masonryImageUrls = (input.masonryMediaItems || [])
+      .filter(item => item.type === 'image' && item.url)
+      .map(item => item.url.toLowerCase().trim());
+    const masonrySet = new Set(masonryImageUrls);
+    
+    const urlMasonryDuplicates = rawInputImages.filter(img => {
+      if (!img || typeof img !== 'string') return false;
+      return masonrySet.has(img.toLowerCase().trim());
+    });
+    
+    if (urlMasonryDuplicates.length > 0) {
+      createModeEvents.push(`${urlMasonryDuplicates.length} image(s) appear via both URL and masonry: ${urlMasonryDuplicates.slice(0, 3).join(', ')}${urlMasonryDuplicates.length > 3 ? '...' : ''}`);
+    }
+    
+    // Check dedupe prevention
+    if (duplicatesDetected > 0) {
+      createModeEvents.push(`Deduplication prevented ${duplicatesDetected} duplicate image(s) from being stored`);
+    }
+  }
+  
+  // Log audit event if any deduplication or pruning occurred
+  if (duplicatesDetected > 0 || imagesRemoved > 0 || movedToSupportingMedia > 0 || totalInputImages !== totalOutputImages) {
+    const duplicateTypes = [...new Set(duplicateDetection.duplicates.map(d => d.type))];
+    
+    const auditData = {
+      mode,
+      articleId: input.initialData?.id,
+      totalInputImages,
+      totalOutputImages,
+      duplicatesDetected,
+      normalizedPairs: duplicateDetection.normalizedPairs,
+      imagesRemoved,
+      movedToSupportingMedia,
+      duplicateTypes,
+      ...(mode === 'edit' && editModeEvents.length > 0 ? { editModeEvents } : {}),
+      ...(mode === 'create' && createModeEvents.length > 0 ? { createModeEvents } : {}),
+    };
+    
+    console.warn('[IMAGE_DEDUP_AUDIT]', auditData);
+    
+    // Write to log file (async, non-blocking)
+    writeAuditLogEntry(auditData).catch(err => {
+      console.warn('[IMAGE_DEDUP_AUDIT] Failed to write log entry:', err);
+    });
   }
 
   // Determine source_type (same for both modes)
@@ -654,13 +824,11 @@ export async function normalizeArticleInput(
     finalCustomCreatedAt = new Date(customCreatedAt).toISOString();
   }
 
-  // CATEGORY PHASE-OUT: Return tags only (categories field removed from output)
   return {
     title: title.trim(),
     content: content.trim() || '',
     excerpt,
     readTime,
-    // CATEGORY PHASE-OUT: Removed categories from output - tags are now the only classification field
     tags,
     visibility,
     images: allImages.length > 0 ? allImages : undefined,
@@ -670,6 +838,7 @@ export async function normalizeArticleInput(
     supportingMedia,
     source_type,
     customCreatedAt: finalCustomCreatedAt,
+    primaryUrl,
     hasEmptyTagsError,
   };
 }

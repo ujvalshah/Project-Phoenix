@@ -9,7 +9,7 @@ import { queryClient } from '@/queryClient';
 import { GenericLinkPreview } from './embeds/GenericLinkPreview';
 import { Collection } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
-import { aiService } from '@/services/aiService';
+// AI service removed - AI creation system has been fully removed
 import { useToast } from '@/hooks/useToast';
 import { compressImage, isImageFile, formatFileSize } from '@/utils/imageOptimizer';
 import { unfurlUrl } from '@/services/unfurlService';
@@ -132,7 +132,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   
   // UI State
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  // AI loading state removed - AI creation system has been fully removed
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
   
@@ -330,7 +331,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setCustomDomain(null);
     setCustomCreatedAt('');
     setError(null);
-    setIsAiLoading(false);
+    setIsLoading(false);
     // Reset field-level validation states
     setTagsError(null);
     setContentError(null);
@@ -388,11 +389,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             const isYouTubeOrSocial = primaryUrl && (
               primaryUrl.includes('youtube.com') || 
               primaryUrl.includes('youtu.be') ||
-              primaryUrl.includes('twitter.com') || 
-              primaryUrl.includes('x.com') ||
-              primaryUrl.includes('linkedin.com') ||
-              primaryUrl.includes('instagram.com') ||
-              primaryUrl.includes('tiktok.com') ||
               primaryUrl.includes('facebook.com') ||
               primaryUrl.includes('threads.net') ||
               primaryUrl.includes('reddit.com')
@@ -760,6 +756,37 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           return u !== imageUrl; // Fallback to exact match
         }
       }));
+      
+      // CRITICAL FIX: Remove deleted image from ALL relevant local state arrays
+      // This prevents the image from reappearing on next normalize() call
+      // Remove from masonryMediaItems (any item where item.url matches deleted URL)
+      setMasonryMediaItems(prev => {
+        const filtered = prev.filter(item => {
+          try {
+            const itemUrl = item?.url?.toLowerCase().trim();
+            return itemUrl !== normalizedImageUrl;
+          } catch {
+            return item?.url !== imageUrl; // Fallback to exact match
+          }
+        });
+        return filtered;
+      });
+      
+      // Remove from attachments (if present - unlikely in edit mode but safe to check)
+      setAttachments(prev => {
+        const filtered = prev.filter(att => {
+          try {
+            const attUrl = att?.secureUrl?.toLowerCase().trim() || att?.previewUrl?.toLowerCase().trim();
+            return attUrl !== normalizedImageUrl;
+          } catch {
+            return att?.secureUrl !== imageUrl && att?.previewUrl !== imageUrl; // Fallback to exact match
+          }
+        });
+        return filtered;
+      });
+      
+      // Debug log for local state cleanup
+      console.log('[EDIT IMAGE DELETE] removed from local state', { deletedUrl: imageUrl });
       
       toast.success('Image deleted successfully');
       
@@ -1176,77 +1203,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setMasonryMediaItems(items);
   }, [mode, urls, attachments]);
 
-  // --- AI HANDLER ---
-  const handleAISummarize = async () => {
-    if (!content || content.length < 10) {
-        toast.error("Please enter some text to summarize first.");
-        return;
-    }
-    
-    setIsAiLoading(true);
-    try {
-        const summary = await aiService.summarizeText(content);
-        
-        // Safety check if summarization failed silently or returned empty
-        if (!summary.title && !summary.excerpt) {
-            throw new Error("Empty summary received");
-        }
-
-        // Update content with structured format (Title + Summary)
-        const formattedContent = `**${summary.title}**\n\n${summary.excerpt}`;
-        setContent(formattedContent);
-        if (!contentTouched) setContentTouched(true);
-        // Clear content error immediately when AI adds content
-        if (contentError) {
-            const error = validateContent();
-            setContentError(error);
-        }
-        
-        // CATEGORY PHASE-OUT: Add unique tags safely
-        // Use shared normalization utility for consistency
-        const returnedTags = Array.isArray(summary.tags) ? summary.tags : [];
-        const normalizedReturnedTags = normalizeTags(returnedTags);
-        
-        // Case-insensitive duplicate check against existing tags
-        const existingTagsNormalized = new Set(
-          tags.map(tag => tag.toLowerCase().trim())
-        );
-        const newTags = normalizedReturnedTags.filter(tag => 
-          !existingTagsNormalized.has(tag.toLowerCase().trim())
-        );
-        
-        if (newTags.length > 0) {
-            setTags(prev => [...prev, ...newTags]);
-            if (!tagsTouched) setTagsTouched(true);
-            // Clear tags error immediately when AI adds tags
-            if (tagsError) {
-                const error = validateTags();
-                setTagsError(error);
-            }
-            // Optimistically add to available if missing
-            // Use shared normalization for consistency
-            newTags.forEach(tag => {
-                const normalizedTag = tag.trim();
-                const exists = availableTags.some(
-                    existing => existing.toLowerCase().trim() === normalizedTag.toLowerCase()
-                );
-                if (!exists && normalizedTag.length > 0) {
-                    setAvailableTags(prev => {
-                        const normalized = normalizeTags([...prev, normalizedTag]);
-                        return normalized.sort();
-                    });
-                }
-            });
-        }
-        
-        toast.success("Nugget summarized by AI ?");
-    } catch (e) {
-        console.error(e);
-        toast.error("Failed to generate summary. Try again.");
-    } finally {
-        setIsAiLoading(false);
-    }
-  };
+  // AI summarize handler removed - AI creation system has been fully removed
 
 
   const handleSubmit = async () => {
@@ -1294,6 +1251,20 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         const wordCount = content.trim().split(/\s+/).length;
         const readTime = Math.max(1, Math.ceil(wordCount / 200));
 
+        // TEMPORARY DEBUG: Stage 1 - Before submit (form state)
+        const primaryUrl = urls.length > 0 ? urls[0] : detectedLink || null;
+        const hasMedia = !!linkMetadata || !!primaryUrl;
+        console.log('[CONTENT_TRACE] Stage 1 - Before submit (form state)', {
+            mode: 'create',
+            hasMedia,
+            source_type: primaryUrl ? 'link' : 'text',
+            primaryUrl,
+            contentLength: content.length,
+            contentPreview: content.substring(0, 120),
+            hasLinkMetadata: !!linkMetadata,
+            linkMetadataType: linkMetadata?.type,
+        });
+
         // EDIT MODE — normalized pipeline (Phase-2 complete, legacy removed)
         if (mode === 'edit' && initialData) {
             // CRITICAL: Wait for metadata fetch if in progress
@@ -1332,7 +1303,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 {
                     title: finalTitle,
                     content,
-                    categories: tags, // CATEGORY PHASE-OUT: Pass tags as categories for backward compatibility with normalizeArticleInput
+                    tags,
                     visibility,
                     urls,
                     detectedLink: detectedLink || null,
@@ -1371,15 +1342,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 // Scroll to tags field
                 tagsComboboxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 return;
-            }
-            
-            // CATEGORY PHASE-OUT: Safety log if categories are still being produced
-            if (normalizedInput.categories && normalizedInput.categories.length > 0) {
-                console.warn('[CreateNuggetModal] ⚠️ CATEGORY PHASE-OUT: Categories detected in normalized input (EDIT mode) but will not be sent. Use tags instead.', {
-                    categories: normalizedInput.categories,
-                    tags: normalizedInput.tags,
-                    articleId: initialData.id,
-                });
             }
             
             // Convert normalized output to partial update payload
@@ -1429,7 +1391,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             });
             
             // Preserve primaryUrl for regression safeguard check
-            const primaryUrl = getPrimaryUrl(urls) || detectedLink;
+            const primaryUrl = normalizedInput.primaryUrl ?? null;
             
             // Call update
             const updatedArticle = await storageService.updateArticle(initialData.id, updatePayload);
@@ -1568,7 +1530,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             {
                 title: finalTitle,
                 content,
-                categories: tags, // CATEGORY PHASE-OUT: Pass tags as categories for backward compatibility with normalizeArticleInput
+                tags,
                 visibility,
                 urls,
                 detectedLink,
@@ -1589,6 +1551,18 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             }
         );
 
+        // TEMPORARY DEBUG: Stage 2 - After normalizeArticleInput() output
+        console.log('[CONTENT_TRACE] Stage 2 - After normalizeArticleInput() output', {
+            mode: 'create',
+            hasMedia: !!normalized.media,
+            source_type: normalized.source_type,
+            primaryUrl: normalized.primaryUrl,
+            contentLength: normalized.content.length,
+            contentPreview: normalized.content.substring(0, 120),
+            mediaType: normalized.media?.type,
+            mediaUrl: normalized.media?.url,
+        });
+
         // PHASE 5: Regression safeguard - defensive assertion
         // This should never trigger if validation works correctly, but prevents silent failures
         if (normalized.hasEmptyTagsError) {
@@ -1596,34 +1570,37 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             setIsSubmitting(false);
             return;
         }
-
-        // CATEGORY PHASE-OUT: Safety log if categories are still being produced
-        if (normalized.categories && normalized.categories.length > 0) {
-            console.warn('[CreateNuggetModal] ⚠️ CATEGORY PHASE-OUT: Categories detected in normalized input but will not be sent. Use tags instead.', {
-                categories: normalized.categories,
-                tags: normalized.tags,
-            });
-        }
         
-        const newArticle = await storageService.createArticle({
+        // TEMPORARY DEBUG: Stage 3 - Payload sent to API (before storageService.createArticle)
+        const createPayload = {
             title: normalized.title,
-            content: normalized.content, // Send empty string if no content (allowed when URLs/images exist)
+            content: normalized.content,
             excerpt: normalized.excerpt,
             author: { id: currentUserId, name: authorName },
             displayAuthor: (postAs === 'alias' && finalAliasName.trim()) ? { name: finalAliasName.trim() } : undefined,
-            // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
             tags: normalized.tags,
             readTime: normalized.readTime,
-            mediaIds: normalized.mediaIds, // CRITICAL: Send mediaIds instead of Base64 images
-            images: normalized.images, // CRITICAL: Cloudinary URLs for display
+            mediaIds: normalized.mediaIds,
+            images: normalized.images,
             documents: normalized.documents,
             visibility: normalized.visibility,
-            // Admin-only: Custom creation date
             ...(normalized.customCreatedAt ? { customCreatedAt: normalized.customCreatedAt } : {}),
             media: normalized.media,
             supportingMedia: normalized.supportingMedia,
             source_type: normalized.source_type,
+        };
+        console.log('[CONTENT_TRACE] Stage 3 - Payload sent to API (final request body)', {
+            mode: 'create',
+            hasMedia: !!createPayload.media,
+            source_type: createPayload.source_type,
+            primaryUrl: normalized.primaryUrl,
+            contentLength: createPayload.content.length,
+            contentPreview: createPayload.content.substring(0, 120),
+            mediaType: createPayload.media?.type,
+            mediaUrl: createPayload.media?.url,
         });
+        
+        const newArticle = await storageService.createArticle(createPayload);
 
         const allCols = await storageService.getCollections();
         for (const colName of selectedCollections) {
@@ -1637,8 +1614,9 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         await queryClient.invalidateQueries({ queryKey: ['articles'] });
 
         // REGRESSION SAFEGUARD: Assert that if URL exists, media must be present
-        if (primaryUrl && newArticle.media === null) {
-            const errorMsg = `[CreateNuggetModal] REGRESSION: URL exists but media is null after create. URL: ${primaryUrl}, ArticleId: ${newArticle.id}`;
+        const regressionCheckPrimaryUrl = normalized.primaryUrl ?? null;
+        if (regressionCheckPrimaryUrl && newArticle.media === null) {
+            const errorMsg = `[CreateNuggetModal] REGRESSION: URL exists but media is null after create. URL: ${regressionCheckPrimaryUrl}, ArticleId: ${newArticle.id}`;
             console.error(errorMsg);
             if (process.env.NODE_ENV === 'development') {
                 console.error('This indicates a bug in URL + media processing. Media should always be set when a URL is present.');
@@ -1896,8 +1874,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                             setContentError(error);
                         }
                     }}
-                    isAiLoading={isAiLoading}
-                    onAiSummarize={handleAISummarize}
+                    isAiLoading={false}
+                    onAiSummarize={() => {
+                      toast.error("AI summarization has been removed. Please create articles manually.");
+                    }}
                     onImagePaste={async (file) => {
                         if (isImageFile(file)) {
                             // Batch multiple pasted images by collecting them and processing together

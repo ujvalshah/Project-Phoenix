@@ -25,9 +25,6 @@ import {
   generateReport,
   writeReportToFile,
   sanitizeCollections,
-  sanitizeBookmarks,
-  sanitizeBookmarkFolders,
-  sanitizeBookmarkFolderLinks,
   sanitizeReports,
   sanitizeModerationAuditLog,
   sanitizeFeedback,
@@ -102,7 +99,6 @@ async function main() {
       console.log('');
       console.log('This will:');
       console.log('- Remove orphaned references from collections');
-      console.log('- Delete orphaned bookmarks, folders, and links');
       console.log('- Clean up invalid array entries');
       console.log('');
       console.log('Audit trail data (reports, moderation logs) will NOT be modified.');
@@ -127,9 +123,6 @@ async function main() {
 
     const sanitizers = [
       { name: 'Collections', fn: sanitizeCollections },
-      { name: 'Bookmarks', fn: sanitizeBookmarks },
-      { name: 'BookmarkFolders', fn: sanitizeBookmarkFolders },
-      { name: 'BookmarkFolderLinks', fn: sanitizeBookmarkFolderLinks },
       { name: 'Reports', fn: sanitizeReports },
       { name: 'ModerationAuditLog', fn: sanitizeModerationAuditLog },
       { name: 'Feedback', fn: sanitizeFeedback }

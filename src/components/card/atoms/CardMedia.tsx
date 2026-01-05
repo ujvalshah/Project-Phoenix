@@ -90,17 +90,9 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
     fallback: article.title || 'YouTube Video'
   });
   
-  // Check for Twitter/LinkedIn embeds in legacy media field (not classified as primary media)
-  // These should still be rendered as media even though they're not "primary" media types
-  const hasTwitterOrLinkedInEmbed = useMemo(() => {
-    if (!article.media) return false;
-    const mediaType = article.media.type;
-    return mediaType === 'twitter' || mediaType === 'linkedin';
-  }, [article.media]);
-  
-  // Check if we have any media: primary media, Twitter/LinkedIn embed, OR legacy images
+  // Check if we have any media: primary media OR legacy images
   // This ensures legacy images are rendered even when primaryMedia is null
-  const hasMedia = !!primaryMedia || hasTwitterOrLinkedInEmbed || allImageUrls.length > 0;
+  const hasMedia = !!primaryMedia || allImageUrls.length > 0;
 
   // ============================================================================
   // MULTI-IMAGE GRID LOGIC
@@ -129,8 +121,6 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
     let mediaVariant = 'unknown';
     if (shouldRenderMultiImageGrid) {
       mediaVariant = `multi-image-grid (${allImageUrls.length} images)`;
-    } else if (hasTwitterOrLinkedInEmbed) {
-      mediaVariant = article.media?.type === 'twitter' ? 'twitter-embed' : 'linkedin-embed';
     } else if (primaryMedia) {
       if (primaryMedia.type === 'youtube') {
         mediaVariant = 'youtube-video';
@@ -143,7 +133,7 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
       }
     }
     
-  }, [article.id, hasMedia, primaryMedia, hasTwitterOrLinkedInEmbed, article.media, thumbnailUrl, shouldRenderMultiImageGrid, allImageUrls.length, className]);
+  }, [article.id, hasMedia, primaryMedia, thumbnailUrl, shouldRenderMultiImageGrid, allImageUrls.length, className]);
 
   // PHASE 1: Consistent fixed aspect ratio across all cards (16:9 for uniformity)
   const { aspectRatio, backgroundClass } = useMemo(() => {
@@ -212,17 +202,6 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
           articleTitle={article.title}
           onGridClick={onMediaClick}
         />
-      ) : hasTwitterOrLinkedInEmbed && article.media ? (
-        /* MODE 2A: Twitter/LinkedIn Embed (rendered using EmbeddedMedia component) */
-        <div className="w-full h-full" onClick={(e) => e.stopPropagation()}>
-          <EmbeddedMedia 
-            media={article.media} 
-            onClick={(e) => {
-              e.stopPropagation();
-              onMediaClick(e);
-            }} 
-          />
-        </div>
       ) : (
         /* MODE 2B: Single Thumbnail (YouTube, Image, Document - existing behavior) */
         <>

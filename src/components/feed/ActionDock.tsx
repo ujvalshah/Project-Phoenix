@@ -7,14 +7,14 @@
  * - Sticky bottom positioning
  * - Safe-area insets (mobile-first)
  * - Thumb-reachable actions
- * - Like, Bookmark, Share actions
+ * - Like, Share actions
  * - Source link
  * 
  * ============================================================================
  */
 
 import React from 'react';
-import { Heart, Bookmark, Share2, ExternalLink } from 'lucide-react';
+import { Heart, Share2, ExternalLink } from 'lucide-react';
 import { Article } from '@/types';
 import { SourceBadge } from '../shared/SourceBadge';
 import { twMerge } from 'tailwind-merge';
@@ -26,8 +26,6 @@ export interface ActionDockProps {
   sourceUrl?: string;
   /** Like handler */
   onLike?: () => void;
-  /** Bookmark handler */
-  onBookmark?: () => void;
   /** Share handler */
   onShare?: () => void;
 }
@@ -36,12 +34,10 @@ export const ActionDock: React.FC<ActionDockProps> = ({
   article,
   sourceUrl,
   onLike,
-  onBookmark,
   onShare,
 }) => {
-  // Check if article is liked/bookmarked (placeholder - replace with actual state)
+  // Check if article is liked (placeholder - replace with actual state)
   const isLiked = false;
-  const isBookmarked = false;
   
   const handleSourceClick = () => {
     if (sourceUrl) {
@@ -106,26 +102,6 @@ export const ActionDock: React.FC<ActionDockProps> = ({
             <Heart
               size={20}
               className={isLiked ? 'fill-current' : ''}
-            />
-          </button>
-        )}
-        
-        {/* Bookmark */}
-        {onBookmark && (
-          <button
-            onClick={onBookmark}
-            className={twMerge(
-              'p-3 rounded-full',
-              'transition-colors',
-              isBookmarked
-                ? 'text-blue-500 bg-blue-50 dark:bg-blue-950/30'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            )}
-            aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
-          >
-            <Bookmark
-              size={20}
-              className={isBookmarked ? 'fill-current' : ''}
             />
           </button>
         )}

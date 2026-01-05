@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Article } from '../models/Article.js';
 import { Tag } from '../models/Tag.js';
 import { normalizeDoc, normalizeDocs } from '../utils/db.js';
-import { createArticleSchema, updateArticleSchema } from '../utils/validation.js';
+import { createArticleSchema, updateArticleSchema, preprocessArticleRequest } from '../utils/validation.js';
 import { cleanupCollectionEntries } from '../utils/collectionHelpers.js';
 import { escapeRegExp, createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { verifyToken } from '../utils/jwt.js';
@@ -52,15 +52,15 @@ function getOptionalUserId(req: Request): string | undefined {
 
 export const getArticles = async (req: Request, res: Response) => {
   try {
-    const { authorId, q, category, categories, sort } = req.query;
+    const { authorId, q, sort, tags } = req.query;
     
-    // CATEGORY PHASE-OUT: Compatibility layer - log warning if category/categories are used
-    if (category || categories) {
+    // TODO: legacy-name-only-if-used-by-frontend - Log warning if category/categories query params are used
+    if (req.query.category || req.query.categories) {
       const { getLogger } = await import('../utils/logger.js');
       getLogger().warn({
         msg: '⚠️ CATEGORY PHASE-OUT: category/categories query params detected but will be ignored. Use tags instead.',
-        category,
-        categories,
+        category: req.query.category,
+        categories: req.query.categories,
         requestId: req.id || 'unknown',
       });
     }
@@ -122,62 +122,42 @@ export const getArticles = async (req: Request, res: Response) => {
       }
     }
     
-    // CATEGORY PHASE-OUT: Convert category/categories to tags filter
-    // Support "Today" special case for date filtering
-    if (category && typeof category === 'string' && category === 'Today') {
-      // "Today" special case: filter by publishedAt date (start of today to end of today)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayEnd = new Date(today);
-      todayEnd.setHours(23, 59, 59, 999);
+    // Tag filter (replaces legacy category/categories filters)
+    if (tags) {
+      const tagArray = Array.isArray(tags) ? tags : [tags];
+      const validTags = tagArray
+        .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
+        .map((tag: string) => tag.trim());
       
-      query.publishedAt = {
-        $gte: today.toISOString(),
-        $lte: todayEnd.toISOString()
-      };
-    } else if (category && typeof category === 'string') {
-      // Single category: convert to tag filter (case-insensitive exact match)
-      query.tags = { $in: [createExactMatchRegex(category)] };
-    } else if (categories) {
-      // Multiple categories: convert to tags filter
-      const categoryArray = Array.isArray(categories) 
-        ? categories 
-        : [categories];
-      
-      // Check if "Today" is in the array - if so, apply date filter
-      const hasToday = categoryArray.some((cat: any) => 
-        typeof cat === 'string' && cat === 'Today'
-      );
-      
-      if (hasToday) {
-        // If "Today" is in the array, apply date filter
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(today);
-        todayEnd.setHours(23, 59, 59, 999);
+      if (validTags.length > 0) {
+        // For case-insensitive tag matching on string arrays, use $or with $regex
+        // Each tag gets its own regex condition that matches any element in the tags array
+        const tagConditions = validTags.map(tag => {
+          const escapedTag = escapeRegExp(tag);
+          return { tags: { $regex: new RegExp(`^${escapedTag}$`, 'i') } };
+        });
         
-        query.publishedAt = {
-          $gte: today.toISOString(),
-          $lte: todayEnd.toISOString()
-        };
-        
-        // Also filter by other categories as tags if any
-        const otherCategories = categoryArray.filter((cat: any) => 
-          typeof cat === 'string' && cat !== 'Today'
-        );
-        
-        if (otherCategories.length > 0) {
-          query.tags = { 
-            $in: otherCategories.map((cat: string) => createExactMatchRegex(cat))
-          };
+        // Combine with existing query conditions
+        if (query.$and) {
+          // We already have $and (privacy + search), add tag filter to it
+          query.$and.push({ $or: tagConditions });
+        } else if (query.$or) {
+          // We have $or (privacy or search), need to combine with $and
+          query.$and = [
+            { $or: query.$or },
+            { $or: tagConditions }
+          ];
+          delete query.$or;
+        } else {
+          // No existing conditions, just add tag filter
+          if (tagConditions.length === 1) {
+            // Single tag - use directly without $or
+            Object.assign(query, tagConditions[0]);
+          } else {
+            // Multiple tags - use $or
+            query.$or = tagConditions;
+          }
         }
-      } else {
-        // No "Today" in array, apply normal tag filter
-        query.tags = { 
-          $in: categoryArray
-            .filter((cat): cat is string => typeof cat === 'string')
-            .map((cat: string) => createExactMatchRegex(cat))
-        };
       }
     }
     
@@ -275,8 +255,16 @@ export const createArticle = async (req: Request, res: Response) => {
       });
     }
     
+    // Preprocess: Remove deprecated categoryIds field and log warning
+    const preprocessedBody = preprocessArticleRequest(
+      req.body,
+      req.id,
+      (req as any).user?.userId,
+      '/api/articles'
+    );
+    
     // Validate input
-    const validationResult = createArticleSchema.safeParse(req.body);
+    const validationResult = createArticleSchema.safeParse(preprocessedBody);
     if (!validationResult.success) {
       // DIAGNOSTIC LOGGING: Log validation errors related to media
       const mediaErrors = validationResult.error.errors.filter(err => 
@@ -308,25 +296,21 @@ export const createArticle = async (req: Request, res: Response) => {
 
     const data = validationResult.data;
     
-    // CATEGORY PHASE-OUT: Compatibility layer - log warning if categories are provided
-    if (data.categories && Array.isArray(data.categories) && data.categories.length > 0) {
-      requestLogger.warn({
-        msg: '⚠️ CATEGORY PHASE-OUT: categories field detected in create payload but will be ignored. Use tags instead.',
-        categories: data.categories,
-        tags: data.tags,
-      });
-      // Remove categories from data to prevent it from being saved
-      delete data.categories;
-    }
-    if (data.categoryIds && Array.isArray(data.categoryIds) && data.categoryIds.length > 0) {
-      requestLogger.warn({
-        msg: '⚠️ CATEGORY PHASE-OUT: categoryIds field detected in create payload but will be ignored. Use tags instead.',
-        categoryIds: data.categoryIds,
-        tags: data.tags,
-      });
-      // Remove categoryIds from data to prevent it from being saved
-      delete data.categoryIds;
-    }
+    // TEMPORARY DEBUG: Stage 4 - Request payload received in createArticle controller
+    const primaryUrl = data.media?.url || data.primaryMedia?.url || null;
+    requestLogger.info({
+      msg: '[CONTENT_TRACE] Stage 4 - Request payload received in createArticle controller',
+      mode: 'create',
+      hasMedia: !!data.media,
+      source_type: data.source_type,
+      primaryUrl,
+      contentLength: data.content?.length || 0,
+      contentPreview: data.content?.substring(0, 120) || '',
+      mediaType: data.media?.type,
+      mediaUrl: data.media?.url,
+    });
+    
+    // categoryIds is already removed by preprocessArticleRequest (handled before validation)
     
     // PHASE 1: Normalize tags using shared utilities
     // This ensures consistency with frontend normalization
@@ -400,8 +384,6 @@ export const createArticle = async (req: Request, res: Response) => {
       }
     }
     
-    // CATEGORY PHASE-OUT: Removed categoryIds resolution - categories are no longer supported
-    
     // Admin-only: Handle custom creation date
     const currentUserId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
@@ -460,12 +442,27 @@ export const createArticle = async (req: Request, res: Response) => {
       dataKeys: Object.keys(data),
     });
     
-    const newArticle = await Article.create({
+    const createData = {
       ...data,
-      // CATEGORY PHASE-OUT: Removed categoryIds - categories are no longer supported
       publishedAt,
       isCustomCreatedAt
+    };
+    
+    // TEMPORARY DEBUG: Stage 5 - Final object written to MongoDB
+    const finalPrimaryUrl = createData.media?.url || createData.primaryMedia?.url || null;
+    requestLogger.info({
+      msg: '[CONTENT_TRACE] Stage 5 - Final object written to MongoDB',
+      mode: 'create',
+      hasMedia: !!createData.media,
+      source_type: createData.source_type,
+      primaryUrl: finalPrimaryUrl,
+      contentLength: createData.content?.length || 0,
+      contentPreview: createData.content?.substring(0, 120) || '',
+      mediaType: createData.media?.type,
+      mediaUrl: createData.media?.url,
     });
+    
+    const newArticle = await Article.create(createData);
     
     res.status(201).json(normalizeDoc(newArticle));
   } catch (error: any) {
@@ -542,8 +539,16 @@ export const updateArticle = async (req: Request, res: Response) => {
       return sendForbiddenError(res, 'You can only edit your own articles');
     }
 
+    // Preprocess: Remove deprecated categoryIds field and log warning
+    const preprocessedBody = preprocessArticleRequest(
+      req.body,
+      req.id,
+      (req as any).user?.userId,
+      '/api/articles/:id'
+    );
+    
     // Validate input
-    const validationResult = updateArticleSchema.safeParse(req.body);
+    const validationResult = updateArticleSchema.safeParse(preprocessedBody);
     if (!validationResult.success) {
       const errors = validationResult.error.errors.map(err => ({
         path: err.path,
@@ -553,27 +558,7 @@ export const updateArticle = async (req: Request, res: Response) => {
       return sendValidationError(res, 'Validation failed', errors);
     }
 
-    // CATEGORY PHASE-OUT: Compatibility layer - log warning if categories are provided
-    if (validationResult.data.categories !== undefined) {
-      requestLogger.warn({
-        msg: '⚠️ CATEGORY PHASE-OUT: categories field detected in update payload but will be ignored. Use tags instead.',
-        articleId: req.params.id,
-        categories: validationResult.data.categories,
-        tags: validationResult.data.tags,
-      });
-      // Remove categories from update to prevent it from being saved
-      delete validationResult.data.categories;
-    }
-    if (validationResult.data.categoryIds !== undefined) {
-      requestLogger.warn({
-        msg: '⚠️ CATEGORY PHASE-OUT: categoryIds field detected in update payload but will be ignored. Use tags instead.',
-        articleId: req.params.id,
-        categoryIds: validationResult.data.categoryIds,
-        tags: validationResult.data.tags,
-      });
-      // Remove categoryIds from update to prevent it from being saved
-      delete validationResult.data.categoryIds;
-    }
+    // categoryIds is already removed by preprocessArticleRequest (handled before validation)
     
     // PHASE 1: Normalize tags using shared utilities
     
@@ -734,8 +719,6 @@ export const updateArticle = async (req: Request, res: Response) => {
       // Non-admin trying to set custom date - silently ignore (security: don't reveal this feature exists)
       delete mongoUpdate.customCreatedAt;
     }
-    
-    // CATEGORY PHASE-OUT: Removed categoryIds resolution - categories are no longer supported
     
     if (updates.media && !updates.media.type && !updates.media.url && updates.media.previewMetadata) {
       // This is a partial media update (only previewMetadata) - use dot notation

@@ -4,7 +4,7 @@ export interface ITag extends Document {
   rawName: string; // Exact user-entered text, preserved for display
   canonicalName: string; // Normalized lowercase version for uniqueness and lookup
   usageCount: number;
-  type: 'category' | 'tag';
+  type: 'category' | 'tag'; // TODO: legacy-name-only-if-used-by-frontend - 'category' type kept for compatibility
   status: 'active' | 'pending' | 'deprecated';
   isOfficial: boolean;
   // Legacy field - kept for backward compatibility, maps to rawName

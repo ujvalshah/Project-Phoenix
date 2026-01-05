@@ -23,7 +23,6 @@ function transformNuggetToMedia(nugget: Nugget, url: string): NuggetMedia {
     authorName: nugget.author,
     publishDate: nugget.publishedAt,
     mediaType: nugget.contentType === 'video' ? 'youtube' : 
-               nugget.contentType === 'social' ? 'twitter' :
                nugget.contentType === 'image' ? 'image' :
                nugget.contentType === 'document' ? 'document' : 'link',
   };
@@ -32,13 +31,13 @@ function transformNuggetToMedia(nugget: Nugget, url: string): NuggetMedia {
   let mediaType: NuggetMedia['type'] = 'link';
   if (nugget.contentType === 'video') {
     mediaType = 'youtube';
-  } else if (nugget.contentType === 'social') {
-    mediaType = 'twitter';
   } else if (nugget.contentType === 'image') {
     mediaType = 'image';
   } else if (nugget.contentType === 'document') {
     mediaType = 'document';
   }
+  // Note: 'social' content type (Twitter/LinkedIn) is no longer supported
+  // It will fall through to 'link' type
 
   const nuggetMedia: NuggetMedia = {
     type: mediaType,

@@ -73,13 +73,9 @@ export const FeedPage: React.FC = () => {
     }
   }, [navigate, fromFeed]);
   
-  // Handle article actions (like, bookmark, share)
+  // Handle article actions (like, share)
   const handleLike = useCallback((article: Article) => {
     // TODO: Implement like functionality
-  }, []);
-  
-  const handleBookmark = useCallback((article: Article) => {
-    // TODO: Implement bookmark functionality
   }, []);
   
   const handleShare = useCallback((article: Article) => {
@@ -97,7 +93,6 @@ export const FeedPage: React.FC = () => {
         gap={16}
         overscan={3}
         onLike={handleLike}
-        onBookmark={handleBookmark}
         onShare={handleShare}
       />
       
@@ -108,7 +103,6 @@ export const FeedPage: React.FC = () => {
           isOpen={isDetailOpen}
           onClose={handleDetailClose}
           onLike={handleLike}
-          onBookmark={handleBookmark}
           onShare={handleShare}
         />
       )}

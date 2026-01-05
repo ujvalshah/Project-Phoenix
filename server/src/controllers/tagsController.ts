@@ -10,15 +10,15 @@ import { captureException } from '../utils/sentry.js';
 
 // Validation schemas
 const createTagSchema = z.object({
-  name: z.string().min(1, 'Category name is required').max(50, 'Category name too long'),
-  type: z.enum(['category', 'tag']).optional(),
+  name: z.string().min(1, 'Tag name is required').max(50, 'Tag name too long'),
+  type: z.enum(['category', 'tag']).optional(), // TODO: legacy-name-only-if-used-by-frontend - 'category' type kept for compatibility
   status: z.enum(['active', 'pending', 'deprecated']).optional(),
   isOfficial: z.boolean().optional()
 });
 
 const updateTagSchema = z.object({
-  name: z.string().min(1, 'Category name is required').max(50, 'Category name too long').optional(),
-  type: z.enum(['category', 'tag']).optional(),
+  name: z.string().min(1, 'Tag name is required').max(50, 'Tag name too long').optional(),
+  type: z.enum(['category', 'tag']).optional(), // TODO: legacy-name-only-if-used-by-frontend - 'category' type kept for compatibility
   status: z.enum(['active', 'pending', 'deprecated']).optional(),
   isOfficial: z.boolean().optional()
 });
@@ -173,7 +173,7 @@ export const createTag = async (req: Request, res: Response) => {
       canonicalName: canonicalName,
       type: type,
       status: 'active',
-      isOfficial: type === 'category' // Categories are official by default
+      isOfficial: type === 'category' // TODO: legacy-name-only-if-used-by-frontend - category type sets isOfficial
     });
     await newTag.save();
 
@@ -488,7 +488,7 @@ export const deleteTag = async (req: Request, res: Response) => {
     });
     
     if (!tag) {
-      return res.status(404).json({ message: 'Category not found' });
+      return res.status(404).json({ message: 'Tag not found' });
     }
     
     res.status(204).send();

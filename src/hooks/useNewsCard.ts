@@ -23,7 +23,6 @@ export interface NewsCardData {
   authorName: string;
   authorId: string;
   authorAvatarUrl?: string; // Phase 3: Avatar support
-  categories: string[];
   tags: string[];
   hasMedia: boolean;
   isLink: boolean;
@@ -156,10 +155,9 @@ export const useNewsCard = ({
   // ═══════════════════════════════════════════════════════════════════════
   // Check for media in all possible locations:
   // 1. Primary/supporting media (new format)
-  // 2. Legacy media field (includes Twitter/LinkedIn links)
+  // 2. Legacy media field
   // 3. Legacy images array
   // 4. Legacy video field
-  // CRITICAL: Twitter/LinkedIn embeds are in article.media with type='twitter'/'linkedin'
   const hasPrimaryMedia = !!article.primaryMedia;
   const hasSupportingMedia = !!(article.supportingMedia && article.supportingMedia.length > 0);
   const hasLegacyMedia = !!article.media;
@@ -341,10 +339,6 @@ export const useNewsCard = ({
         mediaVariant = 'video-youtube';
       } else if (primaryMedia.type === 'image') {
         mediaVariant = 'single-image';
-      } else if (primaryMedia.type === 'twitter' || article.media?.type === 'twitter') {
-        mediaVariant = 'embed-twitter';
-      } else if (primaryMedia.type === 'linkedin' || article.media?.type === 'linkedin') {
-        mediaVariant = 'embed-linkedin';
       } else if (primaryMedia.type === 'document' || primaryMedia.type === 'pdf') {
         mediaVariant = 'document';
       } else if (article.media?.type) {
@@ -353,10 +347,9 @@ export const useNewsCard = ({
         mediaVariant = `other-${primaryMedia.type || 'unknown'}`;
       }
     } else if (article.media) {
-      if (article.media.type === 'twitter') {
-        mediaVariant = 'embed-twitter';
-      } else if (article.media.type === 'linkedin') {
-        mediaVariant = 'embed-linkedin';
+      // FALLBACK: Legacy twitter/linkedin types render as generic link
+      if (article.media.type === 'twitter' || article.media.type === 'linkedin') {
+        mediaVariant = 'link-fallback';
       } else {
         mediaVariant = `embed-${article.media.type}`;
       }
@@ -416,8 +409,6 @@ export const useNewsCard = ({
     authorName: article.author.name,
     authorId: article.author.id,
     authorAvatarUrl: article.author.avatar_url, // Phase 3: Include avatar URL
-    // CATEGORY PHASE-OUT: Use tags for both categories and tags props (backward compatibility)
-    categories: article.tags || [], // CardTags component expects categories prop but receives tags
     tags: article.tags || [],
     hasMedia,
     isLink,

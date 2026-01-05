@@ -1,19 +1,19 @@
 # Payload Audit & Discrepancy Report
   
-Generated: 2025-12-11T20:54:38.639Z
+Generated: 2026-01-05T13:44:55.508Z
 
 ## Summary
 
 | Severity | Count | Status |
 |----------|-------|--------|
 | High     | 0 | - |
-| Medium   | 3 | - |
-| Low      | 5 | - |
+| Medium   | 2 | - |
+| Low      | 4 | - |
 
 | Status   | Count |
 |----------|-------|
 | Open     | 3 |
-| Resolved | 5 |
+| Resolved | 3 |
 
 ## API Contract Overview
 
@@ -35,13 +35,6 @@ Generated: 2025-12-11T20:54:38.639Z
 - `POST /:id/remove-nugget/:nuggetId` - Remove nugget (auth required)
 - `POST /:id/follow` - Follow collection (auth required)
 - `POST /:id/unfollow` - Unfollow collection (auth required)
-
-### Bookmark Folders (/api/bookmark-folders)
-- `POST /` - Create folder (auth required)
-- `GET /` - List folders (auth required)
-- `GET /:id` - Get folder with bookmarks (auth required)
-- `PUT /:id` - Update folder (auth required)
-- `DELETE /:id` - Delete folder (auth required)
 
 ### Bookmarks (via /api/nuggets/:id)
 - `POST /:id/bookmark` - Bookmark nugget (auth required)
@@ -132,7 +125,7 @@ router.patch('/:id', requireAuth, nuggetsController.updateNugget);
 
 ---
 
-### ✅ Resolved/Working as Intended (5)
+### ✅ Resolved/Working as Intended (3)
 
 #### RESPONSE-FORMAT-001: Frontend apiClient expects { success, data } format but sometimes accesses response directly
 
@@ -221,68 +214,6 @@ visibility: z.enum(['public', 'private']).optional().default('private'),
 
 ---
 
-#### BOOKMARK-FOLDER-001: Backend returns folder in Collection format for frontend compatibility
-
-- **Severity:** low
-- **Resource:** BookmarkFolder
-- **Operation:** CREATE (POST /api/bookmark-folders)
-
-**Frontend:**
-- File: `src/services/adapters/RestAdapter.ts`
-- Line: 389
-```typescript
-async createBookmarkFolder(name: string, description?: string): Promise<Collection>
-```
-
-**Backend:**
-- File: `server/src/controllers/bookmarkFoldersController.ts`
-- Line: 37
-```typescript
-function folderToCollection(folder: any, userId: string): any {
-  return {
-    id: folder._id.toString(),
-    name: folder.name,
-    type: 'private',
-    visibility: 'private',
-    ...
-  };
-}
-```
-
-**Fix:** Working as intended - folder converts to Collection format. No action needed.
-
----
-
-#### COLLECTION-ADD-001: Frontend uses isBookmarkFolder flag to route to different endpoints, could be simplified
-
-- **Severity:** medium
-- **Resource:** Collection/Bookmark
-- **Operation:** ADD (POST /api/collections/:id/add-nugget OR /api/nuggets/:id/bookmark)
-
-**Frontend:**
-- File: `src/services/adapters/RestAdapter.ts`
-- Line: 361
-```typescript
-async addArticleToCollection(collectionId: string, articleId: string, _userId: string, isBookmarkFolder: boolean = false): Promise<void> {
-  if (isBookmarkFolder) {
-    await apiClient.post(`/nuggets/${articleId}/bookmark`, { folderId: collectionId });
-  } else {
-    await apiClient.post(`/collections/${collectionId}/add-nugget`, { nuggetId: articleId });
-  }
-}
-```
-
-**Backend:**
-- File: `Multiple controllers`
-
-```typescript
-Different endpoints handle collections vs bookmarks
-```
-
-**Fix:** Working as intended - different resources need different endpoints. Consider unified API in future.
-
----
-
 
 ---
 
@@ -348,10 +279,8 @@ tags: z.union([
 - [ ] Add nugget to collection
 - [ ] Remove nugget from collection
 - [ ] Follow/unfollow collection
-- [ ] Create bookmark folder
-- [ ] Bookmark nugget (with and without folder)
-- [ ] Move bookmark between folders
-- [ ] Delete bookmark folder
+- [ ] Bookmark nugget
+- [ ] Unbookmark nugget
 
 ---
 

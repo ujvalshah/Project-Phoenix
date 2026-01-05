@@ -1,4 +1,5 @@
 /**
+ * TODO: LEGACY MIGRATION SCRIPT - Can be removed after migration is complete
  * Category to Tag Migration Script
  * 
  * Migrates categories[] values into tags[] array for all articles.

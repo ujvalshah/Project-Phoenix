@@ -55,7 +55,6 @@ function setCached(url: string, nugget: Nugget): void {
 
 // Timeouts (in milliseconds)
 const TIER_0_TIMEOUT = 0; // No network, instant
-const TIER_0_5_TIMEOUT = 800; // Twitter oEmbed
 const TIER_1_TIMEOUT = 1500; // Microlink
 const TIER_2_TIMEOUT = 1500; // Open Graph
 const TIER_3_TIMEOUT = 1000; // Image probing
@@ -96,16 +95,12 @@ async function fetchWithRetry<T>(
 const PLATFORM_COLORS: Record<string, string> = {
   'youtube.com': '#FF0000',
   'youtu.be': '#FF0000',
-  'twitter.com': '#1DA1F2',
-  'x.com': '#000000',
 };
 
 // Known platform names
 const PLATFORM_NAMES: Record<string, string> = {
   'youtube.com': 'YouTube',
   'youtu.be': 'YouTube',
-  'twitter.com': 'Twitter',
-  'x.com': 'X',
   'substack.com': 'Substack',
   'medium.com': 'Medium',
 };
@@ -187,10 +182,6 @@ function detectContentType(url: URL, domain: string): Nugget['contentType'] {
     return 'video';
   }
 
-  // Twitter/X
-  if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-    return 'social';
-  }
 
   // Use shared image detection logic
   const urlString = url.toString();
@@ -255,50 +246,6 @@ function tier0(urlString: string): Nugget {
     },
     quality: 'fallback',
   };
-}
-
-/**
- * TIER 0.5: Optional Twitter oEmbed (non-blocking)
- * Only for Twitter/X, timeout 800ms, never blocks fallback
- */
-async function tier0_5(urlString: string, domain: string): Promise<Partial<Nugget> | null> {
-  if (!domain.includes('twitter.com') && !domain.includes('x.com')) {
-    return null;
-  }
-
-  try {
-    const { controller, cleanup } = createTimeoutController(TIER_0_5_TIMEOUT);
-
-    const oEmbedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(urlString)}`;
-    // Audit Phase-2 Fix: Add retry logic for transient network errors
-    const fetchPromise = fetchWithRetry(() => fetch(oEmbedUrl, {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-      },
-    }), 2, 200);
-
-    const response = await withTimeout(fetchPromise, TIER_0_5_TIMEOUT, controller.signal);
-    cleanup();
-
-    if (!response || !response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    
-    // Extract minimal enrichment (never critical)
-    const enrichment: Partial<Nugget> = {};
-    if (data.author_name) {
-      enrichment.author = data.author_name;
-    }
-    // Don't override title/description - keep Tier 0 fallback
-
-    return enrichment;
-  } catch {
-    // Silent failure - continue immediately
-    return null;
-  }
 }
 
 /**
@@ -673,22 +620,6 @@ export async function fetchUrlMetadata(
     const elapsed = Date.now() - startTime;
     return elapsed >= TOTAL_TIMEOUT;
   };
-
-  // TIER 0.5: Optional Twitter oEmbed (non-blocking)
-  if (!checkTimeout() && (domain.includes('twitter.com') || domain.includes('x.com'))) {
-    try {
-      const enrichment = await withTimeout(
-        tier0_5(urlString, domain),
-        TIER_0_5_TIMEOUT
-      );
-
-      if (enrichment) {
-        Object.assign(baseNugget, enrichment);
-      }
-    } catch {
-      // Silent failure
-    }
-  }
 
   // TIER 0.6: Optional YouTube oEmbed (non-blocking)
   // Fetches actual video title, author, and thumbnail - perfect for YouTube videos

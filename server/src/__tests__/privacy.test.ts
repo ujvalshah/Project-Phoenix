@@ -81,7 +81,6 @@ describe('Privacy System', () => {
       authorId: ownerUser._id.toString(),
       authorName: 'Test Owner',
       category: 'Test',
-      categories: ['Test'],
       publishedAt: new Date().toISOString(),
       tags: ['test'],
       visibility: 'public'
@@ -93,7 +92,6 @@ describe('Privacy System', () => {
       authorId: ownerUser._id.toString(),
       authorName: 'Test Owner',
       category: 'Test',
-      categories: ['Test'],
       publishedAt: new Date().toISOString(),
       tags: ['test'],
       visibility: 'private'

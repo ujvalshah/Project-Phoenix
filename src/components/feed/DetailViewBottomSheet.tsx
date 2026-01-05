@@ -41,7 +41,6 @@ export interface DetailViewBottomSheetProps {
   onClose: () => void;
   /** Optional action handlers */
   onLike?: (article: Article) => void;
-  onBookmark?: (article: Article) => void;
   onShare?: (article: Article) => void;
   /** Optional thumbnail URL for blurred handoff */
   thumbnailUrl?: string;
@@ -105,7 +104,6 @@ export const DetailViewBottomSheet: React.FC<DetailViewBottomSheetProps> = ({
   isOpen,
   onClose,
   onLike,
-  onBookmark,
   onShare,
   thumbnailUrl,
 }) => {
@@ -397,7 +395,6 @@ export const DetailViewBottomSheet: React.FC<DetailViewBottomSheetProps> = ({
             article={article}
             sourceUrl={sourceUrl}
             onLike={onLike ? () => onLike(article) : undefined}
-            onBookmark={onBookmark ? () => onBookmark(article) : undefined}
             onShare={onShare ? () => onShare(article) : undefined}
           />
         )}

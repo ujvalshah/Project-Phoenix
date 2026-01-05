@@ -6,7 +6,7 @@
  * a discrepancy report for CRUD operations on:
  * - Nuggets
  * - Collections
- * - Bookmarks & Bookmark Folders
+ * - Bookmarks
  * 
  * Usage: node tools/compare_payloads.js
  */
@@ -106,31 +106,12 @@ const API_CONTRACTS = {
     auth: 'required',
   },
 
-  // BOOKMARK FOLDERS
-  'POST /api/bookmark-folders': {
-    method: 'POST',
-    path: '/bookmark-folders',
-    auth: 'required',
-    requestBody: {
-      name: { type: 'string', required: true, maxLength: 100 },
-      description: { type: 'string', required: false, maxLength: 500, default: '' },
-      color: { type: 'string', required: false },
-      icon: { type: 'string', required: false },
-    },
-  },
-  'GET /api/bookmark-folders': {
-    method: 'GET',
-    path: '/bookmark-folders',
-    auth: 'required',
-  },
-
   // BOOKMARKS
   'POST /api/nuggets/:id/bookmark': {
     method: 'POST',
     path: '/nuggets/:id/bookmark',
     auth: 'required',
     requestBody: {
-      folderId: { type: 'string', required: false },
       notes: { type: 'string', required: false },
     },
   },
@@ -138,9 +119,6 @@ const API_CONTRACTS = {
     method: 'POST',
     path: '/nuggets/:id/unbookmark',
     auth: 'required',
-    requestBody: {
-      folderId: { type: 'string', required: false },
-    },
   },
 };
 
@@ -279,62 +257,7 @@ function analyzeCodebase() {
     status: 'resolved',
   });
 
-  // Issue 6: Bookmark folder creation returns different format
-  discrepancies.push({
-    id: 'BOOKMARK-FOLDER-001',
-    severity: 'low',
-    resource: 'BookmarkFolder',
-    operation: 'CREATE (POST /api/bookmark-folders)',
-    description: 'Backend returns folder in Collection format for frontend compatibility',
-    frontend: {
-      file: 'src/services/adapters/RestAdapter.ts',
-      line: 389,
-      code: `async createBookmarkFolder(name: string, description?: string): Promise<Collection>`,
-    },
-    backend: {
-      file: 'server/src/controllers/bookmarkFoldersController.ts',
-      line: 37,
-      code: `function folderToCollection(folder: any, userId: string): any {
-  return {
-    id: folder._id.toString(),
-    name: folder.name,
-    type: 'private',
-    visibility: 'private',
-    ...
-  };
-}`,
-    },
-    fix: 'Working as intended - folder converts to Collection format. No action needed.',
-    status: 'resolved',
-  });
-
-  // Issue 7: addArticleToCollection with isBookmarkFolder flag
-  discrepancies.push({
-    id: 'COLLECTION-ADD-001',
-    severity: 'medium',
-    resource: 'Collection/Bookmark',
-    operation: 'ADD (POST /api/collections/:id/add-nugget OR /api/nuggets/:id/bookmark)',
-    description: 'Frontend uses isBookmarkFolder flag to route to different endpoints, could be simplified',
-    frontend: {
-      file: 'src/services/adapters/RestAdapter.ts',
-      line: 361,
-      code: `async addArticleToCollection(collectionId: string, articleId: string, _userId: string, isBookmarkFolder: boolean = false): Promise<void> {
-  if (isBookmarkFolder) {
-    await apiClient.post(\`/nuggets/\${articleId}/bookmark\`, { folderId: collectionId });
-  } else {
-    await apiClient.post(\`/collections/\${collectionId}/add-nugget\`, { nuggetId: articleId });
-  }
-}`,
-    },
-    backend: {
-      file: 'Multiple controllers',
-      code: 'Different endpoints handle collections vs bookmarks',
-    },
-    fix: 'Working as intended - different resources need different endpoints. Consider unified API in future.',
-    status: 'resolved',
-  });
-
-  // Issue 8: Missing PATCH support in frontend
+  // Issue 6: Missing PATCH support in frontend
   discrepancies.push({
     id: 'HTTP-METHOD-001',
     severity: 'low',
@@ -404,13 +327,6 @@ Generated: ${now}
 - \`POST /:id/remove-nugget/:nuggetId\` - Remove nugget (auth required)
 - \`POST /:id/follow\` - Follow collection (auth required)
 - \`POST /:id/unfollow\` - Unfollow collection (auth required)
-
-### Bookmark Folders (/api/bookmark-folders)
-- \`POST /\` - Create folder (auth required)
-- \`GET /\` - List folders (auth required)
-- \`GET /:id\` - Get folder with bookmarks (auth required)
-- \`PUT /:id\` - Update folder (auth required)
-- \`DELETE /:id\` - Delete folder (auth required)
 
 ### Bookmarks (via /api/nuggets/:id)
 - \`POST /:id/bookmark\` - Bookmark nugget (auth required)
@@ -505,10 +421,8 @@ tags: z.union([
 - [ ] Add nugget to collection
 - [ ] Remove nugget from collection
 - [ ] Follow/unfollow collection
-- [ ] Create bookmark folder
-- [ ] Bookmark nugget (with and without folder)
-- [ ] Move bookmark between folders
-- [ ] Delete bookmark folder
+- [ ] Bookmark nugget
+- [ ] Unbookmark nugget
 
 ---
 

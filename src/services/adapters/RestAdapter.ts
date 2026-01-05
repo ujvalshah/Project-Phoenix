@@ -69,21 +69,8 @@ export class RestAdapter implements IAdapter {
       return Promise.reject(new Error('At least one tag is required to create a nugget'));
     }
     
-    // CATEGORY PHASE-OUT: Safety log if categories are still being produced
-    if (article.categories && article.categories.length > 0) {
-      console.warn('[RestAdapter.createArticle] ⚠️ CATEGORY PHASE-OUT: Categories detected in create payload but will not be sent. Use tags instead.', {
-        categories: article.categories,
-        tags: tags,
-        articleId: (article as any).id,
-      });
-    }
-    if (article.categoryIds && article.categoryIds.length > 0) {
-      console.warn('[RestAdapter.createArticle] ⚠️ CATEGORY PHASE-OUT: categoryIds detected in create payload but will not be sent. Use tags instead.', {
-        categoryIds: article.categoryIds,
-        tags: tags,
-        articleId: (article as any).id,
-      });
-    }
+    // CATEGORY PHASE-OUT: categoryIds is never sent - silently ignored if present in article object
+    const { categoryIds, ...articleWithoutCategoryIds } = article as any;
     
     const payload: any = {
       title: article.title,
@@ -115,6 +102,19 @@ export class RestAdapter implements IAdapter {
       ...((article as any).customCreatedAt && { customCreatedAt: (article as any).customCreatedAt }),
     };
     
+    // TEMPORARY DEBUG: Stage 3 - Payload sent to API (RestAdapter)
+    const primaryUrl = article.media?.url || article.primaryMedia?.url || null;
+    console.log('[CONTENT_TRACE] Stage 3 - Payload sent to API (RestAdapter)', {
+      mode: 'create',
+      hasMedia: !!payload.media,
+      source_type: payload.source_type,
+      primaryUrl,
+      contentLength: payload.content?.length || 0,
+      contentPreview: payload.content?.substring(0, 120) || '',
+      mediaType: payload.media?.type,
+      mediaUrl: payload.media?.url,
+    });
+    
     return apiClient.post('/articles', payload);
   }
 
@@ -122,56 +122,41 @@ export class RestAdapter implements IAdapter {
     // Transform Article format to backend API format
     const payload: any = {};
     
-    // Map editable fields
-    if (updates.title !== undefined) payload.title = updates.title;
-    if (updates.content !== undefined) payload.content = updates.content;
-    if (updates.excerpt !== undefined) payload.excerpt = updates.excerpt;
+    // CATEGORY PHASE-OUT: Remove categoryIds and categories from updates (silently ignored)
+    const { categoryIds, categories, ...updatesWithoutCategoryIds } = updates as any;
     
-    // CATEGORY PHASE-OUT: Safety log if categories are still being produced
-    if (updates.categories !== undefined) {
-      console.warn('[RestAdapter.updateArticle] ⚠️ CATEGORY PHASE-OUT: Categories detected in update payload but will not be sent. Use tags instead.', {
-        categories: updates.categories,
-        tags: updates.tags,
-        articleId: id,
-      });
-      // Do not include categories in payload
-    }
-    if (updates.categoryIds !== undefined) {
-      console.warn('[RestAdapter.updateArticle] ⚠️ CATEGORY PHASE-OUT: categoryIds detected in update payload but will not be sent. Use tags instead.', {
-        categoryIds: updates.categoryIds,
-        tags: updates.tags,
-        articleId: id,
-      });
-      // Do not include categoryIds in payload
-    }
+    // Map editable fields
+    if (updatesWithoutCategoryIds.title !== undefined) payload.title = updatesWithoutCategoryIds.title;
+    if (updatesWithoutCategoryIds.content !== undefined) payload.content = updatesWithoutCategoryIds.content;
+    if (updatesWithoutCategoryIds.excerpt !== undefined) payload.excerpt = updatesWithoutCategoryIds.excerpt;
     
     // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
     // Tags are now the only classification field
-    if (updates.visibility !== undefined) payload.visibility = updates.visibility;
+    if (updatesWithoutCategoryIds.visibility !== undefined) payload.visibility = updatesWithoutCategoryIds.visibility;
     // CRITICAL: Preserve masonryTitle when updating media field
     // masonryTitle must flow through all layers to persist correctly
-    if (updates.media !== undefined) {
-      payload.media = updates.media;
+    if (updatesWithoutCategoryIds.media !== undefined) {
+      payload.media = updatesWithoutCategoryIds.media;
       // Ensure masonryTitle is explicitly included (defensive against field dropping)
-      if (updates.media && typeof updates.media === 'object' && 'masonryTitle' in updates.media) {
+      if (updatesWithoutCategoryIds.media && typeof updatesWithoutCategoryIds.media === 'object' && 'masonryTitle' in updatesWithoutCategoryIds.media) {
         payload.media = {
-          ...updates.media,
-          masonryTitle: updates.media.masonryTitle, // Explicitly preserve masonryTitle
-          showInMasonry: updates.media.showInMasonry, // Explicitly preserve showInMasonry
+          ...updatesWithoutCategoryIds.media,
+          masonryTitle: updatesWithoutCategoryIds.media.masonryTitle, // Explicitly preserve masonryTitle
+          showInMasonry: updatesWithoutCategoryIds.media.showInMasonry, // Explicitly preserve showInMasonry
         };
       }
     }
-    if (updates.images !== undefined) payload.images = updates.images;
-    if (updates.documents !== undefined) payload.documents = updates.documents;
+    if (updatesWithoutCategoryIds.images !== undefined) payload.images = updatesWithoutCategoryIds.images;
+    if (updatesWithoutCategoryIds.documents !== undefined) payload.documents = updatesWithoutCategoryIds.documents;
     // CRITICAL: Include mediaIds for Cloudinary-uploaded media
-    if (updates.mediaIds !== undefined) payload.mediaIds = updates.mediaIds;
+    if (updatesWithoutCategoryIds.mediaIds !== undefined) payload.mediaIds = updatesWithoutCategoryIds.mediaIds;
     // CRITICAL: Include primaryMedia and supportingMedia for Masonry layout
-    if (updates.primaryMedia !== undefined) payload.primaryMedia = updates.primaryMedia;
-    if (updates.supportingMedia !== undefined) payload.supportingMedia = updates.supportingMedia;
-    if (updates.source_type !== undefined) payload.source_type = updates.source_type;
-    if (updates.displayAuthor !== undefined) payload.displayAuthor = updates.displayAuthor;
+    if (updatesWithoutCategoryIds.primaryMedia !== undefined) payload.primaryMedia = updatesWithoutCategoryIds.primaryMedia;
+    if (updatesWithoutCategoryIds.supportingMedia !== undefined) payload.supportingMedia = updatesWithoutCategoryIds.supportingMedia;
+    if (updatesWithoutCategoryIds.source_type !== undefined) payload.source_type = updatesWithoutCategoryIds.source_type;
+    if (updatesWithoutCategoryIds.displayAuthor !== undefined) payload.displayAuthor = updatesWithoutCategoryIds.displayAuthor;
     // Admin-only: Custom creation date (if provided)
-    if ((updates as any).customCreatedAt !== undefined) payload.customCreatedAt = (updates as any).customCreatedAt;
+    if (updatesWithoutCategoryIds.customCreatedAt !== undefined) payload.customCreatedAt = updatesWithoutCategoryIds.customCreatedAt;
     
     // Use PATCH for partial updates (more RESTful)
     return apiClient.patch<Article>(`/articles/${id}`, payload);

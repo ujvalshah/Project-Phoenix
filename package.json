@@ -24,6 +24,7 @@
     "migrate-canonical-names": "tsx server/src/scripts/runMigration.ts",
     "migrate-categoryids": "tsx server/src/scripts/backfillCategoryIds.ts",
     "update-tag-usage": "tsx server/src/scripts/updateTagUsageCounts.ts",
+    "remove:uncategorized": "tsx server/scripts/removeUncategorizedTag.ts",
     "audit": "node scripts/audit-code.js",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",

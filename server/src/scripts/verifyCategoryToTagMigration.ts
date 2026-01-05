@@ -1,4 +1,5 @@
 /**
+ * TODO: LEGACY MIGRATION SCRIPT - Can be removed after migration is complete
  * Verification Script for Category to Tag Migration
  * 
  * Verifies that the migration was applied correctly by checking

@@ -2,7 +2,7 @@ import React from 'react';
 import { NuggetMedia } from '@/types';
 import { Image } from '@/components/Image';
 import { DocumentPreview, DocumentType } from './DocumentPreview';
-import { ExternalLink, Linkedin, Twitter } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 
 interface EmbeddedMediaProps {
   media: NuggetMedia;
@@ -114,49 +114,11 @@ export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) 
     );
   }
   
-  // Check if this is a LinkedIn or social media link (compact bar layout)
-  const isLinkedIn = url.toLowerCase().includes('linkedin.com') || type === 'linkedin';
-  const isTwitter = url.toLowerCase().includes('twitter.com') || url.toLowerCase().includes('x.com') || type === 'twitter';
-  const isSocialMedia = isLinkedIn || isTwitter;
-  
-  // For social media links, ALWAYS render as compact horizontal bar (ignore images)
-  if (isSocialMedia) {
-    const platformName = isLinkedIn ? 'LinkedIn' : 'Twitter';
-    const platformColor = isLinkedIn ? 'bg-blue-600' : 'bg-slate-900';
-    const platformIcon = isLinkedIn ? (
-      <Linkedin size={20} className="text-white" />
-    ) : (
-      <Twitter size={20} className="text-white" />
-    );
-    
-    return (
-      <div 
-        className="w-full h-full flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer group"
-        onClick={onClick}
-      >
-        {/* Platform Icon - Small, on left */}
-        <div className="flex-shrink-0">
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${platformColor}`}>
-            {platformIcon}
-          </div>
-        </div>
-
-        {/* Title and metadata - Center, flex-1 */}
-        <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-bold text-slate-900 dark:text-slate-200 truncate group-hover:text-primary-500 dark:group-hover:text-primary-400 transition-colors">
-            {media.previewMetadata?.title || 'Posted on ' + platformName}
-          </p>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            <span className="font-medium uppercase">{platformName}</span>
-          </div>
-        </div>
-
-        {/* External link icon - Right */}
-        <div className="flex-shrink-0">
-          <ExternalLink size={18} className="text-slate-400 group-hover:text-primary-500 dark:group-hover:text-primary-400 transition-colors" />
-        </div>
-      </div>
-    );
+  // FALLBACK: If media type is twitter/linkedin/instagram/tiktok/rich (legacy data), render as normal link
+  // This ensures existing articles with these types don't crash the UI
+  if (type === 'twitter' || type === 'linkedin' || type === 'instagram' || type === 'tiktok' || type === 'rich') {
+    console.warn(`[EmbeddedMedia] Legacy media type detected: ${type}. Rendering as link fallback.`);
+    // Render as standard link preview (fallback behavior)
   }
 
   // Use preview image if available, otherwise fall back to URL

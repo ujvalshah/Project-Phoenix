@@ -49,12 +49,10 @@ import usersRouter from './routes/users';
 import collectionsRouter from './routes/collections';
 import tagsRouter from './routes/tags';
 import legalRouter from './routes/legal';
-import aiRouter from './routes/aiRoutes.js';
 import feedbackRouter from './routes/feedback.js';
 import moderationRouter from './routes/moderation.js';
 import adminRouter from './routes/admin.js';
 import unfurlRouter from './routes/unfurl.js';
-import bookmarkFoldersRouter from './routes/bookmarkFolders.js';
 import mediaRouter from './routes/media.js';
 
 const app = express();
@@ -201,14 +199,27 @@ app.use('/api/users', usersRouter);
 app.use('/api/collections', collectionsRouter);
 app.use('/api/categories', tagsRouter);
 app.use('/api/legal', legalRouter);
-// Audit Phase-1 Fix: Apply longOperationTimeout to AI routes (60s for AI processing)
-app.use('/api/ai', longOperationTimeout, aiRouter);
+// AI routes removed - legacy AI creation system has been fully removed
+// Safeguard: Return 410 Gone for any attempts to access removed AI endpoints
+// Express 5 requires regex pattern instead of wildcard syntax
+app.all(/^\/api\/ai\/.+/, (req, res) => {
+  const logger = getLogger();
+  logger.warn({
+    msg: '[AI FLOW REMOVED] Legacy call blocked',
+    method: req.method,
+    path: req.path,
+    ip: req.ip,
+  });
+  res.status(410).json({
+    error: 'Gone',
+    message: 'AI creation endpoints have been permanently removed. Manual article creation is required.',
+  });
+});
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/moderation', moderationRouter);
 // Audit Phase-1 Fix: Apply longOperationTimeout to unfurl routes (60s for metadata fetching)
 app.use('/api/unfurl', longOperationTimeout, unfurlRouter);
 app.use('/api/admin', adminRouter);
-app.use('/api/bookmark-folders', bookmarkFoldersRouter);
 app.use('/api/media', mediaRouter);
 
 // Health Check - Enhanced to verify DB connectivity

@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 // Media types matching frontend
-export type MediaType = 'image' | 'video' | 'document' | 'link' | 'text' | 'youtube' | 'twitter' | 'linkedin' | 'instagram' | 'tiktok' | 'rich';
+export type MediaType = 'image' | 'video' | 'document' | 'link' | 'text' | 'youtube';
 
 export interface INuggetMedia {
   type: MediaType;
@@ -137,8 +137,11 @@ const ArticleSchema = new Schema<IArticle>({
   content: { type: String, default: '' }, // Optional - validation handled by Zod schema
   authorId: { type: String, required: true },
   authorName: { type: String, required: true },
-  // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
+  // CATEGORY PHASE-OUT: Removed category and categories fields
   // Tags are now the only classification field
+  // DEPRECATED: categoryIds may exist in DB for backward compatibility (read-only)
+  // This field is NOT validated, NOT saved on create/update, and NOT exposed in API responses
+  // categoryIds: { type: [String] }, // Deprecated - kept in DB schema only for backward compatibility
   publishedAt: { type: String, required: true },
   tags: { type: [String], default: [] },
   readTime: { type: Number }, // Optional read time
@@ -179,6 +182,212 @@ ArticleSchema.index({ tags: 1 }); // Tag filtering
 ArticleSchema.index({ authorId: 1, visibility: 1 }); // User's articles by visibility
 // Audit Phase-2 Fix: Add index for media.url field (for YouTube cache lookup in AI controller)
 ArticleSchema.index({ 'media.url': 1 });
+
+/**
+ * Content Truncation Detection Instrumentation
+ * 
+ * Logs suspicious content truncation when:
+ * - Content field changes
+ * - Previous value length > 20
+ * - New value is exactly '...' or length <= 5
+ */
+async function logContentTruncation(
+  articleId: string,
+  oldContent: string,
+  newContent: string,
+  source_type?: string,
+  mediaType?: string,
+  context?: string
+): Promise<void> {
+  try {
+    const { getLogger } = await import('../utils/logger.js');
+    const logger = getLogger();
+    
+    // Capture stack trace
+    const stackTrace = new Error().stack || 'No stack trace available';
+    
+    logger.warn({
+      msg: '[CONTENT_TRUNCATION_DETECTED] Suspicious content truncation detected',
+      articleId,
+      updatedAt: new Date().toISOString(),
+      source_type: source_type || 'unknown',
+      mediaType: mediaType || 'unknown',
+      oldContentLength: oldContent.length,
+      newContentLength: newContent.length,
+      newContent: newContent,
+      oldContentPreview: oldContent.substring(0, 100) + (oldContent.length > 100 ? '...' : ''),
+      context: context || 'unknown',
+      stackTrace: stackTrace.split('\n').slice(2, 10).join('\n'), // First 8 lines of stack (skip Error and logContentTruncation)
+    });
+  } catch (error) {
+    // Fallback to console if logger not available
+    console.error('[CONTENT_TRUNCATION_DETECTED] Failed to log truncation:', error);
+    console.warn('[CONTENT_TRUNCATION_DETECTED]', {
+      articleId,
+      oldContentLength: oldContent.length,
+      newContentLength: newContent.length,
+      newContent,
+      source_type,
+      mediaType,
+      context,
+    });
+  }
+}
+
+/**
+ * Check if content truncation is suspicious
+ */
+function isSuspiciousTruncation(oldContent: string, newContent: string): boolean {
+  if (!oldContent || !newContent) return false;
+  
+  const oldLength = oldContent.length;
+  const newLength = newContent.length;
+  
+  // Must have old content > 20 chars
+  if (oldLength <= 20) return false;
+  
+  // New content must be exactly '...' or length <= 5
+  if (newContent === '...') return true;
+  if (newLength <= 5) return true;
+  
+  return false;
+}
+
+// Pre-save hook: Detect content truncation on document.save()
+ArticleSchema.pre('save', async function(next) {
+  // Only check on updates (not new documents)
+  if (this.isNew) {
+    return next();
+  }
+  
+  // Only check if content is modified
+  if (!this.isModified('content')) {
+    return next();
+  }
+  
+  try {
+    // Get old document from database
+    const oldDoc = await this.constructor.findById(this._id).lean();
+    if (!oldDoc) {
+      return next(); // Document doesn't exist, skip check
+    }
+    
+    const oldContent = oldDoc.content || '';
+    const newContent = this.get('content') || '';
+    
+    if (isSuspiciousTruncation(oldContent, newContent)) {
+      const articleId = this._id.toString();
+      const source_type = oldDoc.source_type;
+      const mediaType = oldDoc.media?.type;
+      
+      await logContentTruncation(
+        articleId,
+        oldContent,
+        newContent,
+        source_type,
+        mediaType,
+        'pre-save hook (document.save())'
+      );
+    }
+  } catch (error) {
+    // Don't block save if logging fails
+    console.error('[Article Model] Error in pre-save content truncation check:', error);
+  }
+  
+  next();
+});
+
+// Pre-updateOne hook: Detect content truncation on Model.updateOne()
+ArticleSchema.pre('updateOne', async function(next) {
+  const update = this.getUpdate() as any;
+  
+  // Check if content is being updated
+  if (!update || (!update.$set?.content && !update.content)) {
+    return next();
+  }
+  
+  const newContent = update.$set?.content || update.content || '';
+  
+  try {
+    // Get the query to find the document
+    const query = this.getQuery();
+    // Use this.model to get the model instance (available in query hooks)
+    const Model = (this as any).model || mongoose.model('Article');
+    const oldDoc = await Model.findOne(query).lean();
+    
+    if (!oldDoc) {
+      return next(); // Document doesn't exist, skip check
+    }
+    
+    const oldContent = oldDoc.content || '';
+    
+    if (isSuspiciousTruncation(oldContent, newContent)) {
+      const articleId = oldDoc._id.toString();
+      const source_type = oldDoc.source_type;
+      const mediaType = oldDoc.media?.type;
+      
+      await logContentTruncation(
+        articleId,
+        oldContent,
+        newContent,
+        source_type,
+        mediaType,
+        'pre-updateOne hook (Model.updateOne())'
+      );
+    }
+  } catch (error) {
+    // Don't block update if logging fails
+    console.error('[Article Model] Error in pre-updateOne content truncation check:', error);
+  }
+  
+  next();
+});
+
+// Pre-findOneAndUpdate hook: Detect content truncation on Model.findOneAndUpdate()
+ArticleSchema.pre('findOneAndUpdate', async function(next) {
+  const update = this.getUpdate() as any;
+  
+  // Check if content is being updated
+  if (!update || (!update.$set?.content && !update.content)) {
+    return next();
+  }
+  
+  const newContent = update.$set?.content || update.content || '';
+  
+  try {
+    // Get the query to find the document
+    const query = this.getQuery();
+    // Use this.model to get the model instance (available in query hooks)
+    const Model = (this as any).model || mongoose.model('Article');
+    const oldDoc = await Model.findOne(query).lean();
+    
+    if (!oldDoc) {
+      return next(); // Document doesn't exist, skip check
+    }
+    
+    const oldContent = oldDoc.content || '';
+    
+    if (isSuspiciousTruncation(oldContent, newContent)) {
+      const articleId = oldDoc._id.toString();
+      const source_type = oldDoc.source_type;
+      const mediaType = oldDoc.media?.type;
+      
+      await logContentTruncation(
+        articleId,
+        oldContent,
+        newContent,
+        source_type,
+        mediaType,
+        'pre-findOneAndUpdate hook (Model.findOneAndUpdate())'
+      );
+    }
+  } catch (error) {
+    // Don't block update if logging fails
+    console.error('[Article Model] Error in pre-findOneAndUpdate content truncation check:', error);
+  }
+  
+  next();
+});
 
 export const Article = mongoose.model<IArticle>('Article', ArticleSchema);
 

@@ -1,13 +1,12 @@
 import React from 'react';
-import { Sparkles, Loader2 } from 'lucide-react';
 import { RichTextEditor } from '../RichTextEditor';
 import { isImageFile } from '@/utils/imageOptimizer';
 
 interface ContentEditorProps {
   value: string;
   onChange: (value: string) => void;
-  isAiLoading: boolean;
-  onAiSummarize: () => void;
+  isAiLoading: boolean; // Kept for backward compatibility but unused
+  onAiSummarize: () => void; // Kept for backward compatibility but unused
   onImagePaste?: (file: File) => void;
   error?: string | null;
   warning?: string | null;
@@ -18,8 +17,8 @@ interface ContentEditorProps {
 export function ContentEditor({
   value,
   onChange,
-  isAiLoading,
-  onAiSummarize,
+  isAiLoading: _isAiLoading, // Unused - kept for backward compatibility
+  onAiSummarize: _onAiSummarize, // Unused - kept for backward compatibility
   onImagePaste,
   error,
   warning,
@@ -37,28 +36,13 @@ export function ContentEditor({
 
   return (
     <div className="relative group/editor">
-      <div className="flex justify-end mb-2">
-        <button
-          onClick={onAiSummarize}
-          disabled={isAiLoading || !value}
-          className={`
-            flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold transition-all
-            ${isAiLoading
-              ? 'bg-slate-100 text-slate-400 dark:bg-slate-800'
-              : 'bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100'
-            }
-          `}
-        >
-          {isAiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} fill="currentColor" />}
-          {isAiLoading ? 'Analyzing...' : 'AI Summarize'}
-        </button>
-      </div>
+      {/* AI Summarize button removed - AI creation system has been fully removed */}
 
       <RichTextEditor
         value={value}
         onChange={handleChange}
-        placeholder="Share an insight, observation, or paste a long article to summarize... (You can also paste images directly here)"
-        className={`min-h-[120px] transition-opacity duration-300 ${isAiLoading ? 'opacity-50 pointer-events-none' : ''}`}
+        placeholder="Share an insight, observation, or paste content... (You can also paste images directly here)"
+        className="min-h-[120px]"
         onImagePaste={(file) => {
           if (isImageFile(file) && onImagePaste) {
             onImagePaste(file);

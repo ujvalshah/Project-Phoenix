@@ -125,8 +125,8 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
               />
 
               <CardTags
-                categories={data.categories}
-                onCategoryClick={handlers.onCategoryClick}
+                tags={data.tags}
+                onTagClick={handlers.onCategoryClick}
                 showTagPopover={showTagPopover}
                 onToggleTagPopover={handlers.onToggleTagPopover}
                 tagPopoverRef={tagPopoverRef}

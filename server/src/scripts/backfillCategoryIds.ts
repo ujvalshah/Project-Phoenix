@@ -1,5 +1,9 @@
 /**
+ * DEPRECATED: LEGACY MIGRATION SCRIPT - categoryIds is deprecated
  * Phase 2 Migration: Backfill categoryIds for existing articles
+ * 
+ * ⚠️ DEPRECATION NOTICE: categoryIds field is deprecated and no longer used.
+ * This script is kept for historical reference only. Do not run in production.
  * 
  * This script:
  * 1. Finds all articles without categoryIds

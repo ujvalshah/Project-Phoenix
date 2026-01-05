@@ -41,7 +41,7 @@ export interface IUserSecurity {
 export interface IUserPreferences {
   theme: 'light' | 'dark' | 'system';
   defaultVisibility: 'public' | 'private';
-  interestedCategories: string[];
+  interestedCategories: string[]; // TODO: legacy-name-only-if-used-by-frontend - user preference field (not article field)
   compactMode: boolean;
   richMediaPreviews: boolean;
   autoFollowCollections: boolean;

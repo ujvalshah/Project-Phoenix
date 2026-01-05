@@ -1,4 +1,5 @@
 /**
+ * TODO: LEGACY MIGRATION SCRIPT - Can be removed after migration is complete
  * Tag & Category Integrity Audit Script
  * 
  * PHASE 2: Read-only audit of tag/category integrity across all articles
@@ -208,8 +209,9 @@ async function runAudit(): Promise<void> {
         badCategoriesByYear[year] = (badCategoriesByYear[year] || 0) + 1;
       }
 
-      // Issue 5: Missing or mismatched categoryIds
+      // Issue 5: Missing or mismatched categoryIds (DEPRECATED - categoryIds is no longer used)
       // Check if categories exist but categoryIds are missing or count doesn't match
+      // ⚠️ DEPRECATION: categoryIds field is deprecated - this check is for legacy data audit only
       if (categories.length > 0) {
         if (categoryIds.length === 0) {
           missingCategoryIdsArticles.push(sample);
@@ -268,13 +270,13 @@ async function runAudit(): Promise<void> {
         notes: 'Articles with categories containing empty or whitespace-only values',
       },
       {
-        issueType: 'missing_categoryIds',
+        issueType: 'missing_categoryIds', // DEPRECATED: categoryIds is no longer used
         count: missingCategoryIdsArticles.length,
         affectedPercent: totalArticles > 0 ? (missingCategoryIdsArticles.length / totalArticles) * 100 : 0,
         samples: missingCategoryIdsArticles.slice(0, 20),
         breakdownBySourceType: missingCategoryIdsBySource,
         breakdownByYear: missingCategoryIdsByYear,
-        notes: 'Articles with categories but missing categoryIds (Tag ObjectId references)',
+        notes: 'Articles with categories but missing categoryIds (Tag ObjectId references) - DEPRECATED: categoryIds is no longer used',
       },
       {
         issueType: 'legacy_structure',
@@ -363,7 +365,7 @@ async function runAudit(): Promise<void> {
     console.log('   - whitespace_tags: Run normalizeTags() utility to clean whitespace');
     console.log('   - duplicate_tags: Run normalizeTags() utility to deduplicate');
     console.log('   - bad_categories: Run normalizeCategories() utility to clean');
-    console.log('   - missing_categoryIds: Run resolveCategoryIds() to backfill IDs');
+    console.log('   - missing_categoryIds: DEPRECATED - categoryIds is no longer used (legacy audit only)');
     console.log('   - legacy_structure: Migrate category field to categories array');
     console.log('\n3. Test normalization on a small sample before bulk operations');
     console.log('4. Create a migration script that uses the shared normalization utilities');
@@ -459,7 +461,7 @@ function generateMarkdownReport(report: AuditReport, riskLevel: string): string 
   md += `   - **whitespace_tags**: Run normalizeTags() utility to clean whitespace\n`;
   md += `   - **duplicate_tags**: Run normalizeTags() utility to deduplicate\n`;
   md += `   - **bad_categories**: Run normalizeCategories() utility to clean\n`;
-  md += `   - **missing_categoryIds**: Run resolveCategoryIds() to backfill IDs\n`;
+  md += `   - **missing_categoryIds**: DEPRECATED - categoryIds is no longer used (legacy audit only)\n`;
   md += `   - **legacy_structure**: Migrate category field to categories array\n`;
   md += `3. Test normalization on a small sample before bulk operations\n`;
   md += `4. Create a migration script that uses the shared normalization utilities\n`;

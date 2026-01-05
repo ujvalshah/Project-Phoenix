@@ -31,8 +31,6 @@ const MEDIA_TYPE_PRIORITY: Record<string, number> = {
   'doc': 1,
   'docx': 1,
   'link': 0,       // Lowest priority (generic links)
-  'twitter': 0,
-  'linkedin': 0,
   'text': 0,
 };
 

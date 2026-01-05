@@ -74,11 +74,8 @@ const baseArticleSchema = z.object({
   content: z.string().default(''),
   authorId: z.string().min(1, 'Author ID is required'),
   authorName: z.string().min(1, 'Author name is required'),
-  // CATEGORY PHASE-OUT: Removed category and categories validation
+  // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds validation
   // Tags are now the only classification field
-  // Compatibility: categories and categoryIds are accepted but ignored (with warning)
-  categories: z.array(z.string()).optional(),
-  categoryIds: z.array(z.string()).optional(),
   publishedAt: z.string().optional(),
   tags: z.array(z.string()).default([]),
   readTime: z.number().optional(),
@@ -199,6 +196,46 @@ export const addEntrySchema = z.object({
 export const flagEntrySchema = z.object({
   userId: z.string().min(1, 'User ID is required')
 }).strict();
+
+/**
+ * Central logging helper for categoryIds deprecation
+ * Logs when categoryIds is detected in incoming requests
+ */
+export function logCategoryIdsDeprecation(
+  requestId: string | undefined,
+  userId: string | undefined,
+  route: string,
+  categoryIds: any
+): void {
+  const { getLogger } = require('./logger.js');
+  const logger = getLogger();
+  logger.warn({
+    msg: '[CATEGORY_IDS] Ignored legacy field in request',
+    requestId: requestId || 'unknown',
+    userId,
+    route,
+    categoryIds: Array.isArray(categoryIds) ? categoryIds : undefined,
+    categoryIdsType: typeof categoryIds,
+  });
+}
+
+/**
+ * Preprocess request body to remove deprecated categoryIds field
+ * This ensures categoryIds is stripped before validation (since schemas use .strict())
+ */
+export function preprocessArticleRequest(
+  body: any,
+  requestId: string | undefined,
+  userId: string | undefined,
+  route: string
+): any {
+  if (body && 'categoryIds' in body) {
+    logCategoryIdsDeprecation(requestId, userId, route, body.categoryIds);
+    const { categoryIds, ...rest } = body;
+    return rest;
+  }
+  return body;
+}
 
 /**
  * Validation middleware factory

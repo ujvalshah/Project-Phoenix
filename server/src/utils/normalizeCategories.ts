@@ -1,5 +1,9 @@
 /**
+ * TODO: DEAD CODE - Remove after migration complete
  * Shared Category Normalization Utility (Backend)
+ * 
+ * This file is no longer used - categories have been removed from articles.
+ * Tags are now the only classification field.
  * 
  * Single source of truth for category normalization rules:
  * - Remove whitespace-only categories
@@ -9,7 +13,7 @@
  * Rules:
  * - categories[] optional, but when present:
  *   - must be non-empty strings
- *   - must resolve to categoryIds on backend
+ *   - ⚠️ DEPRECATED: categoryIds is no longer used - this file is dead code
  * 
  * This matches the frontend normalization rules in:
  * src/shared/articleNormalization/normalizeCategories.ts

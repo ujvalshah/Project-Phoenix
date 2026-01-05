@@ -1,0 +1,69 @@
+{
+  "metadata": {
+    "generatedAt": "2026-01-05T09:48:54.006Z",
+    "auditLogPath": "C:\\Users\\ujval\\OneDrive\\Desktop\\Project Gold\\Project Nuggets\\logs\\image-dedup-audit.md",
+    "totalEntries": 0,
+    "dateRange": {
+      "earliest": "N/A",
+      "latest": "N/A"
+    }
+  },
+  "groupedStats": {
+    "byMode": {
+      "create": {
+        "count": 0,
+        "totalInputImages": 0,
+        "totalOutputImages": 0,
+        "totalDuplicates": 0,
+        "totalRemoved": 0,
+        "totalMovedToSupporting": 0,
+        "avgInputImages": 0,
+        "avgOutputImages": 0,
+        "avgDuplicates": 0
+      },
+      "edit": {
+        "count": 0,
+        "totalInputImages": 0,
+        "totalOutputImages": 0,
+        "totalDuplicates": 0,
+        "totalRemoved": 0,
+        "totalMovedToSupporting": 0,
+        "avgInputImages": 0,
+        "avgOutputImages": 0,
+        "avgDuplicates": 0,
+        "casesWithRemovals": 0,
+        "casesWithMovedImages": 0
+      }
+    },
+    "byDuplicateType": {},
+    "byRemovalPattern": {
+      "removedWithoutReplacement": 0,
+      "removedWithReplacement": 0,
+      "movedToSupportingMedia": 0,
+      "preserved": 0
+    },
+    "bySupportingMedia": {
+      "totalMoved": 0,
+      "entriesWithMoves": 0,
+      "avgMovedPerEntry": 0
+    }
+  },
+  "riskAssessment": {
+    "overallRisk": "low",
+    "editModeImageLoss": {
+      "count": 0,
+      "cases": []
+    },
+    "behaviorChangeRisks": [],
+    "recommendations": [
+      "No audit data available. Continue Phase-1 observation to collect baseline metrics.",
+      "Ensure audit logging is active in normalizeArticleInput.ts"
+    ]
+  },
+  "patterns": {
+    "mostCommonDuplicateType": "none",
+    "mostCommonRemovalPattern": "preserved",
+    "editModeRemovalRate": 0,
+    "createModeDeduplicationRate": 0
+  }
+}

@@ -9,7 +9,7 @@ export interface Document {
   size: string;
 }
 
-export type MediaType = 'image' | 'video' | 'document' | 'link' | 'text' | 'youtube' | 'twitter' | 'linkedin' | 'instagram' | 'tiktok' | 'rich';
+export type MediaType = 'image' | 'video' | 'document' | 'link' | 'text' | 'youtube';
 
 export interface PreviewMetadata {
   url: string;

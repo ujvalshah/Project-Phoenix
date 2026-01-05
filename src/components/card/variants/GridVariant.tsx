@@ -202,11 +202,11 @@ export const GridVariant: React.FC<GridVariantProps> = ({
             className="flex flex-col flex-1 min-w-0 px-4 pb-2 gap-2 cursor-pointer"
             onClick={handleCardClick}
           >
-            {/* 2) CATEGORY TAGS - max 3, muted pills */}
-            {data.categories && data.categories.length > 0 && (
+            {/* 2) TAGS - max 3, muted pills */}
+            {data.tags && data.tags.length > 0 && (
               <CardTags
-                categories={data.categories}
-                onCategoryClick={handlers.onCategoryClick}
+                tags={data.tags}
+                onTagClick={handlers.onCategoryClick}
                 showTagPopover={showTagPopover}
                 onToggleTagPopover={handlers.onToggleTagPopover}
                 tagPopoverRef={tagPopoverRef}
