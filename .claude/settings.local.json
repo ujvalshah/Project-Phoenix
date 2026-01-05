@@ -4,7 +4,9 @@
       "Bash(cd:*)",
       "Bash(cat:*)",
       "Bash(npm run build:*)",
-      "Bash(npm run dev:server:*)"
+      "Bash(npm run dev:server:*)",
+      "Bash(git stash pop:*)",
+      "Bash(git stash drop:*)"
     ]
   }
 }
