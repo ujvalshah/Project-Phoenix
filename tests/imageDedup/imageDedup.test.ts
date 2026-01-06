@@ -1,13 +1,18 @@
 /**
  * Unit Tests: Image Deduplication Module
- * 
+ *
  * Tests for src/shared/articleNormalization/imageDedup.ts
- * 
+ *
  * Coverage:
  * - duplicate URLs (case + query param variants)
  * - upload + pasted URL duplicates
- * - edit mode where images move to supportingMedia
+ * - edit mode image preservation
  * - ensure no images are lost unexpectedly
+ *
+ * NOTE: MASONRY REFACTOR (2026)
+ * - Images NO LONGER move between images[] and supportingMedia[]
+ * - showInMasonry is now a VIEW FLAG only, not a storage transformation
+ * - movedToSupporting and restored arrays are always empty (backward compat)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -232,7 +237,7 @@ describe('dedupeImagesForEdit', () => {
     expect(result.deduplicated).toContain('https://example.com/new.jpg');
   });
 
-  it('should move images to supportingMedia when URL exists there', () => {
+  it('should keep all images in deduplicated (MASONRY REFACTOR: no longer moves to supportingMedia)', () => {
     const existingImages = ['https://example.com/existing.jpg'];
     const newImages = ['https://example.com/new.jpg'];
     const supportingMedia = [
@@ -243,10 +248,11 @@ describe('dedupeImagesForEdit', () => {
     ];
 
     const result = dedupeImagesForEdit(existingImages, newImages, supportingMedia);
-    expect(result.deduplicated.length).toBe(1);
+    // MASONRY REFACTOR: Images stay in deduplicated, movedToSupporting is always empty
+    expect(result.deduplicated.length).toBe(2);
     expect(result.deduplicated).toContain('https://example.com/existing.jpg');
-    expect(result.movedToSupporting.length).toBe(1);
-    expect(result.movedToSupporting).toContain('https://example.com/new.jpg');
+    expect(result.deduplicated).toContain('https://example.com/new.jpg');
+    expect(result.movedToSupporting.length).toBe(0); // Always empty after refactor
   });
 
   it('should NOT move images if URL does not exist in supportingMedia', () => {
@@ -264,7 +270,7 @@ describe('dedupeImagesForEdit', () => {
     expect(result.movedToSupporting.length).toBe(0);
   });
 
-  it('should only prune when same URL exists in supportingMedia', () => {
+  it('should keep all images regardless of supportingMedia (MASONRY REFACTOR)', () => {
     const existingImages: string[] = [];
     const newImages = [
       'https://example.com/image1.jpg',
@@ -278,13 +284,14 @@ describe('dedupeImagesForEdit', () => {
     ];
 
     const result = dedupeImagesForEdit(existingImages, newImages, supportingMedia);
-    expect(result.deduplicated.length).toBe(1);
+    // MASONRY REFACTOR: All images stay in deduplicated, supportingMedia is ignored
+    expect(result.deduplicated.length).toBe(2);
+    expect(result.deduplicated).toContain('https://example.com/image1.jpg');
     expect(result.deduplicated).toContain('https://example.com/image2.jpg');
-    expect(result.movedToSupporting.length).toBe(1);
-    expect(result.movedToSupporting).toContain('https://example.com/image1.jpg');
+    expect(result.movedToSupporting.length).toBe(0); // Always empty after refactor
   });
 
-  it('should handle case-insensitive matching for supportingMedia', () => {
+  it('should keep images in deduplicated regardless of case-matching supportingMedia (MASONRY REFACTOR)', () => {
     const existingImages: string[] = [];
     const newImages = ['https://example.com/image.jpg'];
     const supportingMedia = [
@@ -295,8 +302,10 @@ describe('dedupeImagesForEdit', () => {
     ];
 
     const result = dedupeImagesForEdit(existingImages, newImages, supportingMedia);
-    expect(result.movedToSupporting.length).toBe(1);
-    expect(result.deduplicated.length).toBe(0);
+    // MASONRY REFACTOR: Images stay in deduplicated, supportingMedia matching is ignored
+    expect(result.movedToSupporting.length).toBe(0); // Always empty after refactor
+    expect(result.deduplicated.length).toBe(1);
+    expect(result.deduplicated).toContain('https://example.com/image.jpg');
   });
 
   it('should ignore non-image items in supportingMedia', () => {
@@ -366,28 +375,32 @@ describe('dedupeImagesForEdit', () => {
 
 describe('IMAGE PRESERVATION INVARIANT: Image Lifecycle Tests', () => {
   /**
-   * Test 1: Promote then Demote
-   * 
+   * MASONRY REFACTOR NOTE:
+   * These tests have been updated to reflect the new behavior where:
+   * - Images STAY in images[] regardless of masonry selection
+   * - showInMasonry is a VIEW FLAG only, not a storage transformation
+   * - movedToSupporting and restored are always empty arrays
+   */
+
+  /**
+   * Test 1: Image Preservation
+   *
    * Scenario:
    * - Start with image in images[]
-   * - Promote to supportingMedia via masonry flag (showInMasonry: true)
-   * - Remove from masonry (showInMasonry: false)
-   * - Save and reload
-   * 
-   * Expected: image returns to images[]
+   * - Toggle masonry flag on/off
+   *
+   * Expected: image ALWAYS stays in images[] (never moves)
    */
-  it('Test 1 - Promote then Demote: Image should return to images[] when masonry deselected', () => {
+  it('Test 1 - Image Preservation: Image should always stay in images[] regardless of masonry state', () => {
     const existingImages = ['https://example.com/image1.jpg'];
     const newImages: string[] = [];
-    
-    // Step 1: Image is promoted to supportingMedia (tracked in imagesBackup)
+
+    // imagesBackup is unused after MASONRY REFACTOR but kept for backward compat
     const imagesBackup = new Set(['https://example.com/image1.jpg']);
-    
-    // Step 2: Image is removed from supportingMedia (masonry deselected)
-    // supportingMedia is now empty (no images with showInMasonry: true)
+
+    // supportingMedia state doesn't affect image storage anymore
     const supportingMedia: any[] = [];
-    
-    // Step 3: Deduplication should restore image from backup
+
     const result = dedupeImagesForEdit(
       existingImages,
       newImages,
@@ -395,9 +408,9 @@ describe('IMAGE PRESERVATION INVARIANT: Image Lifecycle Tests', () => {
       imagesBackup,
       undefined // No explicit delete
     );
-    
-    // Expected: Image is restored to images[]
-    expect(result.restored).toContain('https://example.com/image1.jpg');
+
+    // MASONRY REFACTOR: Image stays in deduplicated, restored is always empty
+    expect(result.restored.length).toBe(0); // Always empty after refactor
     expect(result.deduplicated).toContain('https://example.com/image1.jpg');
     expect(result.deduplicated.length).toBe(1);
     expect(result.movedToSupporting.length).toBe(0);
@@ -442,27 +455,25 @@ describe('IMAGE PRESERVATION INVARIANT: Image Lifecycle Tests', () => {
   });
 
   /**
-   * Test 3: Duplicate Re-Add Behavior
-   * 
+   * Test 3: Repeated Masonry Toggle (MASONRY REFACTOR)
+   *
    * Scenario:
-   * - Promote image from images[] → supportingMedia
-   * - Demote image from supportingMedia → images[] (restored)
-   * - Promote again from images[] → supportingMedia
-   * 
-   * Expected: no duplicates, image still persists
+   * - Toggle showInMasonry on/off multiple times
+   *
+   * Expected: Image ALWAYS stays in images[], no movement occurs
    */
-  it('Test 3 - Duplicate Re-Add: No duplicates when promoting/demoting repeatedly', () => {
+  it('Test 3 - Repeated Masonry Toggle: Image stays in images[] through all toggles', () => {
     const existingImages = ['https://example.com/image1.jpg'];
     const newImages: string[] = [];
     const imageUrl = 'https://example.com/image1.jpg';
     const normalizedUrl = imageUrl.toLowerCase().trim();
-    
-    // Step 1: First promotion - image moved to supportingMedia
+
+    // Step 1: Toggle masonry ON (showInMasonry: true)
     const imagesBackup1 = new Set([normalizedUrl]);
     const supportingMedia1: any[] = [
-      { type: 'image', url: imageUrl, showInMasonry: true }
+      { type: 'image', url: imageUrl, showInMasonry: true },
     ];
-    
+
     const result1 = dedupeImagesForEdit(
       existingImages,
       newImages,
@@ -470,48 +481,48 @@ describe('IMAGE PRESERVATION INVARIANT: Image Lifecycle Tests', () => {
       imagesBackup1,
       undefined
     );
-    
-    // Image should be removed from images[] (moved to supportingMedia)
-    expect(result1.deduplicated).not.toContain(imageUrl);
-    expect(result1.movedToSupporting).toContain(imageUrl);
-    
-    // Step 2: Demotion - image removed from supportingMedia (masonry deselected)
+
+    // MASONRY REFACTOR: Image stays in deduplicated, movedToSupporting is always empty
+    expect(result1.deduplicated).toContain(imageUrl);
+    expect(result1.movedToSupporting.length).toBe(0);
+
+    // Step 2: Toggle masonry OFF (supportingMedia empty)
     const supportingMedia2: any[] = []; // Empty - masonry deselected
-    
+
     const result2 = dedupeImagesForEdit(
       existingImages,
       newImages,
       supportingMedia2,
-      imagesBackup1, // Still in backup from first promotion
+      imagesBackup1,
       undefined
     );
-    
-    // Image should be restored to images[]
-    expect(result2.restored).toContain(imageUrl);
+
+    // MASONRY REFACTOR: Image stays in deduplicated, restored is always empty
+    expect(result2.restored.length).toBe(0);
     expect(result2.deduplicated).toContain(imageUrl);
-    
-    // Step 3: Second promotion - image moved to supportingMedia again
-    const imagesBackup2 = new Set([normalizedUrl]); // Updated backup
+
+    // Step 3: Toggle masonry ON again
+    const imagesBackup2 = new Set([normalizedUrl]);
     const supportingMedia3: any[] = [
-      { type: 'image', url: imageUrl, showInMasonry: true }
+      { type: 'image', url: imageUrl, showInMasonry: true },
     ];
-    
+
     const result3 = dedupeImagesForEdit(
-      result2.deduplicated, // Use restored images as existing
+      result2.deduplicated,
       newImages,
       supportingMedia3,
       imagesBackup2,
       undefined
     );
-    
-    // Image should be removed from images[] again (moved to supportingMedia)
-    expect(result3.deduplicated).not.toContain(imageUrl);
-    expect(result3.movedToSupporting).toContain(imageUrl);
-    
-    // Verify no duplicates in any step
-    expect(result1.deduplicated.filter(img => img === imageUrl).length).toBe(0);
-    expect(result2.deduplicated.filter(img => img === imageUrl).length).toBe(1);
-    expect(result3.deduplicated.filter(img => img === imageUrl).length).toBe(0);
+
+    // MASONRY REFACTOR: Image stays in deduplicated through all toggles
+    expect(result3.deduplicated).toContain(imageUrl);
+    expect(result3.movedToSupporting.length).toBe(0);
+
+    // Verify image is always present (exactly once) in all steps
+    expect(result1.deduplicated.filter((img) => img === imageUrl).length).toBe(1);
+    expect(result2.deduplicated.filter((img) => img === imageUrl).length).toBe(1);
+    expect(result3.deduplicated.filter((img) => img === imageUrl).length).toBe(1);
   });
 });
 

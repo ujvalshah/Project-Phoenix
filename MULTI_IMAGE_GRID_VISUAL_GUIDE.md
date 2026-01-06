@@ -227,3 +227,4 @@ Card size adjusts via parent grid layout, but grid structure remains constant.
 
 
 
+

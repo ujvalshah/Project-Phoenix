@@ -199,6 +199,92 @@ body {
 }
 
 /* ============================================
+   Nugget Content: Scoped Table Styling
+   ============================================
+   Tables inside .nugget-content inherit typography from parent
+   to match surrounding text while maintaining readability.
+   ============================================ */
+
+/* Table wrapper - inherit typography context */
+.nugget-content .markdown-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 1rem 0;
+}
+
+/* Base table - inherit font-size, line-height, and font-weight from parent */
+/* Use !important to override Tailwind inline classes (text-xs sm:text-sm) */
+.nugget-content .markdown-table {
+  width: 100% !important;
+  border-collapse: collapse;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+  color: inherit !important;
+  margin: 0 !important;
+}
+
+/* Table header cells - slightly emphasized but not oversized */
+.nugget-content .markdown-table thead th {
+  font-weight: 600 !important; /* Slightly bolder than body text but not oversized */
+  text-align: left;
+  padding: 0.75rem 1rem !important; /* Improved spacing for readability */
+  border-bottom: 1px solid rgb(226 232 240) !important; /* slate-200 - subtle border */
+  background-color: rgb(248 250 252) !important; /* slate-50 - subtle background */
+  white-space: nowrap;
+  color: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+/* Table body cells - match parent typography exactly */
+.nugget-content .markdown-table tbody td {
+  padding: 0.75rem 1rem !important; /* Improved spacing for readability */
+  vertical-align: top;
+  border-bottom: 1px solid rgb(241 245 249) !important; /* slate-100 - very subtle border */
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+  color: inherit !important;
+}
+
+/* Alternating row backgrounds - subtle for readability */
+.nugget-content .markdown-table tbody tr:nth-child(even) {
+  background-color: rgba(248, 250, 252, 0.4) !important; /* slate-50 with opacity */
+}
+
+/* Table hover effect - subtle interaction feedback */
+.nugget-content .markdown-table tbody tr:hover {
+  background-color: rgba(241, 245, 249, 0.6) !important; /* slate-100 with opacity */
+}
+
+/* Dark mode table styles */
+.dark .nugget-content .markdown-table thead th {
+  border-bottom-color: rgb(51 65 85) !important; /* slate-700 */
+  background-color: rgba(30, 41, 59, 0.4) !important; /* slate-800 with opacity */
+}
+
+.dark .nugget-content .markdown-table tbody td {
+  border-bottom-color: rgb(51 65 85) !important; /* slate-700 */
+}
+
+.dark .nugget-content .markdown-table tbody tr:nth-child(even) {
+  background-color: rgba(30, 41, 59, 0.2) !important; /* slate-800 with opacity */
+}
+
+.dark .nugget-content .markdown-table tbody tr:hover {
+  background-color: rgba(51, 65, 85, 0.4) !important; /* slate-700 with opacity */
+}
+
+/* Mobile responsive padding */
+@media (max-width: 640px) {
+  .nugget-content .markdown-table thead th,
+  .nugget-content .markdown-table tbody td {
+    padding: 0.625rem 0.75rem !important; /* Slightly tighter on mobile but still readable */
+  }
+}
+
+/* ============================================
    Masonry Tile Hover Interaction (Premium Subtle UX)
    ============================================
    

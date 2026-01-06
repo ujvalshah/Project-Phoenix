@@ -12,26 +12,55 @@
  * - Do NOT unify behavior
  * 
  * ============================================================================
+ * PRIMARY MEDIA REBUILD RULE (NON-NEGOTIABLE)
+ * ============================================================================
+ * 
+ * "Primary media is rebuilt ONLY when the source URL changes."
+ * 
+ * This rule ensures that primary media metadata is refreshed only when the
+ * source URL actually changes, preventing accidental overwrites of user edits
+ * and preserving YouTube titles and other fetched metadata.
+ * 
+ * Decision Boundaries:
+ * 1. URL Change Detection:
+ *    - Compare new primaryUrl with existingMedia.url (normalized, case-insensitive)
+ *    - If URLs differ → FULL REBUILD: refresh metadata and rebuild media object
+ *    - If URLs match → NO REBUILD: preserve existing media structure
+ * 
+ * 2. Metadata Override (Same URL):
+ *    - If URL is same AND allowMetadataOverride = true:
+ *      → Allow user edits to caption/title/masonryTitle
+ *    - If URL is same AND allowMetadataOverride = false:
+ *      → Preserve existing metadata (YouTube title guard applies)
+ * 
+ * 3. YouTube Title Guard:
+ *    - If allowMetadataOverride = false → preserve YouTube title (existing logic)
+ *    - If allowMetadataOverride = true → allow user override intentionally
+ * 
+ * Implementation:
+ * - buildMediaObjectEdit() implements URL change detection
+ * - allowMetadataOverride flag tracks user explicit edits (caption/title)
+ * - Backend updateArticle() enforces YouTube title guard with flag check
+ * 
+ * ============================================================================
  * IMAGE PRESERVATION INVARIANT (STRICT ENFORCEMENT)
  * ============================================================================
  * 
  * "No image should ever be removed unless the user explicitly deletes it."
  * 
- * This invariant ensures that images are never lost during normalization,
- * even when they move between images[], supportingMedia[], and masonryMediaItems.
+ * This invariant ensures that images are never lost during normalization.
  * 
  * Implementation:
- * 1. When an image is promoted from images[] → supportingMedia[], store it in
- *    imagesBackup (internal, non-rendered field for safety).
- * 2. If an image is later removed from supportingMedia WITHOUT an explicit
- *    delete action (e.g., masonry deselection), it MUST be restored to images[].
- * 3. Explicit delete operations (marked with explicitDelete=true) are the
+ * 1. Images in images[] array remain in images[] array - they are never moved
+ *    to supportingMedia[] based on masonry selection.
+ * 2. Explicit delete operations (marked with explicitDelete=true) are the
  *    ONLY way images are removed from the system.
  * 
- * Rationale:
- * - Users may toggle masonry selection on/off without intending to delete images
- * - Images should persist across UI state changes unless explicitly deleted
- * - This prevents accidental data loss during edit operations
+ * MASONRY REFACTOR:
+ * - showInMasonry is a view flag, NOT a storage transformation
+ * - Toggling masonry does NOT move images between arrays
+ * - supportingMedia structure remains stable
+ * - Images from images[] remain in images[] regardless of masonry selection
  * 
  * ============================================================================
  */
@@ -77,6 +106,10 @@ export interface ArticleInputData {
   // Image preservation invariant tracking
   imagesBackup?: Set<string>; // Internal field: tracks images promoted from images[] to supportingMedia[]
   explicitlyDeletedImages?: Set<string>; // Internal field: tracks images explicitly deleted by user
+  
+  // Metadata override flag: true when user explicitly edits caption/title
+  // This allows intentional overrides of YouTube titles and other metadata
+  allowMetadataOverride?: boolean;
 }
 
 /**
@@ -167,7 +200,6 @@ async function writeAuditLogEntry(entry: {
 - **Output Images**: ${entry.totalOutputImages}
 - **Duplicates Detected**: ${entry.duplicatesDetected}
 - **Images Removed**: ${entry.imagesRemoved}
-- **Moved to Supporting Media**: ${entry.movedToSupportingMedia}
 - **Duplicate Types**: ${entry.duplicateTypes.join(', ') || 'none'}
 
 ${entry.editModeEvents && entry.editModeEvents.length > 0 ? `### Edit Mode Events\n${entry.editModeEvents.map(e => `- ${e}`).join('\n')}\n` : ''}
@@ -198,16 +230,16 @@ ${entry.normalizedPairs.length > 0 ? `### Normalized Pairs\n${entry.normalizedPa
       // Append to log file
       fs.appendFileSync(logFile, logEntry, 'utf-8');
       console.log(`[IMAGE_DEDUP_AUDIT] ✅ Audit log entry written to ${logFile}`);
-      console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved} | Moved to supportingMedia: ${entry.movedToSupportingMedia}`);
+      console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved}`);
     } catch (error) {
       // File writing failed, just log to console
       console.warn('[IMAGE_DEDUP_AUDIT] Failed to write log file (browser environment or file system unavailable):', error);
       // Still log summary to console
-      console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved} | Moved to supportingMedia: ${entry.movedToSupportingMedia}`);
+      console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved}`);
     }
   } else {
     // Browser environment - just log summary to console
-    console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved} | Moved to supportingMedia: ${entry.movedToSupportingMedia}`);
+    console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved}`);
   }
 }
 
@@ -242,21 +274,26 @@ function separateImageUrls(urls: string[]): { imageUrls: string[]; linkUrls: str
  */
 async function buildMediaObjectCreate(
   input: ArticleInputData,
-  options: NormalizeArticleInputOptions
+  _options: NormalizeArticleInputOptions
 ): Promise<NuggetMedia | null> {
   const { linkMetadata, urls, detectedLink, customDomain, title, masonryMediaItems } = input;
   const primaryUrl = getPrimaryUrl(urls) || detectedLink || null;
   const primaryItem = masonryMediaItems.find(item => item.source === 'primary');
 
+  // URLs must not be used as titles. If no title exists, leave empty.
+  // Title resolution order: 1) User-entered title, 2) Metadata title, 3) Empty string (NOT URL)
   const baseMedia = linkMetadata ? {
     ...linkMetadata,
     previewMetadata: linkMetadata.previewMetadata ? {
       ...linkMetadata.previewMetadata,
       url: linkMetadata.previewMetadata.url || primaryUrl || '',
       siteName: customDomain || linkMetadata.previewMetadata.siteName,
+      // Preserve metadata title if present, otherwise use user title (never URL)
+      title: linkMetadata.previewMetadata.title?.trim() || title?.trim() || '',
     } : {
       url: primaryUrl || '',
-      title: title,
+      // User-entered title only (never fallback to URL)
+      title: title?.trim() || '',
       siteName: customDomain || undefined,
     }
   } : (primaryUrl ? {
@@ -264,7 +301,8 @@ async function buildMediaObjectCreate(
     url: primaryUrl,
     previewMetadata: {
       url: primaryUrl,
-      title: title,
+      // User-entered title only (never fallback to URL)
+      title: title?.trim() || '',
       siteName: customDomain || undefined,
     }
   } : (customDomain ? {
@@ -273,7 +311,8 @@ async function buildMediaObjectCreate(
     url: `https://${customDomain}`,
     previewMetadata: {
       url: `https://${customDomain}`,
-      title: title,
+      // User-entered title only (never fallback to URL)
+      title: title?.trim() || '',
       siteName: customDomain,
     }
   } : (primaryItem && primaryItem.url ? {
@@ -315,67 +354,171 @@ async function buildMediaObjectCreate(
 
 /**
  * Build media object for EDIT mode
- * Matches exact logic from CreateNuggetModal.tsx lines 1330-1363
+ * 
+ * ============================================================================
+ * PRIMARY MEDIA REBUILD RULE (NON-NEGOTIABLE)
+ * ============================================================================
+ * 
+ * "Primary media is rebuilt ONLY when the source URL changes."
+ * 
+ * Decision Boundaries:
+ * 1. URL Change Detection:
+ *    - Compare new primaryUrl with existingMedia.url (normalized)
+ *    - If URLs differ → FULL REBUILD: refresh metadata and rebuild media object
+ *    - If URLs match → NO REBUILD: preserve existing media structure
+ * 
+ * 2. Metadata Override (Same URL):
+ *    - If URL is same AND allowMetadataOverride = true:
+ *      → Allow user edits to caption/title/masonryTitle
+ *    - If URL is same AND allowMetadataOverride = false:
+ *      → Preserve existing metadata (YouTube title guard applies)
+ * 
+ * 3. YouTube Title Guard:
+ *    - If allowMetadataOverride = false → preserve YouTube title (existing logic)
+ *    - If allowMetadataOverride = true → allow user override intentionally
+ * 
+ * ============================================================================
  */
 async function buildMediaObjectEdit(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
 ): Promise<NuggetMedia | null | undefined> {
-  const { linkMetadata, urls, detectedLink, customDomain, title, masonryMediaItems, existingMedia, initialData } = input;
+  const { linkMetadata, urls, detectedLink, customDomain, title, masonryMediaItems, existingMedia, initialData, allowMetadataOverride } = input;
   const { enrichMediaItemIfNeeded, classifyArticleMedia } = options;
   const primaryUrl = getPrimaryUrl(urls) || detectedLink || null;
 
-  // CRITICAL: Always update media if URLs exist or were changed
-  // This ensures media appears after adding URL via Edit
-  if (primaryUrl) {
+  // ============================================================================
+  // STEP 1: URL CHANGE DETECTION
+  // ============================================================================
+  // Normalize URLs for comparison (case-insensitive, trim whitespace)
+  const normalizeUrl = (url: string | null | undefined): string | null => {
+    if (!url) return null;
+    try {
+      return url.toLowerCase().trim();
+    } catch {
+      return url.trim();
+    }
+  };
+
+  const existingUrl = existingMedia?.url ? normalizeUrl(existingMedia.url) : null;
+  const newUrl = primaryUrl ? normalizeUrl(primaryUrl) : null;
+  const urlChanged = existingUrl !== null && newUrl !== null && existingUrl !== newUrl;
+  const urlRemoved = existingUrl !== null && newUrl === null;
+  const urlAdded = existingUrl === null && newUrl !== null;
+
+  // ============================================================================
+  // STEP 2: URL CHANGE → FULL REBUILD (Rule: Rebuild ONLY when URL changes)
+  // ============================================================================
+  if (urlChanged || urlAdded) {
+    // URL changed or added → FULL REBUILD: refresh metadata and rebuild media object
     if (linkMetadata) {
-      // Use fetched metadata
+      // Use fetched metadata (fresh fetch triggered by URL change)
+      // URLs must not be used as titles. If no title exists, leave empty.
       return {
         ...linkMetadata,
         previewMetadata: linkMetadata.previewMetadata ? {
           ...linkMetadata.previewMetadata,
           url: linkMetadata.previewMetadata.url || primaryUrl || '',
           siteName: customDomain || linkMetadata.previewMetadata.siteName,
+          // Preserve metadata title if present, otherwise use user title (never URL)
+          title: linkMetadata.previewMetadata.title?.trim() || title?.trim() || '',
         } : {
           url: primaryUrl || '',
-          title: title,
+          // User-entered title only (never fallback to URL)
+          title: title?.trim() || '',
           siteName: customDomain || undefined,
         }
       };
-    } else {
+    } else if (primaryUrl) {
       // Create minimal media object if metadata not available
       // This ensures media field is set even if fetch failed
+      // URLs must not be used as titles. If no title exists, leave empty.
       return {
         type: detectProviderFromUrl(primaryUrl),
         url: primaryUrl,
         previewMetadata: {
           url: primaryUrl,
-          title: title,
+          // User-entered title only (never fallback to URL)
+          title: title?.trim() || '',
           siteName: customDomain || undefined,
         }
       };
     }
-  } else if (urls.length === 0) {
+  }
+
+  // ============================================================================
+  // STEP 3: URL REMOVED → CLEAR MEDIA
+  // ============================================================================
+  if (urlRemoved || (urls.length === 0 && existingUrl !== null)) {
     // URLs were removed, clear media
     return null;
   }
+
+  // ============================================================================
+  // STEP 4: SAME URL → CONDITIONAL UPDATE (Metadata Override Logic)
+  // ============================================================================
   // If primaryUrl is null but urls exist (all images), don't update media
-  
-  // Apply masonry fields from masonryMediaItems
-  if (masonryMediaItems.length > 0 && existingMedia && enrichMediaItemIfNeeded) {
+  if (!primaryUrl && urls.length > 0) {
+    return undefined; // Don't update media
+  }
+
+  // Same URL: Only update if allowMetadataOverride is true OR masonry fields changed
+  if (existingMedia && !urlChanged && !urlAdded) {
+    // Same URL: Check if we should allow metadata updates
     const primaryItem = masonryMediaItems.find(item => item.source === 'primary');
     const legacyMediaItem = masonryMediaItems.find(item => item.source === 'legacy-media');
     const mediaItemWithTitle = legacyMediaItem || primaryItem;
     
-    if (mediaItemWithTitle && existingMedia) {
+    if (mediaItemWithTitle && enrichMediaItemIfNeeded) {
       // Enrich media if previewMetadata is missing before updating
       const enrichedMedia = await enrichMediaItemIfNeeded(existingMedia);
-      // Update the media field with masonryTitle and showInMasonry
-      return {
+      
+      // Build update object
+      const update: Partial<NuggetMedia> = {
         ...enrichedMedia,
         showInMasonry: mediaItemWithTitle.showInMasonry,
         masonryTitle: mediaItemWithTitle.masonryTitle || undefined,
       };
+
+      // ============================================================================
+      // DECISION: Allow metadata override only if flag is set
+      // ============================================================================
+      if (allowMetadataOverride) {
+        // User explicitly edited caption/title → allow override
+        // If linkMetadata is provided, merge it (user may have edited title)
+        if (linkMetadata && linkMetadata.previewMetadata) {
+          return {
+            ...enrichedMedia,
+            ...linkMetadata,
+            previewMetadata: {
+              ...enrichedMedia.previewMetadata,
+              ...linkMetadata.previewMetadata,
+              url: linkMetadata.previewMetadata.url || enrichedMedia.previewMetadata?.url || primaryUrl || '',
+              siteName: customDomain || linkMetadata.previewMetadata.siteName || enrichedMedia.previewMetadata?.siteName,
+            },
+            showInMasonry: mediaItemWithTitle.showInMasonry,
+            masonryTitle: mediaItemWithTitle.masonryTitle || undefined,
+          } as NuggetMedia;
+        }
+        // No linkMetadata but override flag set → allow update (masonry fields)
+        // Note: YouTube title guard in backend will still check this flag
+        return update as NuggetMedia;
+      } else {
+        // No override flag → preserve existing metadata (especially YouTube titles)
+        // Only update masonry fields, preserve previewMetadata.title
+        return {
+          ...enrichedMedia,
+          previewMetadata: {
+            ...enrichedMedia.previewMetadata,
+            // Preserve existing title if it's a YouTube title (backend guard will enforce)
+            title: enrichedMedia.previewMetadata?.title || existingMedia.previewMetadata?.title,
+            titleSource: enrichedMedia.previewMetadata?.titleSource || existingMedia.previewMetadata?.titleSource,
+            titleFetchedAt: enrichedMedia.previewMetadata?.titleFetchedAt || existingMedia.previewMetadata?.titleFetchedAt,
+          },
+          showInMasonry: mediaItemWithTitle.showInMasonry,
+          masonryTitle: mediaItemWithTitle.masonryTitle || undefined,
+        } as NuggetMedia;
+      }
     } else if (mediaItemWithTitle && primaryItem && initialData && classifyArticleMedia) {
       // If media doesn't exist yet but we have primary media, create it
       const classified = classifyArticleMedia(initialData);
@@ -473,156 +616,75 @@ async function buildSupportingMediaCreate(
 
 /**
  * Build supportingMedia array for EDIT mode
- * Matches exact logic from CreateNuggetModal.tsx lines 1470-1613
  * 
- * IMAGE PRESERVATION INVARIANT:
- * - When an image is promoted from images[] → supportingMedia[], store it in imagesBackup
- * - This allows restoration if the image is later removed from supportingMedia without explicit delete
+ * MASONRY REFACTOR: showInMasonry is a view flag, NOT a storage transformation
+ * - Only updates showInMasonry flags on existing supportingMedia items
+ * - Does NOT move images from images[] to supportingMedia[]
+ * - supportingMedia structure remains stable
+ * - Images from images[] remain in images[] regardless of masonry selection
  */
 async function buildSupportingMediaEdit(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
-): Promise<{ supportingMedia?: any[]; imagesToRemove?: Set<string>; imagesBackup?: Set<string> }> {
-  const { masonryMediaItems, existingSupportingMedia, initialData, existingImages = [] } = input;
+): Promise<{ supportingMedia?: any[] }> {
+  const { masonryMediaItems, existingSupportingMedia } = input;
   const { enrichMediaItemIfNeeded } = options;
   
-  // Initialize imagesBackup to track images promoted from images[] to supportingMedia[]
-  // This is an internal safety mechanism to prevent image loss during normalization
-  const imagesBackup = new Set<string>();
-  
-  if (masonryMediaItems.length === 0) {
+  // If no existing supportingMedia, return empty (no structural changes)
+  if (!existingSupportingMedia || existingSupportingMedia.length === 0) {
     return {};
   }
-  
-  const normalizedSupportingMedia: any[] = [];
   
   if (!enrichMediaItemIfNeeded) {
     // If enrichment function not provided, return empty
     return {};
   }
   
-  // 1. Process existing supportingMedia (if any)
-  if (existingSupportingMedia && existingSupportingMedia.length > 0) {
-    const enrichedExisting = await Promise.all(
-      existingSupportingMedia.map(async (media, index) => {
-        const item = masonryMediaItems.find(item => item.id === `supporting-${index}`);
-        if (item) {
-          // Enrich if previewMetadata is missing
-          const enriched = await enrichMediaItemIfNeeded(media);
-          return {
-            ...enriched,
-            showInMasonry: item.showInMasonry,
-            masonryTitle: item.masonryTitle || undefined,
-          };
-        }
-        // Also enrich items not in masonryMediaItems (preserve existing behavior)
-        return await enrichMediaItemIfNeeded(media);
-      })
-    );
-    normalizedSupportingMedia.push(...enrichedExisting);
-  }
-  
-  // 2. Normalize images from images array that are selected for masonry
-  // IMAGE PRESERVATION: Track images being promoted from images[] to supportingMedia[]
-  const legacyImageItems = masonryMediaItems.filter(item => item.source === 'legacy-image');
-  
-  // Build set of existing image URLs for promotion tracking
-  const existingImagesSet = new Set(
-    existingImages.map(img => img && typeof img === 'string' ? img.toLowerCase().trim() : '').filter(Boolean)
-  );
-  
-  if (legacyImageItems.length > 0) {
-    const enrichedLegacyImages = await Promise.all(
-      legacyImageItems.map(async (item) => {
-        const baseMedia = {
-          type: 'image' as const,
-          url: item.url,
-          thumbnail: item.thumbnail || item.url,
+  // Process existing supportingMedia items and update their showInMasonry flags
+  // This is the ONLY structural change allowed - updating flags on existing items
+  const normalizedSupportingMedia = await Promise.all(
+    existingSupportingMedia.map(async (media, index) => {
+      const item = masonryMediaItems.find(item => item.id === `supporting-${index}`);
+      
+      // Enrich if previewMetadata is missing
+      const enriched = await enrichMediaItemIfNeeded(media);
+      
+      if (item) {
+        // Update showInMasonry flag from masonryMediaItems state
+        return {
+          ...enriched,
           showInMasonry: item.showInMasonry,
           masonryTitle: item.masonryTitle || undefined,
         };
-        
-        // IMAGE PRESERVATION INVARIANT: If this image came from images[], add to backup
-        // This ensures we can restore it if masonry selection is removed later
-        if (item.url && existingImagesSet.has(item.url.toLowerCase().trim())) {
-          imagesBackup.add(item.url.toLowerCase().trim());
-        }
-        
-        const enriched = await enrichMediaItemIfNeeded(baseMedia);
-        
-        if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
-          console.warn('[normalizeArticleInput] STEP 3 FIX: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
-            url: enriched.url,
-            type: enriched.type,
-          });
-          enriched.previewMetadata = {
-            url: enriched.url,
-            imageUrl: enriched.url,
-            mediaType: 'image',
-          };
-        }
-        
-        return enriched;
-      })
-    );
-    
-    normalizedSupportingMedia.push(...enrichedLegacyImages);
-  }
-  
-  // 3. Also process other masonry items that might need normalization
-  const otherSupportingItems = masonryMediaItems.filter(
-    item => item.source === 'supporting' && 
-    !normalizedSupportingMedia.some(existing => existing.url === item.url)
-  );
-  
-  if (otherSupportingItems.length > 0) {
-    const enrichedOther = await Promise.all(
-      otherSupportingItems.map(async (item) => {
-        const baseMedia = {
-          type: item.type,
-          url: item.url,
-          thumbnail: item.thumbnail,
-          showInMasonry: item.showInMasonry,
-          masonryTitle: item.masonryTitle || undefined,
-        };
-        
-        const enriched = await enrichMediaItemIfNeeded(baseMedia);
-        
-        if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
-          console.warn('[normalizeArticleInput] STEP 3 FIX: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
-            url: enriched.url,
-            type: enriched.type,
-          });
-          enriched.previewMetadata = {
-            url: enriched.url,
-            mediaType: enriched.type || 'link',
-          };
-        }
-        
-        return enriched;
-      })
-    );
-    
-    normalizedSupportingMedia.push(...enrichedOther);
-  }
-  
-  // Build set of image URLs that should be removed from images array
-  const imagesToRemove = new Set(
-    normalizedSupportingMedia
-      .filter(item => item.type === 'image' && item.url)
-      .map(item => item.url.toLowerCase().trim())
+      }
+      
+      // Item not in masonryMediaItems - preserve existing showInMasonry value
+      return enriched;
+    })
   );
   
   return {
     supportingMedia: normalizedSupportingMedia.length > 0 ? normalizedSupportingMedia : undefined,
-    imagesToRemove,
-    imagesBackup: imagesBackup.size > 0 ? imagesBackup : undefined,
   };
 }
 
 /**
  * Main normalization function
  * Extracts ALL normalization logic from Create and Edit pipelines
+ * 
+ * ============================================================================
+ * TITLE RESOLUTION RULE (NON-NEGOTIABLE)
+ * ============================================================================
+ * 
+ * URLs must not be used as titles. If no title exists, leave empty.
+ * 
+ * Title resolution order:
+ * 1. User-entered title (highest priority)
+ * 2. Metadata title (if present)
+ * 3. Otherwise → title must be "" (do NOT use URL)
+ * 
+ * This ensures that article titles never default to the pasted URL.
+ * Cards should display content/excerpt even if title is blank.
  */
 export async function normalizeArticleInput(
   input: ArticleInputData,
@@ -635,7 +697,7 @@ export async function normalizeArticleInput(
     tags: inputTags, 
     visibility, 
     urls,
-    imageUrls,
+    imageUrls: _imageUrls, // Unused - we use separatedImageUrls instead
     uploadedImageUrls,
     mediaIds,
     uploadedDocs,
@@ -691,24 +753,13 @@ export async function normalizeArticleInput(
     rawInputImages.push(...existingImages, ...separatedImageUrls, ...uploadedImageUrls);
   }
 
-  // Build supportingMedia first (needed for EDIT mode pruning)
+  // Build supportingMedia (EDIT mode only updates flags, no structural changes)
   let supportingMedia: any[] | undefined;
-  let imagesToRemove: Set<string> | undefined;
-  let imagesBackup: Set<string> | undefined;
   if (mode === 'create') {
     supportingMedia = await buildSupportingMediaCreate(input, options);
   } else {
     const supportingResult = await buildSupportingMediaEdit(input, options);
     supportingMedia = supportingResult.supportingMedia;
-    imagesToRemove = supportingResult.imagesToRemove;
-    imagesBackup = supportingResult.imagesBackup;
-    
-    // Merge with existing imagesBackup from input (if any)
-    if (input.imagesBackup) {
-      imagesBackup = imagesBackup 
-        ? new Set([...imagesBackup, ...input.imagesBackup])
-        : new Set(input.imagesBackup);
-    }
   }
 
   // Combine and deduplicate images using shared module (different logic for CREATE vs EDIT)
@@ -721,13 +772,13 @@ export async function normalizeArticleInput(
     allImages = dedupResult.deduplicated;
   } else {
     const allImageUrlsRaw = [...separatedImageUrls, ...uploadedImageUrls];
-    // IMAGE PRESERVATION INVARIANT: Pass imagesBackup and explicitlyDeletedImages to dedupeImagesForEdit
-    // This enables restoration of images when masonry selection is removed
+    // MASONRY REFACTOR: No longer pruning images based on supportingMedia
+    // Images remain in images[] array regardless of masonry selection
     dedupResult = dedupeImagesForEdit(
       existingImages, 
       allImageUrlsRaw, 
-      supportingMedia,
-      imagesBackup,
+      undefined, // No longer passing supportingMedia for pruning
+      undefined, // No longer using imagesBackup
       input.explicitlyDeletedImages
     );
     allImages = dedupResult.deduplicated;
@@ -780,7 +831,6 @@ export async function normalizeArticleInput(
   const totalInputImages = rawInputImages.length;
   const totalOutputImages = finalImages.length;
   const imagesRemoved = dedupResult.removed.length;
-  const movedToSupportingMedia = dedupResult.movedToSupporting?.length || 0;
   
   // Detect duplicates in raw input (for audit purposes)
   const duplicateDetection = detectDuplicateImages(rawInputImages);
@@ -817,11 +867,6 @@ export async function normalizeArticleInput(
     if (overriddenImages.length > 0) {
       editModeEvents.push(`${overriddenImages.length} legacy image(s) overridden by uploaded images: ${overriddenImages.slice(0, 3).join(', ')}${overriddenImages.length > 3 ? '...' : ''}`);
     }
-    
-    // Check images moved to supportingMedia
-    if (movedToSupportingMedia > 0) {
-      editModeEvents.push(`${movedToSupportingMedia} image(s) removed from images array (moved to supportingMedia)`);
-    }
   } else {
     // CREATE-mode specific audit checks
     const uploadedSet = new Set(uploadedImageUrls.map(img => img && typeof img === 'string' ? img.toLowerCase().trim() : '').filter(Boolean));
@@ -857,8 +902,8 @@ export async function normalizeArticleInput(
     }
   }
   
-  // Log audit event if any deduplication or pruning occurred
-  if (duplicatesDetected > 0 || imagesRemoved > 0 || movedToSupportingMedia > 0 || totalInputImages !== totalOutputImages) {
+  // Log audit event if any deduplication occurred
+  if (duplicatesDetected > 0 || imagesRemoved > 0 || totalInputImages !== totalOutputImages) {
     const duplicateTypes = [...new Set(duplicateDetection.duplicates.map(d => d.type))];
     
     const auditData = {
@@ -869,7 +914,7 @@ export async function normalizeArticleInput(
       duplicatesDetected,
       normalizedPairs: duplicateDetection.normalizedPairs,
       imagesRemoved,
-      movedToSupportingMedia,
+      movedToSupportingMedia: 0, // Always 0 - kept for backward compatibility with audit logs
       duplicateTypes,
       ...(mode === 'edit' && editModeEvents.length > 0 ? { editModeEvents } : {}),
       ...(mode === 'create' && createModeEvents.length > 0 ? { createModeEvents } : {}),

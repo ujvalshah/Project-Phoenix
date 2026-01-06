@@ -269,3 +269,4 @@ If more than 15% of records need modification:
 - `["  cat1  ", "  ", "cat2", ""]` → `["cat1", "cat2"]`
 - `["  ", ""]` → `[]` (empty array, not undefined)
 
+

@@ -29,7 +29,7 @@ async function legacyCreateNormalization(
   const {
     title,
     content,
-    categories,
+    tags: categories, // Input renamed from 'categories' to 'tags'
     visibility,
     urls,
     detectedLink,
@@ -207,13 +207,14 @@ async function legacyCreateNormalization(
     finalCustomCreatedAt = new Date(customCreatedAt).toISOString();
   }
 
+  // NOTE: 'categories' was deprecated and renamed to 'tags'
+  // The actual normalizeArticleInput only returns 'tags', not 'categories'
   return {
     title: title.trim(),
     content: content.trim() || '',
     excerpt,
     readTime,
-    categories,
-    tags,
+    tags, // 'categories' removed - deprecated field
     visibility,
     images: allImages.length > 0 ? allImages : undefined,
     mediaIds: finalMediaIds,
@@ -327,7 +328,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My Text Nugget',
         content: 'This is a text-only nugget with some content that should generate a read time.',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -370,7 +371,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My Link Nugget',
         content: 'Check out this article',
-        categories: ['Tech', 'News'],
+        tags: ['Tech', 'News'],
         visibility: 'public',
         urls: ['https://example.com/article'],
         detectedLink: 'https://example.com/article',
@@ -415,7 +416,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My YouTube Nugget',
         content: 'Check out this video',
-        categories: ['Video'],
+        tags: ['Video'],
         visibility: 'public',
         urls: ['https://www.youtube.com/watch?v=dQw4w9WgXcQ'],
         detectedLink: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
@@ -456,7 +457,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My Image Nugget',
         content: 'This has an image',
-        categories: ['Photo'],
+        tags: ['Photo'],
         visibility: 'public',
         urls: ['https://example.com/image.jpg'],
         detectedLink: null,
@@ -508,7 +509,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My Multi-Image Nugget',
         content: 'This has multiple images',
-        categories: ['Photo'],
+        tags: ['Photo'],
         visibility: 'public',
         urls: ['https://example.com/image1.jpg', 'https://example.com/image2.jpg'],
         detectedLink: null,
@@ -548,7 +549,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My Document Nugget',
         content: 'This has a document',
-        categories: ['Document'],
+        tags: ['Document'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -579,7 +580,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My Custom Domain Nugget',
         content: 'This has a custom domain',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -605,12 +606,12 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
     });
   });
 
-  describe('Scenario 8: Nugget with tags + categories', () => {
+  describe('Scenario 8: Nugget with multiple tags', () => {
     it('should match legacy output for nugget with multiple tags', async () => {
       const input: ArticleInputData = {
         title: 'My Tagged Nugget',
         content: 'This has multiple tags',
-        categories: ['Tech', 'AI', 'Machine Learning'],
+        tags: ['Tech', 'AI', 'Machine Learning'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -641,7 +642,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My Empty Tag Nugget',
         content: 'This has no tags',
-        categories: [],
+        tags: [],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -671,7 +672,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'My Tagged Nugget',
         content: 'This has tags',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -702,7 +703,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'Test',
         content: 'word '.repeat(400), // 400 words = 2 minutes
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -732,7 +733,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'Test',
         content: longContent,
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -761,7 +762,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'Test',
         content: 'Test content',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: ['https://example.com/image.jpg', 'https://example.com/IMAGE.JPG'], // Case variation
         detectedLink: null,
@@ -800,7 +801,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'Test',
         content: 'Test content',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: ['https://example.com/article'],
         detectedLink: 'https://example.com/article',
@@ -850,7 +851,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'Test',
         content: 'Test content',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -898,7 +899,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         const input: ArticleInputData = {
           title: 'Test',
           content: 'Test content',
-          categories: ['Tech'],
+          tags: ['Tech'],
           visibility: 'public',
           urls: testCase.urls,
           detectedLink: null,
@@ -931,7 +932,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const inputAdmin: ArticleInputData = {
         title: 'Test',
         content: 'Test content',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -977,7 +978,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'Test',
         content: 'Test content',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: [],
         detectedLink: null,
@@ -1023,7 +1024,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       const input: ArticleInputData = {
         title: 'Test',
         content: 'Test content',
-        categories: ['Tech'],
+        tags: ['Tech'],
         visibility: 'public',
         urls: ['https://example.com/article'],
         detectedLink: 'https://example.com/article',
@@ -1058,6 +1059,688 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
       // NOTE: Current implementation sets hasEmptyTagsError to false for EDIT mode
       // This is a minor difference - EDIT mode should ideally not set this field at all
       expect(normalizedEdit.hasEmptyTagsError).toBe(false); // Currently returns false, not undefined
+    });
+  });
+
+  // ============================================================================
+  // PRIMARY MEDIA SEMANTICS TESTS
+  // ============================================================================
+  // Rule: "Primary media is rebuilt ONLY when the source URL changes."
+  // ============================================================================
+  describe('Primary Media Semantics - URL Change Detection', () => {
+    const mockEnrichMediaItemIfNeeded = async (mediaItem: any): Promise<any> => {
+      return {
+        ...mediaItem,
+        previewMetadata: mediaItem.previewMetadata || {
+          url: mediaItem.url,
+          title: 'Enriched Title',
+        },
+      };
+    };
+
+    it('Test A: URL Change Triggers Metadata Refresh', async () => {
+      // Old URL → new URL
+      // Expected: full metadata refresh occurs
+      const input: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: ['https://youtube.com/watch?v=NEW_VIDEO_ID'], // NEW URL
+        detectedLink: 'https://youtube.com/watch?v=NEW_VIDEO_ID',
+        linkMetadata: {
+          type: 'youtube',
+          url: 'https://youtube.com/watch?v=NEW_VIDEO_ID',
+          previewMetadata: {
+            url: 'https://youtube.com/watch?v=NEW_VIDEO_ID',
+            title: 'New Video Title', // Fresh metadata
+            titleSource: 'youtube-oembed',
+            titleFetchedAt: new Date().toISOString(),
+          },
+        },
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        uploadedDocs: undefined,
+        customDomain: null,
+        masonryMediaItems: [],
+        customCreatedAt: null,
+        isAdmin: false,
+        // Edit mode: existing media with OLD URL
+        existingMedia: {
+          type: 'youtube',
+          url: 'https://youtube.com/watch?v=OLD_VIDEO_ID', // OLD URL
+          previewMetadata: {
+            url: 'https://youtube.com/watch?v=OLD_VIDEO_ID',
+            title: 'Old Video Title',
+            titleSource: 'youtube-oembed',
+            titleFetchedAt: '2024-01-01T00:00:00.000Z',
+          },
+        },
+        initialData: {
+          id: 'test-id',
+          title: 'Test Article',
+          content: 'Test content',
+          author: { id: 'user-1', name: 'Test User' },
+          publishedAt: new Date().toISOString(),
+          tags: ['Tech'],
+          visibility: 'public',
+          media: {
+            type: 'youtube',
+            url: 'https://youtube.com/watch?v=OLD_VIDEO_ID',
+            previewMetadata: {
+              url: 'https://youtube.com/watch?v=OLD_VIDEO_ID',
+              title: 'Old Video Title',
+            },
+          },
+        } as any,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // URL changed → should rebuild with new metadata
+      expect(normalized.media).toBeDefined();
+      expect(normalized.media?.url).toBe('https://youtube.com/watch?v=NEW_VIDEO_ID');
+      expect(normalized.media?.previewMetadata?.title).toBe('New Video Title'); // Fresh metadata
+      expect(normalized.media?.previewMetadata?.titleSource).toBe('youtube-oembed');
+    });
+
+    it('Test B: Same URL, User Edits Caption', async () => {
+      // Same URL, user edits caption
+      // Expected: caption update is persisted
+      const input: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: ['https://youtube.com/watch?v=VIDEO_ID'], // SAME URL
+        detectedLink: 'https://youtube.com/watch?v=VIDEO_ID',
+        linkMetadata: null, // No new metadata fetch (same URL)
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        uploadedDocs: undefined,
+        customDomain: null,
+        masonryMediaItems: [
+          {
+            id: 'primary',
+            type: 'youtube',
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            source: 'primary',
+            showInMasonry: true,
+            masonryTitle: 'User Edited Caption', // USER EDITED
+          },
+        ],
+        customCreatedAt: null,
+        isAdmin: false,
+        allowMetadataOverride: true, // User explicitly edited
+        // Edit mode: existing media with SAME URL
+        existingMedia: {
+          type: 'youtube',
+          url: 'https://youtube.com/watch?v=VIDEO_ID', // SAME URL
+          previewMetadata: {
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            title: 'Original Video Title',
+            titleSource: 'youtube-oembed',
+            titleFetchedAt: '2024-01-01T00:00:00.000Z',
+          },
+        },
+        initialData: {
+          id: 'test-id',
+          title: 'Test Article',
+          content: 'Test content',
+          author: { id: 'user-1', name: 'Test User' },
+          publishedAt: new Date().toISOString(),
+          tags: ['Tech'],
+          visibility: 'public',
+          media: {
+            type: 'youtube',
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            previewMetadata: {
+              url: 'https://youtube.com/watch?v=VIDEO_ID',
+              title: 'Original Video Title',
+            },
+          },
+        } as any,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // Same URL + allowMetadataOverride → should allow caption update
+      expect(normalized.media).toBeDefined();
+      expect(normalized.media?.url).toBe('https://youtube.com/watch?v=VIDEO_ID');
+      expect(normalized.media?.masonryTitle).toBe('User Edited Caption'); // User edit persisted
+    });
+
+    it('Test C: YouTube Title Edit Without Override Flag', async () => {
+      // YouTube title edit without override flag
+      // Expected: change is ignored, original title remains
+      const input: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: ['https://youtube.com/watch?v=VIDEO_ID'], // SAME URL
+        detectedLink: 'https://youtube.com/watch?v=VIDEO_ID',
+        linkMetadata: {
+          type: 'youtube',
+          url: 'https://youtube.com/watch?v=VIDEO_ID',
+          previewMetadata: {
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            title: 'Attempted Title Change', // Attempted change
+          },
+        },
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        uploadedDocs: undefined,
+        customDomain: null,
+        masonryMediaItems: [
+          {
+            id: 'primary',
+            type: 'youtube',
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            source: 'primary',
+            showInMasonry: true,
+          },
+        ],
+        customCreatedAt: null,
+        isAdmin: false,
+        allowMetadataOverride: false, // NO override flag
+        // Edit mode: existing media with YouTube title
+        existingMedia: {
+          type: 'youtube',
+          url: 'https://youtube.com/watch?v=VIDEO_ID', // SAME URL
+          previewMetadata: {
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            title: 'Original YouTube Title',
+            titleSource: 'youtube-oembed',
+            titleFetchedAt: '2024-01-01T00:00:00.000Z',
+          },
+        },
+        initialData: {
+          id: 'test-id',
+          title: 'Test Article',
+          content: 'Test content',
+          author: { id: 'user-1', name: 'Test User' },
+          publishedAt: new Date().toISOString(),
+          tags: ['Tech'],
+          visibility: 'public',
+          media: {
+            type: 'youtube',
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            previewMetadata: {
+              url: 'https://youtube.com/watch?v=VIDEO_ID',
+              title: 'Original YouTube Title',
+              titleSource: 'youtube-oembed',
+            },
+          },
+        } as any,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // Same URL + no override flag → should preserve original title
+      // Note: Backend guard will enforce this, but frontend should preserve it too
+      expect(normalized.media).toBeDefined();
+      expect(normalized.media?.url).toBe('https://youtube.com/watch?v=VIDEO_ID');
+      // Frontend preserves title when allowMetadataOverride is false
+      expect(normalized.media?.previewMetadata?.title).toBe('Original YouTube Title');
+      expect(normalized.media?.previewMetadata?.titleSource).toBe('youtube-oembed');
+    });
+
+    it('Test D: YouTube Title Edit WITH Override Flag', async () => {
+      // YouTube title edit WITH override flag
+      // Expected: user edit is applied
+      const input: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: ['https://youtube.com/watch?v=VIDEO_ID'], // SAME URL
+        detectedLink: 'https://youtube.com/watch?v=VIDEO_ID',
+        linkMetadata: {
+          type: 'youtube',
+          url: 'https://youtube.com/watch?v=VIDEO_ID',
+          previewMetadata: {
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            title: 'User Override Title', // User wants to override
+          },
+        },
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        uploadedDocs: undefined,
+        customDomain: null,
+        masonryMediaItems: [
+          {
+            id: 'primary',
+            type: 'youtube',
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            source: 'primary',
+            showInMasonry: true,
+          },
+        ],
+        customCreatedAt: null,
+        isAdmin: false,
+        allowMetadataOverride: true, // OVERRIDE FLAG SET
+        // Edit mode: existing media with YouTube title
+        existingMedia: {
+          type: 'youtube',
+          url: 'https://youtube.com/watch?v=VIDEO_ID', // SAME URL
+          previewMetadata: {
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            title: 'Original YouTube Title',
+            titleSource: 'youtube-oembed',
+            titleFetchedAt: '2024-01-01T00:00:00.000Z',
+          },
+        },
+        initialData: {
+          id: 'test-id',
+          title: 'Test Article',
+          content: 'Test content',
+          author: { id: 'user-1', name: 'Test User' },
+          publishedAt: new Date().toISOString(),
+          tags: ['Tech'],
+          visibility: 'public',
+          media: {
+            type: 'youtube',
+            url: 'https://youtube.com/watch?v=VIDEO_ID',
+            previewMetadata: {
+              url: 'https://youtube.com/watch?v=VIDEO_ID',
+              title: 'Original YouTube Title',
+              titleSource: 'youtube-oembed',
+            },
+          },
+        } as any,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // Same URL + override flag → should allow user edit
+      expect(normalized.media).toBeDefined();
+      expect(normalized.media?.url).toBe('https://youtube.com/watch?v=VIDEO_ID');
+      // With override flag, user edit should be allowed (backend will also check this)
+      expect(normalized.media?.previewMetadata?.title).toBe('User Override Title');
+    });
+  });
+});
+
+describe('normalizeArticleInput - Masonry Behavior Tests', () => {
+  const mockEnrichMediaItemIfNeeded = vi.fn(async (mediaItem: any) => {
+    return {
+      ...mediaItem,
+      previewMetadata: mediaItem.previewMetadata || {
+        url: mediaItem.url,
+        imageUrl: mediaItem.type === 'image' ? mediaItem.url : undefined,
+        mediaType: mediaItem.type || 'image',
+      },
+    };
+  });
+
+  describe('Test 1: Toggle masonry on/off repeatedly → persistence shape must not change', () => {
+    it('should maintain same structure when toggling showInMasonry flags on existing supportingMedia', async () => {
+      const existingSupportingMedia = [
+        {
+          type: 'image',
+          url: 'https://example.com/image1.jpg',
+          thumbnail: 'https://example.com/image1.jpg',
+          showInMasonry: true,
+          previewMetadata: {
+            url: 'https://example.com/image1.jpg',
+            imageUrl: 'https://example.com/image1.jpg',
+            mediaType: 'image',
+          },
+        },
+        {
+          type: 'image',
+          url: 'https://example.com/image2.jpg',
+          thumbnail: 'https://example.com/image2.jpg',
+          showInMasonry: false,
+          previewMetadata: {
+            url: 'https://example.com/image2.jpg',
+            imageUrl: 'https://example.com/image2.jpg',
+            mediaType: 'image',
+          },
+        },
+      ];
+
+      const initialData = {
+        id: 'test-article',
+        title: 'Test Article',
+        content: 'Test content',
+        author: { id: 'user-1', name: 'Test User' },
+        publishedAt: new Date().toISOString(),
+        tags: ['Tech'],
+        visibility: 'public',
+        supportingMedia: existingSupportingMedia,
+      } as any;
+
+      // Toggle 1: Set both to true
+      const input1: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        masonryMediaItems: [
+          {
+            id: 'supporting-0',
+            type: 'image',
+            url: 'https://example.com/image1.jpg',
+            source: 'supporting',
+            showInMasonry: true,
+          },
+          {
+            id: 'supporting-1',
+            type: 'image',
+            url: 'https://example.com/image2.jpg',
+            source: 'supporting',
+            showInMasonry: true,
+          },
+        ],
+        existingSupportingMedia,
+        initialData,
+      };
+
+      const normalized1 = await normalizeArticleInput(input1, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // Toggle 2: Set both to false
+      const input2: ArticleInputData = {
+        ...input1,
+        masonryMediaItems: [
+          {
+            id: 'supporting-0',
+            type: 'image',
+            url: 'https://example.com/image1.jpg',
+            source: 'supporting',
+            showInMasonry: false,
+          },
+          {
+            id: 'supporting-1',
+            type: 'image',
+            url: 'https://example.com/image2.jpg',
+            source: 'supporting',
+            showInMasonry: false,
+          },
+        ],
+      };
+
+      const normalized2 = await normalizeArticleInput(input2, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // Toggle 3: Set both back to true
+      const normalized3 = await normalizeArticleInput(input1, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // Structure must remain the same - same number of items, same URLs
+      expect(normalized1.supportingMedia).toBeDefined();
+      expect(normalized2.supportingMedia).toBeDefined();
+      expect(normalized3.supportingMedia).toBeDefined();
+
+      expect(normalized1.supportingMedia?.length).toBe(2);
+      expect(normalized2.supportingMedia?.length).toBe(2);
+      expect(normalized3.supportingMedia?.length).toBe(2);
+
+      // URLs must remain the same
+      const urls1 = normalized1.supportingMedia?.map(m => m.url).sort();
+      const urls2 = normalized2.supportingMedia?.map(m => m.url).sort();
+      const urls3 = normalized3.supportingMedia?.map(m => m.url).sort();
+
+      expect(urls1).toEqual(['https://example.com/image1.jpg', 'https://example.com/image2.jpg']);
+      expect(urls2).toEqual(['https://example.com/image1.jpg', 'https://example.com/image2.jpg']);
+      expect(urls3).toEqual(['https://example.com/image1.jpg', 'https://example.com/image2.jpg']);
+
+      // Only showInMasonry flags should change
+      expect(normalized1.supportingMedia?.[0].showInMasonry).toBe(true);
+      expect(normalized1.supportingMedia?.[1].showInMasonry).toBe(true);
+      expect(normalized2.supportingMedia?.[0].showInMasonry).toBe(false);
+      expect(normalized2.supportingMedia?.[1].showInMasonry).toBe(false);
+      expect(normalized3.supportingMedia?.[0].showInMasonry).toBe(true);
+      expect(normalized3.supportingMedia?.[1].showInMasonry).toBe(true);
+    });
+
+    it('should NOT move images from images[] to supportingMedia[] when masonry is toggled', async () => {
+      const existingImages = ['https://example.com/legacy-image.jpg'];
+      const initialData = {
+        id: 'test-article',
+        title: 'Test Article',
+        content: 'Test content',
+        author: { id: 'user-1', name: 'Test User' },
+        publishedAt: new Date().toISOString(),
+        tags: ['Tech'],
+        visibility: 'public',
+        images: existingImages,
+      } as any;
+
+      // Toggle masonry ON for legacy image (should NOT move it to supportingMedia)
+      const input: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        masonryMediaItems: [
+          {
+            id: 'legacy-image-0',
+            type: 'image',
+            url: 'https://example.com/legacy-image.jpg',
+            source: 'legacy-image',
+            showInMasonry: true,
+          },
+        ],
+        existingImages,
+        existingSupportingMedia: [],
+        initialData,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // Image should remain in images[] array
+      expect(normalized.images).toContain('https://example.com/legacy-image.jpg');
+      
+      // Image should NOT be moved to supportingMedia
+      expect(normalized.supportingMedia).toBeUndefined();
+    });
+  });
+
+  describe('Test 2: Non-masonry rendering must still show full media', () => {
+    it('should preserve all media items even when showInMasonry is false', async () => {
+      const existingSupportingMedia = [
+        {
+          type: 'image',
+          url: 'https://example.com/image1.jpg',
+          thumbnail: 'https://example.com/image1.jpg',
+          showInMasonry: false, // Not in masonry
+          previewMetadata: {
+            url: 'https://example.com/image1.jpg',
+            imageUrl: 'https://example.com/image1.jpg',
+            mediaType: 'image',
+          },
+        },
+        {
+          type: 'image',
+          url: 'https://example.com/image2.jpg',
+          thumbnail: 'https://example.com/image2.jpg',
+          showInMasonry: false, // Not in masonry
+          previewMetadata: {
+            url: 'https://example.com/image2.jpg',
+            imageUrl: 'https://example.com/image2.jpg',
+            mediaType: 'image',
+          },
+        },
+      ];
+
+      const initialData = {
+        id: 'test-article',
+        title: 'Test Article',
+        content: 'Test content',
+        author: { id: 'user-1', name: 'Test User' },
+        publishedAt: new Date().toISOString(),
+        tags: ['Tech'],
+        visibility: 'public',
+        supportingMedia: existingSupportingMedia,
+      } as any;
+
+      const input: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        masonryMediaItems: [
+          {
+            id: 'supporting-0',
+            type: 'image',
+            url: 'https://example.com/image1.jpg',
+            source: 'supporting',
+            showInMasonry: false,
+          },
+          {
+            id: 'supporting-1',
+            type: 'image',
+            url: 'https://example.com/image2.jpg',
+            source: 'supporting',
+            showInMasonry: false,
+          },
+        ],
+        existingSupportingMedia,
+        initialData,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // All media items must be preserved even though showInMasonry is false
+      expect(normalized.supportingMedia).toBeDefined();
+      expect(normalized.supportingMedia?.length).toBe(2);
+      expect(normalized.supportingMedia?.map(m => m.url).sort()).toEqual([
+        'https://example.com/image1.jpg',
+        'https://example.com/image2.jpg',
+      ]);
+    });
+  });
+
+  describe('Test 3: Masonry layout filters only on showInMasonry value', () => {
+    it('should update showInMasonry flags on existing supportingMedia items', async () => {
+      const existingSupportingMedia = [
+        {
+          type: 'image',
+          url: 'https://example.com/image1.jpg',
+          thumbnail: 'https://example.com/image1.jpg',
+          showInMasonry: false,
+          previewMetadata: {
+            url: 'https://example.com/image1.jpg',
+            imageUrl: 'https://example.com/image1.jpg',
+            mediaType: 'image',
+          },
+        },
+        {
+          type: 'image',
+          url: 'https://example.com/image2.jpg',
+          thumbnail: 'https://example.com/image2.jpg',
+          showInMasonry: true,
+          previewMetadata: {
+            url: 'https://example.com/image2.jpg',
+            imageUrl: 'https://example.com/image2.jpg',
+            mediaType: 'image',
+          },
+        },
+      ];
+
+      const initialData = {
+        id: 'test-article',
+        title: 'Test Article',
+        content: 'Test content',
+        author: { id: 'user-1', name: 'Test User' },
+        publishedAt: new Date().toISOString(),
+        tags: ['Tech'],
+        visibility: 'public',
+        supportingMedia: existingSupportingMedia,
+      } as any;
+
+      // Toggle: image1 to true, image2 to false
+      const input: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        masonryMediaItems: [
+          {
+            id: 'supporting-0',
+            type: 'image',
+            url: 'https://example.com/image1.jpg',
+            source: 'supporting',
+            showInMasonry: true, // Toggled ON
+          },
+          {
+            id: 'supporting-1',
+            type: 'image',
+            url: 'https://example.com/image2.jpg',
+            source: 'supporting',
+            showInMasonry: false, // Toggled OFF
+          },
+        ],
+        existingSupportingMedia,
+        initialData,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // Structure must remain the same
+      expect(normalized.supportingMedia).toBeDefined();
+      expect(normalized.supportingMedia?.length).toBe(2);
+
+      // Only showInMasonry flags should change
+      const image1 = normalized.supportingMedia?.find(m => m.url === 'https://example.com/image1.jpg');
+      const image2 = normalized.supportingMedia?.find(m => m.url === 'https://example.com/image2.jpg');
+
+      expect(image1?.showInMasonry).toBe(true);
+      expect(image2?.showInMasonry).toBe(false);
+
+      // URLs must remain the same
+      expect(image1?.url).toBe('https://example.com/image1.jpg');
+      expect(image2?.url).toBe('https://example.com/image2.jpg');
     });
   });
 });

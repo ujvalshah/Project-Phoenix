@@ -321,6 +321,7 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
         {/* Body content */}
         <div
           className={twMerge(
+            'nugget-content',
             // PHASE 1: All body text uses same base size (text-xs = 12px)
             // Body uses regular weight vs bold title for hierarchy
             variant === 'feed' 

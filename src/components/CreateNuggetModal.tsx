@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+// useNavigate removed - not currently used in this component
 import { X, Globe, Lock, Loader2 } from 'lucide-react';
 import { getInitials } from '@/utils/formatters';
 import { storageService } from '@/services/storageService';
-import { detectProviderFromUrl, shouldFetchMetadata } from '@/utils/urlUtils';
+import { detectProviderFromUrl } from '@/utils/urlUtils';
 import { queryClient } from '@/queryClient';
 import { GenericLinkPreview } from './embeds/GenericLinkPreview';
 import { Collection } from '@/types';
@@ -33,6 +33,9 @@ import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import type { Article } from '@/types';
 import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeArticleInput';
 import { normalizeTags } from '@/shared/articleNormalization/normalizeTags';
+import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
+import { useImageManager } from '@/hooks/useImageManager';
+import { isFeatureEnabled } from '@/constants/featureFlags';
 
 interface CreateNuggetModalProps {
   isOpen: boolean;
@@ -66,9 +69,15 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // Auth
   const { currentUser, currentUserId, isAdmin } = useAuth();
   const authorName = currentUser?.name || 'User';
-  const navigate = useNavigate();
   const toast = useToast();
-  
+
+  // Feature flag: USE_IMAGE_MANAGER
+  const useNewImageManager = isFeatureEnabled('USE_IMAGE_MANAGER');
+
+  // New unified image management hook (Phase 3 refactoring)
+  // Only used when USE_IMAGE_MANAGER feature flag is enabled
+  const imageManager = useImageManager(mode, initialData);
+
   // Ref to track if form has been initialized from initialData (prevents re-initialization)
   const initializedFromDataRef = useRef<string | null>(null);
   
@@ -77,7 +86,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Content State
   const [title, setTitle] = useState('');
-  const [isTitleUserEdited, setIsTitleUserEdited] = useState(false); // PHASE 6: Safeguard flag
+  const [_isTitleUserEdited, setIsTitleUserEdited] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars -- PHASE 6: Safeguard flag for future use
   const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null); // PHASE 3: Metadata suggests but never mutates
   const [content, setContent] = useState('');
   const [urls, setUrls] = useState<string[]>([]);
@@ -87,6 +96,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
   const [customDomain, setCustomDomain] = useState<string | null>(null);
   
+  // Metadata override flag: tracks when user explicitly edits caption/title in edit mode
+  // This allows intentional overrides of YouTube titles and other metadata
+  const [allowMetadataOverride, setAllowMetadataOverride] = useState(false);
+  
   // Attachments
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,10 +107,18 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const pasteBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Existing images from article (for edit mode)
-  const [existingImages, setExistingImages] = useState<string[]>([]);
-  
+  // Legacy state - only used when USE_IMAGE_MANAGER is disabled
+  const [_legacyExistingImages, _setLegacyExistingImages] = useState<string[]>([]);
+
   // Masonry media items (for toggle controls)
-  const [masonryMediaItems, setMasonryMediaItems] = useState<MasonryMediaItem[]>([]);
+  // Legacy state - only used when USE_IMAGE_MANAGER is disabled
+  const [_legacyMasonryMediaItems, _setLegacyMasonryMediaItems] = useState<MasonryMediaItem[]>([]);
+
+  // Derived values: Use imageManager when feature flag is enabled, otherwise use legacy state
+  const existingImages = useNewImageManager ? imageManager.existingImages : _legacyExistingImages;
+  const setExistingImages = useNewImageManager ? () => {} : _setLegacyExistingImages; // No-op when using hook
+  const masonryMediaItems = useNewImageManager ? imageManager.masonryItems : _legacyMasonryMediaItems;
+  const setMasonryMediaItems = useNewImageManager ? () => {} : _setLegacyMasonryMediaItems; // No-op when using hook
   
   // Media upload hook
   const mediaUpload = useMediaUpload({ purpose: 'nugget' });
@@ -128,7 +149,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // IMAGE PRESERVATION INVARIANT: Track explicitly deleted images
   // This ensures images deleted via explicit delete action are NOT restored
   // even if they were previously promoted to supportingMedia
-  const [explicitlyDeletedImages, setExplicitlyDeletedImages] = useState<Set<string>>(new Set());
+  // Legacy state - only used when USE_IMAGE_MANAGER is disabled
+  const [_legacyExplicitlyDeletedImages, _setLegacyExplicitlyDeletedImages] = useState<Set<string>>(new Set());
+
+  // Derived value: Use imageManager when feature flag is enabled
+  const explicitlyDeletedImages = useNewImageManager ? imageManager.explicitlyDeletedUrls : _legacyExplicitlyDeletedImages;
+  const setExplicitlyDeletedImages = useNewImageManager
+    ? () => {} // No-op - imageManager tracks this internally
+    : _setLegacyExplicitlyDeletedImages;
   
   // Data Source State
   // CATEGORY PHASE-OUT: Renamed availableCategories to availableTags
@@ -137,7 +165,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   
   // UI State
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [_isLoading, setIsLoading] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   // AI loading state removed - AI creation system has been fully removed
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
@@ -206,7 +234,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         // We must do the same in edit mode to show all images that appear in cards
         const allExistingImages = getAllImageUrls(initialData);
         
-        if (allExistingImages.length === 0 && (initialData.images?.length > 0 || initialData.primaryMedia || initialData.supportingMedia?.length > 0)) {
+        if (allExistingImages.length === 0 && ((initialData.images?.length ?? 0) > 0 || initialData.primaryMedia || (initialData.supportingMedia?.length ?? 0) > 0)) {
             console.error('[CreateNuggetModal] WARNING: Images exist in article but getAllImageUrls returned empty!', {
                 imagesArray: initialData.images,
                 primaryMedia: initialData.primaryMedia,
@@ -303,7 +331,9 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       // Filter out any non-string or empty tag values
       const validTags = (tagNames || []).filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '');
       setAvailableTags(validTags);
-      setAllCollections(cols || []);
+      // Handle union type: Collection[] | { data: Collection[], count: number }
+      const collectionsArray = Array.isArray(cols) ? cols : (cols?.data ?? []);
+      setAllCollections(collectionsArray);
       setAvailableAliases([]); // Content aliases feature not yet implemented
       setSelectedAlias("Custom...");
     } catch (e: any) {
@@ -698,20 +728,56 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       return;
     }
 
+    // PHASE 3: When using new imageManager, delegate to its delete flow
+    if (useNewImageManager) {
+      // Optimistic delete via imageManager
+      imageManager.deleteImage(imageUrl);
+
+      try {
+        const { apiClient } = await import('@/services/apiClient');
+        await (apiClient as unknown as { request: (url: string, options: Record<string, unknown>) => Promise<{ success: boolean; message: string; images: string[] }> }).request(
+          `/articles/${initialData.id}/images`,
+          {
+            method: 'DELETE',
+            body: JSON.stringify({ imageUrl }),
+            headers: { 'Content-Type': 'application/json' },
+            cancelKey: `delete-image-${initialData.id}`,
+          }
+        );
+
+        // Confirm deletion via imageManager
+        imageManager.confirmDeletion(imageUrl);
+        toast.success('Image deleted successfully');
+
+        // Invalidate query cache
+        queryClient.invalidateQueries({ queryKey: ['article', initialData.id] });
+        queryClient.invalidateQueries({ queryKey: ['articles'] });
+      } catch (error: any) {
+        console.error('[CreateNuggetModal] Failed to delete image (imageManager):', error);
+        // Rollback via imageManager
+        imageManager.rollbackDeletion(imageUrl);
+        toast.error(error.message || 'Failed to delete image. Please try again.');
+      }
+      return;
+    }
+
+    // LEGACY CODE PATH (when USE_IMAGE_MANAGER is disabled)
     // Optimistic UI update - remove from state immediately
     const previousImages = [...existingImages];
-    const normalizedImageUrl = imageUrl.toLowerCase().trim();
+    // PHASE 2B FIX: Use consistent normalizeImageUrl from imageDedup.ts
+    // This removes query params and normalizes case for better duplicate detection
+    const normalizedImageUrl = normalizeImageUrl(imageUrl);
     const optimisticImages = existingImages.filter(img => {
       try {
-        const normalized = img.toLowerCase().trim();
+        const normalized = normalizeImageUrl(img);
         return normalized !== normalizedImageUrl;
       } catch {
         return img !== imageUrl;
       }
     });
-    
+
     setExistingImages(optimisticImages);
-    
+
     // IMAGE PRESERVATION INVARIANT: Mark this image as explicitly deleted
     // This prevents it from being restored even if it was in imagesBackup
     setExplicitlyDeletedImages(prev => {
@@ -726,7 +792,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       // This avoids CORS issues by using Vite's /api proxy to localhost:5000
       // Note: DELETE with body requires using request() directly since delete() doesn't support body
       const { apiClient } = await import('@/services/apiClient');
-      const result = await (apiClient as any).request<{ success: boolean; message: string; images: string[] }>(
+      // Cast to unknown first, then to the expected shape (request is private on ApiClient class)
+      const result = await (apiClient as unknown as { request: (url: string, options: Record<string, unknown>) => Promise<{ success: boolean; message: string; images: string[] }> }).request(
         `/articles/${initialData.id}/images`,
         {
           method: 'DELETE',
@@ -738,45 +805,48 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         }
       );
       
-      // CRITICAL: Refresh article data to get updated state with all image sources
-      // The backend returns updated images array, but we need to recompute from all sources
-      // (primaryMedia, supportingMedia, images, media field) to match card behavior
-      // The query invalidation below will trigger a refetch, but we update optimistically here
-      try {
-        // Use queryClient to get fresh data
-        const queryData = queryClient.getQueryData<Article>(['article', initialData.id]);
-        if (queryData) {
-          // Recompute all images using getAllImageUrls (same as cards use)
-          const allImages = getAllImageUrls(queryData);
-          // Note: This is optimistic - the invalidation below will fetch fresh data
-          setExistingImages(allImages);
-        } else {
-          // Fallback to server response if cache miss
-          setExistingImages(result.images || []);
+      // PHASE 2A FIX: Trust the optimistic update, don't refetch from stale cache
+      // The queryClient.getQueryData() returns STALE data (before deletion) which restores the deleted image
+      // The optimistic update (setExistingImages at line 717) is already correct
+      // The backend has already removed from all locations (images[], primaryMedia, supportingMedia, media)
+      //
+      // DEFENSIVE: Use server response but filter out the deleted image to handle any race conditions
+      // PHASE 2B FIX: Use consistent normalizeImageUrl
+      if (result.images && Array.isArray(result.images)) {
+        const serverImages = result.images.filter((img: string) => {
+          const normalized = normalizeImageUrl(img);
+          return normalized !== normalizedImageUrl;
+        });
+        // Only update if server returned different images than our optimistic update
+        // This prevents flickering while maintaining consistency
+        if (serverImages.length !== optimisticImages.length) {
+          console.log('[EDIT IMAGE DELETE] Server returned different image count, syncing', {
+            optimistic: optimisticImages.length,
+            server: serverImages.length
+          });
+          setExistingImages(serverImages);
         }
-      } catch (refreshError) {
-        console.warn('[CreateNuggetModal] Failed to recompute images, using server response:', refreshError);
-        // Fallback to server response
-        setExistingImages(result.images || []);
       }
       
       // Also remove from URLs if it's there (normalized comparison)
+      // PHASE 2B FIX: Use consistent normalizeImageUrl
       setUrls(urls.filter(u => {
         try {
-          const normalized = u.toLowerCase().trim();
+          const normalized = normalizeImageUrl(u);
           return normalized !== normalizedImageUrl;
         } catch {
           return u !== imageUrl; // Fallback to exact match
         }
       }));
-      
+
       // CRITICAL FIX: Remove deleted image from ALL relevant local state arrays
       // This prevents the image from reappearing on next normalize() call
       // Remove from masonryMediaItems (any item where item.url matches deleted URL)
+      // PHASE 2B FIX: Use consistent normalizeImageUrl
       setMasonryMediaItems(prev => {
         const filtered = prev.filter(item => {
           try {
-            const itemUrl = item?.url?.toLowerCase().trim();
+            const itemUrl = normalizeImageUrl(item?.url || '');
             return itemUrl !== normalizedImageUrl;
           } catch {
             return item?.url !== imageUrl; // Fallback to exact match
@@ -784,12 +854,13 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         });
         return filtered;
       });
-      
+
       // Remove from attachments (if present - unlikely in edit mode but safe to check)
+      // PHASE 2B FIX: Use consistent normalizeImageUrl
       setAttachments(prev => {
         const filtered = prev.filter(att => {
           try {
-            const attUrl = att?.secureUrl?.toLowerCase().trim() || att?.previewUrl?.toLowerCase().trim();
+            const attUrl = normalizeImageUrl(att?.secureUrl || att?.previewUrl || '');
             return attUrl !== normalizedImageUrl;
           } catch {
             return att?.secureUrl !== imageUrl && att?.previewUrl !== imageUrl; // Fallback to exact match
@@ -800,37 +871,39 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       
       // Debug log for local state cleanup
       console.log('[EDIT IMAGE DELETE] removed from local state', { deletedUrl: imageUrl });
-      
+
       toast.success('Image deleted successfully');
-      
-      // CRITICAL: Refetch the article to get updated state with all image sources
-      // This ensures we see the updated images after deletion from all locations
-      // (primaryMedia, supportingMedia, images array, media field)
-      try {
-        const refreshedArticle = await storageService.getArticleById(initialData.id);
-        
-        if (refreshedArticle) {
-          // Recompute all images using getAllImageUrls (same as cards use)
-          const allImages = getAllImageUrls(refreshedArticle);
-          setExistingImages(allImages);
-          
-          // Update query cache with refreshed article
-          queryClient.setQueryData(['article', initialData.id], refreshedArticle);
-        }
-      } catch (refreshError) {
-        console.warn('[CreateNuggetModal] Failed to refresh article after deletion:', refreshError);
-        // Fallback: use optimistic update which was already applied
-      }
-      
-      // Invalidate query cache to refresh the article in other components
-      await queryClient.invalidateQueries({ queryKey: ['article', initialData.id] });
-      await queryClient.invalidateQueries({ queryKey: ['articles'] });
+
+      // PHASE 2A FIX: DO NOT refetch article immediately after deletion
+      // This creates a race condition where the refetch may return stale data
+      // (server hasn't finished processing) and restore the deleted image.
+      //
+      // Instead, we:
+      // 1. Trust the optimistic update (already applied above)
+      // 2. Invalidate query cache for other components (background refetch)
+      // 3. Let React Query handle eventual consistency
+      //
+      // The backend already removes from all locations (images[], primaryMedia,
+      // supportingMedia, media), so the next fresh fetch will be correct.
+
+      // Invalidate query cache to trigger background refetch for other components
+      // This does NOT override our local state - it just marks cache as stale
+      queryClient.invalidateQueries({ queryKey: ['article', initialData.id] });
+      queryClient.invalidateQueries({ queryKey: ['articles'] });
     } catch (error: any) {
       console.error('[CreateNuggetModal] Failed to delete image:', error);
-      
-      // Rollback optimistic update on error
+
+      // Rollback ALL optimistic updates on error
       setExistingImages(previousImages);
-      
+
+      // PHASE 2A FIX: Also rollback the explicitlyDeletedImages set
+      // If deletion failed, the image is still there and shouldn't be marked as deleted
+      setExplicitlyDeletedImages(prev => {
+        const next = new Set(prev);
+        next.delete(normalizedImageUrl);
+        return next;
+      });
+
       // Detect CORS errors and provide actionable error message
       let errorMessage = error.message || 'Failed to delete image. Please try again.';
       
@@ -999,11 +1072,22 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Handle Masonry media toggle
   const handleMasonryMediaToggle = (itemId: string, showInMasonry: boolean) => {
+    // PHASE 3: When using imageManager, delegate to its toggle method
+    if (useNewImageManager) {
+      // Find the item by ID and get its URL
+      const item = masonryMediaItems.find(m => m.id === itemId);
+      if (item?.url) {
+        imageManager.toggleMasonry(item.url, showInMasonry);
+      }
+      return;
+    }
+
+    // LEGACY CODE PATH
     setMasonryMediaItems(prev => {
-      const updated = prev.map(item => 
+      const updated = prev.map(item =>
         item.id === itemId ? { ...item, showInMasonry } : item
       );
-      
+
       return updated;
     });
   };
@@ -1075,12 +1159,32 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   };
 
   // Handle Masonry tile title change
+  // When user edits masonryTitle (caption), set allowMetadataOverride flag
+  // This allows intentional overrides of YouTube titles and other metadata
   const handleMasonryTitleChange = (itemId: string, title: string) => {
-    setMasonryMediaItems(prev => 
-      prev.map(item => 
+    // PHASE 3: When using imageManager, delegate to its setMasonryTitle method
+    if (useNewImageManager) {
+      const item = masonryMediaItems.find(m => m.id === itemId);
+      if (item?.url) {
+        imageManager.setMasonryTitle(item.url, title);
+      }
+      // User explicitly edited caption → allow metadata override
+      if (mode === 'edit') {
+        setAllowMetadataOverride(true);
+      }
+      return;
+    }
+
+    // LEGACY CODE PATH
+    setMasonryMediaItems(prev =>
+      prev.map(item =>
         item.id === itemId ? { ...item, masonryTitle: title || undefined } : item
       )
     );
+    // User explicitly edited caption → allow metadata override
+    if (mode === 'edit') {
+      setAllowMetadataOverride(true);
+    }
   };
 
   /**
@@ -1262,7 +1366,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         // Titles are optional - allow empty/null titles
         const finalTitle = title.trim() || '';
         const wordCount = content.trim().split(/\s+/).length;
-        const readTime = Math.max(1, Math.ceil(wordCount / 200));
+        const _readTime = Math.max(1, Math.ceil(wordCount / 200)); // eslint-disable-line @typescript-eslint/no-unused-vars -- calculated for reference, actual readTime comes from normalizeArticleInput
 
         // TEMPORARY DEBUG: Stage 1 - Before submit (form state)
         const primaryUrl = urls.length > 0 ? urls[0] : detectedLink || null;
@@ -1326,7 +1430,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     mediaIds,
                     uploadedDocs: attachments.filter(att => att.type === 'document').map(att => ({
                         url: att.secureUrl || att.previewUrl,
-                        name: att.name,
+                        name: att.file.name,
                         type: att.type,
                     })),
                     customDomain,
@@ -1342,6 +1446,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     // IMAGE PRESERVATION INVARIANT: Pass explicitly deleted images
                     // This prevents restoration of images that were explicitly deleted
                     explicitlyDeletedImages,
+                    // Metadata override flag: true when user explicitly edits caption/title
+                    allowMetadataOverride,
                 },
                 {
                     mode: 'edit',
@@ -1386,7 +1492,16 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             // Handle media field (null vs undefined semantics)
             // EDIT mode: undefined = don't update, null = clear field
             if (normalizedInput.media !== undefined) {
-                updatePayload.media = normalizedInput.media;
+                // Add allowMetadataOverride flag to media object for backend processing
+                // This flag indicates user explicitly edited caption/title and allows intentional overrides
+                if (normalizedInput.media === null) {
+                    updatePayload.media = null;
+                } else {
+                    updatePayload.media = {
+                        ...normalizedInput.media,
+                        allowMetadataOverride: allowMetadataOverride,
+                    } as NuggetMedia;
+                }
             }
             
             if (normalizedInput.supportingMedia !== undefined) {
@@ -1618,9 +1733,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         
         const newArticle = await storageService.createArticle(createPayload);
 
-        const allCols = await storageService.getCollections();
+        const allColsResult = await storageService.getCollections();
+        // Handle union type: Collection[] | { data: Collection[], count: number }
+        const allCols: Collection[] = Array.isArray(allColsResult) ? allColsResult : (allColsResult?.data ?? []);
         for (const colName of selectedCollections) {
-            let targetCol = allCols.find(c => c.name === colName);
+            let targetCol = allCols.find((c: Collection) => c.name === colName);
             if (!targetCol) {
                 targetCol = await storageService.createCollection(colName, '', currentUserId, visibility);
             }
@@ -1829,6 +1946,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         onChange={(value) => {
                             setTitle(value);
                             setIsTitleUserEdited(true); // PHASE 6: Mark as user-edited
+                            // User explicitly edited title → allow metadata override (edit mode only)
+                            if (mode === 'edit') {
+                                setAllowMetadataOverride(true);
+                            }
                             if (!contentTouched) setContentTouched(true);
                             if (contentError) {
                                 const error = validateContent();
@@ -2029,7 +2150,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         <div className={`grid gap-2 ${existingImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                             {existingImages.map((imageUrl, idx) => {
                                 const detectedType = detectProviderFromUrl(imageUrl);
-                                const isCloudinaryUrl = imageUrl.includes('cloudinary.com') || imageUrl.includes('res.cloudinary.com');
+                                const _isCloudinaryUrl = imageUrl.includes('cloudinary.com') || imageUrl.includes('res.cloudinary.com'); // eslint-disable-line @typescript-eslint/no-unused-vars
                                 return (
                                     <div key={`existing-${idx}`} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-sm">
                                         <button 
@@ -2162,9 +2283,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                                             // Determine content type for proper preview handling
                                             const detectedType = primaryLinkUrl ? detectProviderFromUrl(primaryLinkUrl) : 'link';
                                             
+                                            // URLs must not be used as titles. If no title exists, leave empty.
                                             const fallbackMetadata = { 
                                                 url: primaryLinkUrl || '', 
-                                                title: primaryLinkUrl || '' 
+                                                title: '' // Never use URL as title
                                             };
                                             
                                             return (

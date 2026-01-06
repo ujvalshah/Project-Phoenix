@@ -253,3 +253,4 @@ Verification: ✓ All collections cleared
 **Script Location:** `server/scripts/removeBookmarkFolders.ts`  
 **Ready for Use:** ✅ YES
 
+

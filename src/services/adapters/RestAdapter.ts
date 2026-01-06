@@ -2,6 +2,34 @@ import { IAdapter, PaginatedArticlesResponse, ArticleCountsResponse } from './IA
 import { Article, User, Collection } from '@/types';
 import { apiClient } from '@/services/apiClient';
 
+/**
+ * Calculate SHA256 hash of images array for deduplication drift detection
+ * Returns hex-encoded hash string
+ */
+async function calculateImagesHash(images: string[] | undefined): Promise<string | undefined> {
+  if (!images || images.length === 0) {
+    return undefined;
+  }
+  
+  try {
+    // Sort images for consistent hashing (order-independent)
+    const sortedImages = [...images].sort();
+    const imagesString = JSON.stringify(sortedImages);
+    
+    // Use Web Crypto API for SHA256 hashing
+    const encoder = new TextEncoder();
+    const data = encoder.encode(imagesString);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    return hashHex;
+  } catch (error) {
+    console.warn('[RestAdapter] Failed to calculate images hash:', error);
+    return undefined;
+  }
+}
+
 export class RestAdapter implements IAdapter {
   // --- Articles ---
   getAllArticles(params?: { q?: string; page?: number; limit?: number }): Promise<Article[]> {
@@ -45,7 +73,7 @@ export class RestAdapter implements IAdapter {
     return apiClient.get<ArticleCountsResponse>('/articles/my/counts');
   }
 
-  createArticle(article: Omit<Article, 'id' | 'publishedAt'>): Promise<Article> {
+  async createArticle(article: Omit<Article, 'id' | 'publishedAt'>): Promise<Article> {
     // Transform frontend format to server API format
     
     /**
@@ -115,10 +143,15 @@ export class RestAdapter implements IAdapter {
       mediaUrl: payload.media?.url,
     });
     
-    return apiClient.post('/articles', payload);
+    // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
+    // Frontend is canonical deduplication pass - backend will compute but not mutate
+    const imagesHash = await calculateImagesHash(payload.images);
+    const headers: HeadersInit = imagesHash ? { 'x-images-hash': imagesHash } : {};
+    
+    return apiClient.post('/articles', payload, headers);
   }
 
-  updateArticle(id: string, updates: Partial<Article>): Promise<Article | null> {
+  async updateArticle(id: string, updates: Partial<Article>): Promise<Article | null> {
     // Transform Article format to backend API format
     const payload: any = {};
     
@@ -158,8 +191,13 @@ export class RestAdapter implements IAdapter {
     // Admin-only: Custom creation date (if provided)
     if (updatesWithoutCategoryIds.customCreatedAt !== undefined) payload.customCreatedAt = updatesWithoutCategoryIds.customCreatedAt;
     
+    // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
+    // Frontend is canonical deduplication pass - backend will compute but not mutate
+    const imagesHash = await calculateImagesHash(payload.images);
+    const headers: HeadersInit = imagesHash ? { 'x-images-hash': imagesHash } : {};
+    
     // Use PATCH for partial updates (more RESTful)
-    return apiClient.patch<Article>(`/articles/${id}`, payload);
+    return apiClient.patch<Article>(`/articles/${id}`, payload, headers);
   }
 
   deleteArticle(id: string): Promise<boolean> {

@@ -169,6 +169,8 @@ export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) 
   }
 
   // Default: render as link preview (no image)
+  // URLs must not be used as titles. If no title exists, leave empty.
+  const displayTitle = media.previewMetadata?.title?.trim() || '';
   return (
     <div className="w-full h-full relative overflow-hidden bg-slate-100 dark:bg-slate-900 rounded-xl">
       <a 
@@ -177,7 +179,7 @@ export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) 
         rel="noopener noreferrer"
         className="block w-full h-full p-4 text-slate-600 dark:text-slate-300 hover:text-primary-500"
       >
-        {media.previewMetadata?.title || url}
+        {displayTitle || <span className="text-slate-400 dark:text-slate-500">Link preview</span>}
       </a>
     </div>
   );

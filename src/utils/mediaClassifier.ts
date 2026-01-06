@@ -18,6 +18,7 @@
  */
 
 import type { Article, PrimaryMedia, SupportingMediaItem, MediaType, NuggetMedia } from '@/types';
+import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 
 /**
  * Media type priority for primary media selection
@@ -420,6 +421,114 @@ export function hasAnyMedia(article: Article): boolean {
 export function getAllImageUrls(article: Article): string[] {
   const imageUrls: string[] = [];
   const seenUrls = new Set<string>(); // Deduplicate URLs
+  const duplicatesDetected: Array<{ url: string; normalized: string; source: string }> = [];
+
+  // PHASE 2B FIX: Use consistent normalizeImageUrl from imageDedup.ts
+  // This removes query params and normalizes case for better duplicate detection
+  // Helper to add URL if not seen
+  const addImageUrl = (url: string | undefined, source: string = 'unknown') => {
+    if (url && typeof url === 'string' && url.trim()) {
+      const normalized = normalizeImageUrl(url);
+      if (!seenUrls.has(normalized)) {
+        seenUrls.add(normalized);
+        imageUrls.push(url); // Keep original casing
+      } else {
+        // PHASE 2B: Log duplicate detection for debugging
+        duplicatesDetected.push({ url, normalized, source });
+      }
+    }
+  };
+  
+  // Check if article has classified media
+  const hasClassifiedMedia = article.primaryMedia !== undefined || article.supportingMedia !== undefined;
+
+  if (hasClassifiedMedia) {
+    // Add primary media if it's an image
+    if (article.primaryMedia?.type === 'image' && article.primaryMedia.url) {
+      addImageUrl(article.primaryMedia.url, 'primaryMedia');
+    }
+
+    // Add supporting images
+    if (article.supportingMedia) {
+      article.supportingMedia.forEach(media => {
+        if (media.type === 'image' && media.url) {
+          addImageUrl(media.url, 'supportingMedia');
+        }
+      });
+    }
+  } else {
+    // Fall back to classifying media on the fly
+    const classified = classifyArticleMedia(article);
+
+    // Add primary media if it's an image
+    if (classified.primaryMedia?.type === 'image' && classified.primaryMedia.url) {
+      addImageUrl(classified.primaryMedia.url, 'classified-primary');
+    }
+
+    // Add supporting images
+    classified.supportingMedia.forEach(media => {
+      if (media.type === 'image' && media.url) {
+        addImageUrl(media.url, 'classified-supporting');
+      }
+    });
+  }
+
+  // CRITICAL: Also include legacy images array (for backward compatibility)
+  // This ensures images stored in the images array are always included
+  if (article.images && Array.isArray(article.images)) {
+    article.images.forEach(url => addImageUrl(url, 'images-array'));
+  }
+
+  // Also check media field if it's an image type
+  if (article.media?.type === 'image' && article.media.url) {
+    addImageUrl(article.media.url, 'media-field');
+  }
+
+  // Check media.previewMetadata.imageUrl (for OG image URLs)
+  if (article.media?.previewMetadata?.imageUrl) {
+    addImageUrl(article.media.previewMetadata.imageUrl, 'og-image');
+  }
+
+  // PHASE 2B: Log duplicates detected for debugging
+  if (duplicatesDetected.length > 0) {
+    console.log('[getAllImageUrls] Duplicates filtered out:', {
+      articleId: article.id,
+      duplicatesCount: duplicatesDetected.length,
+      duplicates: duplicatesDetected,
+      finalCount: imageUrls.length,
+    });
+  }
+
+  return imageUrls;
+}
+
+/**
+ * ============================================================================
+ * GET PERSISTED IMAGE URLS: Collect only explicitly stored image URLs
+ * ============================================================================
+ * 
+ * PURPOSE:
+ * Returns an array of image URLs that are explicitly persisted in the database.
+ * This excludes computed/derived images (e.g., from classifyArticleMedia when
+ * primaryMedia/supportingMedia are not explicitly set, or OG image URLs from
+ * previewMetadata).
+ * 
+ * LOGIC:
+ * 1. Include article.images array (explicitly stored)
+ * 2. Include article.primaryMedia if explicitly set (not computed) and type is image
+ * 3. Include article.supportingMedia items with type image if explicitly set
+ * 4. Include article.media if type is image (legacy, explicitly stored)
+ * 
+ * NOTE: Does NOT include:
+ * - Images derived from classifyArticleMedia when primaryMedia/supportingMedia
+ *   are undefined (these are computed on-the-fly)
+ * - Images from previewMetadata.imageUrl (OG tags, not stored images)
+ * 
+ * @returns Array of persisted image URLs (may be empty)
+ */
+export function getPersistedImageUrls(article: Article): string[] {
+  const imageUrls: string[] = [];
+  const seenUrls = new Set<string>(); // Deduplicate URLs
   
   // Helper to add URL if not seen
   const addImageUrl = (url: string | undefined) => {
@@ -432,55 +541,36 @@ export function getAllImageUrls(article: Article): string[] {
     }
   };
   
-  // Check if article has classified media
-  const hasClassifiedMedia = article.primaryMedia !== undefined || article.supportingMedia !== undefined;
+  // 1. Include legacy images array (explicitly stored)
+  if (article.images && Array.isArray(article.images)) {
+    article.images.forEach(url => addImageUrl(url));
+  }
   
-  if (hasClassifiedMedia) {
-    // Add primary media if it's an image
-    if (article.primaryMedia?.type === 'image' && article.primaryMedia.url) {
-      addImageUrl(article.primaryMedia.url);
-    }
-    
-    // Add supporting images
-    if (article.supportingMedia) {
-      article.supportingMedia.forEach(media => {
-        if (media.type === 'image' && media.url) {
-          addImageUrl(media.url);
-        }
-      });
-    }
-  } else {
-    // Fall back to classifying media on the fly
-    const classified = classifyArticleMedia(article);
-    
-    // Add primary media if it's an image
-    if (classified.primaryMedia?.type === 'image' && classified.primaryMedia.url) {
-      addImageUrl(classified.primaryMedia.url);
-    }
-    
-    // Add supporting images
-    classified.supportingMedia.forEach(media => {
+  // 2. Include primaryMedia if explicitly set (not computed) and type is image
+  // Check if primaryMedia is explicitly set (not computed from classifyArticleMedia)
+  const hasExplicitPrimaryMedia = article.primaryMedia !== undefined;
+  if (hasExplicitPrimaryMedia && article.primaryMedia?.type === 'image' && article.primaryMedia.url) {
+    addImageUrl(article.primaryMedia.url);
+  }
+  
+  // 3. Include supportingMedia items with type image if explicitly set
+  const hasExplicitSupportingMedia = article.supportingMedia !== undefined;
+  if (hasExplicitSupportingMedia && article.supportingMedia) {
+    article.supportingMedia.forEach(media => {
       if (media.type === 'image' && media.url) {
         addImageUrl(media.url);
       }
     });
   }
   
-  // CRITICAL: Also include legacy images array (for backward compatibility)
-  // This ensures images stored in the images array are always included
-  if (article.images && Array.isArray(article.images)) {
-    article.images.forEach(url => addImageUrl(url));
-  }
-  
-  // Also check media field if it's an image type
+  // 4. Include legacy media field if type is image (explicitly stored)
   if (article.media?.type === 'image' && article.media.url) {
     addImageUrl(article.media.url);
   }
   
-  // Check media.previewMetadata.imageUrl (for OG image URLs)
-  if (article.media?.previewMetadata?.imageUrl) {
-    addImageUrl(article.media.previewMetadata.imageUrl);
-  }
+  // NOTE: We intentionally do NOT include:
+  // - previewMetadata.imageUrl (OG tags, not stored images)
+  // - Images from classifyArticleMedia when primaryMedia/supportingMedia are undefined
   
   return imageUrls;
 }

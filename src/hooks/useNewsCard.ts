@@ -7,7 +7,7 @@ import { useRequireAuth } from './useRequireAuth';
 import { storageService } from '@/services/storageService';
 import { queryClient } from '@/queryClient';
 import { sanitizeArticle, hasValidAuthor, logError } from '@/utils/errorHandler';
-import { getAllImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
+import { getAllImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
 // formatDate removed - using relative time formatting in CardMeta instead
 
 // ────────────────────────────────────────
@@ -260,6 +260,55 @@ export const useNewsCard = ({
   // Check for multi-image media
   const allImageUrls = getAllImageUrls(article);
   const hasMultipleImages = allImageUrls.length > 1;
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // GHOST IMAGE DETECTION: Dev-mode only debugging check
+  // ═══════════════════════════════════════════════════════════════════════
+  /**
+   * GHOST IMAGE DETECTION:
+   * 
+   * Purpose: Detect "ghost images" - images that are being rendered but are not
+   * explicitly persisted in the database. This can happen when:
+   * - Images are derived from classifyArticleMedia (computed on-the-fly)
+   * - Images come from previewMetadata.imageUrl (OG tags, not stored)
+   * - Images are inferred from legacy fields but not actually stored
+   * 
+   * Why this matters:
+   * - Ghost images may disappear if data structure changes
+   * - They indicate potential data inconsistency
+   * - They can cause issues during data migration or cleanup
+   * 
+   * The check:
+   * - Compares renderSet (allImageUrls) vs persistedSet (getPersistedImageUrls)
+   * - Warns if renderSet is not a subset of persistedSet
+   * - Only runs in dev mode (never in production)
+   * 
+   * This is a debugging tool only - it does not affect user experience.
+   */
+  if (import.meta.env.DEV) {
+    const persistedImageUrls = getPersistedImageUrls(article);
+    const renderSet = new Set(allImageUrls.map(url => url.toLowerCase().trim()));
+    const persistedSet = new Set(persistedImageUrls.map(url => url.toLowerCase().trim()));
+    
+    // Check if renderSet is a subset of persistedSet
+    // If any URL in renderSet is not in persistedSet, we have ghost images
+    const ghostImages = allImageUrls.filter(url => {
+      const normalized = url.toLowerCase().trim();
+      return !persistedSet.has(normalized);
+    });
+    
+    if (ghostImages.length > 0) {
+      const diff = {
+        articleId: article.id.substring(0, 8) + '...',
+        renderCount: allImageUrls.length,
+        persistedCount: persistedImageUrls.length,
+        ghostImages,
+        allRenderUrls: allImageUrls,
+        allPersistedUrls: persistedImageUrls,
+      };
+      console.warn('ghost-image-detected', diff);
+    }
+  }
   
   // Get trimmed body text for classification
   const trimmedBody = contentText.trim();

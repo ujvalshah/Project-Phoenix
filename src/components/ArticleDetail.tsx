@@ -293,7 +293,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                   className overrides that could interfere with MarkdownRenderer's component styles.
                   This ensures GitHub-style markdown (links, tables, inline formatting) renders
                   identically to the card preview. */}
-              <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              <div className="nugget-content text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   <MarkdownRenderer content={article?.content ?? article?.excerpt ?? ''} />
               </div>
 

@@ -132,29 +132,26 @@ export function dedupeImagesForCreate(images: string[]): {
 
 /**
  * Deduplicate images for EDIT mode
- * Matches exact logic from normalizeArticleInput.ts (EDIT mode)
  * - Checks against existing images
  * - Preserves existing images
  * - Adds new images
  * - NEVER removes images without explicit intent
  * 
- * IMAGE PRESERVATION INVARIANT:
- * - If an image was promoted from images[] → supportingMedia[] (tracked in imagesBackup)
- * - And it's later removed from supportingMedia WITHOUT explicit delete
- * - It MUST be restored to images[] instead of being lost
- * - Explicit delete operations are the ONLY way images are removed from the system
+ * MASONRY REFACTOR: No longer prunes images based on supportingMedia
+ * - Images remain in images[] array regardless of masonry selection
+ * - showInMasonry is a view flag only, not a storage transformation
  */
 export function dedupeImagesForEdit(
   existingImages: string[],
   newImages: string[],
-  supportingMedia?: any[],
-  imagesBackup?: Set<string>,
+  supportingMedia?: any[], // Unused - kept for backward compatibility
+  imagesBackup?: Set<string>, // Unused - kept for backward compatibility
   explicitlyDeletedImages?: Set<string>
 ): {
   deduplicated: string[];
   removed: string[];
   movedToSupporting: string[];
-  restored: string[]; // Images restored from imagesBackup
+  restored: string[]; // Unused - kept for backward compatibility
   logs: Array<{ action: string; reason: string; url?: string }>;
 } {
   const existingImagesSet = new Set(
@@ -165,59 +162,9 @@ export function dedupeImagesForEdit(
   
   const imageMap = new Map<string, string>();
   const removed: string[] = [];
-  const movedToSupporting: string[] = [];
-  const restored: string[] = [];
+  const movedToSupporting: string[] = []; // Always empty - kept for backward compatibility
+  const restored: string[] = []; // Always empty - kept for backward compatibility
   const logs: Array<{ action: string; reason: string; url?: string }> = [];
-  
-  // Build set of image URLs in supportingMedia (for pruning check)
-  const supportingMediaImageUrls = new Set<string>();
-  if (supportingMedia && supportingMedia.length > 0) {
-    for (const item of supportingMedia) {
-      if (item.type === 'image' && item.url) {
-        const normalized = item.url.toLowerCase().trim();
-        supportingMediaImageUrls.add(normalized);
-      }
-    }
-  }
-  
-  // IMAGE PRESERVATION INVARIANT: Check for images that should be restored
-  // If an image was in imagesBackup (promoted from images[] to supportingMedia[])
-  // but is no longer in supportingMedia (masonry deselection), restore it to images[]
-  // UNLESS it was explicitly deleted by the user
-  if (imagesBackup && imagesBackup.size > 0) {
-    for (const backupUrl of imagesBackup) {
-      const normalized = backupUrl.toLowerCase().trim();
-      
-      // Skip if explicitly deleted
-      if (explicitlyDeletedImages && explicitlyDeletedImages.has(normalized)) {
-        logs.push({
-          action: 'skipped',
-          reason: 'explicitly-deleted',
-          url: backupUrl,
-        });
-        continue;
-      }
-      
-      // If image is NOT in supportingMedia anymore (masonry deselected), restore it
-      if (!supportingMediaImageUrls.has(normalized)) {
-        // Find original URL from existingImages to preserve casing
-        // If not found in existingImages, use the backup URL (it was promoted from there)
-        const originalUrl = existingImages.find(img => 
-          img && typeof img === 'string' && img.toLowerCase().trim() === normalized
-        ) || backupUrl; // Fallback to backup URL if not in existingImages
-        
-        if (originalUrl && !imageMap.has(normalized)) {
-          imageMap.set(normalized, originalUrl);
-          restored.push(originalUrl);
-          logs.push({
-            action: 'restored',
-            reason: 'masonry-deselected',
-            url: originalUrl,
-          });
-        }
-      }
-    }
-  }
   
   // Combine existing and new images
   const allImages = [...existingImages, ...newImages];
@@ -227,7 +174,7 @@ export function dedupeImagesForEdit(
     if (img && typeof img === 'string' && img.trim()) {
       const normalized = img.toLowerCase().trim();
       
-      // IMAGE PRESERVATION INVARIANT: Skip explicitly deleted images
+      // Skip explicitly deleted images
       // Explicit delete operations are the ONLY way images are removed from the system
       if (explicitlyDeletedImages && explicitlyDeletedImages.has(normalized)) {
         removed.push(img);
@@ -270,36 +217,19 @@ export function dedupeImagesForEdit(
     }
   }
   
-  // Prune images that are in supportingMedia (only if URL already exists there)
+  // MASONRY REFACTOR: No longer pruning images based on supportingMedia
+  // Images remain in images[] array regardless of masonry selection
   const deduplicated = Array.from(imageMap.values());
-  const imagesAfterDedup = deduplicated.filter(img => {
-    if (!img || typeof img !== 'string') return true;
-    const normalized = img.toLowerCase().trim();
-    
-    // Only remove if the same URL already exists in supportingMedia
-    if (supportingMediaImageUrls.has(normalized)) {
-      movedToSupporting.push(img);
-      logs.push({
-        action: 'moved',
-        reason: 'supportingMedia',
-        url: img,
-      });
-      return false;
-    }
-    return true;
-  });
-  
-  const afterCount = imagesAfterDedup.length;
-  const totalRemoved = removed.length + movedToSupporting.length;
+  const afterCount = deduplicated.length;
 
-  if (totalRemoved > 0 || beforeCount !== afterCount) {
-    console.log(`[IMAGE_DEDUP] mode=edit, action=${totalRemoved > 0 ? 'removed' : 'preserved'}, reason=${movedToSupporting.length > 0 ? 'supportingMedia' : 'duplicate'}, before=${beforeCount}, after=${afterCount}, removed=${removed.length}, moved=${movedToSupporting.length}`);
-  } else if (imagesAfterDedup.length > 0) {
+  if (removed.length > 0 || beforeCount !== afterCount) {
+    console.log(`[IMAGE_DEDUP] mode=edit, action=${removed.length > 0 ? 'removed' : 'preserved'}, reason=duplicate, before=${beforeCount}, after=${afterCount}, removed=${removed.length}`);
+  } else if (deduplicated.length > 0) {
     console.log(`[IMAGE_DEDUP] mode=edit, action=preserved, reason=none, before=${beforeCount}, after=${afterCount}`);
   }
 
   return {
-    deduplicated: imagesAfterDedup,
+    deduplicated,
     removed,
     movedToSupporting,
     restored,

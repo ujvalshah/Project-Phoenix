@@ -45,6 +45,9 @@ export interface NuggetMedia {
   // Max 80 characters, single-line, no markdown
   // Backward compatibility: if missing, no caption is shown
   masonryTitle?: string;
+  // Flag to allow metadata override (e.g., YouTube title override)
+  // Set to true when user explicitly edits caption/title in edit mode
+  allowMetadataOverride?: boolean;
 }
 
 export interface Engagement {
@@ -191,7 +194,11 @@ export interface Article {
   updated_at?: string;
   engagement?: Engagement;
   source_type?: string; // 'link' | 'video' | 'note' | 'idea' | etc
-  
+
+  // Admin-only: Custom creation date
+  customCreatedAt?: string | null;
+  isCustomCreatedAt?: boolean;
+
   // Contextual
   addedBy?: Contributor; // When inside a collection
 }

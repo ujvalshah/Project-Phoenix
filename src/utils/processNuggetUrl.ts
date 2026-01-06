@@ -70,13 +70,14 @@ export async function processNuggetUrl(
   
   if (!shouldFetch) {
     // For URLs that don't need metadata (images, etc.), create minimal media object
+    // URLs must not be used as titles. If no title exists, leave empty.
     const urlType = detectProviderFromUrl(url);
     return {
       type: urlType === 'image' ? 'image' : 'link',
       url: url,
       previewMetadata: {
         url: url,
-        title: url,
+        title: '', // Never use URL as title
       },
     };
   }
@@ -88,12 +89,13 @@ export async function processNuggetUrl(
   } catch (error) {
     console.error('[processNuggetUrl] Failed to fetch metadata:', error);
     // Return minimal media object on error
+    // URLs must not be used as titles. If no title exists, leave empty.
     return {
       type: detectProviderFromUrl(url),
       url: url,
       previewMetadata: {
         url: url,
-        title: url,
+        title: '', // Never use URL as title
       },
     };
   }

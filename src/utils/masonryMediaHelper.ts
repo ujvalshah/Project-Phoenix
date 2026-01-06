@@ -24,6 +24,7 @@
 
 import type { Article, PrimaryMedia, SupportingMediaItem, NuggetMedia, MediaType } from '@/types';
 import { classifyArticleMedia, getAllImageUrls } from './mediaClassifier';
+import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 
 /**
  * Represents a media item that can be shown in Masonry layout
@@ -159,14 +160,15 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
   }
   
   // 4. Legacy images array (only include images not already in primary/supporting)
+  // PHASE 2B FIX: Use consistent normalizeImageUrl from imageDedup.ts
   if (article.images && article.images.length > 0) {
     const allImageUrls = getAllImageUrls(article);
     const includedUrls = new Set(
-      items.map(item => item.url.toLowerCase().trim())
+      items.map(item => normalizeImageUrl(item.url))
     );
-    
+
     article.images.forEach((imageUrl, index) => {
-      const normalizedUrl = imageUrl.toLowerCase().trim();
+      const normalizedUrl = normalizeImageUrl(imageUrl);
       // Only include if not already in primary/supporting/legacy-media
       if (!includedUrls.has(normalizedUrl)) {
         items.push({

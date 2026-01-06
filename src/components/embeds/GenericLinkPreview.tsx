@@ -61,9 +61,12 @@ export const GenericLinkPreview: React.FC<GenericLinkPreviewProps> = ({
       )}
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate mb-1">
-            {metadata?.title || url}
-          </h4>
+          {/* URLs must not be used as titles. If no title exists, leave empty. */}
+          {metadata?.title?.trim() && (
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate mb-1">
+              {metadata.title}
+            </h4>
+          )}
           {metadata?.description && (
             <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
               {metadata.description}
