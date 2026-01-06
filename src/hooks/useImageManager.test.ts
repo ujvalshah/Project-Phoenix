@@ -17,14 +17,14 @@ import {
 import type { Article } from '@/types';
 
 // Mock the feature flags
+// Note: USE_IMAGE_MANAGER feature flag was removed in Phase 9
+// The useImageManager hook is now always used (legacy code removed)
 vi.mock('@/constants/featureFlags', () => ({
   isFeatureEnabled: vi.fn((flag: string) => {
     if (flag === 'LOG_IMAGE_OPERATIONS') return false;
-    if (flag === 'USE_IMAGE_MANAGER') return true;
     return false;
   }),
   FEATURE_FLAGS: {
-    USE_IMAGE_MANAGER: true,
     LOG_IMAGE_OPERATIONS: false,
   },
 }));

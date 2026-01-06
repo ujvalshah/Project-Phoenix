@@ -74,15 +74,16 @@ export const GridVariant: React.FC<GridVariantProps> = ({
 
   return (
     <article
+      data-article-id={data.id}
       className={`
         group relative flex flex-col h-full
-        bg-white dark:bg-slate-900 
+        bg-white dark:bg-slate-900
         border rounded-xl
         shadow-sm hover:shadow-md
         transition-shadow duration-200
-        ${selectionMode 
-          ? isSelected 
-            ? 'border-primary-500 ring-1 ring-primary-500' 
+        ${selectionMode
+          ? isSelected
+            ? 'border-primary-500 ring-1 ring-primary-500'
             : 'border-slate-200 dark:border-slate-700'
           : 'border-slate-200 dark:border-slate-700'
         }

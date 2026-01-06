@@ -17,7 +17,6 @@ import type { NuggetMedia, MediaType } from '@/types';
 import { formatApiError, getUserFriendlyMessage, logError } from '@/utils/errorHandler';
 import { processNuggetUrl, detectUrlChanges, getPrimaryUrl } from '@/utils/processNuggetUrl';
 import { useMediaUpload } from '@/hooks/useMediaUpload';
-import { getAllImageUrls } from '@/utils/mediaClassifier';
 import { SourceSelector } from './shared/SourceSelector';
 import { SourceBadge } from './shared/SourceBadge';
 import { TagSelector } from './CreateNuggetModal/TagSelector';
@@ -28,14 +27,12 @@ import { UrlInput } from './CreateNuggetModal/UrlInput';
 import { AttachmentManager, FileAttachment } from './CreateNuggetModal/AttachmentManager';
 import { FormFooter } from './CreateNuggetModal/FormFooter';
 import { MasonryMediaToggle } from './CreateNuggetModal/MasonryMediaToggle';
-import { collectMasonryMediaItems, MasonryMediaItem } from '@/utils/masonryMediaHelper';
+import { MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import type { Article } from '@/types';
 import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeArticleInput';
 import { normalizeTags } from '@/shared/articleNormalization/normalizeTags';
-import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 import { useImageManager } from '@/hooks/useImageManager';
-import { isFeatureEnabled } from '@/constants/featureFlags';
 
 interface CreateNuggetModalProps {
   isOpen: boolean;
@@ -71,11 +68,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const authorName = currentUser?.name || 'User';
   const toast = useToast();
 
-  // Feature flag: USE_IMAGE_MANAGER
-  const useNewImageManager = isFeatureEnabled('USE_IMAGE_MANAGER');
-
-  // New unified image management hook (Phase 3 refactoring)
-  // Only used when USE_IMAGE_MANAGER feature flag is enabled
+  // Unified image management hook (Phase 9: Legacy code removed)
   const imageManager = useImageManager(mode, initialData);
 
   // Ref to track if form has been initialized from initialData (prevents re-initialization)
@@ -106,19 +99,9 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const pastedImagesBufferRef = useRef<File[]>([]);
   const pasteBatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Existing images from article (for edit mode)
-  // Legacy state - only used when USE_IMAGE_MANAGER is disabled
-  const [_legacyExistingImages, _setLegacyExistingImages] = useState<string[]>([]);
-
-  // Masonry media items (for toggle controls)
-  // Legacy state - only used when USE_IMAGE_MANAGER is disabled
-  const [_legacyMasonryMediaItems, _setLegacyMasonryMediaItems] = useState<MasonryMediaItem[]>([]);
-
-  // Derived values: Use imageManager when feature flag is enabled, otherwise use legacy state
-  const existingImages = useNewImageManager ? imageManager.existingImages : _legacyExistingImages;
-  const setExistingImages = useNewImageManager ? () => {} : _setLegacyExistingImages; // No-op when using hook
-  const masonryMediaItems = useNewImageManager ? imageManager.masonryItems : _legacyMasonryMediaItems;
-  const setMasonryMediaItems = useNewImageManager ? () => {} : _setLegacyMasonryMediaItems; // No-op when using hook
+  // Image state managed by useImageManager hook (Phase 9: Legacy code removed)
+  const existingImages = imageManager.existingImages;
+  const masonryMediaItems = imageManager.masonryItems;
   
   // Media upload hook
   const mediaUpload = useMediaUpload({ purpose: 'nugget' });
@@ -146,17 +129,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // Admin-only: Custom creation date
   const [customCreatedAt, setCustomCreatedAt] = useState<string>('');
   
-  // IMAGE PRESERVATION INVARIANT: Track explicitly deleted images
-  // This ensures images deleted via explicit delete action are NOT restored
-  // even if they were previously promoted to supportingMedia
-  // Legacy state - only used when USE_IMAGE_MANAGER is disabled
-  const [_legacyExplicitlyDeletedImages, _setLegacyExplicitlyDeletedImages] = useState<Set<string>>(new Set());
-
-  // Derived value: Use imageManager when feature flag is enabled
-  const explicitlyDeletedImages = useNewImageManager ? imageManager.explicitlyDeletedUrls : _legacyExplicitlyDeletedImages;
-  const setExplicitlyDeletedImages = useNewImageManager
-    ? () => {} // No-op - imageManager tracks this internally
-    : _setLegacyExplicitlyDeletedImages;
+  // Explicitly deleted images tracked by useImageManager hook (Phase 9: Legacy code removed)
+  const explicitlyDeletedImages = imageManager.explicitlyDeletedUrls;
   
   // Data Source State
   // CATEGORY PHASE-OUT: Renamed availableCategories to availableTags
@@ -229,25 +203,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         // as they require file objects and collection membership is separate
         // MediaIds are preserved from initialData and will be included in update
         
-        // CRITICAL FIX: Load existing images from ALL sources (not just images array)
-        // Cards use getAllImageUrls() which checks: primaryMedia, supportingMedia, images array, and media field
-        // We must do the same in edit mode to show all images that appear in cards
-        const allExistingImages = getAllImageUrls(initialData);
-        
-        if (allExistingImages.length === 0 && ((initialData.images?.length ?? 0) > 0 || initialData.primaryMedia || (initialData.supportingMedia?.length ?? 0) > 0)) {
-            console.error('[CreateNuggetModal] WARNING: Images exist in article but getAllImageUrls returned empty!', {
-                imagesArray: initialData.images,
-                primaryMedia: initialData.primaryMedia,
-                supportingMedia: initialData.supportingMedia
-            });
-        }
-        
-        setExistingImages(allExistingImages);
-        
-        // Initialize Masonry media items from article
-        const mediaItems = collectMasonryMediaItems(initialData);
-        
-        setMasonryMediaItems(mediaItems);
+        // Sync imageManager with article data (Phase 9: Legacy code removed)
+        imageManager.syncFromArticle(initialData);
         
         initializedFromDataRef.current = initialData.id;
       } else if (mode === 'create') {
@@ -259,6 +216,16 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     }
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen, mode, initialData]);
+
+  // Sync imageManager when initialData changes (for edit mode)
+  // This ensures the hook stays in sync if the article data is updated externally
+  useEffect(() => {
+    if (mode === 'edit' && initialData && initializedFromDataRef.current === initialData.id) {
+      // Only sync if we've already initialized this article (to avoid double initialization)
+      // The main initialization happens in the useEffect above
+      imageManager.syncFromArticle(initialData);
+    }
+  }, [mode, initialData, imageManager]);
 
   // Focus trap and initial focus when modal opens
   useEffect(() => {
@@ -728,199 +695,33 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       return;
     }
 
-    // PHASE 3: When using new imageManager, delegate to its delete flow
-    if (useNewImageManager) {
-      // Optimistic delete via imageManager
-      imageManager.deleteImage(imageUrl);
-
-      try {
-        const { apiClient } = await import('@/services/apiClient');
-        await (apiClient as unknown as { request: (url: string, options: Record<string, unknown>) => Promise<{ success: boolean; message: string; images: string[] }> }).request(
-          `/articles/${initialData.id}/images`,
-          {
-            method: 'DELETE',
-            body: JSON.stringify({ imageUrl }),
-            headers: { 'Content-Type': 'application/json' },
-            cancelKey: `delete-image-${initialData.id}`,
-          }
-        );
-
-        // Confirm deletion via imageManager
-        imageManager.confirmDeletion(imageUrl);
-        toast.success('Image deleted successfully');
-
-        // Invalidate query cache
-        queryClient.invalidateQueries({ queryKey: ['article', initialData.id] });
-        queryClient.invalidateQueries({ queryKey: ['articles'] });
-      } catch (error: any) {
-        console.error('[CreateNuggetModal] Failed to delete image (imageManager):', error);
-        // Rollback via imageManager
-        imageManager.rollbackDeletion(imageUrl);
-        toast.error(error.message || 'Failed to delete image. Please try again.');
-      }
-      return;
-    }
-
-    // LEGACY CODE PATH (when USE_IMAGE_MANAGER is disabled)
-    // Optimistic UI update - remove from state immediately
-    const previousImages = [...existingImages];
-    // PHASE 2B FIX: Use consistent normalizeImageUrl from imageDedup.ts
-    // This removes query params and normalizes case for better duplicate detection
-    const normalizedImageUrl = normalizeImageUrl(imageUrl);
-    const optimisticImages = existingImages.filter(img => {
-      try {
-        const normalized = normalizeImageUrl(img);
-        return normalized !== normalizedImageUrl;
-      } catch {
-        return img !== imageUrl;
-      }
-    });
-
-    setExistingImages(optimisticImages);
-
-    // IMAGE PRESERVATION INVARIANT: Mark this image as explicitly deleted
-    // This prevents it from being restored even if it was in imagesBackup
-    setExplicitlyDeletedImages(prev => {
-      const next = new Set(prev);
-      next.add(normalizedImageUrl);
-      return next;
-    });
+    // Delete image via imageManager (Phase 9: Legacy code removed)
+    imageManager.deleteImage(imageUrl);
 
     try {
-
-      // Use apiClient instead of direct fetch to ensure proper proxy routing
-      // This avoids CORS issues by using Vite's /api proxy to localhost:5000
-      // Note: DELETE with body requires using request() directly since delete() doesn't support body
       const { apiClient } = await import('@/services/apiClient');
-      // Cast to unknown first, then to the expected shape (request is private on ApiClient class)
-      const result = await (apiClient as unknown as { request: (url: string, options: Record<string, unknown>) => Promise<{ success: boolean; message: string; images: string[] }> }).request(
+      await (apiClient as unknown as { request: (url: string, options: Record<string, unknown>) => Promise<{ success: boolean; message: string; images: string[] }> }).request(
         `/articles/${initialData.id}/images`,
         {
           method: 'DELETE',
           body: JSON.stringify({ imageUrl }),
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           cancelKey: `delete-image-${initialData.id}`,
         }
       );
-      
-      // PHASE 2A FIX: Trust the optimistic update, don't refetch from stale cache
-      // The queryClient.getQueryData() returns STALE data (before deletion) which restores the deleted image
-      // The optimistic update (setExistingImages at line 717) is already correct
-      // The backend has already removed from all locations (images[], primaryMedia, supportingMedia, media)
-      //
-      // DEFENSIVE: Use server response but filter out the deleted image to handle any race conditions
-      // PHASE 2B FIX: Use consistent normalizeImageUrl
-      if (result.images && Array.isArray(result.images)) {
-        const serverImages = result.images.filter((img: string) => {
-          const normalized = normalizeImageUrl(img);
-          return normalized !== normalizedImageUrl;
-        });
-        // Only update if server returned different images than our optimistic update
-        // This prevents flickering while maintaining consistency
-        if (serverImages.length !== optimisticImages.length) {
-          console.log('[EDIT IMAGE DELETE] Server returned different image count, syncing', {
-            optimistic: optimisticImages.length,
-            server: serverImages.length
-          });
-          setExistingImages(serverImages);
-        }
-      }
-      
-      // Also remove from URLs if it's there (normalized comparison)
-      // PHASE 2B FIX: Use consistent normalizeImageUrl
-      setUrls(urls.filter(u => {
-        try {
-          const normalized = normalizeImageUrl(u);
-          return normalized !== normalizedImageUrl;
-        } catch {
-          return u !== imageUrl; // Fallback to exact match
-        }
-      }));
 
-      // CRITICAL FIX: Remove deleted image from ALL relevant local state arrays
-      // This prevents the image from reappearing on next normalize() call
-      // Remove from masonryMediaItems (any item where item.url matches deleted URL)
-      // PHASE 2B FIX: Use consistent normalizeImageUrl
-      setMasonryMediaItems(prev => {
-        const filtered = prev.filter(item => {
-          try {
-            const itemUrl = normalizeImageUrl(item?.url || '');
-            return itemUrl !== normalizedImageUrl;
-          } catch {
-            return item?.url !== imageUrl; // Fallback to exact match
-          }
-        });
-        return filtered;
-      });
-
-      // Remove from attachments (if present - unlikely in edit mode but safe to check)
-      // PHASE 2B FIX: Use consistent normalizeImageUrl
-      setAttachments(prev => {
-        const filtered = prev.filter(att => {
-          try {
-            const attUrl = normalizeImageUrl(att?.secureUrl || att?.previewUrl || '');
-            return attUrl !== normalizedImageUrl;
-          } catch {
-            return att?.secureUrl !== imageUrl && att?.previewUrl !== imageUrl; // Fallback to exact match
-          }
-        });
-        return filtered;
-      });
-      
-      // Debug log for local state cleanup
-      console.log('[EDIT IMAGE DELETE] removed from local state', { deletedUrl: imageUrl });
-
+      // Confirm deletion via imageManager
+      imageManager.confirmDeletion(imageUrl);
       toast.success('Image deleted successfully');
 
-      // PHASE 2A FIX: DO NOT refetch article immediately after deletion
-      // This creates a race condition where the refetch may return stale data
-      // (server hasn't finished processing) and restore the deleted image.
-      //
-      // Instead, we:
-      // 1. Trust the optimistic update (already applied above)
-      // 2. Invalidate query cache for other components (background refetch)
-      // 3. Let React Query handle eventual consistency
-      //
-      // The backend already removes from all locations (images[], primaryMedia,
-      // supportingMedia, media), so the next fresh fetch will be correct.
-
-      // Invalidate query cache to trigger background refetch for other components
-      // This does NOT override our local state - it just marks cache as stale
+      // Invalidate query cache
       queryClient.invalidateQueries({ queryKey: ['article', initialData.id] });
       queryClient.invalidateQueries({ queryKey: ['articles'] });
     } catch (error: any) {
       console.error('[CreateNuggetModal] Failed to delete image:', error);
-
-      // Rollback ALL optimistic updates on error
-      setExistingImages(previousImages);
-
-      // PHASE 2A FIX: Also rollback the explicitlyDeletedImages set
-      // If deletion failed, the image is still there and shouldn't be marked as deleted
-      setExplicitlyDeletedImages(prev => {
-        const next = new Set(prev);
-        next.delete(normalizedImageUrl);
-        return next;
-      });
-
-      // Detect CORS errors and provide actionable error message
-      let errorMessage = error.message || 'Failed to delete image. Please try again.';
-      
-      // Check for CORS-related errors
-      if (error.message?.includes('CORS') || 
-          error.message?.includes('Access-Control') ||
-          error.message?.includes('preflight') ||
-          error.name === 'TypeError' && error.message?.includes('Failed to fetch')) {
-        errorMessage = 'Network error: Unable to connect to server. Please check your connection and try again.';
-        console.error('[CreateNuggetModal] CORS or network error detected:', {
-          error: error.message,
-          name: error.name,
-          stack: error.stack
-        });
-      }
-      
-      toast.error(errorMessage);
+      // Rollback via imageManager
+      imageManager.rollbackDeletion(imageUrl);
+      toast.error(error.message || 'Failed to delete image. Please try again.');
     }
   };
 
@@ -1072,24 +873,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Handle Masonry media toggle
   const handleMasonryMediaToggle = (itemId: string, showInMasonry: boolean) => {
-    // PHASE 3: When using imageManager, delegate to its toggle method
-    if (useNewImageManager) {
-      // Find the item by ID and get its URL
-      const item = masonryMediaItems.find(m => m.id === itemId);
-      if (item?.url) {
-        imageManager.toggleMasonry(item.url, showInMasonry);
-      }
-      return;
+    // Delegate to imageManager (Phase 9: Legacy code removed)
+    const item = masonryMediaItems.find(m => m.id === itemId);
+    if (item?.url) {
+      imageManager.toggleMasonry(item.url, showInMasonry);
     }
-
-    // LEGACY CODE PATH
-    setMasonryMediaItems(prev => {
-      const updated = prev.map(item =>
-        item.id === itemId ? { ...item, showInMasonry } : item
-      );
-
-      return updated;
-    });
   };
 
   /**
@@ -1162,25 +950,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // When user edits masonryTitle (caption), set allowMetadataOverride flag
   // This allows intentional overrides of YouTube titles and other metadata
   const handleMasonryTitleChange = (itemId: string, title: string) => {
-    // PHASE 3: When using imageManager, delegate to its setMasonryTitle method
-    if (useNewImageManager) {
-      const item = masonryMediaItems.find(m => m.id === itemId);
-      if (item?.url) {
-        imageManager.setMasonryTitle(item.url, title);
-      }
-      // User explicitly edited caption → allow metadata override
-      if (mode === 'edit') {
-        setAllowMetadataOverride(true);
-      }
-      return;
+    // Delegate to imageManager (Phase 9: Legacy code removed)
+    const item = masonryMediaItems.find(m => m.id === itemId);
+    if (item?.url) {
+      imageManager.setMasonryTitle(item.url, title);
     }
-
-    // LEGACY CODE PATH
-    setMasonryMediaItems(prev =>
-      prev.map(item =>
-        item.id === itemId ? { ...item, masonryTitle: title || undefined } : item
-      )
-    );
     // User explicitly edited caption → allow metadata override
     if (mode === 'edit') {
       setAllowMetadataOverride(true);
@@ -1317,7 +1091,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       });
     });
     
-    setMasonryMediaItems(items);
+    // Masonry items are now managed by imageManager (Phase 9: Legacy code removed)
+    // The imageManager automatically derives masonryItems from existing images
   }, [mode, urls, attachments]);
 
   // AI summarize handler removed - AI creation system has been fully removed
@@ -2143,7 +1918,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     }
                     
                     return (
-                    <div className="space-y-2 mb-4">
+                    <div className="space-y-2 mb-4" data-testid="existing-images">
                         <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
                             Existing Images ({existingImages.length})
                         </div>
@@ -2152,13 +1927,13 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                                 const detectedType = detectProviderFromUrl(imageUrl);
                                 const _isCloudinaryUrl = imageUrl.includes('cloudinary.com') || imageUrl.includes('res.cloudinary.com'); // eslint-disable-line @typescript-eslint/no-unused-vars
                                 return (
-                                    <div key={`existing-${idx}`} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-sm">
-                                        <button 
+                                    <div key={`existing-${idx}`} data-image-url={imageUrl} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-sm">
+                                        <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 e.preventDefault();
                                                 deleteImage(imageUrl);
-                                            }} 
+                                            }}
                                             className="absolute top-2 right-2 bg-red-600 text-white p-1.5 rounded-full opacity-90 hover:opacity-100 transition-opacity z-10 hover:bg-red-700 shadow-lg"
                                             title="Delete image"
                                             aria-label="Delete image"
@@ -2166,10 +1941,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                                             <X size={14} />
                                         </button>
                                         <div className="max-h-[160px] overflow-hidden">
-                                            <GenericLinkPreview 
-                                                url={imageUrl} 
-                                                metadata={{ url: imageUrl }} 
-                                                type={detectedType} 
+                                            <GenericLinkPreview
+                                                url={imageUrl}
+                                                metadata={{ url: imageUrl }}
+                                                type={detectedType}
                                             />
                                         </div>
                                     </div>
@@ -2187,7 +1962,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                   is populated from attachments and URLs via useEffect hook.
                 */}
                 {masonryMediaItems.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700" data-testid="masonry-toggle">
                     <MasonryMediaToggle
                       items={masonryMediaItems}
                       onToggle={handleMasonryMediaToggle}

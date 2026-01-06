@@ -47,6 +47,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
 
   return (
     <div
+      data-article-id={data.id}
       className="group relative flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 w-full p-4 break-inside-avoid mb-6"
       style={{ height: 'auto' }}
     >

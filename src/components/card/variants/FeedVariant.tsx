@@ -47,6 +47,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
 
   return (
     <div
+      data-article-id={data.id}
       className="group relative flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] transition-all duration-150 w-full p-6 gap-4 hover:-translate-y-0.5"
     >
       {/* TWO-CARD ARCHITECTURE: Hybrid vs Media-Only */}

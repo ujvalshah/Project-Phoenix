@@ -83,6 +83,7 @@ export const MasonryMediaToggle: React.FC<MasonryMediaToggleProps> = ({
         {items.map((item) => (
           <div
             key={item.id}
+            data-image-url={item.url}
             className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
           >
             {/* Media Preview */}

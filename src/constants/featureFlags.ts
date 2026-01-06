@@ -1,8 +1,6 @@
 /**
  * Feature Flags Configuration
  *
- * PHASE 3: CreateNuggetModal Refactoring
- *
  * Feature flags enable safe rollout of new functionality with the ability
  * to quickly disable features if issues are detected in production.
  *
@@ -10,31 +8,16 @@
  * ```typescript
  * import { FEATURE_FLAGS, isFeatureEnabled } from '@/constants/featureFlags';
  *
- * if (isFeatureEnabled('USE_IMAGE_MANAGER')) {
- *   // Use new image manager hook
- * } else {
- *   // Use legacy image handling
+ * if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+ *   // Enable verbose logging
  * }
  * ```
+ *
+ * Note: USE_IMAGE_MANAGER feature flag was removed in Phase 9.
+ * The useImageManager hook is now always used (legacy code removed).
  */
 
 export const FEATURE_FLAGS = {
-  /**
-   * USE_IMAGE_MANAGER: Enable the new unified image management hook
-   *
-   * When enabled:
-   * - Uses useImageManager hook with single source of truth
-   * - Derived state via useMemo (not stored separately)
-   * - Consistent URL normalization across all operations
-   *
-   * When disabled:
-   * - Uses legacy image handling with multiple state arrays
-   * - Falls back to original CreateNuggetModal behavior
-   *
-   * Rollback: Set to false to revert to legacy behavior
-   */
-  USE_IMAGE_MANAGER: true,
-
   /**
    * LOG_IMAGE_OPERATIONS: Enable verbose logging for image operations
    *

@@ -83,6 +83,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
 
   return (
     <article
+      data-article-id={data.id}
       role="article"
       aria-label={ariaLabel}
       tabIndex={0}

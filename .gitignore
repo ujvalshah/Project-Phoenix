@@ -40,3 +40,53 @@ dist-ssr
 
 # System files and directories
 AppData/
+OneDrive/
+Contacts/
+CrossDevice/
+Documents/
+Downloads/
+Favorites/
+Links/
+Music/
+Saved Games/
+Searches/
+Videos/
+NTUSER.DAT*
+ntuser.dat*
+ntuser.ini
+*.regtrans-ms
+*.blf
+*.LOG*
+
+# Browser and system directories
+Application Data/
+Cookies/
+Local Settings/
+My Documents/
+NetHood/
+PrintHood/
+Recent/
+SendTo/
+Start Menu/
+Templates/
+
+# IDE and tool directories
+.antigravity/
+.claude/
+.claude.json*
+.codeium/
+.config/
+.cursor/
+.gemini/
+.lesshst
+.local/
+.ssh/
+.windsurf/
+
+# E2E test auth state
+tests/e2e/.auth-state.json
+
+# Test results and reports
+test-results/
+playwright-report/
+reports/
