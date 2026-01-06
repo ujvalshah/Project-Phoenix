@@ -10,6 +10,8 @@ import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import { normalizeTags } from '../utils/normalizeTags.js';
 import { resolveTagNamesToIds, isTagIdsWriteEnabled, isTagIdsReadEnabled } from '../utils/tagHelpers.js';
+import { createHash } from 'crypto';
+import { asArray } from '../utils/arrayHelpers.js';
 // CATEGORY PHASE-OUT: Removed normalizeCategories import - categories are no longer supported
 import {
   sendErrorResponse,
@@ -359,6 +361,15 @@ export const createArticle = async (req: Request, res: Response) => {
 
     const data = validationResult.data;
     
+    // DEFENSIVE CODING: Normalize all array fields to ensure they're never null/undefined
+    // Even though validation schema should handle this, add safety guards here too
+    data.tags = asArray(data.tags);
+    data.images = asArray(data.images);
+    data.mediaIds = asArray(data.mediaIds);
+    data.supportingMedia = asArray(data.supportingMedia);
+    data.documents = asArray(data.documents);
+    data.themes = asArray(data.themes);
+    
     // TEMPORARY DEBUG: Stage 4 - Request payload received in createArticle controller
     const primaryUrl = data.media?.url || data.primaryMedia?.url || null;
     requestLogger.info({
@@ -377,7 +388,7 @@ export const createArticle = async (req: Request, res: Response) => {
     
     // PHASE 1: Normalize tags using shared utilities
     // This ensures consistency with frontend normalization
-    const normalizedTags = normalizeTags(data.tags || []);
+    const normalizedTags = normalizeTags(data.tags);
     
     // Safety logging: Check if normalization changed tags
     if (data.tags && normalizedTags.length !== data.tags.length) {
@@ -435,34 +446,75 @@ export const createArticle = async (req: Request, res: Response) => {
       mediaStructure: data.media,
     });
     
-    // CRITICAL FIX: Deduplicate images array to prevent duplicates
-    // Also log for debugging image creation flow
-    if (data.images && Array.isArray(data.images)) {
-      console.log(`[Articles] Create: Received ${data.images.length} images in payload`);
-      const imageMap = new Map<string, string>();
-      for (const img of data.images) {
-        if (img && typeof img === 'string' && img.trim()) {
-          const normalized = img.toLowerCase().trim();
-          if (!imageMap.has(normalized)) {
-            imageMap.set(normalized, img); // Keep original casing
-          } else {
-            console.log(`[Articles] Create: Duplicate image detected and removed: ${img}`);
-          }
+    // ============================================================================
+    // IMAGE DEDUPLICATION MIGRATION - TELEMETRY MODE (NO MUTATION)
+    // ============================================================================
+    // MIGRATION INTENT: Frontend is now the canonical deduplication pass.
+    // Backend computes what it WOULD have deduped but does NOT mutate data.
+    // This allows us to detect drift between frontend and backend deduplication logic.
+    // 
+    // Phase 1: Telemetry mode (current) - compute but don't mutate, log drift
+    // Phase 2: Remove backend deduplication entirely (future)
+    // 
+    // TELEMETRY RULES:
+    // - BEST-EFFORT ONLY - must never cause 500 errors
+    // - Never mutate data or payload
+    // - Never throw - wrap in try/catch
+    // - Gracefully handle missing headers, undefined images, non-arrays
+    // ============================================================================
+    try {
+      const clientHashHeader = req.headers['x-images-hash'];
+      const clientHash = Array.isArray(clientHashHeader)
+        ? clientHashHeader[0]
+        : clientHashHeader ?? null;
+
+      // Prefer payload images if present, otherwise fallback to empty array
+      // DEFENSIVE: Use asArray helper for safety
+      const imagesArray = asArray(data?.images);
+
+      if (imagesArray.length > 0 && clientHash) {
+        // Normalize images for consistent hashing (match frontend: sort then JSON.stringify)
+        const normalizedImages = imagesArray
+          .filter(Boolean)
+          .map(String)
+          .filter(img => img.trim().length > 0)
+          .sort();
+
+        // Compute server-side hash (match frontend: JSON.stringify of sorted array)
+        const serverHash = normalizedImages.length > 0
+          ? createHash('sha256')
+              .update(JSON.stringify(normalizedImages))
+              .digest('hex')
+          : null;
+
+        // Compare hashes and log drift if mismatch
+        if (clientHash && serverHash && clientHash !== serverHash) {
+          const requestLogger = createRequestLogger(req.id || 'unknown', (req as any).user?.userId, '/api/articles');
+          requestLogger.warn({
+            msg: '[IMAGE_DEDUP_DRIFT] Frontend and backend deduplication mismatch detected',
+            clientHash,
+            serverHash,
+            imageCount: normalizedImages.length,
+          });
         }
       }
-      const deduplicated = Array.from(imageMap.values());
-      if (deduplicated.length !== data.images.length) {
-        console.log(`[Articles] Create: Deduplicated ${data.images.length} → ${deduplicated.length} images`);
-      }
-      data.images = deduplicated;
+    } catch (err) {
+      // Telemetry failed - log warning but continue execution
+      const requestLogger = createRequestLogger(req.id || 'unknown', (req as any).user?.userId, '/api/articles');
+      requestLogger.warn({
+        msg: '[IMAGE_DEDUP_TELEMETRY] Telemetry failed (non-blocking)',
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
     
     // Log payload size for debugging (especially for images)
     const payloadSize = JSON.stringify(data).length;
     if (payloadSize > 1000000) { // > 1MB
       console.warn(`[Articles] Large payload detected: ${(payloadSize / 1024 / 1024).toFixed(2)}MB`);
-      if (data.images && data.images.length > 0) {
-        const imagesSize = data.images.reduce((sum: number, img: string) => sum + (img?.length || 0), 0);
+      // DEFENSIVE: Use asArray helper for safety
+      const imagesArray = asArray(data.images);
+      if (imagesArray.length > 0) {
+        const imagesSize = imagesArray.reduce((sum: number, img: string) => sum + (img?.length || 0), 0);
         console.warn(`[Articles] Images total size: ${(imagesSize / 1024 / 1024).toFixed(2)}MB`);
       }
     }
@@ -565,6 +617,26 @@ export const createArticle = async (req: Request, res: Response) => {
       requestBodyMediaIsArray: Array.isArray(req.body?.media),
     });
     
+    // IMPROVED ERROR HANDLING: Return 400 for validation/type errors instead of 500
+    // Check for TypeError related to array operations (defensive coding)
+    if (error.name === 'TypeError' && error.message && 
+        (error.message.includes('Cannot read properties') || 
+         error.message.includes('filter') || 
+         error.message.includes('map') || 
+         error.message.includes('reduce') ||
+         error.message.includes('length'))) {
+      requestLogger.warn({ 
+        msg: '[DIAGNOSTIC] CreateArticle - TypeError related to array operation (likely null/undefined array)',
+        errorMessage: error.message,
+        requestBodyKeys: Object.keys(req.body || {}),
+      });
+      return sendValidationError(res, 'Invalid request data: array fields must be arrays or omitted', [{
+        path: ['body'],
+        message: error.message,
+        code: 'invalid_type'
+      }]);
+    }
+    
     // Log more details for debugging
     if (error.name === 'ValidationError') {
       // DIAGNOSTIC LOGGING: Enhanced Mongoose validation errors
@@ -645,6 +717,27 @@ export const updateArticle = async (req: Request, res: Response) => {
     
     // PHASE 1: Normalize tags using shared utilities
     
+    // DEFENSIVE CODING: Normalize all array fields to ensure they're never null/undefined
+    // Even though validation schema should handle this, add safety guards here too
+    if (validationResult.data.tags !== undefined) {
+      validationResult.data.tags = asArray(validationResult.data.tags);
+    }
+    if (validationResult.data.images !== undefined) {
+      validationResult.data.images = asArray(validationResult.data.images);
+    }
+    if (validationResult.data.mediaIds !== undefined) {
+      validationResult.data.mediaIds = asArray(validationResult.data.mediaIds);
+    }
+    if (validationResult.data.supportingMedia !== undefined) {
+      validationResult.data.supportingMedia = asArray(validationResult.data.supportingMedia);
+    }
+    if (validationResult.data.documents !== undefined) {
+      validationResult.data.documents = asArray(validationResult.data.documents);
+    }
+    if (validationResult.data.themes !== undefined) {
+      validationResult.data.themes = asArray(validationResult.data.themes);
+    }
+    
     // Normalize tags if provided
     if (validationResult.data.tags !== undefined) {
       const normalizedTags = normalizeTags(validationResult.data.tags);
@@ -711,60 +804,94 @@ export const updateArticle = async (req: Request, res: Response) => {
       }
     }
 
-    // CRITICAL FIX: Deduplicate images array to prevent duplicates
-    // Also check against existing images to prevent re-adding duplicates
-    if (validationResult.data.images && Array.isArray(validationResult.data.images)) {
-      console.log(`[Articles] Update: Received ${validationResult.data.images.length} images in payload`);
-      console.log(`[Articles] Update: Existing article has ${(existingArticle.images || []).length} images`);
-      
-      // Get existing images (normalized for comparison)
-      const existingImagesSet = new Set(
-        (existingArticle.images || []).map((img: string) => 
-          img && typeof img === 'string' ? img.toLowerCase().trim() : ''
-        ).filter(Boolean)
-      );
-      
-      const imageMap = new Map<string, string>();
-      let duplicatesRemoved = 0;
-      
-      for (const img of validationResult.data.images) {
-        if (img && typeof img === 'string' && img.trim()) {
-          const normalized = img.toLowerCase().trim();
-          
-          // Check if this image already exists in the article
-          if (existingImagesSet.has(normalized)) {
-            console.log(`[Articles] Update: Image already exists in article, keeping: ${img}`);
-            // Keep it - it's an existing image that should remain
-            if (!imageMap.has(normalized)) {
-              imageMap.set(normalized, img);
-            }
-          } else if (!imageMap.has(normalized)) {
-            // New image, add it
-            imageMap.set(normalized, img);
-          } else {
-            // Duplicate in the payload itself
-            duplicatesRemoved++;
-            console.log(`[Articles] Update: Duplicate image in payload, removed: ${img}`);
-          }
+    // ============================================================================
+    // IMAGE DEDUPLICATION MIGRATION - TELEMETRY MODE (NO MUTATION)
+    // ============================================================================
+    // MIGRATION INTENT: Frontend is now the canonical deduplication pass.
+    // Backend computes what it WOULD have deduped but does NOT mutate data.
+    // This allows us to detect drift between frontend and backend deduplication logic.
+    // 
+    // Phase 1: Telemetry mode (current) - compute but don't mutate, log drift
+    // Phase 2: Remove backend deduplication entirely (future)
+    // 
+    // TELEMETRY RULES:
+    // - BEST-EFFORT ONLY - must never cause 500 errors
+    // - Never mutate data or payload
+    // - Never throw - wrap in try/catch
+    // - Gracefully handle missing headers, undefined images, non-arrays, partial PATCH payloads
+    // ============================================================================
+    try {
+      const clientHashHeader = req.headers['x-images-hash'];
+      const clientHash = Array.isArray(clientHashHeader)
+        ? clientHashHeader[0]
+        : clientHashHeader ?? null;
+
+      // Prefer update payload if present, otherwise fallback to existing article
+      // DEFENSIVE: Use asArray helper for safety
+      const imagesArray = validationResult.data?.images !== undefined
+        ? asArray(validationResult.data.images)
+        : asArray(existingArticle?.images);
+
+      if (imagesArray.length > 0 && clientHash) {
+        // Normalize images for consistent hashing (match frontend: sort then JSON.stringify)
+        const normalizedImages = imagesArray
+          .filter(Boolean)
+          .map(String)
+          .filter(img => img.trim().length > 0)
+          .sort();
+
+        // Compute server-side hash (match frontend: JSON.stringify of sorted array)
+        const serverHash = normalizedImages.length > 0
+          ? createHash('sha256')
+              .update(JSON.stringify(normalizedImages))
+              .digest('hex')
+          : null;
+
+        // Compare hashes and log drift if mismatch
+        if (clientHash && serverHash && clientHash !== serverHash) {
+          requestLogger.warn({
+            msg: '[IMAGE_DEDUP_DRIFT] Frontend and backend deduplication mismatch detected (UPDATE)',
+            articleId: req.params.id,
+            clientHash,
+            serverHash,
+            imageCount: normalizedImages.length,
+          });
         }
       }
-      
-      const deduplicated = Array.from(imageMap.values());
-      if (deduplicated.length !== validationResult.data.images.length || duplicatesRemoved > 0) {
-        console.log(`[Articles] Update: Deduplicated ${validationResult.data.images.length} → ${deduplicated.length} images (removed ${duplicatesRemoved} duplicates)`);
-      }
-      validationResult.data.images = deduplicated;
+    } catch (err) {
+      // Telemetry failed - log warning but continue execution
+      requestLogger.warn({
+        msg: '[IMAGE_DEDUP_TELEMETRY] Telemetry failed (non-blocking)',
+        articleId: req.params.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
-    // GUARD: Prevent overwriting existing YouTube titles (backend is source of truth)
-    // If backend already has media.previewMetadata.title, don't allow updates to it
+    // ============================================================================
+    // YOUTUBE TITLE GUARD: Prevent overwriting existing YouTube titles
+    // ============================================================================
+    // Rule: Preserve YouTube titles unless allowMetadataOverride is true
+    // 
+    // Decision Boundaries:
+    // - If allowMetadataOverride = false → preserve YouTube title (existing logic)
+    // - If allowMetadataOverride = true → allow user override intentionally
+    // ============================================================================
     const updates = { ...validationResult.data };
+    const allowMetadataOverride = updates.media?.allowMetadataOverride === true;
+    const hasExistingYouTubeTitle = existingArticle.media?.previewMetadata?.titleSource === 'youtube-oembed' ||
+                                    (existingArticle.media?.previewMetadata?.title && 
+                                     existingArticle.media?.url && 
+                                     (existingArticle.media.url.includes('youtube.com') || 
+                                      existingArticle.media.url.includes('youtu.be')));
+    
     if (
-      existingArticle.media?.previewMetadata?.title &&
-      updates.media?.previewMetadata?.title
+      hasExistingYouTubeTitle &&
+      updates.media?.previewMetadata?.title &&
+      !allowMetadataOverride
     ) {
+      // YouTube title exists and user didn't explicitly override → preserve it
       console.debug(
-        `[Articles] Ignoring YouTube title update for article ${req.params.id} - backend title already exists`
+        `[Articles] Preserving YouTube title for article ${req.params.id} - allowMetadataOverride=${allowMetadataOverride}`
       );
       // Remove title fields from update to preserve existing backend data
       if (updates.media.previewMetadata) {
@@ -772,6 +899,16 @@ export const updateArticle = async (req: Request, res: Response) => {
         delete updates.media.previewMetadata.titleSource;
         delete updates.media.previewMetadata.titleFetchedAt;
       }
+    } else if (allowMetadataOverride && hasExistingYouTubeTitle) {
+      // User explicitly edited → allow override (log for audit)
+      console.debug(
+        `[Articles] Allowing YouTube title override for article ${req.params.id} - allowMetadataOverride=true`
+      );
+    }
+    
+    // Remove allowMetadataOverride from update (it's a transient flag, not stored in DB)
+    if (updates.media) {
+      delete updates.media.allowMetadataOverride;
     }
 
     // CRITICAL FIX: Convert nested media.previewMetadata updates to dot notation

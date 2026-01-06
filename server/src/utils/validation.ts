@@ -34,6 +34,9 @@ const mediaSchema = z.object({
   showInMasonry: z.boolean().optional(),
   // Masonry tile title (optional, max 80 characters, single-line)
   masonryTitle: z.string().max(80, 'Masonry title must be 80 characters or less').optional(),
+  // Metadata override flag: true when user explicitly edits caption/title
+  // This allows intentional overrides of YouTube titles and other metadata
+  allowMetadataOverride: z.boolean().optional(),
 }).optional().nullable();
 
 // Schema for primary media (same structure as media but separate field)
@@ -55,15 +58,24 @@ const supportingMediaItemSchema = z.object({
   masonryTitle: z.string().max(80, 'Masonry title must be 80 characters or less').optional(),
 });
 
-const supportingMediaSchema = z.array(supportingMediaItemSchema).optional();
+// Coerce null/undefined to empty array for supportingMedia
+// Use preprocess to handle null/undefined before validation
+const supportingMediaSchema = z.preprocess(
+  (val) => Array.isArray(val) ? val : [],
+  z.array(supportingMediaItemSchema)
+).optional();
 
 // Schema for document object
-const documentSchema = z.object({
-  title: z.string(),
-  url: z.string(),
-  type: z.string(),
-  size: z.string(),
-}).array().optional();
+// Coerce null/undefined to empty array
+const documentSchema = z.preprocess(
+  (val) => Array.isArray(val) ? val : [],
+  z.object({
+    title: z.string(),
+    url: z.string(),
+    type: z.string(),
+    size: z.string(),
+  }).array()
+).optional();
 
 // Base schema for article creation/updates (without refinement)
 const baseArticleSchema = z.object({
@@ -77,7 +89,12 @@ const baseArticleSchema = z.object({
   // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds validation
   // Tags are now the only classification field
   publishedAt: z.string().optional(),
-  tags: z.array(z.string()).default([]),
+  // Coerce null/undefined to empty array for tags (defensive coding)
+  // Use preprocess to handle null/undefined before validation, then default to []
+  tags: z.preprocess(
+    (val) => Array.isArray(val) ? val : [],
+    z.array(z.string())
+  ).default([]),
   readTime: z.number().optional(),
   visibility: z.enum(['public', 'private']).default('public'),
   // Media and attachment fields
@@ -85,14 +102,26 @@ const baseArticleSchema = z.object({
   // Primary and supporting media (computed fields, but can be explicitly set)
   primaryMedia: primaryMediaSchema,
   supportingMedia: supportingMediaSchema,
-  images: z.array(z.string()).optional(),
+  // Coerce null/undefined to empty array for images (defensive coding)
+  images: z.preprocess(
+    (val) => Array.isArray(val) ? val : [],
+    z.array(z.string())
+  ).optional(),
   documents: documentSchema,
   source_type: z.string().optional(),
   // Cloudinary media tracking (array of MongoDB Media ObjectIds)
-  mediaIds: z.array(z.string()).optional(),
+  // Coerce null/undefined to empty array for mediaIds (defensive coding)
+  mediaIds: z.preprocess(
+    (val) => Array.isArray(val) ? val : [],
+    z.array(z.string())
+  ).optional(),
   // Legacy fields
   video: z.string().optional(),
-  themes: z.array(z.string()).optional(),
+  // Coerce null/undefined to empty array for themes (defensive coding)
+  themes: z.preprocess(
+    (val) => Array.isArray(val) ? val : [],
+    z.array(z.string())
+  ).optional(),
   // Display author (for aliases)
   displayAuthor: z.object({
     name: z.string(),
