@@ -445,24 +445,24 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Mobile/Tablet Layout (<lg) - Refactored with justify-between */}
         <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full flex lg:hidden items-center justify-between`}>
-          {/* Far Left: Hamburger Menu */}
+          {/* Far Left: Hamburger Menu - Compact styling */}
           <div className="flex items-center shrink-0">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
               aria-label="Open Menu"
             >
-              <Menu size={16} />
+              <Menu size={18} />
             </button>
           </div>
 
           {/* Middle Group: View Mode Buttons, Search, Create, Theme Toggle */}
-          <div className="flex items-center gap-3 md:gap-4 shrink-0">
-            {/* View mode buttons - Grid and Masonry grouped */}
-            <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-100">
+          <div className="flex items-center gap-2 sm:gap-2 md:gap-3 shrink-0">
+            {/* View mode buttons - Grid and Masonry grouped - Compact mobile styling */}
+            <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-100">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded-md transition-all ${
                   viewMode === 'grid'
                     ? 'bg-white text-gray-900'
                     : 'text-gray-500 hover:text-gray-700'
@@ -470,11 +470,11 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Grid View"
                 aria-label="Grid View"
               >
-                <LayoutGrid size={16} />
+                <LayoutGrid size={18} />
               </button>
               <button
                 onClick={() => setViewMode('masonry')}
-                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded-md transition-all ${
                   viewMode === 'masonry'
                     ? 'bg-white text-gray-900'
                     : 'text-gray-500 hover:text-gray-700'
@@ -482,40 +482,40 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Masonry View"
                 aria-label="Masonry View"
               >
-                <Columns size={16} />
+                <Columns size={18} />
               </button>
             </div>
 
-            {/* Search icon button - Mobile & Tablet */}
+            {/* Search icon button - Mobile & Tablet - Compact styling */}
             <button
               onClick={() => setIsMobileSearchOpen(true)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
               aria-label="Search"
             >
-              <Search size={16} />
+              <Search size={18} />
             </button>
 
-            {/* Create button */}
+            {/* Create button - Compact styling */}
             <button
               onClick={withAuth(onCreateNugget)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-700 hover:text-gray-900 transition-colors"
               aria-label="Create Nugget"
             >
-              <Sparkles size={16} strokeWidth={2.5} className="text-yellow-500" fill="currentColor" />
+              <Sparkles size={18} strokeWidth={2} className="text-yellow-500" fill="currentColor" />
             </button>
 
-            {/* Theme toggle */}
+            {/* Theme toggle - Compact styling */}
             <button
               onClick={toggleTheme}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
               title="Toggle Theme"
               aria-label="Toggle Theme"
             >
-              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+              {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           </div>
 
-          {/* Far Right: Avatar/Login - Fully right-aligned */}
+          {/* Far Right: Avatar/Login - Fully right-aligned - Compact styling */}
           <div className="flex items-center shrink-0">
             {isAuthenticated ? (
               <button
@@ -538,10 +538,10 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <button
                 onClick={() => openAuthModal('login')}
-                className="min-h-[44px] min-w-[44px] p-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center"
+                className="min-h-[44px] min-w-[44px] px-2 py-1 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center"
                 aria-label="Sign In"
               >
-                <LogIn size={16} />
+                <LogIn size={18} />
               </button>
             )}
           </div>
