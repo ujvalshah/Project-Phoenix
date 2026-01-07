@@ -70,6 +70,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Unified image management hook (Phase 9: Legacy code removed)
   const imageManager = useImageManager(mode, initialData);
+  
+  // Store syncFromArticle in ref to avoid dependency on imageManager object
+  // syncFromArticle is stable (useCallback with []), so ref update is safe
+  const syncFromArticleRef = useRef(imageManager.syncFromArticle);
+  syncFromArticleRef.current = imageManager.syncFromArticle; // Update ref on every render (function is stable)
 
   // Ref to track if form has been initialized from initialData (prevents re-initialization)
   const initializedFromDataRef = useRef<string | null>(null);
@@ -219,13 +224,26 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Sync imageManager when initialData changes (for edit mode)
   // This ensures the hook stays in sync if the article data is updated externally
+  // FIX: Use ref to track last synced article ID to prevent infinite loops
+  const lastSyncedArticleIdRef = useRef<string | null>(null);
+  
   useEffect(() => {
-    if (mode === 'edit' && initialData && initializedFromDataRef.current === initialData.id) {
-      // Only sync if we've already initialized this article (to avoid double initialization)
-      // The main initialization happens in the useEffect above
-      imageManager.syncFromArticle(initialData);
+    if (mode === 'edit' && initialData) {
+      const articleId = initialData.id;
+      
+      // Only sync if:
+      // 1. We've already initialized this article (to avoid double initialization)
+      // 2. This is a different article than last synced (prevents loops)
+      if (initializedFromDataRef.current === articleId && 
+          lastSyncedArticleIdRef.current !== articleId) {
+        syncFromArticleRef.current(initialData);
+        lastSyncedArticleIdRef.current = articleId;
+      }
+    } else if (mode === 'create') {
+      // Reset on create mode
+      lastSyncedArticleIdRef.current = null;
     }
-  }, [mode, initialData, imageManager]);
+  }, [mode, initialData?.id]); // Only depend on stable primitive values, not objects
 
   // Focus trap and initial focus when modal opens
   useEffect(() => {
@@ -874,9 +892,21 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // Handle Masonry media toggle
   const handleMasonryMediaToggle = (itemId: string, showInMasonry: boolean) => {
     // Delegate to imageManager (Phase 9: Legacy code removed)
-    const item = masonryMediaItems.find(m => m.id === itemId);
+    // Try to find by ID first
+    let item = masonryMediaItems.find(m => m.id === itemId);
+    
+    // If not found, try to find by URL (fallback for edge cases)
+    if (!item) {
+      // itemId might be a URL in some cases
+      item = masonryMediaItems.find(m => m.url === itemId || m.id === itemId);
+    }
+    
     if (item?.url) {
       imageManager.toggleMasonry(item.url, showInMasonry);
+    } else {
+      console.warn('[MasonryToggle] Could not find item to toggle:', itemId, {
+        availableItems: masonryMediaItems.map(m => ({ id: m.id, url: m.url })),
+      });
     }
   };
 
@@ -991,11 +1021,13 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
    */
 
   // Populate masonryMediaItems in Create mode from attachments and URLs
+  // FIX: Sync images to imageManager so toggles work and persist
   useEffect(() => {
     // Only populate in Create mode (Edit mode uses collectMasonryMediaItems from initialData)
     if (mode !== 'create') return;
 
-    const items: MasonryMediaItem[] = [];
+    // Clear existing images first (reset when attachments/URLs change)
+    imageManager.clearAll();
     
     // Determine primary media using same logic as submission (getPrimaryUrl)
     // Priority: first non-image URL that should fetch metadata > first URL > first image attachment
@@ -1020,80 +1052,75 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     const primaryUrl = primaryUrlFromUrls || imageAttachments[0]?.secureUrl || null;
     const primaryUrlType = primaryUrl ? detectProviderFromUrl(primaryUrl) : null;
     
-    // 1. Primary media (SELECTED by default in Create mode, but NOT locked)
     // CREATE MODE DEFAULT BEHAVIOR:
     // - Primary media defaults to showInMasonry: true (selected by default)
-    // - Primary media is NOT locked (isLocked: false) - user can unselect it
+    // - Primary media is NOT locked - user can unselect it
     // - If user unselects primary media, nugget won't appear in Masonry (no fallback)
     // - Supporting media remain opt-in (default to false)
+    
+    // 1. Add primary media
     if (primaryUrl) {
-      items.push({
-        id: 'primary',
-        type: (primaryUrlType || 'image') as MediaType,
-        url: primaryUrl,
-        thumbnail: primaryUrl,
-        source: 'primary',
+      imageManager.addImage(primaryUrl, 'primary', {
         showInMasonry: true, // Selected by default in Create mode
-        isLocked: false, // NOT locked - user can unselect if they don't want nugget in Masonry
-        masonryTitle: '', // Default empty, user can set
+        type: (primaryUrlType || 'image') as MediaType,
+        thumbnail: primaryUrl,
       });
     }
     
-    // 2. Additional image URLs (supporting media)
-    imageUrls.forEach((url, index) => {
+    // 2. Add supporting image URLs
+    imageUrls.forEach((url) => {
       // Skip if this is the primary media
       if (url === primaryUrl) return;
       
-      items.push({
-        id: `url-image-${index}`,
-        type: 'image',
-        url: url,
-        thumbnail: url,
-        source: 'supporting',
+      imageManager.addImage(url, 'url-input', {
         showInMasonry: false, // Default to false, user can opt-in
-        isLocked: false,
-        masonryTitle: '', // Default empty
+        type: 'image',
+        thumbnail: url,
       });
     });
     
-    // 3. Additional non-image URLs (supporting media)
-    nonImageUrls.forEach((url, index) => {
+    // 3. Add supporting non-image URLs
+    nonImageUrls.forEach((url) => {
       // Skip if this is the primary media
       if (url === primaryUrl) return;
       
       const urlType = detectProviderFromUrl(url);
-      items.push({
-        id: `url-${urlType}-${index}`,
+      imageManager.addImage(url, 'url-input', {
+        showInMasonry: false, // Default to false, user can opt-in
         type: urlType as MediaType,
-        url: url,
-        thumbnail: undefined,
-        source: 'supporting',
-        showInMasonry: false, // Default to false, user can opt-in
-        isLocked: false,
-        masonryTitle: '', // Default empty
       });
     });
     
-    // 4. Image attachments (supporting media)
-    imageAttachments.forEach((att, index) => {
-      // Skip if this is the primary media
-      if (att.secureUrl === primaryUrl) return;
+    // 4. Add image attachments (supporting media)
+    imageAttachments.forEach((att) => {
+      const url = att.secureUrl || att.previewUrl;
+      // Skip if this is the primary media or if URL is not available
+      if (!url || url === primaryUrl) return;
       
-      items.push({
-        id: `attachment-image-${index}`,
-        type: 'image',
-        url: att.secureUrl || att.previewUrl,
-        thumbnail: att.secureUrl || att.previewUrl,
-        source: 'supporting',
+      imageManager.addImage(url, 'upload', {
         showInMasonry: false, // Default to false, user can opt-in
-        isLocked: false,
-        masonryTitle: '', // Default empty
+        type: 'image',
+        mediaId: att.mediaId,
+        thumbnail: url,
       });
     });
     
-    // Masonry items are now managed by imageManager (Phase 9: Legacy code removed)
-    // The imageManager automatically derives masonryItems from existing images
-  }, [mode, urls, attachments]);
+    // Masonry items are now managed by imageManager
+    // The imageManager automatically derives masonryItems from state.images
+    
+    // Debug logging (temporary - remove after validation)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[CreateNuggetModal] Images synced to imageManager:', {
+        totalImages: imageManager.allImages.length,
+        masonryItems: imageManager.masonryItems.length,
+        masonryItemIds: imageManager.masonryItems.map(m => ({ 
+          id: m.id, 
+          url: m.url, 
+          showInMasonry: m.showInMasonry 
+        })),
+      });
+    }
+  }, [mode, urls, attachments]); // Removed imageManager from dependencies - methods are stable via useCallback
 
   // AI summarize handler removed - AI creation system has been fully removed
 
@@ -1191,6 +1218,22 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             }
             
             // Build payload using shared normalizeArticleInput
+            // FIX: Read masonryMediaItems fresh from imageManager to ensure current toggle state
+            const currentMasonryItems = imageManager.masonryItems;
+            
+            // Debug logging to verify masonry state
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[CreateNuggetModal] Edit submit - masonry state:', {
+                masonryItemsCount: currentMasonryItems.length,
+                selectedItems: currentMasonryItems.filter(m => m.showInMasonry).map(m => ({
+                  id: m.id,
+                  url: m.url,
+                  showInMasonry: m.showInMasonry,
+                  masonryTitle: m.masonryTitle,
+                })),
+              });
+            }
+            
             const normalizedInput = await normalizeArticleInput(
                 {
                     title: finalTitle,
@@ -1209,7 +1252,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         type: att.type,
                     })),
                     customDomain,
-                    masonryMediaItems,
+                    masonryMediaItems: currentMasonryItems, // Use fresh data from imageManager
                     customCreatedAt: customCreatedAt || null,
                     isAdmin,
                     // Edit mode specific
@@ -1432,6 +1475,22 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             }
         }
 
+        // FIX: Read masonryMediaItems fresh from imageManager to ensure current toggle state
+        const currentMasonryItems = imageManager.masonryItems;
+        
+        // Debug logging to verify masonry state
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[CreateNuggetModal] Create submit - masonry state:', {
+            masonryItemsCount: currentMasonryItems.length,
+            selectedItems: currentMasonryItems.filter(m => m.showInMasonry).map(m => ({
+              id: m.id,
+              url: m.url,
+              showInMasonry: m.showInMasonry,
+              masonryTitle: m.masonryTitle,
+            })),
+          });
+        }
+        
         const normalized = await normalizeArticleInput(
             {
                 title: finalTitle,
@@ -1446,7 +1505,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 mediaIds,
                 uploadedDocs,
                 customDomain,
-                masonryMediaItems,
+                masonryMediaItems: currentMasonryItems, // Use fresh data from imageManager
                 customCreatedAt,
                 isAdmin,
             },

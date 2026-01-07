@@ -324,8 +324,8 @@ export function useImageManager(
   const masonryItems = useMemo((): MasonryMediaItem[] => {
     return state.images
       .filter((img) => img.status === 'active')
-      .map((img, index) => ({
-        id: img.source === 'primary' ? 'primary' : `${img.source}-${index}`,
+      .map((img) => ({
+        id: img.id, // Use stable image ID (based on URL hash) instead of index-based ID
         type: img.type,
         url: img.url,
         thumbnail: img.thumbnail,
@@ -556,12 +556,40 @@ export function useImageManager(
         (img) => !prev.explicitlyDeleted.has(img.normalizedUrl)
       );
 
+      // IDEMPOTENCY CHECK: If images haven't changed, don't update state
+      // Compare normalized URLs to detect actual changes
+      const currentNormalizedUrls = new Set(
+        prev.images
+          .filter(img => img.status === 'active')
+          .map(img => img.normalizedUrl)
+      );
+      const newNormalizedUrls = new Set(
+        filteredImages.map(img => img.normalizedUrl)
+      );
+
+      // Check if sets are equal (same images)
+      const imagesUnchanged = 
+        currentNormalizedUrls.size === newNormalizedUrls.size &&
+        [...currentNormalizedUrls].every(url => newNormalizedUrls.has(url));
+
+      // If images are unchanged and already initialized, return prev state (no update)
+      if (imagesUnchanged && prev.isInitialized) {
+        if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+          console.log('[useImageManager] syncFromArticle: No changes detected, skipping update', {
+            articleId: article.id,
+            imageCount: filteredImages.length,
+          });
+        }
+        return prev; // No state update = no re-render
+      }
+
       if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
         console.log('[useImageManager] syncFromArticle:', {
           articleId: article.id,
           totalImages: newImages.length,
           afterFiltering: filteredImages.length,
           explicitlyDeleted: Array.from(prev.explicitlyDeleted),
+          imagesChanged: !imagesUnchanged,
         });
       }
 
@@ -600,14 +628,17 @@ export function useImageManager(
     return state.explicitlyDeleted.has(normalizedUrl);
   }, [state.explicitlyDeleted]);
 
-  return {
-    // Derived state
+  // Memoize return object to ensure stability across renders
+  // This prevents infinite loops when used in useEffect dependencies
+  // Functions are stable (useCallback), derived values update when state changes
+  return useMemo(() => ({
+    // Derived state (computed via useMemo above)
     existingImages,
     masonryItems,
     uploadedImageUrls,
     allImages,
 
-    // Actions
+    // Actions (all stable via useCallback with [] deps)
     addImage,
     deleteImage,
     confirmDeletion,
@@ -617,13 +648,34 @@ export function useImageManager(
     syncFromArticle,
     clearAll,
 
-    // State queries
+    // State queries (stable functions, but return values may change)
     isDeleting,
     isExplicitlyDeleted,
     hasChanges,
     isInitialized: state.isInitialized,
     explicitlyDeletedUrls: state.explicitlyDeleted,
-  };
+  }), [
+    // Dependencies: derived values (update when state.images changes) + stable functions
+    existingImages,
+    masonryItems,
+    uploadedImageUrls,
+    allImages,
+    // Functions are stable (useCallback), but include for completeness
+    addImage,
+    deleteImage,
+    confirmDeletion,
+    rollbackDeletion,
+    toggleMasonry,
+    setMasonryTitle,
+    syncFromArticle,
+    clearAll,
+    isDeleting,
+    isExplicitlyDeleted,
+    hasChanges,
+    // State values that are exposed directly
+    state.isInitialized,
+    state.explicitlyDeleted,
+  ]);
 }
 
 /**

@@ -627,24 +627,33 @@ async function buildSupportingMediaEdit(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
 ): Promise<{ supportingMedia?: any[] }> {
-  const { masonryMediaItems, existingSupportingMedia } = input;
+  const { masonryMediaItems, existingSupportingMedia, existingImages } = input;
   const { enrichMediaItemIfNeeded } = options;
-  
-  // If no existing supportingMedia, return empty (no structural changes)
-  if (!existingSupportingMedia || existingSupportingMedia.length === 0) {
-    return {};
-  }
   
   if (!enrichMediaItemIfNeeded) {
     // If enrichment function not provided, return empty
     return {};
   }
   
+  // Normalize URL helper for comparison
+  const normalizeUrl = (url: string) => url.toLowerCase().trim();
+  
+  // Track which URLs are already in existingSupportingMedia
+  const existingSupportingUrls = new Set(
+    (existingSupportingMedia || []).map(media => media.url ? normalizeUrl(media.url) : '').filter(Boolean)
+  );
+  
   // Process existing supportingMedia items and update their showInMasonry flags
-  // This is the ONLY structural change allowed - updating flags on existing items
+  // FIX: Match items by URL instead of index-based ID (IDs are now URL-based hashes)
   const normalizedSupportingMedia = await Promise.all(
-    existingSupportingMedia.map(async (media, index) => {
-      const item = masonryMediaItems.find(item => item.id === `supporting-${index}`);
+    (existingSupportingMedia || []).map(async (media) => {
+      // Match by URL (normalized) since IDs are now URL-based hashes, not index-based
+      const mediaUrl = media.url;
+      const item = mediaUrl 
+        ? masonryMediaItems.find(item => {
+            return normalizeUrl(item.url) === normalizeUrl(mediaUrl);
+          })
+        : null;
       
       // Enrich if previewMetadata is missing
       const enriched = await enrichMediaItemIfNeeded(media);
@@ -662,6 +671,48 @@ async function buildSupportingMediaEdit(
       return enriched;
     })
   );
+  
+  // FIX: Also add new items from masonryMediaItems that have showInMasonry: true
+  // but aren't in existingSupportingMedia (e.g., images from images[] array)
+  const newMasonryItems = masonryMediaItems.filter(item => {
+    // Only non-primary items that are selected for masonry
+    if (item.source === 'primary' || !item.showInMasonry) return false;
+    
+    // Skip if already in existingSupportingMedia
+    const itemUrlNormalized = normalizeUrl(item.url);
+    return !existingSupportingUrls.has(itemUrlNormalized);
+  });
+  
+  // Add new masonry items to supportingMedia
+  if (newMasonryItems.length > 0) {
+    const newItems = await Promise.all(
+      newMasonryItems.map(async (item) => {
+        const baseMedia = {
+          type: item.type,
+          url: item.url,
+          thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
+          showInMasonry: item.showInMasonry,
+          masonryTitle: item.masonryTitle || undefined,
+        };
+        
+        // Enrich with previewMetadata if missing
+        const enriched = await enrichMediaItemIfNeeded(baseMedia);
+        
+        // Ensure items marked for Masonry have previewMetadata
+        if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
+          enriched.previewMetadata = {
+            url: enriched.url,
+            imageUrl: enriched.type === 'image' ? enriched.url : undefined,
+            mediaType: enriched.type || 'image',
+          };
+        }
+        
+        return enriched;
+      })
+    );
+    
+    normalizedSupportingMedia.push(...newItems);
+  }
   
   return {
     supportingMedia: normalizedSupportingMedia.length > 0 ? normalizedSupportingMedia : undefined,
