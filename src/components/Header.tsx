@@ -1,7 +1,7 @@
 // NOTE: Do not add multiple React imports in this file.
 // Consolidate all hooks into the single import below.
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, Globe, FileText, Lock, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search } from 'lucide-react';
+import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, Globe, FileText, Lock, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, MoreHorizontal, Clock } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom'; // Still needed for NavigationDrawer
 import { Avatar } from './shared/Avatar';
@@ -51,6 +51,8 @@ export const Header: React.FC<HeaderProps> = ({
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   
   // Filter state
   const [filterState, setFilterState] = useState<FilterState>({
@@ -60,10 +62,21 @@ export const Header: React.FC<HeaderProps> = ({
     timeRange: 'all',
   });
   
+  // Recent searches state
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('recent_searches');
+      return stored ? JSON.parse(stored) : [];
+    }
+    return [];
+  });
+  
   // Dropdown anchor refs - DropdownPortal handles positioning
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
+  const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   
   const location = useLocation();
   const { currentUser, isAuthenticated, openAuthModal, logout } = useAuth();
@@ -85,34 +98,98 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  // Save search to recent searches
+  const saveRecentSearch = (query: string) => {
+    if (!query.trim()) return;
+    const trimmed = query.trim();
+    const updated = [trimmed, ...recentSearches.filter(s => s !== trimmed)].slice(0, 5);
+    setRecentSearches(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('recent_searches', JSON.stringify(updated));
+    }
+  };
+
+  // Handle search query change
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value.trimStart());
+  };
+
+  // Handle search submit
+  const handleSearchSubmit = (query: string, closeMobileOverlay = true) => {
+    if (query.trim()) {
+      saveRecentSearch(query);
+      setSearchQuery(query.trim());
+    }
+    if (closeMobileOverlay) {
+      setIsMobileSearchOpen(false);
+    }
+  };
+
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Search shortcut (⌘K / Ctrl+K)
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        const searchInput = document.querySelector('input[type="text"][placeholder*="Search"]') as HTMLInputElement;
-        if (searchInput) {
-          searchInput.focus();
+        // On mobile, open search overlay; on desktop, focus search input
+        if (window.innerWidth < 768) {
+          setIsMobileSearchOpen(true);
+        } else {
+          const searchInput = document.querySelector('input[type="text"][placeholder*="Search"]') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+          }
         }
       }
-      // Escape to close dropdowns
+      // Escape to close dropdowns and mobile search
       if (e.key === 'Escape') {
-        if (isSortOpen) setIsSortOpen(false);
-        if (isUserMenuOpen) setIsUserMenuOpen(false);
-        if (isFilterPopoverOpen) setIsFilterPopoverOpen(false);
+        if (isMobileSearchOpen) {
+          setIsMobileSearchOpen(false);
+        } else if (isSortOpen) setIsSortOpen(false);
+        else if (isUserMenuOpen) setIsUserMenuOpen(false);
+        else if (isFilterPopoverOpen) setIsFilterPopoverOpen(false);
+        else if (isMoreMenuOpen) setIsMoreMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-            }, [isSortOpen, isUserMenuOpen, isFilterPopoverOpen]);
+  }, [isSortOpen, isUserMenuOpen, isFilterPopoverOpen, isMobileSearchOpen, isMoreMenuOpen]);
+
+  // Auto-focus mobile search input when overlay opens
+  useEffect(() => {
+    if (isMobileSearchOpen && mobileSearchInputRef.current) {
+      setTimeout(() => {
+        mobileSearchInputRef.current?.focus();
+      }, 100);
+    }
+  }, [isMobileSearchOpen]);
+
+  // Check if filters or sort are active
+  const hasActiveFilters = selectedCategories.length > 0 || 
+    filterState.favorites || 
+    filterState.unread || 
+    filterState.formats.length > 0 || 
+    filterState.timeRange !== 'all';
+
+  // Track window size for tablet detection
+  const [isTablet, setIsTablet] = useState(false);
+  
+  useEffect(() => {
+    const checkTablet = () => {
+      setIsTablet(window.innerWidth >= 768 && window.innerWidth < 1024);
+    };
+    checkTablet();
+    window.addEventListener('resize', checkTablet);
+    return () => window.removeEventListener('resize', checkTablet);
+  }, []);
 
   return (
     <>
       {/* Power User Header - Full-bleed, unified with category bar */}
       {/* No bottom border - category bar provides the visual separation */}
       <header className={`fixed top-0 left-0 right-0 w-full pt-[env(safe-area-inset-top)] bg-white ${LAYOUT_CLASSES.HEADER_HEIGHT}`} style={{ zIndex: Z_INDEX.HEADER }}>
-        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full flex items-center gap-3`}>
+        {/* Desktop Layout (lg+) - Original layout preserved */}
+        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full hidden lg:flex items-center gap-3`}>
           {/* Left: Menu + Logo + Navigation */}
           <div className="flex items-center gap-3 min-w-0 shrink-0">
             <button
@@ -123,14 +200,15 @@ export const Header: React.FC<HeaderProps> = ({
               <Menu size={16} />
             </button>
 
-            <Link to="/" className="flex items-center justify-center shrink-0">
+            <Link to="/" className="flex items-center justify-center shrink-0" aria-label="Home">
               <div className="w-8 h-8 bg-yellow-400 rounded-lg flex items-center justify-center text-gray-900 font-bold text-sm">
                 N
               </div>
             </Link>
 
+            {/* Desktop Navigation (lg+) */}
             <nav 
-              className="bg-gray-100 rounded-lg p-1 flex gap-1 overflow-x-auto no-scrollbar-visual min-w-0 shrink-0" 
+              className="bg-gray-100 rounded-lg p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 shrink-0" 
               role="navigation"
               aria-label="Main navigation"
             >
@@ -184,10 +262,11 @@ export const Header: React.FC<HeaderProps> = ({
                 </Link>
               )}
             </nav>
+
           </div>
 
-          {/* Center: Search */}
-          <div className="flex-1 flex items-center justify-center min-w-0">
+          {/* Center: Search - Desktop (lg+) */}
+          <div className="hidden lg:flex flex-1 items-center justify-center min-w-0">
             <div className="relative w-full max-w-2xl min-w-0">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                 <Search size={16} />
@@ -196,8 +275,13 @@ export const Header: React.FC<HeaderProps> = ({
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value.trimStart())}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 onBlur={(e) => setSearchQuery(e.target.value.trim())}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSearchSubmit(searchQuery, false);
+                  }
+                }}
                 placeholder="Search..."
                 className="w-full h-9 pl-10 pr-28 text-sm font-medium bg-gray-50 border border-gray-100 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all"
                 aria-label="Search"
@@ -221,33 +305,15 @@ export const Header: React.FC<HeaderProps> = ({
                     setIsFilterPopoverOpen(!isFilterPopoverOpen);
                   }}
                   className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all relative ${
-                    isFilterPopoverOpen || 
-                    selectedCategories.length > 0 || 
-                    filterState.favorites || 
-                    filterState.unread || 
-                    filterState.formats.length > 0 || 
-                    filterState.timeRange !== 'all'
+                    isFilterPopoverOpen || hasActiveFilters
                       ? 'text-yellow-500 bg-yellow-50'
                       : 'text-gray-400 hover:text-gray-600'
                   }`}
                   aria-label="Filter"
                   title="Filter"
                 >
-                  <Filter size={16} fill={
-                    isFilterPopoverOpen || 
-                    selectedCategories.length > 0 || 
-                    filterState.favorites || 
-                    filterState.unread || 
-                    filterState.formats.length > 0 || 
-                    filterState.timeRange !== 'all'
-                      ? "currentColor" 
-                      : "none"
-                  } />
-                  {(selectedCategories.length > 0 || 
-                    filterState.favorites || 
-                    filterState.unread || 
-                    filterState.formats.length > 0 || 
-                    filterState.timeRange !== 'all') && (
+                  <Filter size={16} fill={isFilterPopoverOpen || hasActiveFilters ? "currentColor" : "none"} />
+                  {hasActiveFilters && (
                     <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-gray-400 text-white text-[9px] rounded-full flex items-center justify-center font-medium">
                       {selectedCategories.length + 
                         (filterState.favorites ? 1 : 0) + 
@@ -274,15 +340,19 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Right: Tools Cluster */}
+
+          {/* Right: Tools Cluster - Desktop */}
           <div className="flex items-center justify-end gap-2 min-w-0 shrink-0">
+            {/* Create button */}
             <button
               onClick={withAuth(onCreateNugget)}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              aria-label="Create Nugget"
             >
               <Sparkles size={16} strokeWidth={2.5} className="text-yellow-500" fill="currentColor" />
             </button>
 
+            {/* View mode buttons - Desktop only (lg+) */}
             <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-100">
               <button
                 onClick={() => setViewMode('grid')}
@@ -292,6 +362,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
                 title="Grid View"
+                aria-label="Grid View"
               >
                 <LayoutGrid size={16} />
               </button>
@@ -303,6 +374,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
                 title="Masonry View"
+                aria-label="Masonry View"
               >
                 <Columns size={16} />
               </button>
@@ -314,20 +386,23 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
                 title="Utility View"
+                aria-label="Utility View"
               >
                 <List size={16} />
               </button>
             </div>
 
+            {/* Fullscreen button */}
             <button
               onClick={toggleFullScreen}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors flex"
               title="Toggle Fullscreen"
               aria-label="Toggle Fullscreen"
             >
               <Maximize size={16} />
             </button>
 
+            {/* Theme toggle */}
             <button
               onClick={toggleTheme}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
@@ -337,6 +412,7 @@ export const Header: React.FC<HeaderProps> = ({
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
+            {/* Avatar/Login */}
             {isAuthenticated ? (
               <button
                 ref={avatarButtonRef}
@@ -344,8 +420,9 @@ export const Header: React.FC<HeaderProps> = ({
                   e.stopPropagation();
                   setIsUserMenuOpen(!isUserMenuOpen);
                 }}
-                className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors"
+                className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                 aria-label="User menu"
+                aria-expanded={isUserMenuOpen}
               >
                 <Avatar 
                   name={currentUser?.name || 'User'} 
@@ -357,7 +434,112 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <button
                 onClick={() => openAuthModal('login')}
-                className="p-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                className="min-h-[44px] min-w-[44px] p-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center"
+                aria-label="Sign In"
+              >
+                <LogIn size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile/Tablet Layout (<lg) - Refactored with justify-between */}
+        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full flex lg:hidden items-center justify-between`}>
+          {/* Far Left: Hamburger Menu */}
+          <div className="flex items-center shrink-0">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              aria-label="Open Menu"
+            >
+              <Menu size={16} />
+            </button>
+          </div>
+
+          {/* Middle Group: View Mode Buttons, Search, Create, Theme Toggle */}
+          <div className="flex items-center gap-3 md:gap-4 shrink-0">
+            {/* View mode buttons - Grid and Masonry grouped */}
+            <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-100">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
+                  viewMode === 'grid'
+                    ? 'bg-white text-gray-900'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                title="Grid View"
+                aria-label="Grid View"
+              >
+                <LayoutGrid size={16} />
+              </button>
+              <button
+                onClick={() => setViewMode('masonry')}
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
+                  viewMode === 'masonry'
+                    ? 'bg-white text-gray-900'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                title="Masonry View"
+                aria-label="Masonry View"
+              >
+                <Columns size={16} />
+              </button>
+            </div>
+
+            {/* Search icon button - Mobile & Tablet */}
+            <button
+              onClick={() => setIsMobileSearchOpen(true)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              aria-label="Search"
+            >
+              <Search size={16} />
+            </button>
+
+            {/* Create button */}
+            <button
+              onClick={withAuth(onCreateNugget)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              aria-label="Create Nugget"
+            >
+              <Sparkles size={16} strokeWidth={2.5} className="text-yellow-500" fill="currentColor" />
+            </button>
+
+            {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              title="Toggle Theme"
+              aria-label="Toggle Theme"
+            >
+              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
+
+          {/* Far Right: Avatar/Login - Fully right-aligned */}
+          <div className="flex items-center shrink-0">
+            {isAuthenticated ? (
+              <button
+                ref={avatarButtonRef}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsUserMenuOpen(!isUserMenuOpen);
+                }}
+                className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="User menu"
+                aria-expanded={isUserMenuOpen}
+              >
+                <Avatar 
+                  name={currentUser?.name || 'User'} 
+                  src={currentUser?.avatarUrl}
+                  size="md"
+                  className="w-8 h-8"
+                />
+              </button>
+            ) : (
+              <button
+                onClick={() => openAuthModal('login')}
+                className="min-h-[44px] min-w-[44px] p-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center"
+                aria-label="Sign In"
               >
                 <LogIn size={16} />
               </button>
@@ -485,9 +667,9 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </DropdownPortal>
 
-      {/* Filter Popover - uses DropdownPortal */}
+      {/* Filter Popover - Desktop (lg+) - uses DropdownPortal */}
       <DropdownPortal
-        isOpen={isFilterPopoverOpen}
+        isOpen={isFilterPopoverOpen && !isTablet}
         anchorRef={filterButtonRef}
         onClickOutside={() => setIsFilterPopoverOpen(false)}
         className="bg-white rounded-xl shadow-xl border border-gray-100"
@@ -518,6 +700,7 @@ export const Header: React.FC<HeaderProps> = ({
           className={`w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
             sortOrder === 'latest' ? 'bg-gray-50' : ''
           }`}
+          aria-label="Sort by Latest"
         >
           Latest
         </button>
@@ -526,10 +709,198 @@ export const Header: React.FC<HeaderProps> = ({
           className={`w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
             sortOrder === 'oldest' ? 'bg-gray-50' : ''
           }`}
+          aria-label="Sort by Oldest"
         >
           Oldest
         </button>
       </DropdownPortal>
+
+      {/* Tablet More Menu - uses DropdownPortal */}
+      <DropdownPortal
+        isOpen={isMoreMenuOpen}
+        anchorRef={moreMenuButtonRef}
+        onClickOutside={() => setIsMoreMenuOpen(false)}
+        className="w-48 bg-white rounded-lg border border-gray-100 overflow-hidden shadow-lg"
+      >
+        <div className="py-1">
+          {isAuthenticated && (
+            <Link
+              to={`/profile/${currentUser?.id || ''}`}
+              onClick={() => setIsMoreMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
+                currentPath.includes('/profile') || currentPath === '/myspace'
+                  ? 'bg-gray-50 text-gray-900'
+                  : 'text-gray-700'
+              }`}
+            >
+              <UserIcon size={16} />
+              My Space
+            </Link>
+          )}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              onClick={() => setIsMoreMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
+                currentPath.startsWith('/admin')
+                  ? 'bg-gray-50 text-gray-900'
+                  : 'text-gray-700'
+              }`}
+            >
+              <Shield size={16} />
+              Admin
+            </Link>
+          )}
+        </div>
+      </DropdownPortal>
+
+      {/* Tablet Filter+Sort Popover - uses DropdownPortal */}
+      <DropdownPortal
+        isOpen={isFilterPopoverOpen && isTablet}
+        anchorRef={filterButtonRef}
+        onClickOutside={() => setIsFilterPopoverOpen(false)}
+        className="bg-white rounded-xl shadow-xl border border-gray-100 max-w-sm"
+      >
+        <div className="p-4 space-y-4">
+          {/* Filter Section */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Filters</h3>
+            <FilterPopover
+              filters={filterState}
+              onChange={setFilterState}
+              onClear={() => {
+                setFilterState({
+                  favorites: false,
+                  unread: false,
+                  formats: [],
+                  timeRange: 'all',
+                });
+              }}
+            />
+          </div>
+          
+          {/* Sort Section */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Sort</h3>
+            <div className="space-y-1">
+              <button
+                onClick={() => { 
+                  setSortOrder('latest'); 
+                  setIsFilterPopoverOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors ${
+                  sortOrder === 'latest' ? 'bg-gray-50 text-gray-900' : 'text-gray-700'
+                }`}
+                aria-label="Sort by Latest"
+              >
+                Latest
+              </button>
+              <button
+                onClick={() => { 
+                  setSortOrder('oldest'); 
+                  setIsFilterPopoverOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors ${
+                  sortOrder === 'oldest' ? 'bg-gray-50 text-gray-900' : 'text-gray-700'
+                }`}
+                aria-label="Sort by Oldest"
+              >
+                Oldest
+              </button>
+            </div>
+          </div>
+        </div>
+      </DropdownPortal>
+
+      {/* Mobile Search Overlay */}
+      {isMobileSearchOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 bg-white z-50 flex flex-col"
+          style={{ zIndex: Z_INDEX.HEADER_OVERLAY }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Search"
+        >
+          {/* Search Bar */}
+          <div className="flex items-center gap-3 p-4 border-b border-gray-200">
+            <div className="relative flex-1">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <Search size={20} />
+              </div>
+              <input
+                ref={mobileSearchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSearchSubmit(searchQuery);
+                  } else if (e.key === 'Escape') {
+                    setIsMobileSearchOpen(false);
+                  }
+                }}
+                placeholder="Search..."
+                className="w-full h-12 pl-11 pr-12 text-base font-medium bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all"
+                aria-label="Search"
+                autoFocus
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    mobileSearchInputRef.current?.focus();
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => setIsMobileSearchOpen(false)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-500 hover:text-gray-700 transition-colors"
+              aria-label="Close search"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Recent Searches */}
+          {recentSearches.length > 0 && (
+            <div className="flex-1 overflow-y-auto hide-scrollbar-mobile p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock size={16} className="text-gray-400" />
+                <h3 className="text-sm font-semibold text-gray-700">Recent Searches</h3>
+              </div>
+              <div className="space-y-1">
+                {recentSearches.map((search, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSearchSubmit(search)}
+                    className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-3 min-h-[44px]"
+                    aria-label={`Search for ${search}`}
+                  >
+                    <Clock size={16} className="text-gray-400" />
+                    {search}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!searchQuery && recentSearches.length === 0 && (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center">
+                <Search size={48} className="mx-auto text-gray-300 mb-4" />
+                <p className="text-sm text-gray-500">Start typing to search</p>
+              </div>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
 
       <NavigationDrawer 
         isOpen={sidebarOpen} 
@@ -678,7 +1049,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
            </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+        <div className="flex-1 overflow-y-auto hide-scrollbar-mobile py-4 px-3 space-y-1">
            <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Navigation</p>
            <Link to="/" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
               <LayoutGrid size={18} /> Home

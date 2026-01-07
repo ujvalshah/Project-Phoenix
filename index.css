@@ -55,6 +55,29 @@ body {
   scrollbar-width: none;  /* Firefox */
 }
 
+/* Responsive scrollbar hiding - Mobile/Tablet only (<lg) */
+/* Hides scrollbars on mobile/tablet, shows on desktop */
+.hide-scrollbar-mobile::-webkit-scrollbar {
+  display: none;  /* WebKit browsers (Chrome, Safari, Edge) */
+}
+
+.hide-scrollbar-mobile {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Show scrollbars on desktop (lg+) */
+@media (min-width: 1024px) {
+  .hide-scrollbar-mobile::-webkit-scrollbar {
+    display: block;  /* Restore scrollbar on desktop */
+  }
+  
+  .hide-scrollbar-mobile {
+    -ms-overflow-style: auto;  /* Restore scrollbar on desktop */
+    scrollbar-width: auto;  /* Restore scrollbar on desktop */
+  }
+}
+
 /* Tag scroll container: Clean horizontal scrollbar for category tags toolbar */
 .tag-scroll-container {
   /* Single-row layout: prevent wrapping */
