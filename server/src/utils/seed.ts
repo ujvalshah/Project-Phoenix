@@ -84,11 +84,7 @@ export async function seedDatabase(): Promise<void> {
         },
         preferences: {
           theme: 'system' as const,
-          defaultVisibility: 'public' as const,
           interestedCategories: ['Tech', 'Business', 'Finance'],
-          compactMode: false,
-          richMediaPreviews: true,
-          autoFollowCollections: true,
           notifications: {
             emailDigest: true,
             productUpdates: true,
@@ -120,11 +116,7 @@ export async function seedDatabase(): Promise<void> {
         },
         preferences: {
           theme: 'system' as const,
-          defaultVisibility: 'public' as const,
           interestedCategories: ['Design', 'Lifestyle'],
-          compactMode: false,
-          richMediaPreviews: true,
-          autoFollowCollections: true,
           notifications: {
             emailDigest: true,
             productUpdates: false,

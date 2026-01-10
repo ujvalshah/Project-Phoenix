@@ -45,13 +45,9 @@ export interface UserSecurity {
 export interface UserPreferences {
   // General
   theme: ThemePreference;
-  defaultVisibility: Visibility;
   
   // Feed & Content
   interestedCategories: string[];
-  compactMode: boolean;
-  richMediaPreviews: boolean;
-  autoFollowCollections: boolean;
   
   // Notifications
   notifications: {

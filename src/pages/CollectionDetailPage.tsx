@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Collection, Article, Contributor } from '@/types';
 import { storageService } from '@/services/storageService';
-import { ArrowLeft, Folder, Users, Layers, Plus, Info } from 'lucide-react';
+import { ArrowLeft, Folder, Users, Layers, Plus, Info, Pencil, Check, X } from 'lucide-react';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { useToast } from '@/hooks/useToast';
 import { ArticleModal } from '@/components/ArticleModal';
@@ -24,6 +24,18 @@ export const CollectionDetailPage: React.FC = () => {
   const [nuggets, setNuggets] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // PHASE 5: Track nuggets length for polling comparison
+  const nuggetsRef = useRef<Article[]>([]);
+  useEffect(() => {
+    nuggetsRef.current = nuggets;
+  }, [nuggets]);
 
   // URL-driven fetching: collectionId from useParams is the ONLY fetch trigger
   // Effect depends ONLY on collectionId to prevent render loops
@@ -121,9 +133,31 @@ export const CollectionDetailPage: React.FC = () => {
 
     loadData(collectionId);
 
-    // Cleanup: mark as unmounted to prevent state updates after navigation
+    // PHASE 5: Add polling for real-time updates (poll every 30 seconds)
+    // This ensures the detail page stays in sync when entries are added/removed elsewhere
+    const pollInterval = setInterval(() => {
+      if (isMounted && collectionId) {
+        // Silently refetch collection data
+        storageService.getCollectionById(collectionId)
+          .then(col => {
+            if (col && isMounted && collectionId === col.id) {
+              setCollection(col);
+              // Refetch articles if entries changed (compare with ref to avoid stale closure)
+              if (col.entries.length !== nuggetsRef.current.length) {
+                loadData(collectionId);
+              }
+            }
+          })
+          .catch(() => {
+            // Silently fail - don't show error for background polling
+          });
+      }
+    }, 30000); // Poll every 30 seconds
+
+    // Cleanup: mark as unmounted and clear polling interval
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionId]); // Only collectionId triggers fetch - navigate and toast are stable and don't need to be in deps
@@ -135,6 +169,48 @@ export const CollectionDetailPage: React.FC = () => {
           duration: 5000
       });
   };
+
+  const handleStartEdit = () => {
+    if (collection) {
+      setEditName(collection.name || '');
+      setEditDescription(collection.description || '');
+      setIsEditing(true);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditName('');
+    setEditDescription('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!collection || !editName.trim()) {
+      toast.error('Collection name is required');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const updated = await storageService.updateCollection(collection.id, {
+        name: editName.trim(),
+        description: editDescription.trim()
+      });
+      if (updated) {
+        setCollection(updated);
+        toast.success('Collection updated');
+      }
+      setIsEditing(false);
+    } catch (e: any) {
+      const errorMessage = e?.response?.data?.message || e?.message || 'Failed to update collection';
+      toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Check if current user is the owner
+  const isOwner = collection && currentUserId === collection.creatorId;
 
   if (isLoading) {
     return (
@@ -167,16 +243,65 @@ export const CollectionDetailPage: React.FC = () => {
                     <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 ${theme.light} ${theme.text} dark:bg-slate-800`}>
                         <Folder size={32} strokeWidth={1.5} />
                     </div>
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                          {collection.name}
-                        </h1>
-                        <p className="text-gray-500 dark:text-slate-400 max-w-2xl leading-relaxed">{collection.description || "No description provided."}</p>
-                        <div className="flex items-center gap-6 mt-4 text-sm text-gray-500 dark:text-slate-400 font-medium">
-                            <span className="flex items-center gap-1.5"><Layers size={16} /> {nuggets.length} nuggets</span>
-                            <span className="flex items-center gap-1.5"><Users size={16} /> {collection.followersCount} followers</span>
-                            <span className="flex items-center gap-1.5"><Info size={16} /> Created by u1</span>
-                        </div>
+                    <div className="flex-1 min-w-0">
+                        {isEditing ? (
+                          <div className="space-y-3">
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              placeholder="Collection name"
+                              className="w-full text-2xl font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              autoFocus
+                            />
+                            <textarea
+                              value={editDescription}
+                              onChange={(e) => setEditDescription(e.target.value)}
+                              placeholder="Description (optional)"
+                              rows={2}
+                              className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-gray-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                            />
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={handleSaveEdit}
+                                disabled={isSaving || !editName.trim()}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-sm font-bold hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <Check size={14} /> {isSaving ? 'Saving...' : 'Save'}
+                              </button>
+                              <button
+                                onClick={handleCancelEdit}
+                                disabled={isSaving}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                              >
+                                <X size={14} /> Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2 mb-2">
+                              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                                {collection.name}
+                              </h1>
+                              {isOwner && (
+                                <button
+                                  onClick={handleStartEdit}
+                                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                  title="Edit collection"
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-gray-500 dark:text-slate-400 max-w-2xl leading-relaxed">{collection.description || "No description provided."}</p>
+                            <div className="flex items-center gap-6 mt-4 text-sm text-gray-500 dark:text-slate-400 font-medium">
+                              <span className="flex items-center gap-1.5"><Layers size={16} /> {nuggets.length} nuggets</span>
+                              <span className="flex items-center gap-1.5"><Users size={16} /> {collection.followersCount} followers</span>
+                              <span className="flex items-center gap-1.5"><Info size={16} /> Created by u1</span>
+                            </div>
+                          </>
+                        )}
                     </div>
                 </div>
                 <div className="flex gap-3 shrink-0 items-center">

@@ -5,6 +5,7 @@ import { storageService } from '@/services/storageService';
 import { Collection } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 
 interface AddToCollectionModalProps {
   isOpen: boolean;
@@ -26,8 +27,9 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
-  const { currentUserId } = useAuth();
+  const { currentUserId, isAuthenticated } = useAuth();
   const toast = useToast();
+  const { withAuth } = useRequireAuth();
 
   useEffect(() => {
     if (isOpen) {
@@ -56,8 +58,14 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
 
 
   const toggleCollection = async (collectionId: string, isInCollection: boolean, colName: string) => {
+    // Auth guard: require login for collection operations
+    if (!isAuthenticated) {
+      withAuth(() => {})(); // Opens login modal
+      return;
+    }
+
     setProcessingId(collectionId);
-    
+
     // Handle public collections
       // Optimistic update for all articles
       setCollections(prev => prev.map(c => {
@@ -111,6 +119,12 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
   };
 
   const createCollection = async () => {
+    // Auth guard: require login for collection operations
+    if (!isAuthenticated) {
+      withAuth(() => {})(); // Opens login modal
+      return;
+    }
+
     if (!newCollectionName.trim() || isCreating) return; // Prevent double-clicks
     setIsCreating(true);
     const folderName = newCollectionName.trim();

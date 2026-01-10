@@ -215,3 +215,4 @@ Successfully removed all deprecated AI nugget creation features, routes, helpers
 **Cleanup completed successfully. All AI creation features have been removed while preserving manual article creation, editing, and media flows.**
 
 
+

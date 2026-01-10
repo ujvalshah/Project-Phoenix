@@ -244,3 +244,4 @@ The scrollbar should now be stable and smooth during all operations (filtering, 
 
 
 
+

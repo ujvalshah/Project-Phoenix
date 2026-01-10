@@ -1,12 +1,53 @@
 import { Request, Response } from 'express';
 import { Collection } from '../models/Collection.js';
 import { Article } from '../models/Article.js';
+import { User } from '../models/User.js';
 import { normalizeDoc, normalizeDocs } from '../utils/db.js';
 import { createCollectionSchema, updateCollectionSchema, addEntrySchema, flagEntrySchema } from '../utils/validation.js';
 import { getCommunityCollections, getCommunityCollectionsCount, CollectionQueryFilters } from '../utils/collectionQueryHelpers.js';
 import { createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+
+/**
+ * PHASE 1: Helper function to check if user has permission to modify a collection
+ * Returns true if user is the creator OR user is an admin
+ */
+function canModifyCollection(collection: { creatorId: string; type: string }, userId: string | undefined, userRole: string | undefined): boolean {
+  if (!userId) return false;
+  // Admin can modify any collection
+  if (userRole === 'admin') return true;
+  // Creator can modify their own collection
+  return collection.creatorId === userId;
+}
+
+/**
+ * PHASE 1: Helper function to check if user has permission to view a collection
+ * Returns true if collection is public OR user is creator OR user is admin
+ */
+function canViewCollection(collection: { creatorId: string; type: string }, userId: string | undefined, userRole: string | undefined): boolean {
+  // Public collections are viewable by anyone
+  if (collection.type === 'public') return true;
+  if (!userId) return false;
+  // Admin can view any collection
+  if (userRole === 'admin') return true;
+  // Creator can view their own private collection
+  return collection.creatorId === userId;
+}
+
+/**
+ * PHASE 1: Helper function to check if user can add/remove entries from a collection
+ * Returns true if collection is public OR user is creator OR user is admin
+ */
+function canModifyCollectionEntries(collection: { creatorId: string; type: string }, userId: string | undefined, userRole: string | undefined): boolean {
+  if (!userId) return false;
+  // Admin can modify entries in any collection
+  if (userRole === 'admin') return true;
+  // Public collections allow anyone to add/remove entries
+  if (collection.type === 'public') return true;
+  // Private collections: only creator can modify entries
+  return collection.creatorId === userId;
+}
 
 export const getCollections = async (req: Request, res: Response) => {
   try {
@@ -15,11 +56,25 @@ export const getCollections = async (req: Request, res: Response) => {
     const searchQuery = req.query.q as string | undefined;
     const creatorId = req.query.creatorId as string | undefined;
     const includeCount = req.query.includeCount === 'true';
+    const userId = (req as any).user?.userId;
+    
+    // PHASE 1: Filter private collections - require authentication
+    // Admins can see all private collections, regular users only see their own
+    const userRole = (req as any).user?.role;
+    const isAdmin = userRole === 'admin';
+    
+    if (type === 'private' && !userId) {
+      return res.status(401).json({ message: 'Authentication required to view private collections' });
+    }
     
     // Pagination parameters (MANDATORY - no unbounded lists)
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
     const skip = (page - 1) * limit;
+    
+    // PHASE 5: Parse sort parameters from query string
+    const sortField = req.query.sortField as 'created' | 'updated' | 'followers' | 'nuggets' | 'name' | undefined;
+    const sortDirection = req.query.sortDirection as 'asc' | 'desc' | undefined;
     
     // Build filters using shared query helper
     const filters: CollectionQueryFilters = {};
@@ -29,8 +84,20 @@ export const getCollections = async (req: Request, res: Response) => {
     
     // Build MongoDB query
     const query: any = {};
-    if (type) query.type = type;
-    if (creatorId) query.creatorId = creatorId;
+    if (type === 'private') {
+      // PHASE 1: Admins can see all private collections, regular users only see their own
+      query.type = 'private';
+      if (!isAdmin) {
+        // Regular users: only their own private collections
+        query.creatorId = userId;
+      }
+      // Admins: no creatorId filter, see all private collections
+    } else {
+      // Default to public only (unless type explicitly set)
+      query.type = type || 'public';
+      // Allow creatorId filtering for public collections
+      if (creatorId) query.creatorId = creatorId;
+    }
     // SECURITY: createSearchRegex escapes user input to prevent ReDoS
     // Search by canonicalName (case-insensitive) and rawName (for display matching)
     if (searchQuery) {
@@ -43,43 +110,97 @@ export const getCollections = async (req: Request, res: Response) => {
       ];
     }
     
-    // Get collections with pagination
+    // PHASE 5: Build sort object based on sortField and sortDirection
+    const sortObj: any = {};
+    if (sortField) {
+      switch (sortField) {
+        case 'created':
+          sortObj.createdAt = sortDirection === 'asc' ? 1 : -1;
+          break;
+        case 'updated':
+          sortObj.updatedAt = sortDirection === 'asc' ? 1 : -1;
+          break;
+        case 'followers':
+          sortObj.followersCount = sortDirection === 'asc' ? 1 : -1;
+          break;
+        case 'nuggets':
+          // Note: validEntriesCount may not be indexed, but MongoDB can still sort
+          sortObj.validEntriesCount = sortDirection === 'asc' ? 1 : -1;
+          break;
+        case 'name':
+          sortObj.rawName = sortDirection === 'asc' ? 1 : -1;
+          break;
+        default:
+          sortObj.createdAt = -1; // Default sort
+      }
+    } else {
+      // Default sort by creation date descending
+      sortObj.createdAt = -1;
+    }
+    
+    // Get collections with pagination and sorting
     const [collections, total] = await Promise.all([
       Collection.find(query)
-        .sort({ createdAt: -1 })
+        .sort(sortObj)
         .skip(skip)
         .limit(limit)
         .lean(),
       Collection.countDocuments(query)
     ]);
     
-    // Audit Phase-1 Fix: Replace "load all Article IDs" with exists() checks to avoid memory exhaustion
+    // PATCH 5: Batch entry validation - replace N+1 queries with single batch query
+    // Collect all article IDs from all collections
+    const allArticleIds = new Set<string>();
+    collections.forEach(collection => {
+      collection.entries.forEach(entry => {
+        allArticleIds.add(entry.articleId);
+      });
+    });
+
+    // Single batch query to get all valid article IDs
+    const validArticleIds = new Set(
+      (await Article.find({ _id: { $in: Array.from(allArticleIds) } }).select('_id').lean())
+        .map(doc => doc._id.toString())
+    );
+
     // Process collections to validate entries and set validEntriesCount
     const validatedCollections = await Promise.all(
       collections.map(async (collection) => {
-        // Validate each entry individually using exists() instead of loading all article IDs
-        const entryValidationResults = await Promise.all(
-          collection.entries.map(async (entry) => {
-            const exists = await Article.exists({ _id: entry.articleId });
-            return exists ? entry : null;
-          })
-        );
-        const validEntries = entryValidationResults.filter((entry): entry is typeof entry & {} => entry !== null);
+        // Filter entries to only those with valid article IDs
+        const validEntries = collection.entries.filter(entry => validArticleIds.has(entry.articleId));
         
         const validCount = validEntries.length;
         
-        // If entries were filtered or validEntriesCount is missing/incorrect, update
+        // PHASE 2: If entries were filtered or validEntriesCount is missing/incorrect, update atomically
         if (validEntries.length !== collection.entries.length || 
             collection.validEntriesCount === undefined || 
             collection.validEntriesCount === null ||
             collection.validEntriesCount !== validCount) {
           
-          // Update collection with validated entries and count
-          await Collection.findByIdAndUpdate(collection._id, {
-            entries: validEntries,
-            validEntriesCount: validCount,
-            updatedAt: new Date().toISOString()
-          });
+          // PHASE 6: Log invalid entry removals for observability
+          const removedCount = collection.entries.length - validEntries.length;
+          if (removedCount > 0) {
+            const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+            requestLogger.warn({
+              msg: '[Collections] Invalid entries removed during validation',
+              collectionId: collection._id.toString(),
+              removedCount,
+              totalEntries: collection.entries.length,
+              validEntries: validCount,
+            });
+          }
+          
+          // PHASE 2: Use findOneAndUpdate for atomic update to prevent race conditions
+          // This ensures only one validation update happens at a time per collection
+          await Collection.findOneAndUpdate(
+            { _id: collection._id },
+            {
+              entries: validEntries,
+              validEntriesCount: validCount,
+              updatedAt: new Date().toISOString()
+            },
+            { new: false } // Don't need to return updated doc
+          );
           
           // Update local object for response
           collection.entries = validEntries;
@@ -118,30 +239,53 @@ export const getCollectionById = async (req: Request, res: Response) => {
     const collection = await Collection.findById(req.params.id).lean();
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
     
-    // Audit Phase-1 Fix: Replace "load all Article IDs" with exists() checks to avoid memory exhaustion
-    // Validate each entry individually using exists() instead of loading all article IDs
-    const entryValidationResults = await Promise.all(
-      collection.entries.map(async (entry) => {
-        const exists = await Article.exists({ _id: entry.articleId });
-        return exists ? entry : null;
-      })
+    // PHASE 1: Check collection access with admin override
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    if (!canViewCollection(collection, userId, userRole)) {
+      return res.status(403).json({ message: 'You do not have permission to view this collection' });
+    }
+    
+    // PATCH 5: Batch entry validation - replace N+1 queries with single batch query
+    const articleIds = collection.entries.map(entry => entry.articleId);
+    const validArticleIds = new Set(
+      (await Article.find({ _id: { $in: articleIds } }).select('_id').lean())
+        .map(doc => doc._id.toString())
     );
-    const validEntries = entryValidationResults.filter((entry): entry is typeof entry & {} => entry !== null);
+    const validEntries = collection.entries.filter(entry => validArticleIds.has(entry.articleId));
     
     const validCount = validEntries.length;
     
-    // If entries were filtered or validEntriesCount is missing/incorrect, update
+    // PHASE 2: If entries were filtered or validEntriesCount is missing/incorrect, update atomically
     if (validEntries.length !== collection.entries.length || 
         collection.validEntriesCount === undefined || 
         collection.validEntriesCount === null ||
         collection.validEntriesCount !== validCount) {
       
-      // Update collection with validated entries and count
-      await Collection.findByIdAndUpdate(req.params.id, {
-        entries: validEntries,
-        validEntriesCount: validCount,
-        updatedAt: new Date().toISOString()
-      });
+      // PHASE 6: Log invalid entry removals for observability
+      const removedCount = collection.entries.length - validEntries.length;
+      if (removedCount > 0) {
+        const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+        requestLogger.warn({
+          msg: '[Collections] Invalid entries removed during validation',
+          collectionId: req.params.id,
+          removedCount,
+          totalEntries: collection.entries.length,
+          validEntries: validCount,
+        });
+      }
+      
+      // PHASE 2: Use findOneAndUpdate for atomic update to prevent race conditions
+      // This ensures only one validation update happens at a time per collection
+      await Collection.findOneAndUpdate(
+        { _id: req.params.id },
+        {
+          entries: validEntries,
+          validEntriesCount: validCount,
+          updatedAt: new Date().toISOString()
+        },
+        { new: false } // Don't need to return updated doc
+      );
       
       // Update local object for response
       collection.entries = validEntries;
@@ -166,6 +310,12 @@ export const getCollectionById = async (req: Request, res: Response) => {
 
 export const createCollection = async (req: Request, res: Response) => {
   try {
+    // PATCH 1: Use authenticated user ID, ignore client-provided creatorId
+    const userId = (req as any).user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
     // Validate input
     const validationResult = createCollectionSchema.safeParse(req.body);
     if (!validationResult.success) {
@@ -175,11 +325,26 @@ export const createCollection = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, description, creatorId, type } = validationResult.data;
+    const { name, description, type } = validationResult.data;
+    const creatorId = userId; // USE AUTHENTICATED USER, NOT CLIENT PROVIDED
+    
+    // PHASE 4: Validate creatorId existence (even though it's the authenticated user)
+    const creatorExists = await User.exists({ _id: creatorId });
+    if (!creatorExists) {
+      const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+      requestLogger.warn({
+        msg: '[Collections] Create collection with invalid creatorId',
+        creatorId,
+      });
+      return res.status(400).json({ 
+        message: 'Invalid creator ID - user does not exist' 
+      });
+    }
+    
     const trimmedName = name.trim();
     const canonicalName = trimmedName.toLowerCase();
 
-    // Check if collection already exists by canonicalName
+    // PHASE 2: Check if collection already exists by canonicalName
     // For private collections: check per creator (same creator can't have duplicate canonicalName)
     // For public collections: check globally (anyone can't create duplicate canonicalName)
     const query: any = { canonicalName };
@@ -187,7 +352,9 @@ export const createCollection = async (req: Request, res: Response) => {
       query.creatorId = creatorId;
       query.type = 'private';
     } else {
+      // PHASE 2: Public collections require global uniqueness
       query.type = 'public';
+      // No creatorId filter - public collections must be globally unique
     }
 
     const existingCollection = await Collection.findOne(query);
@@ -222,23 +389,33 @@ export const createCollection = async (req: Request, res: Response) => {
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     
-    // Handle duplicate key error (MongoDB unique constraint on canonicalName)
+    // PHASE 2: Handle duplicate key error (MongoDB unique constraint on canonicalName)
     if (error.code === 11000) {
       // Try to find and return existing collection
       const trimmedName = (req.body.name || '').trim();
       const canonicalName = trimmedName.toLowerCase();
+      const collectionType = req.body.type || 'public';
       const query: any = { canonicalName };
-      if (req.body.type === 'private' && req.body.creatorId) {
-        query.creatorId = req.body.creatorId;
+      if (collectionType === 'private') {
+        query.creatorId = userId; // Use authenticated user ID
         query.type = 'private';
       } else {
+        // PHASE 2: Public collections require global uniqueness
         query.type = 'public';
+        // No creatorId filter for public collections
       }
       const existingCollection = await Collection.findOne(query);
       if (existingCollection) {
+        // PHASE 6: Contextual message - collection exists, return it
         return res.status(200).json(normalizeDoc(existingCollection));
       }
-      return res.status(409).json({ message: 'Collection already exists' });
+      // PHASE 6: Contextual error message indicating which field caused the conflict
+      const errorKey = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'name';
+      return res.status(409).json({ 
+        message: `A collection with this ${errorKey === 'canonicalName' ? 'name' : errorKey} already exists`,
+        code: 'DUPLICATE_COLLECTION',
+        field: errorKey
+      });
     }
     
     res.status(500).json({ message: 'Internal server error' });
@@ -247,6 +424,16 @@ export const createCollection = async (req: Request, res: Response) => {
 
 export const updateCollection = async (req: Request, res: Response) => {
   try {
+    // PHASE 1: Ownership check with admin override - verify user is creator OR admin
+    const collection = await Collection.findById(req.params.id);
+    if (!collection) return res.status(404).json({ message: 'Collection not found' });
+    
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    if (!canModifyCollection(collection, userId, userRole)) {
+      return res.status(403).json({ message: 'You do not have permission to update this collection' });
+    }
+
     // Validate input
     const validationResult = updateCollectionSchema.safeParse(req.body);
     if (!validationResult.success) {
@@ -256,20 +443,47 @@ export const updateCollection = async (req: Request, res: Response) => {
       });
     }
 
-    const updateData: any = { ...validationResult.data, updatedAt: new Date().toISOString() };
+    // FOLLOW-UP REFACTOR: Safely construct update data, excluding undefined fields (P1-18)
+    // Zod's .partial() allows undefined fields, but we don't want to explicitly set undefined
+    // Filter out undefined values to prevent unintended field clearing
+    const safeUpdateData: any = { updatedAt: new Date().toISOString() };
+    Object.keys(validationResult.data).forEach(key => {
+      const value = (validationResult.data as any)[key];
+      // Only include defined (non-undefined) values in update
+      if (value !== undefined) {
+        safeUpdateData[key] = value;
+      }
+    });
     
-    // If name is being updated, update both rawName and canonicalName
+    // creatorId is already excluded by schema, but double-check for safety
+    delete safeUpdateData.creatorId;
+    
+    const updateData = safeUpdateData;
+    
+    // PHASE 2: If name is being updated, update both rawName and canonicalName
     if (updateData.name !== undefined) {
       const trimmedName = updateData.name.trim();
       const canonicalName = trimmedName.toLowerCase();
       
-      // Check if the new canonicalName would create a duplicate
-      const existingCollection = await Collection.findOne({
+      // PHASE 2: Check if the new canonicalName would create a duplicate
+      // For private collections: check per creator
+      // For public collections: check globally (no creatorId filter)
+      const duplicateQuery: any = {
         canonicalName,
-        _id: { $ne: req.params.id }, // Exclude current collection
-        ...(updateData.type === 'private' ? { creatorId: updateData.creatorId || (await Collection.findById(req.params.id))?.creatorId } : { type: 'public' })
-      });
+        _id: { $ne: req.params.id } // Exclude current collection
+      };
       
+      const targetType = updateData.type || collection.type;
+      if (targetType === 'private') {
+        duplicateQuery.creatorId = collection.creatorId;
+        duplicateQuery.type = 'private';
+      } else {
+        // PHASE 2: Public collections require global uniqueness
+        duplicateQuery.type = 'public';
+        // No creatorId filter - public collections must be globally unique
+      }
+      
+      const existingCollection = await Collection.findOne(duplicateQuery);
       if (existingCollection) {
         return res.status(409).json({ message: 'A collection with this name already exists' });
       }
@@ -279,14 +493,14 @@ export const updateCollection = async (req: Request, res: Response) => {
       delete updateData.name; // Remove legacy name field
     }
 
-    const collection = await Collection.findByIdAndUpdate(
+    const updatedCollection = await Collection.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true, runValidators: true }
     );
     
-    if (!collection) return res.status(404).json({ message: 'Collection not found' });
-    res.json(normalizeDoc(collection));
+    if (!updatedCollection) return res.status(404).json({ message: 'Collection not found' });
+    res.json(normalizeDoc(updatedCollection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -299,9 +513,41 @@ export const updateCollection = async (req: Request, res: Response) => {
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     
-    // Handle duplicate key error
+    // PHASE 6: Handle duplicate key error with contextual message
     if (error.code === 11000) {
-      return res.status(409).json({ message: 'A collection with this name already exists' });
+      // Try to find the conflicting collection
+      const updateData = validationResult?.data || req.body;
+      if (updateData?.name) {
+        const trimmedName = updateData.name.trim();
+        const canonicalName = trimmedName.toLowerCase();
+        const targetType = updateData.type || collection?.type || 'public';
+        const duplicateQuery: any = { canonicalName };
+        
+        if (targetType === 'private') {
+          duplicateQuery.creatorId = collection?.creatorId;
+          duplicateQuery.type = 'private';
+        } else {
+          duplicateQuery.type = 'public';
+        }
+        
+        const existingCollection = await Collection.findOne(duplicateQuery);
+        if (existingCollection) {
+          // PHASE 6: Contextual error message
+          return res.status(409).json({ 
+            message: `A ${targetType} collection with this name already exists`,
+            code: 'DUPLICATE_COLLECTION_NAME',
+            field: 'name',
+            conflictingCollectionId: existingCollection._id.toString()
+          });
+        }
+      }
+      // PHASE 6: Contextual error message indicating which field caused the conflict
+      const errorKey = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'name';
+      return res.status(409).json({ 
+        message: `A collection with this ${errorKey === 'canonicalName' ? 'name' : errorKey} already exists`,
+        code: 'DUPLICATE_COLLECTION',
+        field: errorKey
+      });
     }
     
     res.status(500).json({ message: 'Internal server error' });
@@ -310,8 +556,33 @@ export const updateCollection = async (req: Request, res: Response) => {
 
 export const deleteCollection = async (req: Request, res: Response) => {
   try {
-    const collection = await Collection.findByIdAndDelete(req.params.id);
+    // PHASE 1: Ownership check with admin override - verify user is creator OR admin
+    const collection = await Collection.findById(req.params.id);
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
+    
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    if (!canModifyCollection(collection, userId, userRole)) {
+      return res.status(403).json({ message: 'You do not have permission to delete this collection' });
+    }
+
+    // PHASE 3: Cascade cleanup - remove collection references from followers
+    // Note: Followers are stored in the collection itself, so deleting the collection
+    // automatically removes them. However, if User preferences store collection references
+    // in the future, this is where we would clean them up.
+    // For now, we log the deletion for potential future cleanup needs.
+    const followersCount = collection.followers?.length || 0;
+    if (followersCount > 0) {
+      const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+      requestLogger.info({
+        msg: '[Collections] Deleting collection with followers',
+        collectionId: req.params.id,
+        followersCount,
+        // Future: Clean up user preferences if they reference this collection
+      });
+    }
+
+    await Collection.findByIdAndDelete(req.params.id);
     res.status(204).send();
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -339,20 +610,31 @@ export const addEntry = async (req: Request, res: Response) => {
       });
     }
 
-    const { articleId, userId } = validationResult.data;
-    
+    const { articleId } = validationResult.data;
+
+    // PHASE 1: Check collection access with admin override
+    const collection = await Collection.findById(req.params.id);
+    if (!collection) return res.status(404).json({ message: 'Collection not found' });
+
+    // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
+    const currentUserId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    if (!canModifyCollectionEntries(collection, currentUserId, userRole)) {
+      return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
+    }
+
     // Audit Phase-2 Fix: Validate article exists before adding to collection
     const articleExists = await Article.exists({ _id: articleId });
     if (!articleExists) {
-      return res.status(400).json({ 
-        message: `Article ${articleId} does not exist` 
+      return res.status(400).json({
+        message: `Article ${articleId} does not exist`
       });
     }
-    
+
     // Use findOneAndUpdate with $addToSet to atomically add entry if it doesn't exist
     // $addToSet prevents duplicates based on the entire object match
-    const collection = await Collection.findOneAndUpdate(
-      { 
+    const updatedCollection = await Collection.findOneAndUpdate(
+      {
         _id: req.params.id,
         'entries.articleId': { $ne: articleId } // Only update if articleId doesn't exist
       },
@@ -360,7 +642,7 @@ export const addEntry = async (req: Request, res: Response) => {
         $addToSet: {
           entries: {
             articleId,
-            addedByUserId: userId,
+            addedByUserId: currentUserId, // SECURITY: Use authenticated user, not client-provided
             addedAt: new Date().toISOString(),
             flaggedBy: []
           }
@@ -378,7 +660,7 @@ export const addEntry = async (req: Request, res: Response) => {
       }
     );
     
-    if (!collection) {
+    if (!updatedCollection) {
       // Check if collection exists but entry already exists
       const existingCollection = await Collection.findById(req.params.id);
       if (!existingCollection) {
@@ -388,20 +670,28 @@ export const addEntry = async (req: Request, res: Response) => {
       return res.json(normalizeDoc(existingCollection));
     }
 
-    // Ensure validEntriesCount is initialized and matches entries length
-    // This handles legacy collections that don't have validEntriesCount set
-    if (collection.validEntriesCount === undefined || collection.validEntriesCount === null) {
-      collection.validEntriesCount = collection.entries.length;
-      await collection.save();
-    } else {
-      // Ensure count matches actual entries length (safety check)
-      if (collection.validEntriesCount !== collection.entries.length) {
-        collection.validEntriesCount = collection.entries.length;
-        await collection.save();
-      }
+    // PHASE 3: Ensure validEntriesCount doesn't go negative and matches entries length
+    // Use atomic update to prevent race conditions
+    if (updatedCollection.validEntriesCount === undefined || 
+        updatedCollection.validEntriesCount === null || 
+        updatedCollection.validEntriesCount < 0 ||
+        updatedCollection.validEntriesCount !== updatedCollection.entries.length) {
+      
+      // PHASE 3: Atomic correction to prevent race conditions
+      await Collection.findOneAndUpdate(
+        { _id: req.params.id },
+        {
+          $set: {
+            validEntriesCount: Math.max(0, updatedCollection.entries.length),
+            updatedAt: new Date().toISOString()
+          }
+        }
+      );
+      
+      updatedCollection.validEntriesCount = Math.max(0, updatedCollection.entries.length);
     }
 
-    res.json(normalizeDoc(collection));
+    res.json(normalizeDoc(updatedCollection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -419,8 +709,18 @@ export const addEntry = async (req: Request, res: Response) => {
 
 export const removeEntry = async (req: Request, res: Response) => {
   try {
+    // PHASE 1: Check collection access with admin override
+    const collection = await Collection.findById(req.params.id);
+    if (!collection) return res.status(404).json({ message: 'Collection not found' });
+    
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    if (!canModifyCollectionEntries(collection, userId, userRole)) {
+      return res.status(403).json({ message: 'You do not have permission to remove entries from this collection' });
+    }
+    
     // Use findOneAndUpdate with $pull to atomically remove the entry
-    const collection = await Collection.findOneAndUpdate(
+    const updatedCollection = await Collection.findOneAndUpdate(
       { _id: req.params.id },
       {
         $pull: {
@@ -438,26 +738,32 @@ export const removeEntry = async (req: Request, res: Response) => {
       }
     );
     
-    if (!collection) {
+    if (!updatedCollection) {
       return res.status(404).json({ message: 'Collection not found' });
     }
 
-    // Ensure validEntriesCount doesn't go negative and matches entries length
-    if (collection.validEntriesCount === undefined || collection.validEntriesCount === null) {
-      collection.validEntriesCount = collection.entries.length;
-      await collection.save();
-    } else if (collection.validEntriesCount < 0) {
-      collection.validEntriesCount = Math.max(0, collection.entries.length);
-      await collection.save();
-    } else {
-      // Ensure count matches actual entries length (safety check)
-      if (collection.validEntriesCount !== collection.entries.length) {
-        collection.validEntriesCount = collection.entries.length;
-        await collection.save();
-      }
+    // PHASE 3: Ensure validEntriesCount doesn't go negative and matches entries length
+    // Use atomic update to prevent race conditions
+    if (updatedCollection.validEntriesCount === undefined || 
+        updatedCollection.validEntriesCount === null || 
+        updatedCollection.validEntriesCount < 0 ||
+        updatedCollection.validEntriesCount !== updatedCollection.entries.length) {
+      
+      // PHASE 3: Atomic correction to prevent race conditions
+      await Collection.findOneAndUpdate(
+        { _id: req.params.id },
+        {
+          $set: {
+            validEntriesCount: Math.max(0, updatedCollection.entries.length),
+            updatedAt: new Date().toISOString()
+          }
+        }
+      );
+      
+      updatedCollection.validEntriesCount = Math.max(0, updatedCollection.entries.length);
     }
 
-    res.json(normalizeDoc(collection));
+    res.json(normalizeDoc(updatedCollection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -475,18 +781,23 @@ export const removeEntry = async (req: Request, res: Response) => {
 
 export const flagEntry = async (req: Request, res: Response) => {
   try {
-    // Validate input
+    // Validate input (userId is optional - we use authenticated user)
     const validationResult = flagEntrySchema.safeParse(req.body);
     if (!validationResult.success) {
-      return res.status(400).json({ 
-        message: 'Validation failed', 
-        errors: validationResult.error.errors 
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: validationResult.error.errors
       });
     }
 
-    const { userId } = validationResult.data;
+    // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
+    const currentUserId = (req as any).user?.userId;
+    if (!currentUserId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
     const collection = await Collection.findById(req.params.id);
-    
+
     if (!collection) {
       return res.status(404).json({ message: 'Collection not found' });
     }
@@ -495,8 +806,8 @@ export const flagEntry = async (req: Request, res: Response) => {
       (e: any) => e.articleId === req.params.articleId
     );
 
-    if (entry && !entry.flaggedBy.includes(userId)) {
-      entry.flaggedBy.push(userId);
+    if (entry && !entry.flaggedBy.includes(currentUserId)) {
+      entry.flaggedBy.push(currentUserId);
       collection.updatedAt = new Date().toISOString();
       await collection.save();
     }
@@ -524,18 +835,29 @@ export const followCollection = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const collection = await Collection.findById(req.params.id);
-    if (!collection) {
-      return res.status(404).json({ message: 'Collection not found' });
-    }
+    // PHASE 3: Use atomic $addToSet to prevent race conditions
+    // This ensures duplicate followers are prevented even with concurrent requests
+    const collection = await Collection.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        followers: { $ne: userId } // Only update if user is not already following
+      },
+      {
+        $addToSet: { followers: userId }, // Atomically add userId if not present
+        $inc: { followersCount: 1 }, // Increment count atomically
+        $set: { updatedAt: new Date().toISOString() }
+      },
+      { new: true } // Return updated document
+    );
 
-    // Idempotent: only add if not already following
-    if (!collection.followers || !collection.followers.includes(userId)) {
-      collection.followers = collection.followers || [];
-      collection.followers.push(userId);
-      collection.followersCount = (collection.followersCount || 0) + 1;
-      collection.updatedAt = new Date().toISOString();
-      await collection.save();
+    if (!collection) {
+      // Check if collection exists but user is already following
+      const existingCollection = await Collection.findById(req.params.id);
+      if (!existingCollection) {
+        return res.status(404).json({ message: 'Collection not found' });
+      }
+      // User is already following, return collection as-is
+      return res.json(normalizeDoc(existingCollection));
     }
 
     res.json(normalizeDoc(collection));
@@ -561,16 +883,39 @@ export const unfollowCollection = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const collection = await Collection.findById(req.params.id);
+    // PHASE 3: Use atomic $pull to prevent race conditions
+    // This ensures followers array and count stay in sync even with concurrent requests
+    const collection = await Collection.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        followers: userId // Only update if user is currently following
+      },
+      {
+        $pull: { followers: userId }, // Atomically remove userId
+        $inc: { followersCount: -1 }, // Decrement count atomically
+        $set: { updatedAt: new Date().toISOString() }
+      },
+      { new: true } // Return updated document
+    );
+
     if (!collection) {
-      return res.status(404).json({ message: 'Collection not found' });
+      // Check if collection exists but user is not following
+      const existingCollection = await Collection.findById(req.params.id);
+      if (!existingCollection) {
+        return res.status(404).json({ message: 'Collection not found' });
+      }
+      // User is not following, return collection as-is
+      // Ensure followersCount doesn't go negative (safety check)
+      if (existingCollection.followersCount < 0) {
+        existingCollection.followersCount = Math.max(0, existingCollection.followers?.length || 0);
+        await existingCollection.save();
+      }
+      return res.json(normalizeDoc(existingCollection));
     }
 
-    // Idempotent: only remove if currently following
-    if (collection.followers && collection.followers.includes(userId)) {
-      collection.followers = collection.followers.filter((id: string) => id !== userId);
-      collection.followersCount = Math.max(0, (collection.followersCount || 0) - 1);
-      collection.updatedAt = new Date().toISOString();
+    // PHASE 3: Ensure followersCount doesn't go negative (safety check)
+    if (collection.followersCount < 0) {
+      collection.followersCount = Math.max(0, collection.followers?.length || 0);
       await collection.save();
     }
 

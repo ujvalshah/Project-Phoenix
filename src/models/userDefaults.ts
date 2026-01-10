@@ -33,11 +33,7 @@ export const createDefaultUserPreferences = (overrides?: DeepPartial<UserPrefere
 
   return {
     theme: 'system',
-    defaultVisibility: 'public',
     interestedCategories: [],
-    compactMode: false,
-    richMediaPreviews: true,
-    autoFollowCollections: true,
     ...rest as any,
     notifications: {
       emailDigest: true,

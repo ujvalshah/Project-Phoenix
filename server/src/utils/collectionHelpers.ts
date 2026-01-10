@@ -4,6 +4,10 @@ import { Collection } from '../models/Collection.js';
  * Remove article references from all collections when an article is deleted.
  * This maintains referential integrity by cleaning up stale entries.
  * 
+ * NOTE: This operation is currently NOT transactional with article deletion.
+ * If MongoDB replica set is configured, this could be wrapped in a transaction
+ * for true atomicity (see P2-24 follow-up refactor).
+ * 
  * @param articleId - The ID of the deleted article
  * @returns Promise resolving to the number of collections updated
  */
@@ -17,6 +21,18 @@ export async function cleanupCollectionEntries(articleId: string): Promise<numbe
     if (affectedCollections.length === 0) {
       return 0; // No collections to update
     }
+    
+    // FOLLOW-UP REFACTOR (P2-24): Use MongoDB transactions for atomic cleanup
+    // Current implementation: Use atomic $pull operation but not transactional with article deletion
+    // Future improvement: Wrap article deletion and collection cleanup in a transaction
+    // Example:
+    // const session = await mongoose.startSession();
+    // try {
+    //   await session.withTransaction(async () => {
+    //     await Article.findByIdAndDelete(articleId).session(session);
+    //     await Collection.updateMany(..., { session });
+    //   });
+    // } finally { await session.endSession(); }
     
     // Use $pull to atomically remove entries matching the articleId
     // Also decrement validEntriesCount if it exists

@@ -28,10 +28,6 @@ export const profileFormToUpdatePayload = (form: ProfileFormValues): Partial<Use
 
 export const userToPreferencesForm = (user: User): PreferencesFormValues => ({
   theme: user.preferences.theme,
-  defaultVisibility: user.preferences.defaultVisibility,
-  compactMode: user.preferences.compactMode,
-  richMediaPreviews: user.preferences.richMediaPreviews,
-  autoFollowCollections: user.preferences.autoFollowCollections,
 });
 
 export const preferencesFormToUpdatePayload = (form: PreferencesFormValues): Partial<UserPreferences> => ({

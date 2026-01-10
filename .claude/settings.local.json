@@ -15,7 +15,11 @@
       "Bash(npm test:*)",
       "Bash(npx vitest:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(npx playwright test:*)"
+      "Bash(npx playwright test:*)",
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)",
+      "Bash(npm run list-users:*)",
+      "Bash(python3:*)"
     ]
   }
 }

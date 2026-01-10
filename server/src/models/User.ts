@@ -40,11 +40,7 @@ export interface IUserSecurity {
 
 export interface IUserPreferences {
   theme: 'light' | 'dark' | 'system';
-  defaultVisibility: 'public' | 'private';
   interestedCategories: string[]; // TODO: legacy-name-only-if-used-by-frontend - user preference field (not article field)
-  compactMode: boolean;
-  richMediaPreviews: boolean;
-  autoFollowCollections: boolean;
   notifications: {
     emailDigest: boolean;
     productUpdates: boolean;
@@ -115,15 +111,7 @@ const UserPreferencesSchema = new Schema<IUserPreferences>({
     enum: ['light', 'dark', 'system'], 
     default: 'system' 
   },
-  defaultVisibility: { 
-    type: String, 
-    enum: ['public', 'private'], 
-    default: 'public' 
-  },
   interestedCategories: { type: [String], default: [] },
-  compactMode: { type: Boolean, default: false },
-  richMediaPreviews: { type: Boolean, default: true },
-  autoFollowCollections: { type: Boolean, default: true },
   notifications: {
     emailDigest: { type: Boolean, default: true },
     productUpdates: { type: Boolean, default: false },

@@ -139,3 +139,4 @@ Remove all legacy code paths related to the `USE_IMAGE_MANAGER` feature flag. Af
 - The new code path is the only path that will remain
 - Component will be significantly simpler after removal
 
+

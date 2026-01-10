@@ -5,6 +5,7 @@ import { storageService } from '@/services/storageService';
 import { Collection } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/hooks/useAuth';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 
 interface CollectionPopoverProps {
   isOpen: boolean;
@@ -26,7 +27,8 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
   const [isCreating, setIsCreating] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
-  const { currentUserId } = useAuth();
+  const { currentUserId, isAuthenticated } = useAuth();
+  const { withAuth } = useRequireAuth();
 
   useEffect(() => {
     if (isOpen) {
@@ -111,6 +113,12 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
   };
 
   const toggleCollection = async (collectionId: string, isInCollection: boolean, colName: string) => {
+    // Auth guard: require login for collection operations
+    if (!isAuthenticated) {
+      withAuth(() => {})(); // Opens login modal
+      return;
+    }
+
     // Optimistic update
     setCollections(prev => prev.map(c => {
       if (c.id === collectionId) {
@@ -140,6 +148,12 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
   };
 
   const createCollection = async () => {
+    // Auth guard: require login for collection operations
+    if (!isAuthenticated) {
+      withAuth(() => {})(); // Opens login modal
+      return;
+    }
+
     if (!newCollectionName.trim()) return;
     try {
       const newCol = await storageService.createCollection(newCollectionName, '', currentUserId, mode);

@@ -10,9 +10,9 @@ import { ConfirmActionModal } from '../components/settings/ConfirmActionModal';
 import { Input } from '../components/UI/Input';
 import { TextArea } from '../components/UI/TextArea';
 import { getInitials } from '../utils/formatters';
-import { User, Mail, Shield, Check, Loader2, Camera, Eye, EyeOff, LayoutTemplate, Globe, Link as LinkIcon, UserPlus, AlertTriangle, ChevronDown } from 'lucide-react';
-import { ProfileFormData, UserPreferences, AVATAR_COLORS } from '../types/settings';
-import { userToProfileForm, userToPreferencesForm } from '../models/userFormMappers';
+import { User, Mail, Shield, Check, Loader2, Camera, Eye, EyeOff, LayoutTemplate, AlertTriangle, ChevronDown } from 'lucide-react';
+import { ProfileFormData, AVATAR_COLORS } from '../types/settings';
+import { userToProfileForm } from '../models/userFormMappers';
 import { Avatar } from '../components/shared/Avatar';
 import { adminConfigService } from '../admin/services/adminConfigService';
 import { HeaderSpacer } from '../components/layouts/HeaderSpacer';
@@ -25,31 +25,6 @@ const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </label>
 );
 
-interface ToggleProps {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: () => void;
-  icon?: React.ReactNode;
-}
-
-const Toggle: React.FC<ToggleProps> = ({ label, description, checked, onChange, icon }) => (
-  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-black/20 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
-    <div className="flex items-start gap-3">
-      {icon && <div className="mt-0.5 text-slate-400">{icon}</div>}
-      <div>
-        <div className="text-sm font-bold text-slate-900 dark:text-white">{label}</div>
-        {description && <div className="text-xs text-slate-500 mt-0.5">{description}</div>}
-      </div>
-    </div>
-    <button 
-      onClick={onChange}
-      className={`w-11 h-6 rounded-full transition-colors flex items-center px-0.5 ${checked ? 'bg-primary-500' : 'bg-slate-200 dark:bg-slate-700'}`}
-    >
-      <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
-    </button>
-  </div>
-);
 
 export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) => {
   const { modularUser, currentUser } = useAuth();
@@ -86,17 +61,6 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
   });
   const [showPasswords, setShowPasswords] = useState(false);
 
-  // Preferences Form
-  const [preferences, setPreferences] = useState<UserPreferences>({
-    defaultVisibility: 'public',
-    compactMode: true,
-    richMediaPreviews: true,
-    autoFollowCollections: false,
-    theme: 'system',
-    interestedCategories: [],
-    notifications: { emailDigest: true, productUpdates: false, newFollowers: true }
-  });
-
   // --- INIT ---
   useEffect(() => {
     // PREFER MODULAR USER if available
@@ -105,7 +69,6 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
           ...userToProfileForm(modularUser),
           avatarUrl: modularUser.profile.avatarUrl
       });
-      setPreferences(userToPreferencesForm(modularUser));
     } 
     // FALLBACK to Legacy User if context not yet fully migrated (safety net)
     else if (currentUser) {
@@ -166,12 +129,6 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
     }
   };
 
-  const togglePreference = (key: keyof UserPreferences) => {
-    if (!currentUser) return;
-    const newPrefs = { ...preferences, [key]: !preferences[key] };
-    setPreferences(newPrefs);
-    userSettingsService.updatePreferences(currentUser.id, newPrefs);
-  };
 
   const handleDeleteAccount = async () => {
     await userSettingsService.deleteAccount(currentUser!.id);
@@ -198,7 +155,7 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h1>
-          <p className="text-gray-500 dark:text-slate-400 mt-1">Manage your identity, security, and preferences.</p>
+          <p className="text-gray-500 dark:text-slate-400 mt-1">Manage your identity and security.</p>
         </div>
       </div>
 
@@ -376,68 +333,6 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
               </form>
             </SettingsSectionCard>
 
-            {/* 4. PREFERENCES */}
-            <SettingsSectionCard 
-              id="preferences" 
-              title="Preferences" 
-              description="Customize your Nuggets experience."
-              icon={<LayoutTemplate size={20} />}
-            >
-              <div className="space-y-4">
-                {/* Visibility Radio */}
-                <div className="p-4 bg-slate-50 dark:bg-black/20 rounded-xl border border-transparent">
-                  <Label>Default Nugget Visibility</Label>
-                  <div className="flex gap-4 mt-2">
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <input 
-                        type="radio" 
-                        name="visibility" 
-                        checked={preferences.defaultVisibility === 'public'}
-                        onChange={() => setPreferences({...preferences, defaultVisibility: 'public'})}
-                        className="text-primary-500 focus:ring-primary-500"
-                      />
-                      <Globe size={16} className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Public</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <input 
-                        type="radio" 
-                        name="visibility" 
-                        checked={preferences.defaultVisibility === 'private'}
-                        onChange={() => setPreferences({...preferences, defaultVisibility: 'private'})}
-                        className="text-primary-500 focus:ring-primary-500"
-                      />
-                      <Shield size={16} className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Private</span>
-                    </label>
-                  </div>
-                </div>
-
-                <Toggle 
-                  label="Compact Card Mode" 
-                  description="Reduce whitespace in the feed for denser information."
-                  checked={preferences.compactMode} 
-                  onChange={() => togglePreference('compactMode')}
-                  icon={<LayoutTemplate size={18} />}
-                />
-
-                <Toggle 
-                  label="Rich Media Previews" 
-                  description="Show full-size images and embeds in the feed."
-                  checked={preferences.richMediaPreviews} 
-                  onChange={() => togglePreference('richMediaPreviews')}
-                  icon={<LinkIcon size={18} />}
-                />
-
-                <Toggle 
-                  label="Auto-Follow Collections" 
-                  description="Automatically follow a collection when you contribute to it."
-                  checked={preferences.autoFollowCollections} 
-                  onChange={() => togglePreference('autoFollowCollections')}
-                  icon={<UserPlus size={18} />}
-                />
-              </div>
-            </SettingsSectionCard>
 
             {/* 5. DANGER ZONE */}
             <div id="danger" className="border border-red-200 dark:border-red-900/30 rounded-2xl overflow-hidden bg-red-50/30 dark:bg-red-900/10">

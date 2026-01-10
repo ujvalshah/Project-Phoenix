@@ -246,11 +246,7 @@ export const signup = async (req: Request, res: Response) => {
       },
       preferences: {
         theme: 'system',
-        defaultVisibility: 'public',
         interestedCategories: [],
-        compactMode: false,
-        richMediaPreviews: true,
-        autoFollowCollections: true,
         notifications: {
           emailDigest: true,
           productUpdates: false,

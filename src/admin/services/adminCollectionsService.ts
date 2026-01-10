@@ -110,7 +110,18 @@ class AdminCollectionsService {
   }
 
   async deleteCollection(id: string): Promise<void> {
-    await apiClient.delete(`/collections/${id}`);
+    try {
+      await apiClient.delete(`/collections/${id}`, undefined, 'adminCollectionsService.deleteCollection');
+    } catch (error: any) {
+      console.error('[AdminCollectionsService.deleteCollection] Error:', error);
+      // Re-throw with better context
+      const errorMessage = error?.message || 'Failed to delete collection';
+      const enhancedError: any = new Error(errorMessage);
+      enhancedError.response = error?.response;
+      enhancedError.status = error?.status;
+      enhancedError.requestId = error?.requestId;
+      throw enhancedError;
+    }
   }
 }
 

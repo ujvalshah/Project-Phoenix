@@ -51,10 +51,38 @@ CollectionSchema.index({ creatorId: 1 }); // Ownership queries
 CollectionSchema.index({ creatorId: 1, type: 1 }); // Compound: filtering by creator and type
 CollectionSchema.index({ createdAt: -1 }); // List sorting
 CollectionSchema.index({ type: 1, createdAt: -1 }); // Visibility filters with sorting
-// Unique index on canonicalName per creator (collections can have same canonicalName if different creators)
+// PATCH 4: Unique index on canonicalName per creator for private collections
 // Note: For private collections, we want uniqueness per creator. For public, we want global uniqueness.
-// We'll handle this in the controller logic, but add a compound index for efficient lookups
-CollectionSchema.index({ canonicalName: 1, creatorId: 1 });
+// Unique constraint on private collections only (partial filter)
+// Public collections require global uniqueness which is handled in controller logic
+CollectionSchema.index(
+  { canonicalName: 1, creatorId: 1 }, 
+  { 
+    unique: true, 
+    partialFilterExpression: { type: 'private' },
+    name: 'canonicalName_creatorId_unique_private'
+  }
+);
+// Non-unique index for public collections (controller handles global uniqueness)
+CollectionSchema.index({ canonicalName: 1, type: 1 });
+
+// FOLLOW-UP REFACTOR: Text index for search queries (P2-14)
+// Improves performance of $or queries with regex on canonicalName, rawName, and description
+// Note: MongoDB text index requires all text fields to be indexed together
+// We use this for full-text search while keeping regex queries for flexibility
+CollectionSchema.index(
+  { canonicalName: 'text', rawName: 'text', description: 'text' },
+  { 
+    name: 'collections_text_search',
+    weights: {
+      rawName: 10,        // Highest weight - user-entered name is most important
+      canonicalName: 5,   // Medium weight - normalized name
+      description: 1      // Lowest weight - description is secondary
+    },
+    // Background index creation to avoid blocking operations
+    background: true
+  }
+);
 
 // Virtual for backward compatibility - maps name to rawName
 CollectionSchema.virtual('name').get(function() {

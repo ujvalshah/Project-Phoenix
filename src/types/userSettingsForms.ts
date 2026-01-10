@@ -12,10 +12,6 @@ export interface ProfileFormValues {
 
 export interface PreferencesFormValues {
   theme: ThemePreference;
-  defaultVisibility: Visibility;
-  compactMode: boolean;
-  richMediaPreviews: boolean;
-  autoFollowCollections: boolean;
 }
 
 // Security form is often separate due to sensitive fields

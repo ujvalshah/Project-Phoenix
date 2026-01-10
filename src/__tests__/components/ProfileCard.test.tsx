@@ -73,11 +73,7 @@ const createMockUser = (overrides: Partial<User> = {}): User => {
     },
     preferences: {
       theme: 'system',
-      defaultVisibility: 'public',
       interestedCategories: [],
-      compactMode: false,
-      richMediaPreviews: true,
-      autoFollowCollections: true,
       notifications: {
         emailDigest: true,
         productUpdates: false,
@@ -436,6 +432,7 @@ describe('ProfileCard Component', () => {
     });
   });
 });
+
 
 
 

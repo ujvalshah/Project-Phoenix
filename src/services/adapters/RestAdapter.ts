@@ -313,11 +313,26 @@ export class RestAdapter implements IAdapter {
   }
 
   // --- Collections ---
-  getCollections(params?: { type?: 'public' | 'private'; includeCount?: boolean }): Promise<Collection[]> {
+  getCollections(params?: { 
+    type?: 'public' | 'private'; 
+    includeCount?: boolean;
+    // PHASE 5: Add backend sorting/searching support
+    searchQuery?: string;
+    sortField?: 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
+    sortDirection?: 'asc' | 'desc';
+    page?: number;
+    limit?: number;
+  }): Promise<Collection[]> {
     // Add cancelKey to prevent duplicate simultaneous requests
     const queryParams = new URLSearchParams();
     if (params?.type) queryParams.set('type', params.type);
     if (params?.includeCount) queryParams.set('includeCount', 'true');
+    // PHASE 5: Add search and sort parameters
+    if (params?.searchQuery) queryParams.set('q', params.searchQuery);
+    if (params?.sortField) queryParams.set('sortField', params.sortField);
+    if (params?.sortDirection) queryParams.set('sortDirection', params.sortDirection);
+    if (params?.page) queryParams.set('page', params.page.toString());
+    if (params?.limit) queryParams.set('limit', params.limit.toString());
     
     const endpoint = queryParams.toString() ? `/collections?${queryParams}` : '/collections';
     return apiClient.get<any>(endpoint, undefined, 'restAdapter.getCollections')

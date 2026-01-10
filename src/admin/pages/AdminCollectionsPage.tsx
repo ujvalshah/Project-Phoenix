@@ -4,7 +4,7 @@ import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
 import { AdminCollection } from '../types/admin';
 import { adminCollectionsService } from '../services/adminCollectionsService';
-import { Eye, Trash2, Lock, Globe, EyeOff, Folder, Layers } from 'lucide-react';
+import { Eye, Trash2, Lock, Globe, EyeOff, Folder, Layers, Pencil, Check, X } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { AdminDrawer } from '../components/AdminDrawer';
 import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
@@ -20,7 +20,13 @@ export const AdminCollectionsPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedCollection, setSelectedCollection] = useState<AdminCollection | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<{ collection: AdminCollection; timeoutId: number } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Edit state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   
   // Sorting & Filtering
   const [sortKey, setSortKey] = useState<string>('createdAt');
@@ -107,25 +113,72 @@ export const AdminCollectionsPage: React.FC = () => {
   }, [collections, dateFilter, sortKey, sortDirection]);
 
   const handleDelete = async () => {
-    if (!selectedCollection) return;
+    console.log('[AdminCollectionsPage] handleDelete called', { selectedCollection, isDeleting });
+    
+    if (!selectedCollection || isDeleting) {
+      console.log('[AdminCollectionsPage] Early return - missing collection or already deleting');
+      return;
+    }
+    
     const col = selectedCollection;
-    setCollections(prev => prev.filter(c => c.id !== col.id));
-    setSelectedCollection(null);
+    const colId = col.id;
+    console.log('[AdminCollectionsPage] Starting delete for collection:', colId);
+    
+    setIsDeleting(true);
     setShowDeleteConfirm(false);
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        await adminCollectionsService.deleteCollection(col.id);
-        const newStats = await adminCollectionsService.getStats();
-        setStats(newStats);
-        setPendingDelete(null);
-        toast.success("Collection deleted");
-      } catch (e) {
-        setCollections(prev => [...prev, col]);
-        setPendingDelete(null);
-        toast.error("Delete failed. Changes reverted.");
+    
+    // Optimistic update - remove from UI immediately
+    setCollections(prev => prev.filter(c => c.id !== colId));
+    const previousSelected = selectedCollection;
+    setSelectedCollection(null);
+    
+    try {
+      console.log('[AdminCollectionsPage] Calling deleteCollection API for:', colId);
+      await adminCollectionsService.deleteCollection(colId);
+      console.log('[AdminCollectionsPage] Delete successful for:', colId);
+      
+      // Refresh stats after successful delete
+      const newStats = await adminCollectionsService.getStats();
+      setStats(newStats);
+      toast.success("Collection deleted successfully");
+    } catch (e: any) {
+      console.error('[AdminCollectionsPage] Delete failed:', {
+        error: e,
+        message: e?.message,
+        status: e?.status,
+        response: e?.response,
+        requestId: e?.requestId,
+        collectionId: colId
+      });
+      
+      // Revert optimistic update on error
+      setCollections(prev => {
+        // Only add back if not already present
+        if (prev.find(c => c.id === colId)) {
+          return prev;
+        }
+        return [...prev, col];
+      });
+      setSelectedCollection(previousSelected);
+      
+      // Provide more detailed error message
+      let errorMessage = "Delete failed. Please try again.";
+      if (e?.status === 403) {
+        errorMessage = "You do not have permission to delete this collection.";
+      } else if (e?.status === 404) {
+        errorMessage = "Collection not found. It may have already been deleted.";
+      } else if (e?.status === 401) {
+        errorMessage = "Authentication required. Please refresh the page and try again.";
+      } else if (e?.message) {
+        errorMessage = e.message;
       }
-    }, 5000);
-    setPendingDelete({ collection: col, timeoutId });
+      
+      toast.error(errorMessage, {
+        description: e?.requestId ? `Request ID: ${e.requestId}` : e?.status ? `Status: ${e.status}` : undefined
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleToggleStatus = async (col: AdminCollection) => {
@@ -142,6 +195,49 @@ export const AdminCollectionsPage: React.FC = () => {
   const handleBulkAction = (action: string) => {
       toast.info(`${action} ${selectedIds.length} items (Not implemented)`);
       setSelectedIds([]);
+  };
+
+  const handleStartEdit = (col: AdminCollection) => {
+    setEditName(col.name || '');
+    setEditDescription(col.description || '');
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditName('');
+    setEditDescription('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedCollection || !editName.trim()) {
+      toast.error('Collection name is required');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await adminCollectionsService.updateCollection(selectedCollection.id, {
+        name: editName.trim(),
+        description: editDescription.trim()
+      });
+
+      // Update local state
+      setCollections(prev => prev.map(c =>
+        c.id === selectedCollection.id
+          ? { ...c, name: editName.trim(), description: editDescription.trim() }
+          : c
+      ));
+      setSelectedCollection(prev => prev ? { ...prev, name: editName.trim(), description: editDescription.trim() } : null);
+
+      toast.success('Collection updated');
+      setIsEditing(false);
+    } catch (e: any) {
+      const errorMessage = e?.message || 'Failed to update collection';
+      toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const columns: Column<AdminCollection>[] = [
@@ -230,7 +326,7 @@ export const AdminCollectionsPage: React.FC = () => {
       render: (c) => (
         <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
           {can('admin.collections.view') && (
-             <button 
+             <button
                 onClick={() => setSelectedCollection(c)}
                 className="flex items-center gap-1.5 px-2 py-1.5 md:px-3 md:py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
              >
@@ -238,12 +334,12 @@ export const AdminCollectionsPage: React.FC = () => {
              </button>
           )}
           {can('admin.collections.edit') && (
-             <button 
-                onClick={() => handleToggleStatus(c)}
+             <button
+                onClick={() => { setSelectedCollection(c); handleStartEdit(c); }}
                 className="flex items-center gap-1.5 px-2 py-1.5 md:px-3 md:py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                title={c.status === 'active' ? "Hide" : "Unhide"}
+                title="Edit collection"
              >
-                {c.status === 'active' ? <EyeOff size={14} /> : <Eye size={14} />}
+                <Pencil size={14} /> <span className="hidden md:inline">Edit</span>
              </button>
           )}
         </div>
@@ -261,24 +357,6 @@ export const AdminCollectionsPage: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {pendingDelete && (
-        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>Deleted “{pendingDelete.collection.name}”. Undo?</span>
-          <div className="flex gap-2 items-center">
-            <button
-              onClick={() => {
-                clearTimeout(pendingDelete.timeoutId);
-                setCollections(prev => [pendingDelete.collection, ...prev]);
-                setPendingDelete(null);
-              }}
-              className="px-3 py-1 rounded-md bg-amber-100 text-amber-900 font-semibold hover:bg-amber-200 transition-colors"
-            >
-              Undo
-            </button>
-            <span className="text-[10px] text-slate-500">5s</span>
-          </div>
-        </div>
-      )}
       {errorMessage && (
         <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <span>{errorMessage}</span>
@@ -350,18 +428,50 @@ export const AdminCollectionsPage: React.FC = () => {
 
       <AdminDrawer
         isOpen={!!selectedCollection}
-        onClose={() => setSelectedCollection(null)}
-        title="Collection Details"
+        onClose={() => { setSelectedCollection(null); handleCancelEdit(); }}
+        title={isEditing ? "Edit Collection" : "Collection Details"}
         width="lg"
         footer={
             <div className="flex justify-between w-full">
-                {can('admin.collections.edit') && (
-                    <button 
-                        onClick={() => setShowDeleteConfirm(true)} 
-                        className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg text-sm font-bold transition-colors"
-                    >
-                        <Trash2 size={16} /> Delete
-                    </button>
+                {isEditing ? (
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleSaveEdit}
+                            disabled={isSaving || !editName.trim()}
+                            className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-bold hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <Check size={16} /> {isSaving ? 'Saving...' : 'Save Changes'}
+                        </button>
+                        <button
+                            onClick={handleCancelEdit}
+                            disabled={isSaving}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                        >
+                            <X size={16} /> Cancel
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        {can('admin.collections.edit') && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => selectedCollection && handleStartEdit(selectedCollection)}
+                                    className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-sm font-bold transition-colors"
+                                >
+                                    <Pencil size={16} /> Edit
+                                </button>
+                                <button
+                                    onClick={() => {
+                                      console.log('[AdminCollectionsPage] Delete button clicked', { selectedCollection });
+                                      setShowDeleteConfirm(true);
+                                    }}
+                                    className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg text-sm font-bold transition-colors"
+                                >
+                                    <Trash2 size={16} /> Delete
+                                </button>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         }
@@ -372,19 +482,83 @@ export const AdminCollectionsPage: React.FC = () => {
                     <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 shrink-0">
                         <Folder size={32} />
                     </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-tight mb-1">{selectedCollection.name}</h2>
-                        <p className="text-sm text-slate-500">{selectedCollection.description || 'No description provided.'}</p>
-                    </div>
+                    {isEditing ? (
+                        <div className="flex-1 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Collection Name</label>
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    placeholder="Collection name"
+                                    className="w-full text-lg font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
+                                <textarea
+                                    value={editDescription}
+                                    onChange={(e) => setEditDescription(e.target.value)}
+                                    placeholder="Description (optional)"
+                                    rows={3}
+                                    className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-tight mb-1">{selectedCollection.name}</h2>
+                            <p className="text-sm text-slate-500">{selectedCollection.description || 'No description provided.'}</p>
+                        </div>
+                    )}
                 </div>
+                {!isEditing && (
+                    <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Owner</label>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{selectedCollection.creator?.name || 'Unknown'}</span>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Visibility</label>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 capitalize">{selectedCollection.type}</span>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nuggets</label>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{selectedCollection.itemCount}</span>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Followers</label>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{selectedCollection.followerCount}</span>
+                        </div>
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Created</label>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{new Date(selectedCollection.createdAt).toLocaleString()}</span>
+                        </div>
+                    </div>
+                )}
             </div>
         )}
       </AdminDrawer>
 
       <ConfirmActionModal 
         isOpen={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDelete}
+        onClose={() => {
+          console.log('[AdminCollectionsPage] Modal onClose called', { isDeleting });
+          if (!isDeleting) {
+            setShowDeleteConfirm(false);
+          }
+        }}
+        onConfirm={async () => {
+          console.log('[AdminCollectionsPage] Modal onConfirm called - about to call handleDelete');
+          try {
+            await handleDelete();
+            console.log('[AdminCollectionsPage] handleDelete completed successfully');
+          } catch (error) {
+            console.error('[AdminCollectionsPage] handleDelete threw error:', error);
+            throw error;
+          }
+        }}
         title="Delete Collection?"
         description="This will permanently delete the collection. The nuggets inside will not be deleted."
         actionLabel="Delete"

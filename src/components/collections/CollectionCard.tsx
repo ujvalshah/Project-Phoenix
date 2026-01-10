@@ -7,6 +7,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { storageService } from '@/services/storageService';
 import { useToast } from '@/hooks/useToast';
 
+// PHASE 5: Import getCollectionById for refetch after optimistic update
+
 interface CollectionCardProps {
   collection: Collection;
   onClick: () => void;
@@ -67,13 +69,26 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
               await storageService.followCollection(collection.id);
           }
           
-          // Success - optimistic update already applied
+          // PHASE 5: Refetch collection from backend to ensure state is accurate
+          // This prevents desync between optimistic update and backend reality
+          try {
+              const updatedCollection = await storageService.getCollectionById(collection.id);
+              if (updatedCollection && onCollectionUpdate) {
+                  onCollectionUpdate(updatedCollection);
+              }
+          } catch (refetchError) {
+              // If refetch fails, optimistic update is still better than nothing
+              console.warn('Failed to refetch collection after follow/unfollow:', refetchError);
+          }
       } catch (error: any) {
-          // Rollback on error
+          // PHASE 5: Rollback on error with proper error message
           if (onCollectionUpdate) {
               onCollectionUpdate(collection);
           }
-          toast.error(`Failed to ${wasFollowing ? 'unfollow' : 'follow'} collection`);
+          const errorMessage = error?.requestId 
+            ? `Failed to ${wasFollowing ? 'unfollow' : 'follow'} collection (Request ID: ${error.requestId})`
+            : `Failed to ${wasFollowing ? 'unfollow' : 'follow'} collection`;
+          toast.error(errorMessage);
       } finally {
           setIsLoading(false);
       }

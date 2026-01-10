@@ -320,6 +320,11 @@ export function normalizeDoc(doc: any): any {
     if (normalized.title && normalized.content) {
       return createDefensiveProxy(normalized);
     }
+    // Add virtual `name` for collections (maps to rawName)
+    // This is needed because .lean() bypasses Mongoose virtuals
+    if (normalized.rawName && !normalized.name) {
+      normalized.name = normalized.rawName;
+    }
     return normalized;
   }
   
@@ -327,6 +332,10 @@ export function normalizeDoc(doc: any): any {
   // Wrap in proxy if it looks like an article
   if (doc.title && doc.content) {
     return createDefensiveProxy(doc);
+  }
+  // Add virtual `name` for collections (maps to rawName)
+  if (doc.rawName && !doc.name) {
+    return { ...doc, name: doc.rawName };
   }
   return doc;
 }

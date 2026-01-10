@@ -59,6 +59,9 @@ export const CollectionsPage: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>('created');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showInstruction, setShowInstruction] = useState(false);
+  // PHASE 5: Preserve pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageLimit] = useState(25);
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState(false);
@@ -69,9 +72,10 @@ export const CollectionsPage: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
 
+  // PHASE 5: Reload collections when search/sort changes (backend handles filtering/sorting)
   useEffect(() => {
     loadCollections();
-  }, []);
+  }, [searchQuery, sortField, sortDirection, currentPage]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -87,10 +91,18 @@ export const CollectionsPage: React.FC = () => {
   const loadCollections = async () => {
     setIsLoading(true);
     try {
-      // Request collections with type=public filter and includeCount=true
-      // This ensures we get the backend count for public collections only
+      // PHASE 5: Request collections with backend search/sort/pagination
+      // Backend handles filtering, sorting, and pagination
       const [collectionsResponse, allUsersResponse] = await Promise.all([
-          storageService.getCollections({ type: 'public', includeCount: true }),
+          storageService.getCollections({ 
+            type: 'public', 
+            includeCount: true,
+            searchQuery: searchQuery || undefined, // Only send if not empty
+            sortField: sortField,
+            sortDirection: sortDirection,
+            page: currentPage,
+            limit: pageLimit
+          }),
           storageService.getUsers()
       ]);
 
@@ -128,29 +140,12 @@ export const CollectionsPage: React.FC = () => {
     }
   };
 
+  // PHASE 5: Collections are already sorted/filtered by backend, no client-side processing needed
+  // Keep this for backward compatibility but collections come pre-sorted from backend
   const processedCollections = useMemo(() => {
-    let result = [...collections];
-    if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        result = result.filter(c =>
-          (c.name || '').toLowerCase().includes(q) ||
-          (c.description && c.description.toLowerCase().includes(q))
-        );
-    }
-    result.sort((a, b) => {
-        let valA: any, valB: any;
-        switch (sortField) {
-            case 'created': valA = new Date(a.createdAt).getTime(); valB = new Date(b.createdAt).getTime(); break;
-            case 'updated': valA = new Date(a.updatedAt || a.createdAt).getTime(); valB = new Date(b.updatedAt || b.createdAt).getTime(); break;
-            case 'followers': valA = a.followersCount; valB = b.followersCount; break;
-            case 'nuggets': valA = a.validEntriesCount ?? a.entries?.length ?? 0; valB = b.validEntriesCount ?? b.entries?.length ?? 0; break;
-            case 'name': valA = (a.name || '').toLowerCase(); valB = (b.name || '').toLowerCase(); break;
-            default: return 0;
-        }
-        return sortDirection === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
-    });
-    return result;
-  }, [collections, searchQuery, sortField, sortDirection]);
+    // Backend handles all sorting and filtering, so we just return collections as-is
+    return collections;
+  }, [collections]);
 
   const toggleSelectionMode = () => {
       const newMode = !selectionMode;
@@ -194,7 +189,8 @@ export const CollectionsPage: React.FC = () => {
               )
           );
           
-          // Reload collections to get accurate state from backend
+          // PHASE 5: Reload collections to get accurate state from backend
+          // Preserve current page when reloading
           await loadCollections();
           
           toast.success(`${action === 'follow' ? 'Followed' : 'Unfollowed'} ${selectedIds.length} collections`);
@@ -202,9 +198,12 @@ export const CollectionsPage: React.FC = () => {
           setSelectedIds([]);
           setIsActionMenuOpen(false);
       } catch (error: any) {
-          // Rollback on error
+          // PHASE 5: Rollback on error with proper error message
           setCollections(previousCollections);
-          toast.error(`Failed to ${action} collections`);
+          const errorMessage = error?.requestId 
+            ? `Failed to ${action} collections (Request ID: ${error.requestId})`
+            : `Failed to ${action} collections`;
+          toast.error(errorMessage);
       }
   };
 

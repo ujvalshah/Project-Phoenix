@@ -56,11 +56,7 @@
   },
   preferences: {
     theme: 'light' | 'dark' | 'system',
-    defaultVisibility: 'public' | 'private',
     interestedCategories: string[],
-    compactMode: boolean,
-    richMediaPreviews: boolean,
-    autoFollowCollections: boolean,
     notifications: {
       emailDigest: boolean,
       productUpdates: boolean,

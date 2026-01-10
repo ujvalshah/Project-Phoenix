@@ -1,9 +1,12 @@
 
 export interface UserPreferences {
-  defaultVisibility: 'public' | 'private';
-  compactMode: boolean;
-  richMediaPreviews: boolean;
-  autoFollowCollections: boolean;
+  theme: 'light' | 'dark' | 'system';
+  interestedCategories: string[];
+  notifications: {
+    emailDigest: boolean;
+    productUpdates: boolean;
+    newFollowers: boolean;
+  };
 }
 
 export interface ProfileFormData {

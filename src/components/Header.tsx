@@ -980,7 +980,7 @@ const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated
             <MessageSquare size={12} className="text-yellow-500" /> Feedback
         </p>
         <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-            Have an idea? Send suggestions directly to the founder.
+            Have an idea? Send suggestions directly to us.
         </p>
         <form onSubmit={handleSubmit} className="space-y-2">
             <textarea 
@@ -1006,7 +1006,7 @@ const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated
                 className="w-full py-2 bg-yellow-100 text-yellow-900 border border-yellow-200 text-xs font-bold rounded-xl hover:bg-yellow-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
                 onClick={(e) => e.stopPropagation()}
             >
-                {isSending ? 'Sending...' : <><Send size={12} /> Send to Founder</>}
+                {isSending ? 'Sending...' : <><Send size={12} /> Send</>}
             </button>
         </form>
     </div>

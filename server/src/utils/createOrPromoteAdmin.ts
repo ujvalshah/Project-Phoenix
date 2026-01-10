@@ -79,11 +79,7 @@ export async function createOrPromoteAdmin(
         },
         preferences: {
           theme: 'system',
-          defaultVisibility: 'public',
           interestedCategories: [],
-          compactMode: false,
-          richMediaPreviews: true,
-          autoFollowCollections: true,
           notifications: {
             emailDigest: true,
             productUpdates: true,

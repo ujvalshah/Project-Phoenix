@@ -32,11 +32,21 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   const isConfirmDisabled = confirmString ? inputValue !== confirmString : false;
 
   const handleConfirm = async () => {
-    if (isConfirmDisabled) return;
+    console.log('[ConfirmActionModal] handleConfirm called', { isConfirmDisabled, onConfirm: typeof onConfirm });
+    if (isConfirmDisabled) {
+      console.log('[ConfirmActionModal] Early return - confirm disabled');
+      return;
+    }
     setIsProcessing(true);
     try {
+      console.log('[ConfirmActionModal] Calling onConfirm...');
       await onConfirm();
+      console.log('[ConfirmActionModal] onConfirm completed successfully');
       onClose();
+    } catch (error) {
+      console.error('[ConfirmActionModal] onConfirm threw error:', error);
+      // Don't close modal on error - let the error handler show the error
+      throw error; // Re-throw so the caller can handle it
     } finally {
       setIsProcessing(false);
     }

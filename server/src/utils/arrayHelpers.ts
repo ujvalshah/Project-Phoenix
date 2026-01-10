@@ -40,3 +40,4 @@ export function hasArrayItems<T>(v: T[] | null | undefined): boolean {
   return Array.isArray(v) && v.length > 0;
 }
 
+

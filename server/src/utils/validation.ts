@@ -172,11 +172,15 @@ export const updateArticleSchema = baseArticleSchema.partial().strict();
 export const createCollectionSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name too long'),
   description: z.string().max(500, 'Description too long').optional(),
-  creatorId: z.string().min(1, 'Creator ID is required'),
+  // creatorId is optional - backend uses authenticated user ID (security: prevents spoofing)
+  creatorId: z.string().optional(),
   type: z.enum(['private', 'public']).default('public')
 }).strict();
 
-export const updateCollectionSchema = createCollectionSchema.partial().strict();
+// FOLLOW-UP REFACTOR: Explicitly exclude creatorId from updates (P1-19)
+// Prevents ownership transfer via update - creatorId cannot be changed
+// Use .omit() to explicitly exclude fields that should never be updated
+export const updateCollectionSchema = createCollectionSchema.partial().strict().omit({ creatorId: true });
 
 export const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
@@ -219,11 +223,13 @@ export const updateUserSchema = z.object({
 
 export const addEntrySchema = z.object({
   articleId: z.string().min(1, 'Article ID is required'),
-  userId: z.string().min(1, 'User ID is required')
+  // userId is optional - backend uses authenticated user ID (security: prevents spoofing)
+  userId: z.string().optional()
 }).strict();
 
 export const flagEntrySchema = z.object({
-  userId: z.string().min(1, 'User ID is required')
+  // userId is optional - backend uses authenticated user ID (security: prevents spoofing)
+  userId: z.string().optional()
 }).strict();
 
 /**

@@ -128,6 +128,11 @@ class ApiClient {
         const errorInfo = await extractError(response);
         const error: any = new Error(errorInfo.message);
         
+        // PHASE 6: Include request ID in error for correlation with backend logs
+        if (requestId) {
+          error.requestId = requestId;
+        }
+        
         // Attach errors array if present (for validation errors)
         if (errorInfo.errors) {
           error.errors = errorInfo.errors;

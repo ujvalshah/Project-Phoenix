@@ -302,3 +302,4 @@ useEffect(() => {
 
 **Testing**: Verify toggle works in Create mode, selections persist, and submit includes correct `showInMasonry` flags.
 
+
