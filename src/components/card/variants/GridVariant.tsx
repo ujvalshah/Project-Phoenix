@@ -196,8 +196,9 @@ export const GridVariant: React.FC<GridVariantProps> = ({
         /* TYPE B: MEDIA-ONLY CARD - Media fills card body, optional short caption, footer */
         /* CRITICAL: No text wrapper block, no hybrid spacing/padding - image fills available space */
         /* flex-1 allows media to expand and fill available height in equal-height grid rows */
+        /* min-h-[200px] prevents collapse on small screens where flex space is limited */
         <div
-          className="flex-1 flex flex-col relative overflow-hidden rounded-t-xl cursor-pointer"
+          className="flex-1 flex flex-col relative overflow-hidden rounded-t-xl cursor-pointer min-h-[200px]"
           onClick={handleCardClick}
         >
           {/* Media fills full available card body space (no padding wrapper like hybrid cards) */}

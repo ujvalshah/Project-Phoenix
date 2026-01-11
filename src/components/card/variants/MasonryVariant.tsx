@@ -94,8 +94,9 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
       {/* TWO-CARD ARCHITECTURE: Hybrid vs Media-Only */}
       {data.cardType === 'media-only' ? (
         /* TYPE B: MEDIA-ONLY CARD - Media fills card height, optional short caption, footer */
-        <div 
-          className="flex-1 flex flex-col min-h-0 relative overflow-hidden rounded-lg cursor-pointer"
+        /* min-h-[200px] prevents collapse on small screens where flex space is limited */
+        <div
+          className="flex-1 flex flex-col min-h-[200px] relative overflow-hidden rounded-lg cursor-pointer"
           onClick={handlers.onClick}
         >
           {/* Media fills full available height (except caption + footer) */}
