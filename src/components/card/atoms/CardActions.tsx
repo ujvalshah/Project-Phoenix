@@ -81,9 +81,10 @@ export const CardActions: React.FC<CardActionsProps> = ({
             textColor,
             transitionClass
           )}
-          title="Add to Collection"
+          aria-label="Add to collection"
+          title="Add to collection"
         >
-          <FolderPlus size={iconSize} />
+          <FolderPlus size={iconSize} aria-hidden="true" />
         </button>
       )}
 
@@ -100,41 +101,51 @@ export const CardActions: React.FC<CardActionsProps> = ({
             textColor,
             transitionClass
           )}
+          aria-label="More options"
+          aria-expanded={showMenu}
+          aria-haspopup="menu"
           title="More options"
         >
-          <MoreVertical size={iconSize} />
+          <MoreVertical size={iconSize} aria-hidden="true" />
         </button>
         {showMenu && (
-          <div className="absolute right-0 bottom-full mb-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-20 overflow-hidden">
+          <div
+            role="menu"
+            aria-label="Article actions"
+            className="absolute right-0 bottom-full mb-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-20 overflow-hidden"
+          >
             {isOwner || isAdmin ? (
               onEdit && (
                 <button
+                  role="menuitem"
                   onClick={(e) => {
                     e.stopPropagation();
                     onEdit();
                   }}
                   className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
                 >
-                  <Edit2 size={12} /> Edit
+                  <Edit2 size={12} aria-hidden="true" /> Edit
                 </button>
               )
             ) : null}
 
             {isOwner && onToggleVisibility && (
               <button
+                role="menuitem"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleVisibility();
                 }}
                 className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                aria-label={visibility === 'private' ? 'Make article public' : 'Make article private'}
               >
                 {visibility === 'private' ? (
                   <>
-                    <Globe size={12} className="text-blue-500" /> Make Public
+                    <Globe size={12} className="text-blue-500" aria-hidden="true" /> Make Public
                   </>
                 ) : (
                   <>
-                    <Lock size={12} className="text-amber-500" /> Make Private
+                    <Lock size={12} className="text-amber-500" aria-hidden="true" /> Make Private
                   </>
                 )}
               </button>
@@ -142,25 +153,27 @@ export const CardActions: React.FC<CardActionsProps> = ({
 
             {onReport && (
               <button
+                role="menuitem"
                 onClick={(e) => {
                   e.stopPropagation();
                   onReport();
                 }}
                 className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
               >
-                <Flag size={12} /> Report
+                <Flag size={12} aria-hidden="true" /> Report
               </button>
             )}
 
             {(isOwner || isAdmin) && onDelete && (
               <button
+                role="menuitem"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete();
                 }}
                 className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
               >
-                <Trash2 size={12} /> Delete
+                <Trash2 size={12} aria-hidden="true" /> Delete
               </button>
             )}
           </div>

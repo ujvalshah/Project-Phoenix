@@ -27,9 +27,13 @@ import { UrlInput } from './CreateNuggetModal/UrlInput';
 import { AttachmentManager, FileAttachment } from './CreateNuggetModal/AttachmentManager';
 import { FormFooter } from './CreateNuggetModal/FormFooter';
 import { MasonryMediaToggle } from './CreateNuggetModal/MasonryMediaToggle';
+import { MediaSection, MediaSectionItem } from './CreateNuggetModal/MediaSection';
+import { ExternalLinksSection } from './CreateNuggetModal/ExternalLinksSection';
+import { LayoutVisibilitySection } from './CreateNuggetModal/LayoutVisibilitySection';
 import { MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
-import type { Article } from '@/types';
+import type { Article, ExternalLink, LayoutVisibility } from '@/types';
+import { DEFAULT_LAYOUT_VISIBILITY } from '@/types';
 import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeArticleInput';
 import { normalizeTags } from '@/shared/articleNormalization/normalizeTags';
 import { useImageManager } from '@/hooks/useImageManager';
@@ -133,7 +137,18 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   
   // Admin-only: Custom creation date
   const [customCreatedAt, setCustomCreatedAt] = useState<string>('');
-  
+
+  // External Links State (NEW - Separated from media URLs)
+  const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
+
+  // Layout Visibility State (NEW - Control which layouts display this nugget)
+  const [layoutVisibility, setLayoutVisibility] = useState<LayoutVisibility>({
+    grid: true,
+    masonry: true,
+    utility: true,
+    feed: true,
+  });
+
   // Explicitly deleted images tracked by useImageManager hook (Phase 9: Legacy code removed)
   const explicitlyDeletedImages = imageManager.explicitlyDeletedUrls;
   
@@ -894,19 +909,119 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     // Delegate to imageManager (Phase 9: Legacy code removed)
     // Try to find by ID first
     let item = masonryMediaItems.find(m => m.id === itemId);
-    
+
     // If not found, try to find by URL (fallback for edge cases)
     if (!item) {
       // itemId might be a URL in some cases
       item = masonryMediaItems.find(m => m.url === itemId || m.id === itemId);
     }
-    
+
     if (item?.url) {
       imageManager.toggleMasonry(item.url, showInMasonry);
     } else {
       console.warn('[MasonryToggle] Could not find item to toggle:', itemId, {
         availableItems: masonryMediaItems.map(m => ({ id: m.id, url: m.url })),
       });
+    }
+  };
+
+  // Handle Grid media toggle (NEW)
+  const handleGridMediaToggle = (itemId: string, showInGrid: boolean) => {
+    let item = masonryMediaItems.find(m => m.id === itemId);
+    if (!item) {
+      item = masonryMediaItems.find(m => m.url === itemId || m.id === itemId);
+    }
+    if (item?.url) {
+      // TODO: Implement imageManager.toggleGrid() when backend support is ready
+      console.log('[GridToggle] Grid visibility:', itemId, showInGrid);
+    }
+  };
+
+  // Handle Utility media toggle (NEW)
+  const handleUtilityMediaToggle = (itemId: string, showInUtility: boolean) => {
+    let item = masonryMediaItems.find(m => m.id === itemId);
+    if (!item) {
+      item = masonryMediaItems.find(m => m.url === itemId || m.id === itemId);
+    }
+    if (item?.url) {
+      // TODO: Implement imageManager.toggleUtility() when backend support is ready
+      console.log('[UtilityToggle] Utility visibility:', itemId, showInUtility);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXTERNAL LINKS HANDLERS (NEW)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const handleAddExternalLink = (url: string) => {
+    const newLink: ExternalLink = {
+      id: `link-${Date.now()}`,
+      url,
+      isPrimary: externalLinks.length === 0, // First link is primary
+      domain: (() => {
+        try {
+          return new URL(url).hostname.replace('www.', '');
+        } catch {
+          return url;
+        }
+      })(),
+      addedAt: new Date().toISOString(),
+    };
+    setExternalLinks(prev => [...prev, newLink]);
+  };
+
+  const handleRemoveExternalLink = (linkId: string) => {
+    setExternalLinks(prev => {
+      const remaining = prev.filter(l => l.id !== linkId);
+      // If we removed the primary, make the first remaining link primary
+      if (remaining.length > 0 && !remaining.some(l => l.isPrimary)) {
+        remaining[0] = { ...remaining[0], isPrimary: true };
+      }
+      return remaining;
+    });
+  };
+
+  const handleSetPrimaryLink = (linkId: string) => {
+    setExternalLinks(prev => prev.map(l => ({
+      ...l,
+      isPrimary: l.id === linkId,
+    })));
+  };
+
+  const handleUpdateLinkLabel = (linkId: string, label: string) => {
+    setExternalLinks(prev => prev.map(l =>
+      l.id === linkId ? { ...l, label } : l
+    ));
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIA SECTION HANDLERS (NEW - Unified media management)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Convert masonryMediaItems to MediaSectionItem format
+  const mediaSectionItems: MediaSectionItem[] = masonryMediaItems.map((item, index) => ({
+    id: item.id,
+    url: item.url,
+    type: item.type,
+    thumbnail: item.thumbnail,
+    isDisplayImage: index === 0, // First item is display image by default
+    showInMasonry: item.showInMasonry,
+    showInGrid: true, // Default to true (show in grid by default)
+    showInUtility: true, // Default to true (show in utility by default)
+    masonryTitle: item.masonryTitle,
+    previewMetadata: item.previewMetadata,
+  }));
+
+  const handleSetDisplayImage = (itemId: string) => {
+    // For now, display image is determined by order (first item)
+    // This can be extended to actually reorder items or set a flag
+    console.log('[MediaSection] Set display image:', itemId);
+  };
+
+  const handleDeleteMedia = (itemId: string) => {
+    const item = masonryMediaItems.find(m => m.id === itemId);
+    if (item?.url) {
+      imageManager.deleteImage(item.url);
     }
   };
 
@@ -1658,7 +1773,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className="relative w-full h-screen max-h-screen sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 fade-in duration-200 border border-slate-200 dark:border-slate-800 overflow-hidden"
+        className="relative w-full h-screen max-h-screen sm:h-auto sm:max-h-[90vh] sm:max-w-4xl bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 fade-in duration-200 border border-slate-200 dark:border-slate-800 overflow-hidden"
       >
         
         {/* Header */}
@@ -1947,88 +2062,54 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     onError={setError}
                 />
 
-                {/* CRITICAL FIX: Existing images must render independently of URLs input */}
-                {/* Show existing images from article (edit mode only) - OUTSIDE of URL conditional */}
-                {/* This ensures images are visible even when no URLs are in the input field */}
-                {(() => {
-                    const shouldRender = mode === 'edit' && existingImages.length > 0;
-                    
-                    if (!shouldRender) {
-                        // Only show warning if we're in edit mode AND we actually expect images to exist
-                        // (i.e., initialData has images but getAllImageUrls returned empty)
-                        if (mode === 'edit' && existingImages.length === 0 && initialData) {
-                            const hasImagesArray = initialData.images && initialData.images.length > 0;
-                            const hasPrimaryMedia = !!initialData.primaryMedia;
-                            const hasSupportingMedia = initialData.supportingMedia && initialData.supportingMedia.length > 0;
-                            const hasLegacyMedia = !!initialData.media;
-                            
-                            // Only warn if article has media sources but getAllImageUrls found none
-                            if (hasImagesArray || hasPrimaryMedia || hasSupportingMedia || hasLegacyMedia) {
-                                console.warn('[CreateNuggetModal] WARNING: Edit mode but no existing images found. Check getAllImageUrls() result.', {
-                                    hasImagesArray,
-                                    hasPrimaryMedia,
-                                    hasSupportingMedia,
-                                    hasLegacyMedia,
-                                    articleId: initialData.id,
-                                });
-                            }
-                        }
-                        return null;
-                    }
-                    
-                    return (
-                    <div className="space-y-2 mb-4" data-testid="existing-images">
-                        <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                            Existing Images ({existingImages.length})
-                        </div>
-                        <div className={`grid gap-2 ${existingImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                            {existingImages.map((imageUrl, idx) => {
-                                const detectedType = detectProviderFromUrl(imageUrl);
-                                const _isCloudinaryUrl = imageUrl.includes('cloudinary.com') || imageUrl.includes('res.cloudinary.com'); // eslint-disable-line @typescript-eslint/no-unused-vars
-                                return (
-                                    <div key={`existing-${idx}`} data-image-url={imageUrl} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-sm">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                e.preventDefault();
-                                                deleteImage(imageUrl);
-                                            }}
-                                            className="absolute top-2 right-2 bg-red-600 text-white p-1.5 rounded-full opacity-90 hover:opacity-100 transition-opacity z-10 hover:bg-red-700 shadow-lg"
-                                            title="Delete image"
-                                            aria-label="Delete image"
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                        <div className="max-h-[160px] overflow-hidden">
-                                            <GenericLinkPreview
-                                                url={imageUrl}
-                                                metadata={{ url: imageUrl }}
-                                                type={detectedType}
-                                            />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                    );
-                })()}
-
-                {/* Masonry Media Toggle (Create and Edit Mode) */}
-                {/* 
-                  ROOT CAUSE FIX: Previously only shown in Edit mode due to mode === 'edit' condition.
-                  Now shown in both modes when media items exist. In Create mode, masonryMediaItems
-                  is populated from attachments and URLs via useEffect hook.
-                */}
-                {masonryMediaItems.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700" data-testid="masonry-toggle">
-                    <MasonryMediaToggle
-                      items={masonryMediaItems}
-                      onToggle={handleMasonryMediaToggle}
-                      onTitleChange={handleMasonryTitleChange}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                {/* MEDIA SECTION - Unified media management (NEW) */}
+                {/* Replaces: "Existing Images" + "Include in Masonry View" sections */}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                {mediaSectionItems.length > 0 && (
+                  <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="media-section">
+                    <MediaSection
+                      items={mediaSectionItems}
+                      onDelete={handleDeleteMedia}
+                      onSetDisplayImage={handleSetDisplayImage}
+                      onToggleMasonry={handleMasonryMediaToggle}
+                      onToggleGrid={handleGridMediaToggle}
+                      onToggleUtility={handleUtilityMediaToggle}
+                      onMasonryTitleChange={handleMasonryTitleChange}
+                      onAddMedia={() => fileInputRef.current?.click()}
+                      disabled={isSubmitting}
                     />
                   </div>
                 )}
+
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                {/* EXTERNAL LINKS SECTION - For card "Link" button (NEW) */}
+                {/* Separate from media URLs - these are references, not content */}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="external-links-section">
+                  <ExternalLinksSection
+                    links={externalLinks}
+                    onAddLink={handleAddExternalLink}
+                    onRemoveLink={handleRemoveExternalLink}
+                    onSetPrimary={handleSetPrimaryLink}
+                    onUpdateLabel={handleUpdateLinkLabel}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                {/* LAYOUT VISIBILITY SECTION (NEW) */}
+                {/* Controls which layouts display this nugget */}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="layout-visibility-section">
+                  <LayoutVisibilitySection
+                    visibility={layoutVisibility}
+                    onChange={setLayoutVisibility}
+                    hasMedia={mediaSectionItems.length > 0}
+                    hasMasonrySelectedMedia={mediaSectionItems.some(m => m.showInMasonry)}
+                    disabled={isSubmitting}
+                  />
+                </div>
 
                 {/* Link Preview */}
                 {(urls.length > 0 || detectedLink) && (() => {

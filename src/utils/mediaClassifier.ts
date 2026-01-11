@@ -89,6 +89,7 @@ function getYouTubeThumbnail(videoId: string): string {
 
 /**
  * Convert legacy NuggetMedia to PrimaryMedia format
+ * CRITICAL: Preserves showInMasonry and masonryTitle flags for masonry layout
  */
 function convertToPrimaryMedia(media: NuggetMedia): PrimaryMedia {
   const primaryMedia: PrimaryMedia = {
@@ -96,8 +97,12 @@ function convertToPrimaryMedia(media: NuggetMedia): PrimaryMedia {
     url: media.url,
     aspect_ratio: media.aspect_ratio,
     previewMetadata: media.previewMetadata,
+    // CRITICAL: Preserve masonry flags when converting from NuggetMedia
+    // These flags determine which media items appear in masonry layout
+    showInMasonry: media.showInMasonry,
+    masonryTitle: media.masonryTitle,
   };
-  
+
   // Set thumbnail based on type
   if (media.type === 'youtube') {
     const videoId = extractYouTubeId(media.url);
@@ -113,7 +118,7 @@ function convertToPrimaryMedia(media: NuggetMedia): PrimaryMedia {
   } else if (media.previewMetadata?.imageUrl) {
     primaryMedia.thumbnail = media.previewMetadata.imageUrl;
   }
-  
+
   return primaryMedia;
 }
 

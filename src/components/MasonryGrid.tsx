@@ -1,9 +1,11 @@
-import React, { useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import { Article } from '@/types';
 import { MasonryAtom } from './masonry/MasonryAtom';
 import { useMasonry } from '@/hooks/useMasonry';
 import { Loader2 } from 'lucide-react';
 import { getMasonryVisibleMedia } from '@/utils/masonryMediaHelper';
+import { CardSkeleton } from './card/CardSkeleton';
+import { CardError } from './card/CardError';
 
 /**
  * Expanded masonry entry: one per selected media item
@@ -25,6 +27,9 @@ interface MasonryGridProps {
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   onLoadMore?: () => void;
+  // Error Handling Props
+  error?: Error | null;
+  onRetry?: () => void;
 }
 
 /**
@@ -110,20 +115,46 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
   hasNextPage = false,
   isFetchingNextPage = false,
   onLoadMore,
+  // Error Handling Props
+  error = null,
+  onRetry,
 }) => {
+  const [shouldAnimate, setShouldAnimate] = useState(false);
+  const prevLoadingRef = useRef(isLoading);
+  const hasInitializedRef = useRef(false);
+
+  // Trigger animations when loading completes OR when component mounts with data
+  useEffect(() => {
+    // Case 1: Transitioning from loading → loaded (initial load)
+    if (prevLoadingRef.current && !isLoading && articles.length > 0) {
+      const timer = setTimeout(() => setShouldAnimate(true), 50);
+      return () => clearTimeout(timer);
+    }
+
+    // Case 2: Component mounted with cached data (no loading transition)
+    // This handles switching to Masonry view when data is already loaded
+    if (!hasInitializedRef.current && !isLoading && articles.length > 0) {
+      hasInitializedRef.current = true;
+      const timer = setTimeout(() => setShouldAnimate(true), 50);
+      return () => clearTimeout(timer);
+    }
+
+    prevLoadingRef.current = isLoading;
+  }, [isLoading, articles.length]);
+
   // Expand articles into masonry entries: one entry per selected media item
   // If an article has multiple selected media items, it creates multiple independent tiles
   const masonryEntries = useMemo(() => {
     const entries: MasonryEntry[] = [];
-    
+
     for (const article of articles) {
       const visibleMediaItems = getMasonryVisibleMedia(article);
-      
+
       if (visibleMediaItems.length === 0) {
         // Skip articles with no selected media items
         continue;
       }
-      
+
       // Create one entry per selected media item
       // Each entry represents one tile in the masonry grid
       for (const mediaItem of visibleMediaItems) {
@@ -133,7 +164,7 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
         });
       }
     }
-    
+
     return entries;
   }, [articles]);
 
@@ -156,6 +187,25 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
     }
   }, [isFetchingNextPage, hasNextPage, onLoadMore]);
 
+  // Error State: Show error UI when query fails
+  if (error && !isLoading) {
+    return (
+      <div className="flex gap-4 w-full">
+        {Array.from({ length: columnCount }).map((_, colIdx) => (
+          <div key={colIdx} className="flex-1 flex flex-col gap-4">
+            {colIdx === 0 && (
+              <CardError
+                error={error}
+                onRetry={onRetry}
+                variant="masonry"
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   // Layer 2: Presentational rendering only
   if (isLoading) {
     return (
@@ -163,7 +213,7 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
         {Array.from({ length: columnCount }).map((_, colIdx) => (
           <div key={colIdx} className="flex-1 flex flex-col gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-slate-100 dark:bg-slate-800 h-80 animate-pulse" />
+              <CardSkeleton key={i} variant="masonry" />
             ))}
           </div>
         ))}
@@ -173,23 +223,38 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
 
   return (
     <>
-      <div className="flex gap-4 w-full">
+      <div className="flex gap-4 w-full transition-opacity duration-300 motion-reduce:transition-none">
         {columns.map((columnEntries, colIdx) => (
           <div key={colIdx} className="flex-1 flex flex-col gap-4">
             {columnEntries.map((entry, entryIdx) => {
               // Ensure unique React keys even if mediaItemId is duplicate
               // Use entryIdx in addition to mediaItemId to guarantee uniqueness
               const uniqueKey = `${entry.article.id}-${entry.mediaItemId || 'all'}-${entryIdx}-${columnEntries.length}`;
-              
+
+              // Calculate global index for stagger (across all columns)
+              // Formula: column index + (row index * number of columns)
+              const globalIndex = colIdx + (entryIdx * columns.length);
+              const delay = Math.min(globalIndex * 50, 750);
+
               return (
-                <MasonryAtom
+                <div
                   key={uniqueKey}
-                  article={entry.article}
-                  mediaItemId={entry.mediaItemId}
-                  onArticleClick={onArticleClick}
-                  onCategoryClick={onCategoryClick}
-                  currentUserId={currentUserId}
-                />
+                  className={`
+                    ${shouldAnimate ? 'animate-fade-in-up' : 'opacity-0'}
+                    motion-reduce:animate-none motion-reduce:opacity-100
+                  `}
+                  style={{
+                    animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
+                  }}
+                >
+                  <MasonryAtom
+                    article={entry.article}
+                    mediaItemId={entry.mediaItemId}
+                    onArticleClick={onArticleClick}
+                    onCategoryClick={onCategoryClick}
+                    currentUserId={currentUserId}
+                  />
+                </div>
               );
             })}
           </div>

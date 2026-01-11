@@ -77,6 +77,44 @@ const documentSchema = z.preprocess(
   }).array()
 ).optional();
 
+// ════════════════════════════════════════════════════════════════════════════
+// NEW SCHEMAS: External Links, Layout Visibility
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Schema for external link
+ * For card "Link" button - separate from media URLs
+ */
+const externalLinkSchema = z.object({
+  id: z.string(),
+  url: z.string().url('Invalid URL format'),
+  label: z.string().max(100, 'Label too long').optional(),
+  isPrimary: z.boolean().default(false),
+  domain: z.string().optional(),
+  favicon: z.string().optional(),
+  addedAt: z.string().optional(),
+});
+
+/**
+ * Schema for external links array
+ * Coerce null/undefined to empty array
+ */
+const externalLinksSchema = z.preprocess(
+  (val) => Array.isArray(val) ? val : [],
+  z.array(externalLinkSchema)
+).optional();
+
+/**
+ * Schema for layout visibility
+ * Controls which layouts display this nugget
+ */
+const layoutVisibilitySchema = z.object({
+  grid: z.boolean().default(true),
+  masonry: z.boolean().default(true),
+  utility: z.boolean().default(true),
+  feed: z.boolean().default(true).optional(),
+}).optional();
+
 // Base schema for article creation/updates (without refinement)
 const baseArticleSchema = z.object({
   title: z.string().max(200, 'Title too long').optional(),
@@ -136,6 +174,19 @@ const baseArticleSchema = z.object({
     },
     { message: 'Invalid date format' }
   ).optional(),
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // NEW FIELDS: External Links, Layout Visibility, Display Image Index
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // External links for card "Link" button (separate from media URLs)
+  externalLinks: externalLinksSchema,
+
+  // Layout visibility (defaults to all true for backward compatibility)
+  layoutVisibility: layoutVisibilitySchema,
+
+  // Display image index (which media item shows as card thumbnail)
+  displayImageIndex: z.number().int().min(0).optional(),
 });
 
 // Create schema with refinement: at least one of content/media/images/documents must be present

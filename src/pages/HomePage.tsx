@@ -238,21 +238,14 @@ export const HomePage: React.FC<HomePageProps> = ({
   // CATEGORY PHASE-OUT: Renamed toggleCategory to toggleTag
   const toggleTag = (tag: string) => {
       setSelectedCategories(
-          selectedCategories.includes(cat) 
-            ? selectedCategories.filter(c => c !== cat) 
+          selectedCategories.includes(cat)
+            ? selectedCategories.filter(c => c !== cat)
             : [...selectedCategories, cat]
       );
   };
 
-  if (query.isError) {
-    return (
-      <div className="w-full h-[60vh] flex flex-col items-center justify-center text-slate-500">
-        <AlertCircle className="w-10 h-10 mb-2 text-red-500" />
-        <p>Something went wrong loading the feed.</p>
-        <button onClick={() => query.refetch()} className="mt-4 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg font-bold text-sm hover:bg-slate-200 dark:hover:bg-slate-700">Try Again</button>
-      </div>
-    );
-  }
+  // Error handling is now delegated to ArticleGrid for better inline UX
+  // No page-level error handling needed
 
   return (
     <main className="w-full flex flex-col relative" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} ref={containerRef}>
@@ -289,7 +282,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           mainContent={
             // Grid/Masonry/Utility View: Full-width for maximum content density
             <div className="max-w-[1800px] mx-auto px-4 lg:px-6 pb-4">
-              <ArticleGrid 
+              <ArticleGrid
                 articles={articles}
                 viewMode={viewMode}
                 isLoading={isLoadingArticles}
@@ -301,6 +294,9 @@ export const HomePage: React.FC<HomePageProps> = ({
                 hasNextPage={hasNextPage}
                 isFetchingNextPage={isFetchingNextPage}
                 onLoadMore={fetchNextPage}
+                // Error Handling Props
+                error={articlesError || null}
+                onRetry={refetchArticles}
               />
             </div>
           }

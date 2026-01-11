@@ -386,5 +386,63 @@ body {
 /* Caption uses group-hover:opacity-100 directly in component classes */
 /* No additional CSS needed - handled by Tailwind group-hover utility */
 
+/* ============================================
+   Accessibility: Reduced Motion Support
+   ============================================
+   Respects user's prefers-reduced-motion setting
+   for WCAG 2.1 compliance (Level AA)
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================
+   Accessibility: Screen Reader Only Utility
+   ============================================
+   Hides content visually but keeps it accessible
+   to screen readers (WCAG 2.1 requirement)
+   ============================================ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ============================================
+   Accessibility: Skip Links
+   ============================================
+   Allow keyboard users to skip to main content
+   ============================================ */
+
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #000;
+  color: #fff;
+  padding: 8px 16px;
+  text-decoration: none;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
 
 

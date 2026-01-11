@@ -141,7 +141,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
 
     return (
       <>
-        <div ref={ref}>{variant}</div>
+        <div ref={ref} className="h-full">{variant}</div>
 
         {/* Modals rendered by Controller */}
         <CollectionPopover

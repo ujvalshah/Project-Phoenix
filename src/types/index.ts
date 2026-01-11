@@ -142,6 +142,48 @@ export interface SupportingMediaItem {
   masonryTitle?: string;
 }
 
+/**
+ * ============================================================================
+ * EXTERNAL LINK: Separate from media URLs
+ * ============================================================================
+ * External links are for the card's "Link" button - references to read more,
+ * NOT content sources. Multiple links supported with one marked as primary.
+ */
+export interface ExternalLink {
+  id: string;                 // Unique identifier
+  url: string;                // The external URL
+  label?: string;             // Optional display label (e.g., "Read on Bloomberg")
+  isPrimary: boolean;         // Only one should be true - used for card "Link" button
+  domain?: string;            // Extracted domain for display (e.g., "economist.com")
+  favicon?: string;           // Favicon URL for visual
+  addedAt?: string;           // ISO timestamp when added
+}
+
+/**
+ * ============================================================================
+ * LAYOUT VISIBILITY: Control which views display this nugget
+ * ============================================================================
+ * Allows selective visibility: show in Grid only, Masonry only, or all layouts.
+ * Defaults to all true for backward compatibility.
+ */
+export interface LayoutVisibility {
+  grid: boolean;              // Standard grid layout
+  masonry: boolean;           // Masonry gallery layout (requires media with showInMasonry)
+  utility: boolean;           // Compact utility layout
+  feed?: boolean;             // Feed layout (optional, defaults to grid visibility)
+}
+
+/**
+ * Default layout visibility for new nuggets
+ * All layouts enabled by default
+ */
+export const DEFAULT_LAYOUT_VISIBILITY: LayoutVisibility = {
+  grid: true,
+  masonry: true,
+  utility: true,
+  feed: true,
+};
+
 export interface Article {
   id: string;
   title?: string;
@@ -198,6 +240,28 @@ export interface Article {
   // Admin-only: Custom creation date
   customCreatedAt?: string | null;
   isCustomCreatedAt?: boolean;
+
+  // ============================================================================
+  // EXTERNAL LINKS (NEW - Separated from media URLs)
+  // ============================================================================
+  // External links for the card's "Link" button
+  // Separate from media URLs - these are references, not content sources
+  // One link should be marked as isPrimary for the card button
+  externalLinks?: ExternalLink[];
+
+  // ============================================================================
+  // LAYOUT VISIBILITY (NEW)
+  // ============================================================================
+  // Controls which views/layouts this nugget appears in
+  // Defaults to all true for backward compatibility
+  layoutVisibility?: LayoutVisibility;
+
+  // ============================================================================
+  // DISPLAY IMAGE SELECTION (NEW)
+  // ============================================================================
+  // Index of the media item to display as card thumbnail
+  // If not set, uses first media item (backward compatible)
+  displayImageIndex?: number;
 
   // Contextual
   addedBy?: Contributor; // When inside a collection

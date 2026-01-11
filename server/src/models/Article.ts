@@ -50,6 +50,33 @@ export interface IDocument {
   size: string;
 }
 
+/**
+ * External Link: Separate from media URLs
+ * Used for the card's "Link" button - references to read more, not content sources.
+ * Multiple links supported with one marked as primary.
+ */
+export interface IExternalLink {
+  id: string;                 // Unique identifier
+  url: string;                // The external URL
+  label?: string;             // Optional display label (e.g., "Read on Bloomberg")
+  isPrimary: boolean;         // Only one should be true - used for card "Link" button
+  domain?: string;            // Extracted domain for display (e.g., "economist.com")
+  favicon?: string;           // Favicon URL for visual
+  addedAt?: string;           // ISO timestamp when added
+}
+
+/**
+ * Layout Visibility: Control which views display this nugget
+ * Allows selective visibility: show in Grid only, Masonry only, or all layouts.
+ * Defaults to all true for backward compatibility.
+ */
+export interface ILayoutVisibility {
+  grid: boolean;              // Standard grid layout
+  masonry: boolean;           // Masonry gallery layout
+  utility: boolean;           // Compact utility layout
+  feed?: boolean;             // Feed layout (optional, defaults to grid visibility)
+}
+
 export interface IArticle extends Document {
   title?: string;
   excerpt?: string; // Short summary/description
@@ -84,6 +111,30 @@ export interface IArticle extends Document {
   updated_at?: string;
   // Admin-only: Flag to indicate if createdAt was manually set
   isCustomCreatedAt?: boolean;
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // NEW FIELDS: External Links, Layout Visibility, Display Image
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * External links for the card's "Link" button
+   * Separate from media URLs - these are references, not content sources
+   * One link should be marked as isPrimary for the card button
+   */
+  externalLinks?: IExternalLink[];
+
+  /**
+   * Layout visibility configuration
+   * Controls which views/layouts this nugget appears in
+   * Defaults to all true for backward compatibility
+   */
+  layoutVisibility?: ILayoutVisibility;
+
+  /**
+   * Index of the media item to display as card thumbnail
+   * If not set, uses first media item (backward compatible)
+   */
+  displayImageIndex?: number;
 }
 
 const NuggetMediaSchema = new Schema<INuggetMedia>({
@@ -130,6 +181,31 @@ const DocumentSchema = new Schema<IDocument>({
   size: { type: String, required: true }
 }, { _id: false });
 
+/**
+ * External Link Schema
+ * For card "Link" button - separate from media URLs
+ */
+const ExternalLinkSchema = new Schema<IExternalLink>({
+  id: { type: String, required: true },
+  url: { type: String, required: true },
+  label: { type: String, required: false },
+  isPrimary: { type: Boolean, required: true, default: false },
+  domain: { type: String, required: false },
+  favicon: { type: String, required: false },
+  addedAt: { type: String, required: false }
+}, { _id: false });
+
+/**
+ * Layout Visibility Schema
+ * Controls which layouts display this nugget
+ */
+const LayoutVisibilitySchema = new Schema<ILayoutVisibility>({
+  grid: { type: Boolean, default: true },
+  masonry: { type: Boolean, default: true },
+  utility: { type: Boolean, default: true },
+  feed: { type: Boolean, default: true }
+}, { _id: false });
+
 const ArticleSchema = new Schema<IArticle>({
   title: { type: String, required: false },
   excerpt: { type: String }, // Optional excerpt
@@ -166,7 +242,20 @@ const ArticleSchema = new Schema<IArticle>({
   created_at: { type: String },
   updated_at: { type: String },
   // Admin-only: Flag to indicate if createdAt was manually set
-  isCustomCreatedAt: { type: Boolean, default: false }
+  isCustomCreatedAt: { type: Boolean, default: false },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // NEW FIELDS: External Links, Layout Visibility, Display Image
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // External links for card "Link" button (separate from media URLs)
+  externalLinks: { type: [ExternalLinkSchema], default: [] },
+
+  // Layout visibility (defaults to all true for backward compatibility)
+  layoutVisibility: { type: LayoutVisibilitySchema, required: false },
+
+  // Display image index (which media item shows as card thumbnail)
+  displayImageIndex: { type: Number, required: false }
 }, {
   timestamps: false // We manage our own timestamps
 });

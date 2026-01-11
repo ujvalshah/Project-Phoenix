@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { Article } from '@/types';
 import { NewsCard } from './NewsCard';
 import { MasonryGrid } from './MasonryGrid';
@@ -7,6 +7,8 @@ import { SearchX, Loader2 } from 'lucide-react';
 import { useRowExpansion } from '@/hooks/useRowExpansion';
 import { ErrorBoundary } from './UI/ErrorBoundary';
 import { sanitizeArticle } from '@/utils/errorHandler';
+import { CardSkeleton } from './card/CardSkeleton';
+import { CardError } from './card/CardError';
 
 interface ArticleGridProps {
   articles: Article[];
@@ -26,6 +28,9 @@ interface ArticleGridProps {
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   onLoadMore?: () => void;
+  // Error Handling Props
+  error?: Error | null;
+  onRetry?: () => void;
 }
 
 // Infinite Scroll Trigger Component (reused from Feed.tsx pattern)
@@ -99,8 +104,33 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   hasNextPage = false,
   isFetchingNextPage = false,
   onLoadMore,
+  // Error Handling Props
+  error = null,
+  onRetry,
 }) => {
   const { expandedId, toggleExpansion, registerCard } = useRowExpansion();
+  const [shouldAnimate, setShouldAnimate] = useState(false);
+  const prevLoadingRef = useRef(isLoading);
+  const hasInitializedRef = useRef(false);
+
+  // Trigger animations when loading completes OR when component mounts with data
+  useEffect(() => {
+    // Case 1: Transitioning from loading → loaded (initial load)
+    if (prevLoadingRef.current && !isLoading && articles.length > 0) {
+      const timer = setTimeout(() => setShouldAnimate(true), 50);
+      return () => clearTimeout(timer);
+    }
+
+    // Case 2: Component mounted with cached data (no loading transition)
+    // This handles switching to Grid view when data is already loaded
+    if (!hasInitializedRef.current && !isLoading && articles.length > 0) {
+      hasInitializedRef.current = true;
+      const timer = setTimeout(() => setShouldAnimate(true), 50);
+      return () => clearTimeout(timer);
+    }
+
+    prevLoadingRef.current = isLoading;
+  }, [isLoading, articles.length]);
 
   // Infinite Scroll Handler
   const handleLoadMore = useCallback(() => {
@@ -108,6 +138,26 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
       onLoadMore();
     }
   }, [isFetchingNextPage, hasNextPage, onLoadMore]);
+
+  // Error State: Show error UI when query fails
+  if (error && !isLoading) {
+    return (
+      <div
+        className={
+          viewMode === 'feed'
+            ? "max-w-2xl mx-auto"
+            : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full"
+        }
+      >
+        <CardError
+          error={error}
+          onRetry={onRetry}
+          variant={viewMode === 'feed' ? 'feed' : 'grid'}
+          className="col-span-full"
+        />
+      </div>
+    );
+  }
 
   // FIX #2: Remove duplicate masonry loading logic
   // MasonryGrid handles its own loading state with correct column count
@@ -122,7 +172,10 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         }
       >
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i} className="bg-slate-100 dark:bg-slate-800 rounded-2xl h-80 animate-pulse" />
+          <CardSkeleton
+            key={i}
+            variant={viewMode === 'feed' ? 'feed' : 'grid'}
+          />
         ))}
       </div>
     );
@@ -152,38 +205,71 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         hasNextPage={hasNextPage}
         isFetchingNextPage={isFetchingNextPage}
         onLoadMore={onLoadMore}
+        // Error Handling Props
+        error={error}
+        onRetry={onRetry}
       />
     );
   }
 
   // Render feed, grid, or utility layout
+  // RESPONSIVE CARD HEIGHTS:
+  // - Mobile (1 col): auto-rows-auto - cards size to their content naturally
+  // - Tablet+ (2+ cols): auto-rows-fr - equal height rows for visual consistency
   return (
     <div
-      className={
-        viewMode === 'feed'
+      className={`
+        transition-opacity duration-300 motion-reduce:transition-none
+        ${shouldAnimate ? 'opacity-100' : 'opacity-100'}
+        ${viewMode === 'feed'
           ? "max-w-2xl mx-auto flex flex-col gap-8"
-          : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full"
-      }
+          : viewMode === 'utility'
+            ? "grid grid-cols-1 auto-rows-auto md:grid-cols-2 md:auto-rows-fr lg:grid-cols-3 xl:grid-cols-4 gap-4 mx-auto w-full"
+            : "grid grid-cols-1 auto-rows-auto md:grid-cols-2 md:auto-rows-fr lg:grid-cols-3 xl:grid-cols-4 gap-6 mx-auto w-full"
+        }
+      `}
     >
-      {articles.map((article) => {
+      {articles.map((article, index) => {
         // Sanitize article data before rendering
         const sanitized = sanitizeArticle(article);
         if (!sanitized) {
           console.warn('[ArticleGrid] Skipping invalid article:', article);
           return null;
         }
-        
+
+        // Calculate staggered delay (50ms per card, max 15 cards = 750ms)
+        const delay = Math.min(index * 50, 750);
+
         return (
-          <ErrorBoundary key={sanitized.id} fallback={<div className="p-4 text-sm text-slate-500">Failed to load nugget</div>}>
-            <NewsCard
-              ref={(el) => registerCard(sanitized.id, el)}
-              article={sanitized}
-              viewMode={viewMode}
-              onCategoryClick={onCategoryClick}
-              onClick={onArticleClick}
-              currentUserId={currentUserId}
-              onTagClick={onTagClick}
-            />
+          <ErrorBoundary
+            key={sanitized.id}
+            fallback={
+              <CardError
+                error={new Error('Failed to render card')}
+                variant={viewMode === 'feed' ? 'feed' : 'grid'}
+              />
+            }
+          >
+            <div
+              className={`
+                h-full
+                ${shouldAnimate ? 'animate-fade-in-up' : 'opacity-0'}
+                motion-reduce:animate-none motion-reduce:opacity-100
+              `}
+              style={{
+                animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
+              }}
+            >
+              <NewsCard
+                ref={(el) => registerCard(sanitized.id, el)}
+                article={sanitized}
+                viewMode={viewMode}
+                onCategoryClick={onCategoryClick}
+                onClick={onArticleClick}
+                currentUserId={currentUserId}
+                onTagClick={onTagClick}
+              />
+            </div>
           </ErrorBoundary>
         );
       })}

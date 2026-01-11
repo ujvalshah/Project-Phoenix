@@ -45,10 +45,50 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
     }
   }, [data.id, data.cardType, data.content, data.excerpt]);
 
+  // Keyboard navigation handler
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Allow keyboard navigation within card (buttons, links)
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'BUTTON' || target.tagName === 'A') {
+      return; // Let buttons and links handle their own keyboard events
+    }
+
+    // Handle Enter or Space to open card
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (handlers.onClick) {
+        handlers.onClick();
+      }
+    }
+  };
+
+  // Generate descriptive aria-label for the card
+  const ariaLabelParts: string[] = [];
+  if (data.title) {
+    ariaLabelParts.push(data.title);
+  }
+  if (data.tags && data.tags.length > 0) {
+    ariaLabelParts.push(`Tagged with ${data.tags.slice(0, 3).join(', ')}`);
+  }
+  if (data.authorName) {
+    ariaLabelParts.push(`by ${data.authorName}`);
+  }
+  if (data.excerpt || data.content) {
+    const excerptPreview = (data.excerpt || data.content).substring(0, 100);
+    ariaLabelParts.push(excerptPreview);
+  }
+  const ariaLabel = ariaLabelParts.length > 0
+    ? ariaLabelParts.join('. ') + '. Click to view full article.'
+    : 'Article card. Click to view details.';
+
   return (
-    <div
+    <article
       data-article-id={data.id}
-      className="group relative flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] transition-all duration-150 w-full p-6 gap-4 hover:-translate-y-0.5"
+      role="article"
+      aria-label={ariaLabel}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      className="group relative flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] transition-all duration-150 w-full p-6 gap-4 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
     >
       {/* TWO-CARD ARCHITECTURE: Hybrid vs Media-Only */}
       {data.cardType === 'media-only' ? (
@@ -186,7 +226,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
       {data.showContributor && data.contributorName && (
         <CardContributor contributorName={data.contributorName} />
       )}
-    </div>
+    </article>
   );
 };
 

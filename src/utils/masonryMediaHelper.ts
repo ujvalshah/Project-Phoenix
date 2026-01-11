@@ -92,10 +92,12 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
       url: primaryMedia.url,
       thumbnail: primaryMedia.thumbnail,
       source: 'primary',
-      // BACKWARD COMPATIBILITY: Preserve existing value if set, otherwise default to false (opt-in)
-      showInMasonry: primaryMedia.showInMasonry !== undefined 
-        ? primaryMedia.showInMasonry 
-        : false, // Default to false for new opt-in behavior
+      // BACKWARD COMPATIBILITY FIX: Default to TRUE for primary media
+      // This ensures existing nuggets (without showInMasonry field) appear in Masonry view
+      // Only explicitly set `false` values will hide primary media from Masonry
+      showInMasonry: primaryMedia.showInMasonry === false
+        ? false  // Respect explicit false
+        : true,  // Default to true (backward compatible + sensible default)
       isLocked: false, // Primary media can now be toggled (no longer locked)
       masonryTitle: primaryMedia.masonryTitle, // Optional masonry tile title
       previewMetadata: primaryMedia.previewMetadata,
@@ -138,9 +140,11 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
         url: legacyMedia.url,
         thumbnail: legacyMedia.thumbnail_url || legacyMedia.previewMetadata?.imageUrl,
         source: 'legacy-media',
-        showInMasonry: legacyMedia.showInMasonry !== undefined 
-          ? legacyMedia.showInMasonry 
-          : false, // Default to false for legacy media (backward compatibility)
+        // BACKWARD COMPATIBILITY FIX: Default to TRUE for legacy media
+        // This ensures existing nuggets appear in Masonry view
+        showInMasonry: legacyMedia.showInMasonry === false
+          ? false  // Respect explicit false
+          : true,  // Default to true (backward compatible)
         isLocked: false,
         masonryTitle: legacyMedia.masonryTitle, // CRITICAL: Read masonryTitle from stored media field
         previewMetadata: legacyMedia.previewMetadata,

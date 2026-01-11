@@ -72,15 +72,59 @@ export const GridVariant: React.FC<GridVariantProps> = ({
     }
   };
 
+  // Keyboard navigation handler
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Allow keyboard navigation within card (buttons, links)
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'BUTTON' || target.tagName === 'A') {
+      return; // Let buttons and links handle their own keyboard events
+    }
+
+    // Handle Enter or Space to open card
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (selectionMode && onSelect) {
+        onSelect();
+      } else if (handlers.onClick) {
+        handlers.onClick();
+      }
+    }
+  };
+
+  // Generate descriptive aria-label for the card
+  const ariaLabelParts: string[] = [];
+  if (data.title) {
+    ariaLabelParts.push(data.title);
+  }
+  if (data.tags && data.tags.length > 0) {
+    ariaLabelParts.push(`Tagged with ${data.tags.slice(0, 3).join(', ')}`);
+  }
+  if (data.authorName) {
+    ariaLabelParts.push(`by ${data.authorName}`);
+  }
+  if (data.excerpt || data.content) {
+    const excerptPreview = (data.excerpt || data.content).substring(0, 100);
+    ariaLabelParts.push(excerptPreview);
+  }
+  const ariaLabel = ariaLabelParts.length > 0
+    ? ariaLabelParts.join('. ') + '. Click to view full article.'
+    : 'Article card. Click to view details.';
+
   return (
     <article
       data-article-id={data.id}
+      role="article"
+      aria-label={selectionMode ? `${ariaLabel} ${isSelected ? 'Selected' : 'Not selected'}` : ariaLabel}
+      tabIndex={selectionMode ? -1 : 0}
+      onKeyDown={handleKeyDown}
       className={`
-        group relative flex flex-col h-full
+        group relative flex flex-col h-full overflow-hidden
         bg-white dark:bg-slate-900
         border rounded-xl
         shadow-sm hover:shadow-md
         transition-shadow duration-200
+        focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
+        focus:ring-offset-white dark:focus:ring-offset-slate-900
         ${selectionMode
           ? isSelected
             ? 'border-primary-500 ring-1 ring-primary-500'
@@ -91,23 +135,32 @@ export const GridVariant: React.FC<GridVariantProps> = ({
     >
       {/* Selection Checkbox Overlay */}
       {selectionMode && (
-        <div 
+        <div
           className="absolute top-3 right-3 z-20"
           onClick={(e) => e.stopPropagation()}
         >
-          <div 
-            className={`
-              w-5 h-5 rounded-full border-2 flex items-center justify-center 
-              transition-colors duration-150 cursor-pointer
-              ${isSelected 
-                ? 'bg-primary-500 border-primary-500 text-white' 
-                : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600'
-              }
-            `}
-            onClick={onSelect}
-          >
-            {isSelected && <Check size={12} strokeWidth={3} />}
-          </div>
+          <label className="cursor-pointer">
+            <input
+              type="checkbox"
+              className="sr-only"
+              checked={isSelected}
+              onChange={onSelect}
+              aria-label={`Select ${data.title || 'article'}`}
+            />
+            <div
+              className={`
+                w-6 h-6 rounded-full border-2 flex items-center justify-center
+                transition-all duration-150
+                focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2
+                ${isSelected
+                  ? 'bg-primary-500 border-primary-500 text-white'
+                  : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 hover:border-primary-400'
+                }
+              `}
+            >
+              {isSelected && <Check size={14} strokeWidth={3} aria-hidden="true" />}
+            </div>
+          </label>
         </div>
       )}
 
@@ -118,14 +171,15 @@ export const GridVariant: React.FC<GridVariantProps> = ({
       {data.cardType === 'media-only' ? (
         /* TYPE B: MEDIA-ONLY CARD - Media fills card body, optional short caption, footer */
         /* CRITICAL: No text wrapper block, no hybrid spacing/padding - image fills available space */
-        <div 
-          className="flex-1 flex flex-col relative overflow-hidden rounded-t-xl cursor-pointer min-h-[240px]"
+        /* flex-1 allows media to expand and fill available height in equal-height grid rows */
+        <div
+          className="flex-1 flex flex-col relative overflow-hidden rounded-t-xl cursor-pointer"
           onClick={handleCardClick}
         >
           {/* Media fills full available card body space (no padding wrapper like hybrid cards) */}
           {/* For Media-Only cards: image click opens lightbox (same as hybrid cards) */}
           {data.hasMedia && (
-            <div className="absolute inset-0 pt-2 px-2 pb-2 min-h-[240px] bg-slate-100 dark:bg-slate-800">
+            <div className="absolute inset-0 pt-2 px-2 pb-2 bg-slate-100 dark:bg-slate-800">
               <CardMedia
                 article={data}
                 visibility={data.visibility}
@@ -199,8 +253,9 @@ export const GridVariant: React.FC<GridVariantProps> = ({
 
           {/* Card Body - Clickable for opening drawer */}
           {/* PHASE 2: 8-pt spacing rhythm (p-4 = 16px, gap-2 = 8px) */}
-          <div 
-            className="flex flex-col flex-1 min-w-0 px-4 pb-2 gap-2 cursor-pointer"
+          {/* overflow-hidden + min-h-0 ensure content doesn't overflow in equal-height grid rows */}
+          <div
+            className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden px-4 pb-2 gap-2 cursor-pointer"
             onClick={handleCardClick}
           >
             {/* 2) TAGS - max 3, muted pills */}
