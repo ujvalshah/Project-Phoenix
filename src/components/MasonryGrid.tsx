@@ -120,38 +120,33 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
   onRetry,
 }) => {
   const [shouldAnimate, setShouldAnimate] = useState(false);
-  const prevLoadingRef = useRef(isLoading);
-  const hasInitializedRef = useRef(false);
 
-  // Trigger animations when loading completes OR when component mounts with data
+  // Trigger animations when we have data and are not loading
+  // This works for both fresh loads and cached data on page refresh
   useEffect(() => {
-    // Case 1: Transitioning from loading → loaded (initial load)
-    if (prevLoadingRef.current && !isLoading && articles.length > 0) {
+    if (!isLoading && articles.length > 0) {
+      // Small delay to ensure DOM is ready for animation
       const timer = setTimeout(() => setShouldAnimate(true), 50);
       return () => clearTimeout(timer);
+    } else if (isLoading) {
+      // Reset animation state when loading starts
+      setShouldAnimate(false);
     }
-
-    // Case 2: Component mounted with cached data (no loading transition)
-    // This handles switching to Masonry view when data is already loaded
-    if (!hasInitializedRef.current && !isLoading && articles.length > 0) {
-      hasInitializedRef.current = true;
-      const timer = setTimeout(() => setShouldAnimate(true), 50);
-      return () => clearTimeout(timer);
-    }
-
-    prevLoadingRef.current = isLoading;
   }, [isLoading, articles.length]);
 
   // Expand articles into masonry entries: one entry per selected media item
   // If an article has multiple selected media items, it creates multiple independent tiles
+  // IMPORTANT: Articles with no visible media items are EXCLUDED from Masonry view
+  // Masonry is a media-focused view - text-only nuggets should use Grid or Feed views
   const masonryEntries = useMemo(() => {
     const entries: MasonryEntry[] = [];
 
     for (const article of articles) {
       const visibleMediaItems = getMasonryVisibleMedia(article);
 
+      // Skip articles with no visible media items
+      // Masonry view is exclusively for media content
       if (visibleMediaItems.length === 0) {
-        // Skip articles with no selected media items
         continue;
       }
 
@@ -221,6 +216,10 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
     );
   }
 
+  // Ensure entries are visible - use animation if available, otherwise show immediately
+  const hasEntries = masonryEntries.length > 0;
+  const shouldShowContent = !isLoading && hasEntries;
+
   return (
     <>
       <div className="flex gap-4 w-full transition-opacity duration-300 motion-reduce:transition-none">
@@ -240,11 +239,12 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
                 <div
                   key={uniqueKey}
                   className={`
-                    ${shouldAnimate ? 'animate-fade-in-up' : 'opacity-0'}
+                    ${shouldAnimate && shouldShowContent ? 'animate-fade-in-up' : ''}
+                    ${shouldShowContent ? 'opacity-100' : 'opacity-0'}
                     motion-reduce:animate-none motion-reduce:opacity-100
                   `}
                   style={{
-                    animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
+                    animationDelay: shouldAnimate && shouldShowContent ? `${delay}ms` : '0ms',
                   }}
                 >
                   <MasonryAtom

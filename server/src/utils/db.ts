@@ -229,7 +229,13 @@ function transformArticle(doc: any): any {
     source_type: rest.source_type,
     created_at: rest.created_at,
     updated_at: rest.updated_at,
-    displayAuthor: rest.displayAuthor
+    displayAuthor: rest.displayAuthor,
+    // External links for card "Link" button (separate from media URLs)
+    externalLinks: rest.externalLinks || [],
+    // Layout visibility configuration
+    layoutVisibility: rest.layoutVisibility,
+    // Display image index (which media item shows as card thumbnail)
+    displayImageIndex: rest.displayImageIndex,
     };
     
     return article;

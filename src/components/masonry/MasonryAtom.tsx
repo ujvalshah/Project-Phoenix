@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
+import { getMasonryVisibleMedia } from '@/utils/masonryMediaHelper';
 
 interface MasonryAtomProps {
   article: Article;
@@ -60,7 +61,12 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
     currentUserId,
   });
 
-  const hasMedia = !!(article.media || (article.images && article.images.length > 0));
+  // Determine if we should render media or text
+  // If mediaItemId is undefined, it means this is a text-only tile (no visible media items)
+  // If mediaItemId is defined, render that specific media item
+  const visibleMediaItems = getMasonryVisibleMedia(article);
+  const shouldRenderMedia = mediaItemId !== undefined && visibleMediaItems.length > 0;
+  
   const isOwner = currentUserId && article.author ? currentUserId === article.author.id : false;
   const isAdmin = currentUser?.role === 'admin';
 
@@ -147,7 +153,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
           }}
         >
           {/* Content: Media or Text */}
-          {hasMedia ? (
+          {shouldRenderMedia ? (
             <MediaBlock
               article={article}
               mediaItemId={mediaItemId}

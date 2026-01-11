@@ -128,6 +128,10 @@ export class RestAdapter implements IAdapter {
       ...(article.displayAuthor && { displayAuthor: article.displayAuthor }),
       // Admin-only: Custom creation date (if provided)
       ...((article as any).customCreatedAt && { customCreatedAt: (article as any).customCreatedAt }),
+      // External links for card "Link" button (separate from media URLs)
+      ...((article as any).externalLinks && { externalLinks: (article as any).externalLinks }),
+      // Layout visibility configuration
+      ...((article as any).layoutVisibility && { layoutVisibility: (article as any).layoutVisibility }),
     };
     
     // TEMPORARY DEBUG: Stage 3 - Payload sent to API (RestAdapter)
@@ -190,7 +194,11 @@ export class RestAdapter implements IAdapter {
     if (updatesWithoutCategoryIds.displayAuthor !== undefined) payload.displayAuthor = updatesWithoutCategoryIds.displayAuthor;
     // Admin-only: Custom creation date (if provided)
     if (updatesWithoutCategoryIds.customCreatedAt !== undefined) payload.customCreatedAt = updatesWithoutCategoryIds.customCreatedAt;
-    
+    // External links for card "Link" button (separate from media URLs)
+    if (updatesWithoutCategoryIds.externalLinks !== undefined) payload.externalLinks = updatesWithoutCategoryIds.externalLinks;
+    // Layout visibility configuration
+    if (updatesWithoutCategoryIds.layoutVisibility !== undefined) payload.layoutVisibility = updatesWithoutCategoryIds.layoutVisibility;
+
     // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
     // Frontend is canonical deduplication pass - backend will compute but not mutate
     const imagesHash = await calculateImagesHash(payload.images);

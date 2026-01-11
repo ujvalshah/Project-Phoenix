@@ -1,5 +1,5 @@
-import React from 'react';
-import { Check } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Check, ExternalLink } from 'lucide-react';
 import { NewsCardLogic } from '@/hooks/useNewsCard';
 import { CardMedia } from '../atoms/CardMedia';
 import { CardTitle } from '../atoms/CardTitle';
@@ -39,6 +39,30 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   onSelect,
 }) => {
   const { data, handlers } = logic;
+  
+  // Calculate link button props (for rendering link button independently of media)
+  // Priority: externalLinks > previewMetadata.url (original source) > media.url (for link-type only)
+  const linkButtonProps = useMemo(() => {
+    // 1. New system: explicit externalLinks
+    const primaryExternalLink = data.externalLinks?.find(link => link.isPrimary);
+    if (primaryExternalLink?.url) {
+      return { url: primaryExternalLink.url, shouldShow: true };
+    }
+
+    // 2. Original source URL from unfurl metadata
+    if (data.media?.previewMetadata?.url) {
+      const isYouTube = data.media?.type === 'youtube';
+      return { url: data.media.previewMetadata.url, shouldShow: !isYouTube };
+    }
+
+    // 3. media.url ONLY for link-type media (the URL IS the source, not Cloudinary)
+    if (data.media?.type === 'link' && data.media?.url) {
+      return { url: data.media.url, shouldShow: true };
+    }
+
+    // No valid source URL found (don't use Cloudinary URLs from images[])
+    return { url: null, shouldShow: false };
+  }, [data.externalLinks, data.media]);
   
   // Warn if cardType is media-only but will render as hybrid or has long text
   React.useEffect(() => {
@@ -214,6 +238,21 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               )}
             </div>
           )}
+          
+          {/* Link Button - positioned absolutely in top-right (shows even when no media) */}
+          {linkButtonProps.shouldShow && linkButtonProps.url && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
+              }}
+              className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20"
+              aria-label="Open link in new tab"
+            >
+              <ExternalLink size={10} />
+              <span>Link</span>
+            </button>
+          )}
         </div>
       ) : (
         /* TYPE A: HYBRID CARD - Media block at top, tags, title, body content, footer */
@@ -244,10 +283,38 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                   className="absolute top-3 left-3 z-10"
                 />
               )}
+              {/* Link Button - positioned absolutely in top-right */}
+              {linkButtonProps.shouldShow && linkButtonProps.url && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20"
+                  aria-label="Open link in new tab"
+                >
+                  <ExternalLink size={10} />
+                  <span>Link</span>
+                </button>
+              )}
             </div>
           ) : (
-            <div className="pt-2 px-2 pb-2">
+            <div className="relative pt-2 px-2 pb-2">
               <CardGradientFallback title={data.title} className="rounded-t-xl" />
+              {/* Link Button - for cards without media */}
+              {linkButtonProps.shouldShow && linkButtonProps.url && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20"
+                  aria-label="Open link in new tab"
+                >
+                  <ExternalLink size={10} />
+                  <span>Link</span>
+                </button>
+              )}
             </div>
           )}
 

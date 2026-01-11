@@ -37,6 +37,7 @@ export interface NewsCardData {
   images: string[] | undefined;
   video: string | undefined;
   cardType: 'hybrid' | 'media-only'; // Two-card architecture: Hybrid (default) or Media-Only
+  externalLinks?: Article['externalLinks']; // External links for link button
 }
 
 export interface NewsCardFlags {
@@ -470,6 +471,7 @@ export const useNewsCard = ({
     images: article.images,
     video: article.video,
     cardType, // Two-card architecture: 'hybrid' | 'media-only'
+    externalLinks: article.externalLinks, // External links for link button
   };
 
   // ────────────────────────────────────────

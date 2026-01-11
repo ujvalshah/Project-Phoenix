@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 // useNavigate removed - not currently used in this component
 import { X, Globe, Lock, Loader2 } from 'lucide-react';
@@ -29,6 +29,7 @@ import { FormFooter } from './CreateNuggetModal/FormFooter';
 import { MasonryMediaToggle } from './CreateNuggetModal/MasonryMediaToggle';
 import { MediaSection, MediaSectionItem } from './CreateNuggetModal/MediaSection';
 import { ExternalLinksSection } from './CreateNuggetModal/ExternalLinksSection';
+import { DetectedLinksSection } from './CreateNuggetModal/DetectedLinksSection';
 import { LayoutVisibilitySection } from './CreateNuggetModal/LayoutVisibilitySection';
 import { MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
@@ -141,6 +142,60 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // External Links State (NEW - Separated from media URLs)
   const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
 
+  // Compute detected legacy URLs (read-only for display)
+  // Only shows URLs from media that haven't been migrated to externalLinks
+  const detectedLegacyLinks = useMemo(() => {
+    // Only show in edit mode
+    if (mode !== 'edit' || !initialData) {
+      return [];
+    }
+
+    const links: Array<{
+      url: string;
+      source: 'media.url' | 'media.previewMetadata.url';
+      sourceLabel: string;
+    }> = [];
+
+    // Extract from media.url
+    if (initialData.media?.url) {
+      // Check if already in externalLinks (case-insensitive)
+      const alreadyInExternalLinks = externalLinks.some(
+        link => link.url.toLowerCase() === initialData.media!.url!.toLowerCase()
+      );
+      
+      if (!alreadyInExternalLinks) {
+        links.push({
+          url: initialData.media.url,
+          source: 'media.url',
+          sourceLabel: 'Media URL',
+        });
+      }
+    }
+
+    // Extract from media.previewMetadata.url (if different from media.url)
+    if (initialData.media?.previewMetadata?.url) {
+      const previewUrl = initialData.media.previewMetadata.url;
+      const mediaUrl = initialData.media.url;
+      
+      // Only add if different from media.url and not already in externalLinks
+      if (previewUrl !== mediaUrl) {
+        const alreadyInExternalLinks = externalLinks.some(
+          link => link.url.toLowerCase() === previewUrl.toLowerCase()
+        );
+        
+        if (!alreadyInExternalLinks) {
+          links.push({
+            url: previewUrl,
+            source: 'media.previewMetadata.url',
+            sourceLabel: 'Preview Metadata',
+          });
+        }
+      }
+    }
+
+    return links;
+  }, [mode, initialData, externalLinks]);
+
   // Layout Visibility State (NEW - Control which layouts display this nugget)
   const [layoutVisibility, setLayoutVisibility] = useState<LayoutVisibility>({
     grid: true,
@@ -202,15 +257,44 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           setCustomCreatedAt(`${year}-${month}-${day}T${hours}:${minutes}`);
         }
         setVisibility(initialData.visibility || 'public');
+        // Initialize externalLinks and layoutVisibility from initialData
+        setExternalLinks(initialData.externalLinks || []);
+        setLayoutVisibility(initialData.layoutVisibility || {
+          grid: true,
+          masonry: true,
+          utility: true,
+          feed: true,
+        });
         
-        // Extract URLs from media
-        const urlFromMedia = initialData.media?.url || initialData.media?.previewMetadata?.url;
-        const initialUrls = urlFromMedia ? [urlFromMedia] : [];
-        setUrls(initialUrls);
-        previousUrlsRef.current = initialUrls; // Track initial URLs for change detection
-        
-        if (urlFromMedia) {
-          setDetectedLink(urlFromMedia);
+        // Extract URLs from media - collect all unique source URLs
+        // Priority: previewMetadata.url (original source) > media.url (if different and not Cloudinary)
+        const isCloudinaryUrl = (url: string) => url.includes('cloudinary.com') || url.includes('res.cloudinary');
+        const contentUrls: string[] = [];
+
+        // 1. Original source URL (from unfurl metadata) - highest priority
+        if (initialData.media?.previewMetadata?.url) {
+          contentUrls.push(initialData.media.previewMetadata.url);
+        }
+
+        // 2. media.url if different from previewMetadata.url and not a Cloudinary URL
+        if (initialData.media?.url) {
+          const mediaUrl = initialData.media.url;
+          const isDifferent = mediaUrl !== initialData.media?.previewMetadata?.url;
+          const notCloudinary = !isCloudinaryUrl(mediaUrl);
+          const notAlreadyIncluded = !contentUrls.includes(mediaUrl);
+
+          if (isDifferent && notCloudinary && notAlreadyIncluded) {
+            contentUrls.push(mediaUrl);
+          }
+        }
+
+        setUrls(contentUrls);
+        previousUrlsRef.current = contentUrls; // Track initial URLs for change detection
+
+        // Set detected link to first content URL for preview
+        const primaryUrl = contentUrls.length > 0 ? contentUrls[0] : null;
+        if (primaryUrl) {
+          setDetectedLink(primaryUrl);
           if (initialData.media) {
             setLinkMetadata(initialData.media);
           }
@@ -376,6 +460,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     initializedFromDataRef.current = null;
     // Reset previous URLs tracking
     previousUrlsRef.current = [];
+    // Reset externalLinks and layoutVisibility
+    setExternalLinks([]);
+    setLayoutVisibility({
+      grid: true,
+      masonry: true,
+      utility: true,
+      feed: true,
+    });
   };
 
   const handleClose = () => {
@@ -994,6 +1086,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     ));
   };
 
+  const handlePromoteLegacyUrl = (url: string) => {
+    // Reuse existing handler - this will add to externalLinks
+    handleAddExternalLink(url);
+  };
+
   // ═══════════════════════════════════════════════════════════════════════════
   // MEDIA SECTION HANDLERS (NEW - Unified media management)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1445,6 +1542,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 updatePayload.customCreatedAt = normalizedInput.customCreatedAt;
             }
             
+            // Add externalLinks and layoutVisibility to updatePayload
+            // PHASE 0 FIX: Conditional inclusion to restore partial update semantics
+            // Only send externalLinks if field existed OR user added links (prevents empty array overwrite)
+            if (initialData?.externalLinks !== undefined || externalLinks.length > 0) {
+              updatePayload.externalLinks = externalLinks;
+            }
+            updatePayload.layoutVisibility = layoutVisibility;
+            
             // Final debug log before submit
             const includedFields = Object.keys(updatePayload);
             console.log('[EDIT FINALIZED] Edit payload built from normalizeArticleInput', {
@@ -1668,6 +1773,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             media: normalized.media,
             supportingMedia: normalized.supportingMedia,
             source_type: normalized.source_type,
+            externalLinks,
+            layoutVisibility: layoutVisibility,
         };
         console.log('[CONTENT_TRACE] Stage 3 - Payload sent to API (final request body)', {
             mode: 'create',
@@ -1949,6 +2056,35 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     }}
                 />
 
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                {/* EXTERNAL LINKS SECTION - For card "Link" button */}
+                {/* Positioned above content editor for quick access */}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                <div className="space-y-2" data-testid="external-links-section">
+                  <ExternalLinksSection
+                    links={externalLinks}
+                    onAddLink={handleAddExternalLink}
+                    onRemoveLink={handleRemoveExternalLink}
+                    onSetPrimary={handleSetPrimaryLink}
+                    onUpdateLabel={handleUpdateLinkLabel}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                {/* LAYOUT VISIBILITY SECTION */}
+                {/* Controls which layouts display this nugget */}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                <div className="space-y-2" data-testid="layout-visibility-section">
+                  <LayoutVisibilitySection
+                    visibility={layoutVisibility}
+                    onChange={setLayoutVisibility}
+                    hasMedia={mediaSectionItems.length > 0}
+                    hasMasonrySelectedMedia={mediaSectionItems.some(m => m.showInMasonry)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
                 {/* Editor Area with AI Trigger */}
                 <ContentEditor
                     value={content}
@@ -2083,33 +2219,18 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 )}
 
                 {/* ═══════════════════════════════════════════════════════════════════ */}
-                {/* EXTERNAL LINKS SECTION - For card "Link" button (NEW) */}
-                {/* Separate from media URLs - these are references, not content */}
+                {/* DETECTED LINKS SECTION - Legacy URLs (Read-only display) */}
+                {/* Shows URLs from media that haven't been migrated to externalLinks */}
                 {/* ═══════════════════════════════════════════════════════════════════ */}
-                <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="external-links-section">
-                  <ExternalLinksSection
-                    links={externalLinks}
-                    onAddLink={handleAddExternalLink}
-                    onRemoveLink={handleRemoveExternalLink}
-                    onSetPrimary={handleSetPrimaryLink}
-                    onUpdateLabel={handleUpdateLinkLabel}
-                    disabled={isSubmitting}
-                  />
-                </div>
-
-                {/* ═══════════════════════════════════════════════════════════════════ */}
-                {/* LAYOUT VISIBILITY SECTION (NEW) */}
-                {/* Controls which layouts display this nugget */}
-                {/* ═══════════════════════════════════════════════════════════════════ */}
-                <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="layout-visibility-section">
-                  <LayoutVisibilitySection
-                    visibility={layoutVisibility}
-                    onChange={setLayoutVisibility}
-                    hasMedia={mediaSectionItems.length > 0}
-                    hasMasonrySelectedMedia={mediaSectionItems.some(m => m.showInMasonry)}
-                    disabled={isSubmitting}
-                  />
-                </div>
+                {mode === 'edit' && detectedLegacyLinks.length > 0 && (
+                  <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="detected-links-section">
+                    <DetectedLinksSection
+                      links={detectedLegacyLinks}
+                      onPromoteToExternal={handlePromoteLegacyUrl}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                )}
 
                 {/* Link Preview */}
                 {(urls.length > 0 || detectedLink) && (() => {

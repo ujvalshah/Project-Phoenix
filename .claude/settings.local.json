@@ -24,7 +24,8 @@
       "Bash(timeout:*)",
       "Bash(del \"C:\\\\Users\\\\ujval\\\\OneDrive\\\\Desktop\\\\Project Gold\\\\Project Nuggets\\\\src\\\\components\\\\CreateNuggetModal\\\\INTEGRATION_GUIDE.md\")",
       "Bash(ls:*)",
-      "Bash(dir \"C:\\\\Users\\\\ujval\\\\OneDrive\\\\Desktop\\\\Project Gold\\\\Project Nuggets\\\\server\\\\*.json\" /b)"
+      "Bash(dir \"C:\\\\Users\\\\ujval\\\\OneDrive\\\\Desktop\\\\Project Gold\\\\Project Nuggets\\\\server\\\\*.json\" /b)",
+      "Bash(npx tsx:*)"
     ]
   }
 }

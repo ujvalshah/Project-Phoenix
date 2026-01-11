@@ -94,23 +94,32 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   // This ensures legacy images are rendered even when primaryMedia is null
   const hasMedia = !!primaryMedia || allImageUrls.length > 0;
 
-  // Determine if we should show the link badge
-  // Show ONLY if: nugget has URL AND is NOT YouTube
-  const shouldShowLinkBadge = useMemo(() => {
-    // Get URL from media (previewMetadata.url takes priority, fallback to media.url)
-    const url = article.media?.previewMetadata?.url || article.media?.url;
-    if (!url) return false;
-    
-    // Don't show badge for YouTube nuggets
-    if (primaryMedia?.type === 'youtube') return false;
-    
-    return true;
-  }, [article.media, primaryMedia]);
+  // Determine if we should show the link badge and get URL
+  // Priority: externalLinks > previewMetadata.url (original source) > media.url (for link-type only)
+  const { shouldShowLinkBadge, linkUrl } = useMemo(() => {
+    // 1. New system: explicit externalLinks
+    const primaryExternalLink = article.externalLinks?.find(link => link.isPrimary);
+    if (primaryExternalLink?.url) {
+      return { shouldShowLinkBadge: true, linkUrl: primaryExternalLink.url };
+    }
 
-  // Get the URL for the link badge
-  const linkUrl = useMemo(() => {
-    return article.media?.previewMetadata?.url || article.media?.url || null;
-  }, [article.media]);
+    // 2. Original source URL from unfurl metadata
+    if (article.media?.previewMetadata?.url) {
+      const isYouTube = primaryMedia?.type === 'youtube';
+      return {
+        shouldShowLinkBadge: !isYouTube,
+        linkUrl: article.media.previewMetadata.url
+      };
+    }
+
+    // 3. media.url ONLY for link-type media (the URL IS the source, not Cloudinary)
+    if (article.media?.type === 'link' && article.media?.url) {
+      return { shouldShowLinkBadge: true, linkUrl: article.media.url };
+    }
+
+    // No valid source URL found (don't use Cloudinary URLs from images[])
+    return { shouldShowLinkBadge: false, linkUrl: null };
+  }, [article.externalLinks, article.media, primaryMedia]);
 
   // ============================================================================
   // MULTI-IMAGE GRID LOGIC
@@ -169,8 +178,10 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
     
     return { aspectRatio: '16/9', backgroundClass: bgClass };
   }, [primaryMedia]);
-  
-  if (!hasMedia) return null;
+
+  if (!hasMedia) {
+    return null;
+  }
   
   // Determine if this is a document type (use fixed height instead of aspect ratio)
   const isDocument = primaryMedia?.type === 'document' || primaryMedia?.type === 'pdf';
@@ -281,21 +292,6 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* Link Badge - Single Image: Show on top-right if URL exists and not YouTube */}
-              {shouldShowLinkBadge && linkUrl && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation(); // Prevent triggering image click
-                    window.open(linkUrl, '_blank', 'noopener,noreferrer');
-                  }}
-                  className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-10"
-                  aria-label="Open link in new tab"
-                >
-                  <ExternalLink size={10} />
-                  <span>Link</span>
-                </button>
               )}
             </div>
           )}
