@@ -63,7 +63,8 @@ export const useInfiniteArticles = ({
     },
     getNextPageParam: (lastPage) => {
       // Return next page number if there are more pages
-      return lastPage.hasMore ? lastPage.page + 1 : undefined;
+      // Add null check to prevent errors during refetch/reset
+      return lastPage?.hasMore ? lastPage.page + 1 : undefined;
     },
     initialPageParam: 1,
     staleTime: 1000 * 30, // 30 seconds
@@ -78,8 +79,9 @@ export const useInfiniteArticles = ({
     if (!query.data?.pages) {
       return [];
     }
-    
-    return query.data.pages.flatMap((page) => page.data);
+
+    // Add null check for pages during refetch/reset
+    return query.data.pages.flatMap((page) => page?.data ?? []);
   }, [query.data]); // FIXED: Use query.data instead of query.data?.pages for more reliable updates
 
   return {

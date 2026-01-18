@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode } from 'react';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
@@ -214,11 +214,13 @@ describe('useInfiniteArticles Hook', () => {
 
       // Verify fetchNextPage does nothing when hasNextPage is false
       const initialCallCount = vi.mocked(articleService.articleService.getArticles).mock.calls.length;
-      result.current.fetchNextPage();
-      
+      act(() => {
+        result.current.fetchNextPage();
+      });
+
       // Wait a bit to ensure no additional calls
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       // Should not make additional requests
       expect(articleService.articleService.getArticles).toHaveBeenCalledTimes(initialCallCount);
     });
@@ -244,7 +246,9 @@ describe('useInfiniteArticles Hook', () => {
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       // Load page 2 (last page)
-      result.current.fetchNextPage();
+      act(() => {
+        result.current.fetchNextPage();
+      });
       await waitFor(() => expect(result.current.isFetchingNextPage).toBe(false));
 
       // hasNextPage should be false after last page
@@ -252,7 +256,9 @@ describe('useInfiniteArticles Hook', () => {
 
       // Attempting to fetch again should not trigger new request
       const callCount = vi.mocked(articleService.articleService.getArticles).mock.calls.length;
-      result.current.fetchNextPage();
+      act(() => {
+        result.current.fetchNextPage();
+      });
       await new Promise(resolve => setTimeout(resolve, 100));
       expect(articleService.articleService.getArticles).toHaveBeenCalledTimes(callCount);
     });

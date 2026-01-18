@@ -223,6 +223,7 @@ async function legacyCreateNormalization(
     supportingMedia,
     source_type,
     customCreatedAt: finalCustomCreatedAt,
+    primaryUrl,
     hasEmptyTagsError,
   };
 }

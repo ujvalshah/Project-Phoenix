@@ -673,11 +673,16 @@ async function buildSupportingMediaEdit(
   );
   
   // FIX: Also add new items from masonryMediaItems that have showInMasonry: true
-  // but aren't in existingSupportingMedia (e.g., images from images[] array)
+  // but aren't in existingSupportingMedia
+  // IMPORTANT: Exclude legacy-image source items (from images[] array) - they should NOT be moved to supportingMedia
   const newMasonryItems = masonryMediaItems.filter(item => {
     // Only non-primary items that are selected for masonry
     if (item.source === 'primary' || !item.showInMasonry) return false;
-    
+
+    // IMAGE PRESERVATION INVARIANT: Never move legacy images from images[] to supportingMedia[]
+    // Legacy images remain in images[] array regardless of masonry selection
+    if (item.source === 'legacy-image' || item.source === 'legacy') return false;
+
     // Skip if already in existingSupportingMedia
     const itemUrlNormalized = normalizeUrl(item.url);
     return !existingSupportingUrls.has(itemUrlNormalized);
