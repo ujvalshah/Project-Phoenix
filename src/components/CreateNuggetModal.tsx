@@ -30,7 +30,6 @@ import { MasonryMediaToggle } from './CreateNuggetModal/MasonryMediaToggle';
 import { MediaSection, MediaSectionItem } from './CreateNuggetModal/MediaSection';
 import { MediaCarousel } from './CreateNuggetModal/MediaCarousel';
 import { ExternalLinksSection } from './CreateNuggetModal/ExternalLinksSection';
-import { DetectedLinksSection } from './CreateNuggetModal/DetectedLinksSection';
 import { LayoutVisibilitySection } from './CreateNuggetModal/LayoutVisibilitySection';
 import { MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
@@ -40,7 +39,6 @@ import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeAr
 import { normalizeTags } from '@/shared/articleNormalization/normalizeTags';
 import { useImageManager } from '@/hooks/useImageManager';
 import { isFeatureEnabled } from '@/constants/featureFlags';
-import { extractAllUrls, filterExistingExternalLinks } from '@/shared/articleNormalization/extractAllUrls';
 import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
 
 interface CreateNuggetModalProps {
@@ -150,75 +148,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // Tracks which media item is selected as the card thumbnail
   // null = use first item (default behavior)
   const [displayImageId, setDisplayImageId] = useState<string | null>(null);
-
-  // Compute detected URLs (read-only for display)
-  // V2: Aggregates ALL URLs from primaryMedia, supportingMedia, media, images
-  // V1 (legacy): Only shows URLs from media.url and media.previewMetadata.url
-  const detectedLegacyLinks = useMemo(() => {
-    // Only show in edit mode
-    if (mode !== 'edit' || !initialData) {
-      return [];
-    }
-
-    // V2: Use extractAllUrls to aggregate from ALL sources
-    if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
-      const allUrls = extractAllUrls(initialData);
-      const filtered = filterExistingExternalLinks(allUrls, externalLinks);
-
-      // Convert to the expected format for DetectedLinksSection
-      return filtered.map(extracted => ({
-        url: extracted.url,
-        source: extracted.source as 'media.url' | 'media.previewMetadata.url',
-        sourceLabel: extracted.sourceLabel,
-      }));
-    }
-
-    // V1 (legacy): Only check media.url and media.previewMetadata.url
-    const links: Array<{
-      url: string;
-      source: 'media.url' | 'media.previewMetadata.url';
-      sourceLabel: string;
-    }> = [];
-
-    // Extract from media.url
-    if (initialData.media?.url) {
-      // Check if already in externalLinks (case-insensitive)
-      const alreadyInExternalLinks = externalLinks.some(
-        link => link.url.toLowerCase() === initialData.media!.url!.toLowerCase()
-      );
-
-      if (!alreadyInExternalLinks) {
-        links.push({
-          url: initialData.media.url,
-          source: 'media.url',
-          sourceLabel: 'Media URL',
-        });
-      }
-    }
-
-    // Extract from media.previewMetadata.url (if different from media.url)
-    if (initialData.media?.previewMetadata?.url) {
-      const previewUrl = initialData.media.previewMetadata.url;
-      const mediaUrl = initialData.media.url;
-
-      // Only add if different from media.url and not already in externalLinks
-      if (previewUrl !== mediaUrl) {
-        const alreadyInExternalLinks = externalLinks.some(
-          link => link.url.toLowerCase() === previewUrl.toLowerCase()
-        );
-
-        if (!alreadyInExternalLinks) {
-          links.push({
-            url: previewUrl,
-            source: 'media.previewMetadata.url',
-            sourceLabel: 'Preview Metadata',
-          });
-        }
-      }
-    }
-
-    return links;
-  }, [mode, initialData, externalLinks]);
 
   // Layout Visibility State (NEW - Control which layouts display this nugget)
   const [layoutVisibility, setLayoutVisibility] = useState<LayoutVisibility>({
@@ -1128,11 +1057,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setExternalLinks(prev => prev.map(l =>
       l.id === linkId ? { ...l, label } : l
     ));
-  };
-
-  const handlePromoteLegacyUrl = (url: string) => {
-    // Reuse existing handler - this will add to externalLinks
-    handleAddExternalLink(url);
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2422,20 +2346,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         />
                       </div>
                     )}
-                  </div>
-                )}
-
-                {/* ═══════════════════════════════════════════════════════════════════ */}
-                {/* DETECTED LINKS SECTION - Legacy URLs (Read-only display) */}
-                {/* Shows URLs from media that haven't been migrated to externalLinks */}
-                {/* ═══════════════════════════════════════════════════════════════════ */}
-                {mode === 'edit' && detectedLegacyLinks.length > 0 && (
-                  <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="detected-links-section">
-                    <DetectedLinksSection
-                      links={detectedLegacyLinks}
-                      onPromoteToExternal={handlePromoteLegacyUrl}
-                      disabled={isSubmitting}
-                    />
                   </div>
                 )}
 

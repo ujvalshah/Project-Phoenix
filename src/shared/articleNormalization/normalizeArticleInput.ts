@@ -543,6 +543,8 @@ async function buildMediaObjectEdit(
 /**
  * Build supportingMedia array for CREATE mode
  * Matches exact logic from CreateNuggetModal.tsx lines 1894-1945
+ *
+ * DEDUPLICATION FIX: Ensures no duplicate URLs in the supportingMedia array
  */
 async function buildSupportingMediaCreate(
   input: ArticleInputData,
@@ -550,18 +552,32 @@ async function buildSupportingMediaCreate(
 ): Promise<any[] | undefined> {
   const { masonryMediaItems } = input;
   const { enrichMediaItemIfNeeded } = options;
-  
+
   // Only process if there are masonry items selected
   if (masonryMediaItems.length === 0) {
     return undefined;
   }
 
-  const supportingItems: any[] = [];
+  // DEDUPLICATION FIX: Track URLs to prevent duplicates
+  const addedUrls = new Set<string>();
+  const normalizeUrl = (url: string) => url.toLowerCase().trim();
 
   // Process all masonry items except primary (primary goes in media field)
-  const nonPrimaryItems = masonryMediaItems.filter(
-    item => item.source !== 'primary' && item.showInMasonry === true
-  );
+  // DEDUPLICATION FIX: Filter out duplicates during the filter step
+  const nonPrimaryItems = masonryMediaItems.filter(item => {
+    if (item.source === 'primary' || item.showInMasonry !== true) {
+      return false;
+    }
+
+    // Check for duplicate URL
+    const normalizedUrl = normalizeUrl(item.url);
+    if (addedUrls.has(normalizedUrl)) {
+      console.log('[normalizeArticleInput] CREATE: Skipping duplicate masonry item:', { url: item.url });
+      return false;
+    }
+    addedUrls.add(normalizedUrl);
+    return true;
+  });
 
   if (nonPrimaryItems.length === 0) {
     return undefined;
@@ -609,19 +625,19 @@ async function buildSupportingMediaCreate(
     })
   );
 
-  supportingItems.push(...enrichedItems);
-
-  return supportingItems.length > 0 ? supportingItems : undefined;
+  return enrichedItems.length > 0 ? enrichedItems : undefined;
 }
 
 /**
  * Build supportingMedia array for EDIT mode
- * 
+ *
  * MASONRY REFACTOR: showInMasonry is a view flag, NOT a storage transformation
  * - Only updates showInMasonry flags on existing supportingMedia items
  * - Does NOT move images from images[] to supportingMedia[]
  * - supportingMedia structure remains stable
  * - Images from images[] remain in images[] regardless of masonry selection
+ *
+ * DEDUPLICATION FIX: Ensures no duplicate URLs in the final supportingMedia array
  */
 async function buildSupportingMediaEdit(
   input: ArticleInputData,
@@ -629,35 +645,52 @@ async function buildSupportingMediaEdit(
 ): Promise<{ supportingMedia?: any[] }> {
   const { masonryMediaItems, existingSupportingMedia, existingImages } = input;
   const { enrichMediaItemIfNeeded } = options;
-  
+
   if (!enrichMediaItemIfNeeded) {
     // If enrichment function not provided, return empty
     return {};
   }
-  
+
   // Normalize URL helper for comparison
   const normalizeUrl = (url: string) => url.toLowerCase().trim();
-  
-  // Track which URLs are already in existingSupportingMedia
+
+  // DEDUPLICATION FIX: Track ALL URLs that have been added to prevent duplicates
+  const addedUrls = new Set<string>();
+
+  // First, deduplicate existingSupportingMedia itself (in case it already has duplicates)
+  const deduplicatedExisting: any[] = [];
+  for (const media of existingSupportingMedia || []) {
+    if (media.url) {
+      const normalizedUrl = normalizeUrl(media.url);
+      if (!addedUrls.has(normalizedUrl)) {
+        addedUrls.add(normalizedUrl);
+        deduplicatedExisting.push(media);
+      } else {
+        console.log('[normalizeArticleInput] Skipping duplicate in existingSupportingMedia:', { url: media.url });
+      }
+    }
+  }
+
+  // Track which URLs are in the deduplicated existing list
   const existingSupportingUrls = new Set(
-    (existingSupportingMedia || []).map(media => media.url ? normalizeUrl(media.url) : '').filter(Boolean)
+    deduplicatedExisting.map(media => media.url ? normalizeUrl(media.url) : '').filter(Boolean)
   );
-  
+
   // Process existing supportingMedia items and update their showInMasonry flags
   // FIX: Match items by URL instead of index-based ID (IDs are now URL-based hashes)
   const normalizedSupportingMedia = await Promise.all(
-    (existingSupportingMedia || []).map(async (media) => {
+    deduplicatedExisting.map(async (media) => {
       // Match by URL (normalized) since IDs are now URL-based hashes, not index-based
       const mediaUrl = media.url;
-      const item = mediaUrl 
+      const item = mediaUrl
         ? masonryMediaItems.find(item => {
             return normalizeUrl(item.url) === normalizeUrl(mediaUrl);
           })
         : null;
-      
+
       // Enrich if previewMetadata is missing
       const enriched = await enrichMediaItemIfNeeded(media);
-      
+
       if (item) {
         // Update showInMasonry flag from masonryMediaItems state
         return {
@@ -666,15 +699,16 @@ async function buildSupportingMediaEdit(
           masonryTitle: item.masonryTitle || undefined,
         };
       }
-      
+
       // Item not in masonryMediaItems - preserve existing showInMasonry value
       return enriched;
     })
   );
-  
+
   // FIX: Also add new items from masonryMediaItems that have showInMasonry: true
   // but aren't in existingSupportingMedia
   // IMPORTANT: Exclude legacy-image source items (from images[] array) - they should NOT be moved to supportingMedia
+  // DEDUPLICATION FIX: Also check against addedUrls to prevent duplicates
   const newMasonryItems = masonryMediaItems.filter(item => {
     // Only non-primary items that are selected for masonry
     if (item.source === 'primary' || !item.showInMasonry) return false;
@@ -683,15 +717,28 @@ async function buildSupportingMediaEdit(
     // Legacy images remain in images[] array regardless of masonry selection
     if (item.source === 'legacy-image' || item.source === 'legacy') return false;
 
-    // Skip if already in existingSupportingMedia
+    // Skip if already in existingSupportingMedia or already added
     const itemUrlNormalized = normalizeUrl(item.url);
-    return !existingSupportingUrls.has(itemUrlNormalized);
+    if (existingSupportingUrls.has(itemUrlNormalized) || addedUrls.has(itemUrlNormalized)) {
+      return false;
+    }
+
+    return true;
   });
-  
+
   // Add new masonry items to supportingMedia
   if (newMasonryItems.length > 0) {
     const newItems = await Promise.all(
       newMasonryItems.map(async (item) => {
+        const normalizedUrl = normalizeUrl(item.url);
+
+        // Double-check to prevent race condition duplicates
+        if (addedUrls.has(normalizedUrl)) {
+          console.log('[normalizeArticleInput] Skipping duplicate new masonry item:', { url: item.url });
+          return null;
+        }
+        addedUrls.add(normalizedUrl);
+
         const baseMedia = {
           type: item.type,
           url: item.url,
@@ -699,10 +746,10 @@ async function buildSupportingMediaEdit(
           showInMasonry: item.showInMasonry,
           masonryTitle: item.masonryTitle || undefined,
         };
-        
+
         // Enrich with previewMetadata if missing
         const enriched = await enrichMediaItemIfNeeded(baseMedia);
-        
+
         // Ensure items marked for Masonry have previewMetadata
         if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
           enriched.previewMetadata = {
@@ -711,14 +758,16 @@ async function buildSupportingMediaEdit(
             mediaType: enriched.type || 'image',
           };
         }
-        
+
         return enriched;
       })
     );
-    
-    normalizedSupportingMedia.push(...newItems);
+
+    // Filter out nulls from duplicate checks
+    const validNewItems = newItems.filter(item => item !== null);
+    normalizedSupportingMedia.push(...validNewItems);
   }
-  
+
   return {
     supportingMedia: normalizedSupportingMedia.length > 0 ? normalizedSupportingMedia : undefined,
   };

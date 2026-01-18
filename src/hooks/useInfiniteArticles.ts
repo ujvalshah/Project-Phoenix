@@ -75,13 +75,36 @@ export const useInfiniteArticles = ({
   // Accumulate all pages into a single articles array (memoized)
   // Backend now handles all filtering (including "Today" date filter)
   // No client-side filtering needed - pagination works correctly
+  // DEDUPLICATION FIX: Deduplicate articles by ID to prevent duplicates across page boundaries
   const articles = useMemo(() => {
     if (!query.data?.pages) {
       return [];
     }
 
     // Add null check for pages during refetch/reset
-    return query.data.pages.flatMap((page) => page?.data ?? []);
+    const allArticles = query.data.pages.flatMap((page) => page?.data ?? []);
+
+    // DEDUPLICATION: Remove duplicate articles by ID
+    // This prevents the same article appearing multiple times if pagination boundaries shift
+    const seen = new Set<string>();
+    const deduplicated: Article[] = [];
+
+    for (const article of allArticles) {
+      if (article?.id && !seen.has(article.id)) {
+        seen.add(article.id);
+        deduplicated.push(article);
+      }
+    }
+
+    if (deduplicated.length !== allArticles.length) {
+      console.log('[useInfiniteArticles] Deduplicated articles:', {
+        before: allArticles.length,
+        after: deduplicated.length,
+        removed: allArticles.length - deduplicated.length,
+      });
+    }
+
+    return deduplicated;
   }, [query.data]); // FIXED: Use query.data instead of query.data?.pages for more reliable updates
 
   return {

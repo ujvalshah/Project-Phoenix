@@ -78,14 +78,22 @@ export interface MasonryMediaItem {
  */
 export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
   const items: MasonryMediaItem[] = [];
-  
+
+  // DEDUPLICATION FIX: Track all included URLs to prevent duplicates across ALL sources
+  const includedUrls = new Set<string>();
+
   // Classify media to get primary and supporting
   const classified = classifyArticleMedia(article);
-  
+
   // 1. Primary media (NO LONGER auto-included or locked)
   // BACKWARD COMPATIBILITY: Preserve existing showInMasonry values if explicitly set
   if (classified.primaryMedia) {
     const primaryMedia = classified.primaryMedia;
+    const normalizedUrl = normalizeImageUrl(primaryMedia.url);
+
+    // Add to tracked URLs
+    includedUrls.add(normalizedUrl);
+
     items.push({
       id: 'primary',
       type: primaryMedia.type,
@@ -103,18 +111,29 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
       previewMetadata: primaryMedia.previewMetadata,
     });
   }
-  
+
   // 2. Supporting media (can be toggled)
+  // DEDUPLICATION FIX: Check against primary media and other supporting items
   if (classified.supportingMedia && classified.supportingMedia.length > 0) {
     classified.supportingMedia.forEach((media, index) => {
+      const normalizedUrl = normalizeImageUrl(media.url);
+
+      // Skip if already included (duplicate of primary or earlier supporting item)
+      if (includedUrls.has(normalizedUrl)) {
+        console.log('[masonryMediaHelper] Skipping duplicate supporting media:', { url: media.url, normalizedUrl });
+        return;
+      }
+
+      includedUrls.add(normalizedUrl);
+
       items.push({
         id: `supporting-${index}`,
         type: media.type,
         url: media.url,
         thumbnail: media.thumbnail,
         source: 'supporting',
-        showInMasonry: media.showInMasonry !== undefined 
-          ? media.showInMasonry 
+        showInMasonry: media.showInMasonry !== undefined
+          ? media.showInMasonry
           : false, // Default to false for supporting media (backward compatibility)
         isLocked: false,
         masonryTitle: media.masonryTitle, // Optional masonry tile title
@@ -124,16 +143,20 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
       });
     });
   }
-  
+
   // 3. Legacy media field (if exists and not already classified as primary)
   // CRITICAL: This is the actual stored media field in the backend
   // masonryTitle must be read from article.media.masonryTitle
   if (article.media) {
     const legacyMedia = article.media;
-    // Check if this is already included as primary media
-    const isAlreadyIncluded = classified.primaryMedia?.url === legacyMedia.url;
-    
+    const normalizedUrl = normalizeImageUrl(legacyMedia.url);
+
+    // Check if this is already included (as primary or supporting media)
+    const isAlreadyIncluded = includedUrls.has(normalizedUrl);
+
     if (!isAlreadyIncluded) {
+      includedUrls.add(normalizedUrl);
+
       items.push({
         id: 'legacy-media',
         type: legacyMedia.type,
@@ -162,15 +185,10 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
       }
     }
   }
-  
+
   // 4. Legacy images array (only include images not already in primary/supporting)
   // PHASE 2B FIX: Use consistent normalizeImageUrl from imageDedup.ts
   if (article.images && article.images.length > 0) {
-    const allImageUrls = getAllImageUrls(article);
-    const includedUrls = new Set(
-      items.map(item => normalizeImageUrl(item.url))
-    );
-
     article.images.forEach((imageUrl, index) => {
       const normalizedUrl = normalizeImageUrl(imageUrl);
       // Only include if not already in primary/supporting/legacy-media
@@ -188,7 +206,7 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
       }
     });
   }
-  
+
   return items;
 }
 

@@ -236,14 +236,15 @@ function articleToImageItems(article: Article): ImageItem[] {
     });
   }
 
-  // 2. Supporting media (images only)
+  // 2. Supporting media (ALL types, not just images - needed for deduplication)
+  // DEDUPLICATION FIX: Process all media types to prevent duplicates across different sources
   if (article.supportingMedia) {
     article.supportingMedia.forEach((media) => {
-      if (media.type === 'image' && media.url) {
+      if (media.url) {
         addItem(media.url, 'supporting', 'supportingMedia', {
           showInMasonry: media.showInMasonry ?? false,
           masonryTitle: media.masonryTitle,
-          type: media.type,
+          type: media.type || 'image',
           thumbnail: media.thumbnail,
           previewMetadata: media.previewMetadata,
         });
@@ -251,12 +252,13 @@ function articleToImageItems(article: Article): ImageItem[] {
     });
   }
 
-  // 3. Legacy media field
-  if (article.media?.type === 'image' && article.media.url) {
+  // 3. Legacy media field (ALL types, not just images - needed for deduplication)
+  // DEDUPLICATION FIX: Process all media types to prevent duplicates across different sources
+  if (article.media?.url) {
     addItem(article.media.url, 'legacy', 'media', {
       showInMasonry: article.media.showInMasonry ?? false,
       masonryTitle: article.media.masonryTitle,
-      type: article.media.type,
+      type: article.media.type || 'image',
       previewMetadata: article.media.previewMetadata,
     });
   }
