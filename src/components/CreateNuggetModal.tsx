@@ -28,6 +28,7 @@ import { AttachmentManager, FileAttachment } from './CreateNuggetModal/Attachmen
 import { FormFooter } from './CreateNuggetModal/FormFooter';
 import { MasonryMediaToggle } from './CreateNuggetModal/MasonryMediaToggle';
 import { MediaSection, MediaSectionItem } from './CreateNuggetModal/MediaSection';
+import { MediaCarousel } from './CreateNuggetModal/MediaCarousel';
 import { ExternalLinksSection } from './CreateNuggetModal/ExternalLinksSection';
 import { DetectedLinksSection } from './CreateNuggetModal/DetectedLinksSection';
 import { LayoutVisibilitySection } from './CreateNuggetModal/LayoutVisibilitySection';
@@ -38,6 +39,9 @@ import { DEFAULT_LAYOUT_VISIBILITY } from '@/types';
 import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeArticleInput';
 import { normalizeTags } from '@/shared/articleNormalization/normalizeTags';
 import { useImageManager } from '@/hooks/useImageManager';
+import { isFeatureEnabled } from '@/constants/featureFlags';
+import { extractAllUrls, filterExistingExternalLinks } from '@/shared/articleNormalization/extractAllUrls';
+import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
 
 interface CreateNuggetModalProps {
   isOpen: boolean;
@@ -142,14 +146,34 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // External Links State (NEW - Separated from media URLs)
   const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
 
-  // Compute detected legacy URLs (read-only for display)
-  // Only shows URLs from media that haven't been migrated to externalLinks
+  // Display Image Selection State (V2 - Thumbnail selection)
+  // Tracks which media item is selected as the card thumbnail
+  // null = use first item (default behavior)
+  const [displayImageId, setDisplayImageId] = useState<string | null>(null);
+
+  // Compute detected URLs (read-only for display)
+  // V2: Aggregates ALL URLs from primaryMedia, supportingMedia, media, images
+  // V1 (legacy): Only shows URLs from media.url and media.previewMetadata.url
   const detectedLegacyLinks = useMemo(() => {
     // Only show in edit mode
     if (mode !== 'edit' || !initialData) {
       return [];
     }
 
+    // V2: Use extractAllUrls to aggregate from ALL sources
+    if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
+      const allUrls = extractAllUrls(initialData);
+      const filtered = filterExistingExternalLinks(allUrls, externalLinks);
+
+      // Convert to the expected format for DetectedLinksSection
+      return filtered.map(extracted => ({
+        url: extracted.url,
+        source: extracted.source as 'media.url' | 'media.previewMetadata.url',
+        sourceLabel: extracted.sourceLabel,
+      }));
+    }
+
+    // V1 (legacy): Only check media.url and media.previewMetadata.url
     const links: Array<{
       url: string;
       source: 'media.url' | 'media.previewMetadata.url';
@@ -162,7 +186,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       const alreadyInExternalLinks = externalLinks.some(
         link => link.url.toLowerCase() === initialData.media!.url!.toLowerCase()
       );
-      
+
       if (!alreadyInExternalLinks) {
         links.push({
           url: initialData.media.url,
@@ -176,13 +200,13 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     if (initialData.media?.previewMetadata?.url) {
       const previewUrl = initialData.media.previewMetadata.url;
       const mediaUrl = initialData.media.url;
-      
+
       // Only add if different from media.url and not already in externalLinks
       if (previewUrl !== mediaUrl) {
         const alreadyInExternalLinks = externalLinks.some(
           link => link.url.toLowerCase() === previewUrl.toLowerCase()
         );
-        
+
         if (!alreadyInExternalLinks) {
           links.push({
             url: previewUrl,
@@ -265,7 +289,27 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           utility: true,
           feed: true,
         });
-        
+
+        // V2: Initialize displayImageId from displayImageIndex
+        // The displayImageIndex from initialData will be matched to the item ID once masonryMediaItems loads
+        if (isFeatureEnabled('NUGGET_EDITOR_V2') && initialData.displayImageIndex !== undefined) {
+          // Store the index temporarily - we'll match it to an ID in a separate effect
+          // For now, we'll use the URL-based matching approach since item IDs are generated from URLs
+          const allMediaUrls = [
+            ...(initialData.primaryMedia?.url ? [initialData.primaryMedia.url] : []),
+            ...(initialData.supportingMedia?.map(m => m.url).filter(Boolean) || []),
+            ...(initialData.media?.type === 'image' && initialData.media.url ? [initialData.media.url] : []),
+            ...(initialData.images || []),
+          ];
+          const targetUrl = allMediaUrls[initialData.displayImageIndex];
+          if (targetUrl) {
+            // Generate the same ID that useImageManager uses
+            const normalizedUrl = targetUrl.toLowerCase().trim();
+            const itemId = `img-${normalizedUrl.slice(-20).replace(/[^a-z0-9]/gi, '')}`;
+            setDisplayImageId(itemId);
+          }
+        }
+
         // Extract URLs from media - collect all unique source URLs
         // Priority: previewMetadata.url (original source) > media.url (if different and not Cloudinary)
         const isCloudinaryUrl = (url: string) => url.includes('cloudinary.com') || url.includes('res.cloudinary');
@@ -1096,12 +1140,17 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Convert masonryMediaItems to MediaSectionItem format
+  // V2: Uses displayImageId state for thumbnail selection
+  // V1: Falls back to first item (index === 0)
   const mediaSectionItems: MediaSectionItem[] = masonryMediaItems.map((item, index) => ({
     id: item.id,
     url: item.url,
     type: item.type,
     thumbnail: item.thumbnail,
-    isDisplayImage: index === 0, // First item is display image by default
+    // V2: Use displayImageId state if set, otherwise default to first item
+    isDisplayImage: isFeatureEnabled('NUGGET_EDITOR_V2')
+      ? (displayImageId ? item.id === displayImageId : index === 0)
+      : index === 0,
     showInMasonry: item.showInMasonry,
     showInGrid: true, // Default to true (show in grid by default)
     showInUtility: true, // Default to true (show in utility by default)
@@ -1109,16 +1158,34 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     previewMetadata: item.previewMetadata,
   }));
 
-  const handleSetDisplayImage = (itemId: string) => {
-    // For now, display image is determined by order (first item)
-    // This can be extended to actually reorder items or set a flag
-    console.log('[MediaSection] Set display image:', itemId);
+  /**
+   * Handle display image (thumbnail) selection
+   * V2: Updates displayImageId state to track user selection
+   * V1: Only logs (no-op)
+   */
+  const handleSetDisplayImage = (itemId: string | null) => {
+    if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
+      setDisplayImageId(itemId);
+      console.log('[MediaSection] Display image changed:', itemId || '(reset to default)');
+    } else {
+      // V1: Just log, no action
+      console.log('[MediaSection] Set display image:', itemId);
+    }
   };
 
   const handleDeleteMedia = (itemId: string) => {
     const item = masonryMediaItems.find(m => m.id === itemId);
     if (item?.url) {
       imageManager.deleteImage(item.url);
+    }
+  };
+
+  /**
+   * V2: Handle media reordering (drag-and-drop or arrow buttons)
+   */
+  const handleReorderMedia = (sourceIndex: number, destinationIndex: number) => {
+    if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
+      imageManager.reorderImages(sourceIndex, destinationIndex);
     }
   };
 
@@ -1495,6 +1562,56 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 tagsComboboxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 return;
             }
+
+            // PHASE 4: Pre-save validation with warnings and error blocking
+            if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
+              const validationResult = validateBeforeSave(
+                initialData,
+                {
+                  title: normalizedInput.title,
+                  content: normalizedInput.content,
+                  tags: normalizedInput.tags,
+                  media: normalizedInput.media,
+                  primaryMedia: null, // Edit mode doesn't use primaryMedia directly
+                  supportingMedia: normalizedInput.supportingMedia,
+                  images: normalizedInput.images,
+                  externalLinks,
+                  displayImageIndex: displayImageId
+                    ? currentMasonryItems.findIndex(m => m.id === displayImageId)
+                    : undefined,
+                },
+                'edit'
+              );
+
+              // Block save if validation errors exist
+              if (!validationResult.isValid) {
+                validationResult.errors.forEach(err => toast.error(err.message));
+                setIsSubmitting(false);
+                return;
+              }
+
+              // Show warnings but allow save with confirmation
+              if (validationResult.warnings.length > 0) {
+                const warningMessages = validationResult.warnings.map(w => `• ${w.message}`).join('\n');
+                const proceed = window.confirm(
+                  `Warning:\n${warningMessages}\n\nDo you want to proceed anyway?`
+                );
+                if (!proceed) {
+                  setIsSubmitting(false);
+                  return;
+                }
+              }
+
+              // Log integrity checks in development
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[CreateNuggetModal] Pre-save validation result:', {
+                  isValid: validationResult.isValid,
+                  errors: validationResult.errors,
+                  warnings: validationResult.warnings,
+                  integrityChecks: validationResult.integrityChecks,
+                });
+              }
+            }
             
             // Convert normalized output to partial update payload
             // CRITICAL: Only include fields that have changed (EDIT mode semantics)
@@ -1549,6 +1666,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
               updatePayload.externalLinks = externalLinks;
             }
             updatePayload.layoutVisibility = layoutVisibility;
+
+            // V2: Add displayImageIndex if user selected a specific thumbnail
+            if (isFeatureEnabled('NUGGET_EDITOR_V2') && displayImageId) {
+              const displayIndex = currentMasonryItems.findIndex(m => m.id === displayImageId);
+              if (displayIndex >= 0) {
+                updatePayload.displayImageIndex = displayIndex;
+              }
+            }
             
             // Final debug log before submit
             const includedFields = Object.keys(updatePayload);
@@ -1755,7 +1880,57 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             setIsSubmitting(false);
             return;
         }
-        
+
+        // PHASE 4: Pre-save validation with warnings and error blocking (Create mode)
+        if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
+          const validationResult = validateBeforeSave(
+            null, // No original article in create mode
+            {
+              title: normalized.title,
+              content: normalized.content,
+              tags: normalized.tags,
+              media: normalized.media,
+              primaryMedia: null,
+              supportingMedia: normalized.supportingMedia,
+              images: normalized.images,
+              externalLinks,
+              displayImageIndex: displayImageId
+                ? currentMasonryItems.findIndex(m => m.id === displayImageId)
+                : undefined,
+            },
+            'create'
+          );
+
+          // Block save if validation errors exist
+          if (!validationResult.isValid) {
+            validationResult.errors.forEach(err => toast.error(err.message));
+            setIsSubmitting(false);
+            return;
+          }
+
+          // Show warnings but allow save with confirmation
+          if (validationResult.warnings.length > 0) {
+            const warningMessages = validationResult.warnings.map(w => `• ${w.message}`).join('\n');
+            const proceed = window.confirm(
+              `Warning:\n${warningMessages}\n\nDo you want to proceed anyway?`
+            );
+            if (!proceed) {
+              setIsSubmitting(false);
+              return;
+            }
+          }
+
+          // Log integrity checks in development
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[CreateNuggetModal] Pre-save validation result (create):', {
+              isValid: validationResult.isValid,
+              errors: validationResult.errors,
+              warnings: validationResult.warnings,
+              integrityChecks: validationResult.integrityChecks,
+            });
+          }
+        }
+
         // TEMPORARY DEBUG: Stage 3 - Payload sent to API (before storageService.createArticle)
         const createPayload = {
             title: normalized.title,
@@ -1775,6 +1950,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             source_type: normalized.source_type,
             externalLinks,
             layoutVisibility: layoutVisibility,
+            // V2: Add displayImageIndex if user selected a specific thumbnail
+            ...(isFeatureEnabled('NUGGET_EDITOR_V2') && displayImageId ? {
+              displayImageIndex: currentMasonryItems.findIndex(m => m.id === displayImageId),
+            } : {}),
         };
         console.log('[CONTENT_TRACE] Stage 3 - Payload sent to API (final request body)', {
             mode: 'create',
@@ -1995,6 +2174,19 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     />
                 </div>
 
+                {/* V2: Layout Visibility moved up - Controls which layouts display this nugget */}
+                {isFeatureEnabled('NUGGET_EDITOR_V2') && (
+                  <div className="space-y-2" data-testid="layout-visibility-section-v2">
+                    <LayoutVisibilitySection
+                      visibility={layoutVisibility}
+                      onChange={setLayoutVisibility}
+                      hasMedia={mediaSectionItems.length > 0}
+                      hasMasonrySelectedMedia={mediaSectionItems.some(m => m.showInMasonry)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                )}
+
                 {/* Title Field */}
                 <div className="space-y-2">
                     <TitleInput
@@ -2072,18 +2264,20 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 </div>
 
                 {/* ═══════════════════════════════════════════════════════════════════ */}
-                {/* LAYOUT VISIBILITY SECTION */}
-                {/* Controls which layouts display this nugget */}
+                {/* LAYOUT VISIBILITY SECTION (V1: Original position) */}
+                {/* V2: This section is moved up after Tags */}
                 {/* ═══════════════════════════════════════════════════════════════════ */}
-                <div className="space-y-2" data-testid="layout-visibility-section">
-                  <LayoutVisibilitySection
-                    visibility={layoutVisibility}
-                    onChange={setLayoutVisibility}
-                    hasMedia={mediaSectionItems.length > 0}
-                    hasMasonrySelectedMedia={mediaSectionItems.some(m => m.showInMasonry)}
-                    disabled={isSubmitting}
-                  />
-                </div>
+                {!isFeatureEnabled('NUGGET_EDITOR_V2') && (
+                  <div className="space-y-2" data-testid="layout-visibility-section">
+                    <LayoutVisibilitySection
+                      visibility={layoutVisibility}
+                      onChange={setLayoutVisibility}
+                      hasMedia={mediaSectionItems.length > 0}
+                      hasMasonrySelectedMedia={mediaSectionItems.some(m => m.showInMasonry)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                )}
 
                 {/* Editor Area with AI Trigger */}
                 <ContentEditor
@@ -2214,7 +2408,20 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                       onMasonryTitleChange={handleMasonryTitleChange}
                       onAddMedia={() => fileInputRef.current?.click()}
                       disabled={isSubmitting}
+                      showClearThumbnail={isFeatureEnabled('NUGGET_EDITOR_V2')}
                     />
+                    {/* V2: Carousel ordering - drag-drop on desktop, arrows on mobile */}
+                    {isFeatureEnabled('NUGGET_EDITOR_V2') && mediaSectionItems.length > 1 && (
+                      <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <MediaCarousel
+                          items={mediaSectionItems}
+                          onReorder={handleReorderMedia}
+                          onDelete={handleDeleteMedia}
+                          onSetDisplayImage={handleSetDisplayImage}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 

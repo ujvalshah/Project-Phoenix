@@ -41,7 +41,7 @@ export function UrlInput({
   return (
     <div className="space-y-2">
       <label htmlFor="url-input" className="text-xs font-bold text-slate-800 dark:text-slate-200">
-        URLs (Optional - Add multiple)
+        Add additional media URL
       </label>
       <div className="flex gap-2">
         <input

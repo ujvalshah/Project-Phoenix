@@ -30,6 +30,23 @@ export const FEATURE_FLAGS = {
    * - Silent operation (production mode)
    */
   LOG_IMAGE_OPERATIONS: process.env.NODE_ENV === 'development',
+
+  /**
+   * NUGGET_EDITOR_V2: Enable enhanced nugget editor features
+   *
+   * When enabled:
+   * - URL detection aggregates from all sources (primaryMedia, supportingMedia, images)
+   * - Thumbnail selection is fully functional (click to change, clear button)
+   * - Carousel ordering via drag-and-drop (desktop) or arrows (mobile)
+   * - Pre-save validation with warnings and error blocking
+   * - UI field reordering and updated labels
+   *
+   * When disabled:
+   * - Original editor behavior
+   *
+   * Toggle via VITE_NUGGET_EDITOR_V2 environment variable
+   */
+  NUGGET_EDITOR_V2: import.meta.env.VITE_NUGGET_EDITOR_V2 === 'true',
 } as const;
 
 /**

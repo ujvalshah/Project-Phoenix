@@ -20,18 +20,21 @@ export interface MediaSectionItem {
   isUploading?: boolean;
   uploadError?: string;
   previewMetadata?: Record<string, unknown>;
+  order?: number;             // V2: Explicit order for carousel display
 }
 
 interface MediaSectionProps {
   items: MediaSectionItem[];
   onDelete: (itemId: string) => void;
-  onSetDisplayImage: (itemId: string) => void;
+  onSetDisplayImage: (itemId: string | null) => void;
   onToggleMasonry: (itemId: string, showInMasonry: boolean) => void;
   onToggleGrid: (itemId: string, showInGrid: boolean) => void;
   onToggleUtility: (itemId: string, showInUtility: boolean) => void;
   onMasonryTitleChange: (itemId: string, title: string) => void;
   onAddMedia: () => void;
   disabled?: boolean;
+  /** V2: Show clear button for thumbnail selection */
+  showClearThumbnail?: boolean;
 }
 
 const MASONRY_TITLE_MAX_LENGTH = 80;
@@ -69,6 +72,7 @@ export const MediaSection: React.FC<MediaSectionProps> = ({
   onMasonryTitleChange,
   onAddMedia,
   disabled = false,
+  showClearThumbnail = false,
 }) => {
   if (items.length === 0) {
     return (
@@ -286,7 +290,19 @@ export const MediaSection: React.FC<MediaSectionProps> = ({
       {/* Summary Info */}
       <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
         {displayImageItem && (
-          <p>Card thumbnail: {displayImageItem.type === 'image' ? 'Image' : displayImageItem.type}</p>
+          <div className="flex items-center gap-2">
+            <p>Card thumbnail: {displayImageItem.type === 'image' ? 'Image' : displayImageItem.type}</p>
+            {showClearThumbnail && (
+              <button
+                type="button"
+                onClick={() => onSetDisplayImage(null)}
+                disabled={disabled}
+                className="text-xs text-primary-500 hover:text-primary-600 underline disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                (Reset to first)
+              </button>
+            )}
+          </div>
         )}
         {masonryEnabledItems.length > 0 && (
           <p>{masonryEnabledItems.length} item{masonryEnabledItems.length > 1 ? 's' : ''} will appear in Masonry view</p>

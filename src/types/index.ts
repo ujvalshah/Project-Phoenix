@@ -140,6 +140,10 @@ export interface SupportingMediaItem {
   // Max 80 characters, single-line, no markdown
   // Backward compatibility: if missing, no caption is shown
   masonryTitle?: string;
+  // V2: Explicit order for carousel display
+  // If missing, use array index as order
+  // Backward compatibility: if missing, treat as array index
+  order?: number;
 }
 
 /**

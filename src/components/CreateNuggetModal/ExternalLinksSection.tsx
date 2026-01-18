@@ -99,8 +99,8 @@ export const ExternalLinksSection: React.FC<ExternalLinksSectionProps> = ({
       {/* Section Header */}
       <div className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
         <LinkIcon size={14} />
-        <span>External Links</span>
-        <span className="text-slate-400 dark:text-slate-500 font-normal">(for card "Link" button)</span>
+        <span>Source URL</span>
+        <span className="text-slate-400 dark:text-slate-500 font-normal">(for the "Link" button on your card)</span>
       </div>
 
       {/* Add URL Input */}

@@ -53,6 +53,8 @@ export interface ImageItem {
   thumbnail?: string;
   /** Preview metadata */
   previewMetadata?: any;
+  /** V2: Explicit order for carousel display */
+  order?: number;
 }
 
 /**
@@ -121,6 +123,9 @@ export interface UseImageManagerReturn {
 
   /** Set Masonry title for an image */
   setMasonryTitle: (url: string, title: string) => void;
+
+  /** V2: Reorder images (drag-and-drop carousel ordering) */
+  reorderImages: (sourceIndex: number, destinationIndex: number) => void;
 
   /** Sync state from an Article (for edit mode initialization) */
   syncFromArticle: (article: Article) => void;
@@ -601,6 +606,41 @@ export function useImageManager(
     });
   }, []);
 
+  /**
+   * V2: Reorder images (for drag-and-drop carousel ordering)
+   * Moves an image from sourceIndex to destinationIndex
+   */
+  const reorderImages = useCallback((sourceIndex: number, destinationIndex: number) => {
+    if (sourceIndex === destinationIndex) return;
+
+    setState((prev) => {
+      const items = [...prev.images];
+      const [removed] = items.splice(sourceIndex, 1);
+      items.splice(destinationIndex, 0, removed);
+
+      // Update order field based on new position
+      const reorderedItems = items.map((item, idx) => ({
+        ...item,
+        order: idx,
+      }));
+
+      if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+        console.log('[useImageManager] reorderImages:', {
+          sourceIndex,
+          destinationIndex,
+          movedItem: removed?.url,
+          newOrder: reorderedItems.map((item) => item.url),
+        });
+      }
+
+      return {
+        ...prev,
+        images: reorderedItems,
+      };
+    });
+    setHasChanges(true);
+  }, []);
+
   /** Clear all images */
   const clearAll = useCallback(() => {
     setState({
@@ -645,6 +685,7 @@ export function useImageManager(
     rollbackDeletion,
     toggleMasonry,
     setMasonryTitle,
+    reorderImages,
     syncFromArticle,
     clearAll,
 
@@ -667,6 +708,7 @@ export function useImageManager(
     rollbackDeletion,
     toggleMasonry,
     setMasonryTitle,
+    reorderImages,
     syncFromArticle,
     clearAll,
     isDeleting,
