@@ -27,8 +27,7 @@ import { UrlInput } from './CreateNuggetModal/UrlInput';
 import { AttachmentManager, FileAttachment } from './CreateNuggetModal/AttachmentManager';
 import { FormFooter } from './CreateNuggetModal/FormFooter';
 import { MasonryMediaToggle } from './CreateNuggetModal/MasonryMediaToggle';
-import { MediaSection, MediaSectionItem } from './CreateNuggetModal/MediaSection';
-import { MediaCarousel } from './CreateNuggetModal/MediaCarousel';
+import { UnifiedMediaManager, UnifiedMediaItem } from './CreateNuggetModal/UnifiedMediaManager';
 import { ExternalLinksSection } from './CreateNuggetModal/ExternalLinksSection';
 import { LayoutVisibilitySection } from './CreateNuggetModal/LayoutVisibilitySection';
 import { MasonryMediaItem } from '@/utils/masonryMediaHelper';
@@ -219,25 +218,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           feed: true,
         });
 
-        // V2: Initialize displayImageId from displayImageIndex
-        // The displayImageIndex from initialData will be matched to the item ID once masonryMediaItems loads
-        if (isFeatureEnabled('NUGGET_EDITOR_V2') && initialData.displayImageIndex !== undefined) {
-          // Store the index temporarily - we'll match it to an ID in a separate effect
-          // For now, we'll use the URL-based matching approach since item IDs are generated from URLs
-          const allMediaUrls = [
-            ...(initialData.primaryMedia?.url ? [initialData.primaryMedia.url] : []),
-            ...(initialData.supportingMedia?.map(m => m.url).filter(Boolean) || []),
-            ...(initialData.media?.type === 'image' && initialData.media.url ? [initialData.media.url] : []),
-            ...(initialData.images || []),
-          ];
-          const targetUrl = allMediaUrls[initialData.displayImageIndex];
-          if (targetUrl) {
-            // Generate the same ID that useImageManager uses
-            const normalizedUrl = targetUrl.toLowerCase().trim();
-            const itemId = `img-${normalizedUrl.slice(-20).replace(/[^a-z0-9]/gi, '')}`;
-            setDisplayImageId(itemId);
-          }
-        }
+        // V2: displayImageId will be initialized in a separate effect after masonryMediaItems loads
+        // This ensures we use the actual item ID from imageManager (not a mismatched generated one)
 
         // Extract URLs from media - collect all unique source URLs
         // Priority: previewMetadata.url (original source) > media.url (if different and not Cloudinary)
@@ -316,6 +298,27 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       lastSyncedArticleIdRef.current = null;
     }
   }, [mode, initialData?.id]); // Only depend on stable primitive values, not objects
+
+  // V2: Initialize displayImageId from displayImageIndex once masonryMediaItems is populated
+  // This effect runs after imageManager syncs and masonryMediaItems are available
+  const displayImageIdInitializedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isFeatureEnabled('NUGGET_EDITOR_V2')) return;
+    if (mode !== 'edit' || !initialData) return;
+    if (initialData.displayImageIndex === undefined) return;
+    if (masonryMediaItems.length === 0) return;
+
+    // Only initialize once per article to avoid overwriting user selections
+    if (displayImageIdInitializedRef.current === initialData.id) return;
+
+    // Find the item at the saved displayImageIndex and use its actual ID
+    const targetItem = masonryMediaItems[initialData.displayImageIndex];
+    if (targetItem) {
+      setDisplayImageId(targetItem.id);
+      displayImageIdInitializedRef.current = initialData.id;
+    }
+  }, [mode, initialData, masonryMediaItems]);
 
   // Focus trap and initial focus when modal opens
   useEffect(() => {
@@ -1063,10 +1066,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // MEDIA SECTION HANDLERS (NEW - Unified media management)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Convert masonryMediaItems to MediaSectionItem format
+  // Convert masonryMediaItems to UnifiedMediaItem format
   // V2: Uses displayImageId state for thumbnail selection
   // V1: Falls back to first item (index === 0)
-  const mediaSectionItems: MediaSectionItem[] = masonryMediaItems.map((item, index) => ({
+  const unifiedMediaItems: UnifiedMediaItem[] = masonryMediaItems.map((item, index) => ({
     id: item.id,
     url: item.url,
     type: item.type,
@@ -1606,6 +1609,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 hasMedia: updatePayload.media !== undefined,
                 hasSupportingMedia: updatePayload.supportingMedia !== undefined,
                 imagesCount: updatePayload.images?.length || 0,
+                // DEBUG: Show actual supportingMedia order
+                supportingMediaOrder: updatePayload.supportingMedia?.map((m: any) => m.url?.slice(-30)),
             });
             
             // Preserve primaryUrl for regression safeguard check
@@ -1613,10 +1618,17 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             
             // Call update
             const updatedArticle = await storageService.updateArticle(initialData.id, updatePayload);
-            
+
             if (!updatedArticle) {
                 throw new Error('Failed to update nugget');
             }
+
+            // DEBUG: Log what the backend returned
+            console.log('[EDIT RESULT] Backend returned article:', {
+                hasSupportingMedia: !!updatedArticle.supportingMedia,
+                supportingMediaCount: updatedArticle.supportingMedia?.length || 0,
+                supportingMediaOrder: updatedArticle.supportingMedia?.map((m: any) => m.url?.slice(-30)),
+            });
             
             // CRITICAL: Invalidate and refresh all query caches
             // This ensures feed, drawer, and inline views show updated media
@@ -2104,8 +2116,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     <LayoutVisibilitySection
                       visibility={layoutVisibility}
                       onChange={setLayoutVisibility}
-                      hasMedia={mediaSectionItems.length > 0}
-                      hasMasonrySelectedMedia={mediaSectionItems.some(m => m.showInMasonry)}
+                      hasMedia={unifiedMediaItems.length > 0}
+                      hasMasonrySelectedMedia={unifiedMediaItems.some(m => m.showInMasonry)}
                       disabled={isSubmitting}
                     />
                   </div>
@@ -2196,8 +2208,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     <LayoutVisibilitySection
                       visibility={layoutVisibility}
                       onChange={setLayoutVisibility}
-                      hasMedia={mediaSectionItems.length > 0}
-                      hasMasonrySelectedMedia={mediaSectionItems.some(m => m.showInMasonry)}
+                      hasMedia={unifiedMediaItems.length > 0}
+                      hasMasonrySelectedMedia={unifiedMediaItems.some(m => m.showInMasonry)}
                       disabled={isSubmitting}
                     />
                   </div>
@@ -2317,47 +2329,51 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 />
 
                 {/* ═══════════════════════════════════════════════════════════════════ */}
-                {/* MEDIA SECTION - Unified media management (NEW) */}
-                {/* Replaces: "Existing Images" + "Include in Masonry View" sections */}
+                {/* UNIFIED MEDIA MANAGER - All media management in one component */}
+                {/* Combines: Layout visibility, thumbnail selection, reordering */}
                 {/* ═══════════════════════════════════════════════════════════════════ */}
-                {mediaSectionItems.length > 0 && (
-                  <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="media-section">
-                    <MediaSection
-                      items={mediaSectionItems}
-                      onDelete={handleDeleteMedia}
-                      onSetDisplayImage={handleSetDisplayImage}
-                      onToggleMasonry={handleMasonryMediaToggle}
-                      onToggleGrid={handleGridMediaToggle}
-                      onToggleUtility={handleUtilityMediaToggle}
-                      onMasonryTitleChange={handleMasonryTitleChange}
-                      onAddMedia={() => fileInputRef.current?.click()}
-                      disabled={isSubmitting}
-                      showClearThumbnail={isFeatureEnabled('NUGGET_EDITOR_V2')}
-                    />
-                    {/* V2: Carousel ordering - drag-drop on desktop, arrows on mobile */}
-                    {isFeatureEnabled('NUGGET_EDITOR_V2') && mediaSectionItems.length > 1 && (
-                      <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                        <MediaCarousel
-                          items={mediaSectionItems}
-                          onReorder={handleReorderMedia}
-                          onDelete={handleDeleteMedia}
-                          onSetDisplayImage={handleSetDisplayImage}
-                          disabled={isSubmitting}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4" data-testid="media-section">
+                  <UnifiedMediaManager
+                    items={unifiedMediaItems}
+                    onReorder={handleReorderMedia}
+                    onDelete={handleDeleteMedia}
+                    onSetDisplayImage={handleSetDisplayImage}
+                    onToggleMasonry={handleMasonryMediaToggle}
+                    onToggleGrid={handleGridMediaToggle}
+                    onToggleUtility={handleUtilityMediaToggle}
+                    onMasonryTitleChange={handleMasonryTitleChange}
+                    onAddMedia={() => fileInputRef.current?.click()}
+                    disabled={isSubmitting}
+                    showClearThumbnail={isFeatureEnabled('NUGGET_EDITOR_V2')}
+                  />
+                </div>
 
                 {/* Link Preview */}
                 {(urls.length > 0 || detectedLink) && (() => {
+                    // Get URLs already managed by UnifiedMediaManager to avoid duplicates
+                    const managedUrls = new Set(unifiedMediaItems.map(item => item.url.toLowerCase()));
+
+                    // Filter out URLs already in UnifiedMediaManager
+                    const unmanagedUrls = urls.filter(url => !managedUrls.has(url.toLowerCase()));
+
                     // Separate image URLs from regular URLs for display
-                    const imageUrls = urls.filter(url => detectProviderFromUrl(url) === 'image');
-                    const linkUrls = urls.filter(url => detectProviderFromUrl(url) !== 'image');
-                    const primaryLinkUrl = linkUrls.length > 0 ? linkUrls[0] : detectedLink;
+                    const imageUrls = unmanagedUrls.filter(url => detectProviderFromUrl(url) === 'image');
+                    const linkUrls = unmanagedUrls.filter(url => detectProviderFromUrl(url) !== 'image');
+
+                    // Don't show detectedLink if it's already managed or is an image URL
+                    const isDetectedLinkManaged = detectedLink && managedUrls.has(detectedLink.toLowerCase());
+                    const isDetectedLinkImage = detectedLink && detectProviderFromUrl(detectedLink) === 'image';
+                    const effectiveDetectedLink = (isDetectedLinkManaged || isDetectedLinkImage) ? null : detectedLink;
+
+                    const primaryLinkUrl = linkUrls.length > 0 ? linkUrls[0] : effectiveDetectedLink;
                     const hasMultipleImages = imageUrls.length > 1;
                     const hasMultipleLinks = linkUrls.length > 1;
-                    
+
+                    // Don't render anything if all URLs are already managed
+                    if (imageUrls.length === 0 && !primaryLinkUrl) {
+                        return null;
+                    }
+
                     return (
                         <div className="space-y-3">
                             {/* Show all image URLs (newly added) */}

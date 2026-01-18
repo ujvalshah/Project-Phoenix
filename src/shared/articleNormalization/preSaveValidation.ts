@@ -194,10 +194,21 @@ export function validateBeforeSave(
   if (mode === 'edit' && originalArticle) {
     // 6. Check if images are being removed
     const originalImageCount = countAllImages(originalArticle);
+
+    // BUGFIX: In EDIT mode, null/undefined means "don't change", not "remove"
+    // Only count fields that are explicitly being set in the input
+    // For fields set to null/undefined, use the original article's count
     const newImageCount =
-      (input.images?.length ?? 0) +
-      (input.supportingMedia?.length ?? 0) +
-      (input.primaryMedia?.url ? 1 : 0);
+      // images array: use input if defined, else preserve original count
+      (input.images !== undefined ? (input.images?.length ?? 0) : (originalArticle.images?.length ?? 0)) +
+      // supportingMedia: use input if defined, else preserve original count
+      (input.supportingMedia !== undefined ? (input.supportingMedia?.length ?? 0) : (originalArticle.supportingMedia?.length ?? 0)) +
+      // primaryMedia: null means "don't change", so use original if input is null
+      (input.primaryMedia === null ? (originalArticle.primaryMedia?.url ? 1 : 0) : (input.primaryMedia?.url ? 1 : 0)) +
+      // media: use input if defined, else preserve original count
+      (input.media !== undefined
+        ? (input.media?.type === 'image' && input.media?.url ? 1 : 0)
+        : (originalArticle.media?.type === 'image' && originalArticle.media?.url ? 1 : 0));
 
     if (originalImageCount > 0 && newImageCount < originalImageCount) {
       const reduction = originalImageCount - newImageCount;

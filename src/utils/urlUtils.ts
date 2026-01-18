@@ -1,25 +1,57 @@
 /**
  * Shared content classification rule (must match backend logic)
- * 
+ *
  * An URL is considered an IMAGE if:
  * - It ends with .jpg / .jpeg / .png / .webp / .gif
  * - OR matches known CDN image hosts (images.ctfassets.net, thumbs.*, cdn.*)
- * 
+ * - OR matches social media image CDNs (Twitter, LinkedIn, etc.)
+ *
  * DO NOT fetch metadata for image URLs.
  */
 export const isImageUrl = (url: string): boolean => {
   if (!url) return false;
-  
-  const lowerUrl = url.toLowerCase();
-  
-  // Check for image file extensions
+
+  // Check for image file extensions (most common case)
   if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)) {
     return true;
   }
-  
+
   // Check for known CDN image hosts
   try {
-    const hostname = new URL(url).hostname.toLowerCase();
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    const pathname = urlObj.pathname.toLowerCase();
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SOCIAL MEDIA IMAGE CDNs (explicitly checked for safety)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Twitter/X: pbs.twimg.com serves ONLY images (videos use video.twimg.com)
+    // URLs: https://pbs.twimg.com/media/xxx?format=jpg&name=large
+    if (hostname === 'pbs.twimg.com' && pathname.startsWith('/media/')) {
+      return true;
+    }
+
+    // LinkedIn: media.licdn.com serves images
+    // URLs: https://media.licdn.com/dms/image/xxx
+    if (hostname.includes('media.licdn.com') && pathname.includes('/image/')) {
+      return true;
+    }
+
+    // Reddit: i.redd.it and preview.redd.it serve images
+    if (hostname === 'i.redd.it' || hostname === 'preview.redd.it') {
+      return true;
+    }
+
+    // Imgur: i.imgur.com serves images
+    if (hostname === 'i.imgur.com') {
+      return true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // GENERIC CDN PATTERNS (with additional safety checks)
+    // ═══════════════════════════════════════════════════════════════════════
+
     if (
       hostname.includes('images.ctfassets.net') ||
       hostname.includes('thumbs.') ||
@@ -33,15 +65,28 @@ export const isImageUrl = (url: string): boolean => {
         return true;
       }
       // If pathname suggests image (no .html, .php, etc.)
-      const pathname = new URL(url).pathname.toLowerCase();
       if (!pathname.endsWith('.html') && !pathname.endsWith('.php') && !pathname.endsWith('/')) {
         return true;
       }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FALLBACK: Check for image format in query params
+    // Only when combined with image-like pathname patterns
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Twitter-style ?format=jpg query params - only if pathname looks like media
+    if (/[?&]format=(jpg|jpeg|png|gif|webp)/i.test(url)) {
+      // Pathname should contain 'media', 'image', 'photo', or similar
+      if (/\/(media|image|photo|pic|img)\//i.test(pathname)) {
+        return true;
+      }
+    }
+
   } catch {
     // Invalid URL, fallback to extension check only
   }
-  
+
   return false;
 };
 

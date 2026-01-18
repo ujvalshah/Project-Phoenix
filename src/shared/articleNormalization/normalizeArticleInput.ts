@@ -65,14 +65,15 @@
  * ============================================================================
  */
 
-import { detectProviderFromUrl } from '@/utils/urlUtils';
+import { detectProviderFromUrl, isImageUrl } from '@/utils/urlUtils';
 import { getPrimaryUrl } from '@/utils/processNuggetUrl';
 import type { NuggetMedia, Article } from '@/types';
 import { normalizeTags } from './normalizeTags';
-import { 
-  detectDuplicateImages, 
-  dedupeImagesForCreate, 
-  dedupeImagesForEdit 
+import {
+  detectDuplicateImages,
+  dedupeImagesForCreate,
+  dedupeImagesForEdit,
+  normalizeImageUrl,
 } from './imageDedup';
 // CATEGORY PHASE-OUT: Removed normalizeCategories import - using normalizeTags directly
 
@@ -691,17 +692,36 @@ async function buildSupportingMediaEdit(
       // Enrich if previewMetadata is missing
       const enriched = await enrichMediaItemIfNeeded(media);
 
+      // TYPE CORRECTION FIX: Correct misclassified types for external image URLs
+      // Twitter/X images (pbs.twimg.com) were previously classified as 'link' instead of 'image'
+      // This ensures getAllImageUrls includes them from supportingMedia (respecting order)
+      const correctedType = mediaUrl && isImageUrl(mediaUrl) ? 'image' : enriched.type;
+
+      // DEBUG: Log type correction
+      if (correctedType !== enriched.type) {
+        console.log('[TYPE_CORRECTION] Fixed type:', {
+          url: mediaUrl?.slice(-40),
+          oldType: enriched.type,
+          newType: correctedType,
+          isImageUrl: isImageUrl(mediaUrl || ''),
+        });
+      }
+
       if (item) {
         // Update showInMasonry flag from masonryMediaItems state
         return {
           ...enriched,
+          type: correctedType,
           showInMasonry: item.showInMasonry,
           masonryTitle: item.masonryTitle || undefined,
         };
       }
 
       // Item not in masonryMediaItems - preserve existing showInMasonry value
-      return enriched;
+      return {
+        ...enriched,
+        type: correctedType,
+      };
     })
   );
 
@@ -766,6 +786,62 @@ async function buildSupportingMediaEdit(
     // Filter out nulls from duplicate checks
     const validNewItems = newItems.filter(item => item !== null);
     normalizedSupportingMedia.push(...validNewItems);
+  }
+
+  // REORDER FIX: Apply user's drag-and-drop reordering from masonryMediaItems
+  // This ensures the saved supportingMedia order matches what the user sees in the carousel
+  console.log('[REORDER DEBUG] Starting reorder check:', {
+    masonryMediaItemsCount: masonryMediaItems.length,
+    normalizedSupportingMediaCount: normalizedSupportingMedia.length,
+    masonryOrder: masonryMediaItems.map(m => m.url?.slice(-30)),
+    supportingOrder: normalizedSupportingMedia.map(m => m.url?.slice(-30)),
+  });
+
+  if (masonryMediaItems.length > 0 && normalizedSupportingMedia.length > 0) {
+    // Create a map of URL -> media item for quick lookup
+    const mediaByUrl = new Map<string, any>();
+    for (const media of normalizedSupportingMedia) {
+      if (media.url) {
+        mediaByUrl.set(normalizeUrl(media.url), media);
+      }
+    }
+
+    // Reorder based on masonryMediaItems order (which reflects user's drag-and-drop)
+    const reorderedMedia: any[] = [];
+    const addedToReordered = new Set<string>();
+
+    // First, add items in the order they appear in masonryMediaItems
+    for (const item of masonryMediaItems) {
+      if (item.source === 'primary') continue; // Skip primary media
+      const itemUrlNormalized = normalizeUrl(item.url);
+      const existingMedia = mediaByUrl.get(itemUrlNormalized);
+      if (existingMedia && !addedToReordered.has(itemUrlNormalized)) {
+        reorderedMedia.push(existingMedia);
+        addedToReordered.add(itemUrlNormalized);
+      }
+    }
+
+    // Then, add any remaining items that weren't in masonryMediaItems (shouldn't happen, but safe fallback)
+    for (const media of normalizedSupportingMedia) {
+      if (media.url) {
+        const urlNormalized = normalizeUrl(media.url);
+        if (!addedToReordered.has(urlNormalized)) {
+          reorderedMedia.push(media);
+        }
+      }
+    }
+
+    // Use reordered array if it has items
+    if (reorderedMedia.length > 0) {
+      console.log('[REORDER DEBUG] Reordering applied:', {
+        beforeOrder: normalizedSupportingMedia.map(m => m.url?.slice(-30)),
+        afterOrder: reorderedMedia.map(m => m.url?.slice(-30)),
+      });
+      normalizedSupportingMedia.length = 0;
+      normalizedSupportingMedia.push(...reorderedMedia);
+    }
+  } else {
+    console.log('[REORDER DEBUG] Skipping reorder - conditions not met');
   }
 
   return {
@@ -880,13 +956,58 @@ export async function normalizeArticleInput(
     // MASONRY REFACTOR: No longer pruning images based on supportingMedia
     // Images remain in images[] array regardless of masonry selection
     dedupResult = dedupeImagesForEdit(
-      existingImages, 
-      allImageUrlsRaw, 
+      existingImages,
+      allImageUrlsRaw,
       undefined, // No longer passing supportingMedia for pruning
       undefined, // No longer using imagesBackup
       input.explicitlyDeletedImages
     );
     allImages = dedupResult.deduplicated;
+
+    // REORDER FIX: Also reorder images[] array based on masonryMediaItems order
+    // This ensures getAllImageUrls returns images in the correct order even if
+    // supportingMedia items have wrong type (e.g., 'link' instead of 'image')
+    if (input.masonryMediaItems.length > 0 && allImages.length > 1) {
+      const masonryOrder = input.masonryMediaItems
+        .filter(item => item.source !== 'primary' && item.type === 'image')
+        .map(item => normalizeImageUrl(item.url));
+
+      // Create a map of normalized URL -> original URL
+      const imagesByNormalizedUrl = new Map<string, string>();
+      for (const img of allImages) {
+        imagesByNormalizedUrl.set(normalizeImageUrl(img), img);
+      }
+
+      // Reorder based on masonryOrder
+      const reorderedImages: string[] = [];
+      const addedNormalized = new Set<string>();
+
+      // First, add images in masonryMediaItems order
+      for (const normalizedMasonryUrl of masonryOrder) {
+        const originalUrl = imagesByNormalizedUrl.get(normalizedMasonryUrl);
+        if (originalUrl && !addedNormalized.has(normalizedMasonryUrl)) {
+          reorderedImages.push(originalUrl);
+          addedNormalized.add(normalizedMasonryUrl);
+        }
+      }
+
+      // Then, add any remaining images not in masonryMediaItems
+      for (const img of allImages) {
+        const normalized = normalizeImageUrl(img);
+        if (!addedNormalized.has(normalized)) {
+          reorderedImages.push(img);
+          addedNormalized.add(normalized);
+        }
+      }
+
+      if (reorderedImages.length > 0) {
+        console.log('[IMAGES_REORDER] Applied reorder to images[] array:', {
+          beforeOrder: allImages.map(u => u.slice(-30)),
+          afterOrder: reorderedImages.map(u => u.slice(-30)),
+        });
+        allImages = reorderedImages;
+      }
+    }
   }
 
   // Fallback behavior: If output differs unexpectedly, preserve original behavior

@@ -427,6 +427,7 @@ export function getAllImageUrls(article: Article): string[] {
   const imageUrls: string[] = [];
   const seenUrls = new Set<string>(); // Deduplicate URLs
   const duplicatesDetected: Array<{ url: string; normalized: string; source: string }> = [];
+  const sourcesUsed: Array<{ url: string; source: string }> = []; // DEBUG: Track where each URL came from
 
   // PHASE 2B FIX: Use consistent normalizeImageUrl from imageDedup.ts
   // This removes query params and normalizes case for better duplicate detection
@@ -437,15 +438,29 @@ export function getAllImageUrls(article: Article): string[] {
       if (!seenUrls.has(normalized)) {
         seenUrls.add(normalized);
         imageUrls.push(url); // Keep original casing
+        sourcesUsed.push({ url: url.slice(-40), source }); // DEBUG
       } else {
         // PHASE 2B: Log duplicate detection for debugging
         duplicatesDetected.push({ url, normalized, source });
       }
     }
   };
-  
+
   // Check if article has classified media
   const hasClassifiedMedia = article.primaryMedia !== undefined || article.supportingMedia !== undefined;
+
+  // DEBUG: Log supportingMedia types to diagnose ordering issue
+  if (import.meta.env.DEV && article.supportingMedia && article.supportingMedia.length > 0) {
+    console.log('[getAllImageUrls] supportingMedia analysis:', {
+      articleId: article.id?.slice(-8),
+      count: article.supportingMedia.length,
+      items: article.supportingMedia.map(m => ({
+        type: m.type,
+        urlSuffix: m.url?.slice(-40),
+        isTypeImage: m.type === 'image',
+      })),
+    });
+  }
 
   if (hasClassifiedMedia) {
     // Add primary media if it's an image
@@ -501,6 +516,17 @@ export function getAllImageUrls(article: Article): string[] {
       duplicatesCount: duplicatesDetected.length,
       duplicates: duplicatesDetected,
       finalCount: imageUrls.length,
+    });
+  }
+
+  // DEBUG: Log final order and sources
+  if (import.meta.env.DEV && imageUrls.length > 0) {
+    console.log('[getAllImageUrls] FINAL ORDER:', {
+      articleId: article.id?.slice(-8),
+      count: imageUrls.length,
+      order: imageUrls.map(url => url.slice(-40)),
+      sources: sourcesUsed,
+      imagesArrayOrder: article.images?.map(url => url.slice(-40)) || [],
     });
   }
 
