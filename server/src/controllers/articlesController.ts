@@ -419,7 +419,7 @@ export const createArticle = async (req: Request, res: Response) => {
     if (isTagIdsWriteEnabled() && normalizedTags.length > 0) {
       try {
         const tagIds = await resolveTagNamesToIds(normalizedTags);
-        (createData as any).tagIds = tagIds;
+        (data as any).tagIds = tagIds;
         requestLogger.info({
           msg: '[Articles] Create: Resolved tags to tagIds',
           tagCount: normalizedTags.length,
@@ -665,7 +665,11 @@ export const createArticle = async (req: Request, res: Response) => {
       return sendPayloadTooLargeError(res, 'Payload too large. Please reduce image sizes or use fewer images.');
     }
     
-    sendInternalError(res);
+    console.error('ARTICLE_CREATE_FAILED', error);
+    return res.status(500).json({
+      code: 'ARTICLE_CREATE_FAILED',
+      message: error.message,
+    });
   }
 };
 

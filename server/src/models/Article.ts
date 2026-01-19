@@ -345,22 +345,24 @@ function isSuspiciousTruncation(oldContent: string, newContent: string): boolean
 }
 
 // Pre-save hook: Detect content truncation on document.save()
-ArticleSchema.pre('save', async function(next) {
+// NOTE: Use async without next — in Mongoose async pre hooks, Kareem does not pass next;
+// calling next() throws "next is not a function" in production (Mongoose 9 / Kareem 2).
+ArticleSchema.pre('save', async function() {
   // Only check on updates (not new documents)
   if (this.isNew) {
-    return next();
+    return;
   }
   
   // Only check if content is modified
   if (!this.isModified('content')) {
-    return next();
+    return;
   }
   
   try {
     // Get old document from database
     const oldDoc = await this.constructor.findById(this._id).lean();
     if (!oldDoc) {
-      return next(); // Document doesn't exist, skip check
+      return; // Document doesn't exist, skip check
     }
     
     const oldContent = oldDoc.content || '';
@@ -384,30 +386,27 @@ ArticleSchema.pre('save', async function(next) {
     // Don't block save if logging fails
     console.error('[Article Model] Error in pre-save content truncation check:', error);
   }
-  
-  next();
 });
 
 // Pre-updateOne hook: Detect content truncation on Model.updateOne()
-ArticleSchema.pre('updateOne', async function(next) {
+// NOTE: Use async without next — same as pre('save'); calling next() throws in Mongoose 9.
+ArticleSchema.pre('updateOne', async function() {
   const update = this.getUpdate() as any;
   
   // Check if content is being updated
   if (!update || (!update.$set?.content && !update.content)) {
-    return next();
+    return;
   }
   
   const newContent = update.$set?.content || update.content || '';
   
   try {
-    // Get the query to find the document
     const query = this.getQuery();
-    // Use this.model to get the model instance (available in query hooks)
     const Model = (this as any).model || mongoose.model('Article');
     const oldDoc = await Model.findOne(query).lean();
     
     if (!oldDoc) {
-      return next(); // Document doesn't exist, skip check
+      return;
     }
     
     const oldContent = oldDoc.content || '';
@@ -427,33 +426,29 @@ ArticleSchema.pre('updateOne', async function(next) {
       );
     }
   } catch (error) {
-    // Don't block update if logging fails
     console.error('[Article Model] Error in pre-updateOne content truncation check:', error);
   }
-  
-  next();
 });
 
 // Pre-findOneAndUpdate hook: Detect content truncation on Model.findOneAndUpdate()
-ArticleSchema.pre('findOneAndUpdate', async function(next) {
+// NOTE: Use async without next — same as pre('save'); calling next() throws in Mongoose 9.
+ArticleSchema.pre('findOneAndUpdate', async function() {
   const update = this.getUpdate() as any;
   
   // Check if content is being updated
   if (!update || (!update.$set?.content && !update.content)) {
-    return next();
+    return;
   }
   
   const newContent = update.$set?.content || update.content || '';
   
   try {
-    // Get the query to find the document
     const query = this.getQuery();
-    // Use this.model to get the model instance (available in query hooks)
     const Model = (this as any).model || mongoose.model('Article');
     const oldDoc = await Model.findOne(query).lean();
     
     if (!oldDoc) {
-      return next(); // Document doesn't exist, skip check
+      return;
     }
     
     const oldContent = oldDoc.content || '';
@@ -473,11 +468,8 @@ ArticleSchema.pre('findOneAndUpdate', async function(next) {
       );
     }
   } catch (error) {
-    // Don't block update if logging fails
     console.error('[Article Model] Error in pre-findOneAndUpdate content truncation check:', error);
   }
-  
-  next();
 });
 
 export const Article = mongoose.model<IArticle>('Article', ArticleSchema);
