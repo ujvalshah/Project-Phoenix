@@ -27,14 +27,14 @@ function getJwtSecret(): string {
  * @param userId - User ID
  * @param role - User role (e.g., 'user', 'admin')
  * @param email - Optional email (for backward compatibility)
- * @param expiresIn - Token expiration (default: 7d)
+ * @param expiresIn - Token expiration (default: 1d; use refresh tokens for longer sessions)
  * @returns JWT token string
  */
 export function generateToken(
   userId: string,
   role: string,
   email?: string,
-  expiresIn: string = '7d'
+  expiresIn: string = '1d'
 ): string {
   const payload: JWTPayload = {
     userId,
@@ -47,7 +47,7 @@ export function generateToken(
   }
   
   const secret = getJwtSecret();
-  return jwt.sign(payload, secret, { expiresIn });
+  return jwt.sign(payload, secret, { expiresIn, algorithm: 'HS256' });
 }
 
 /**
@@ -59,7 +59,7 @@ export function generateToken(
  */
 export function verifyToken(token: string): JWTPayload {
   const secret = getJwtSecret();
-  const decoded = jwt.verify(token, secret) as JWTPayload;
+  const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as JWTPayload;
   
   // Ensure required fields exist
   if (!decoded.userId || !decoded.role) {

@@ -76,12 +76,13 @@ app.use(compression({
 // Security Middleware
 app.use(helmet());
 
-// CORS Configuration - Strict policy based on environment
-const allowedOrigins = [
+// CORS Configuration - FRONTEND_URL first (env-specific), then fixed production domains
+const allowedOrigins: string[] = [
+  ...(env.FRONTEND_URL ? [env.FRONTEND_URL] : []),
   "https://nuggetnews.app",
   "https://www.nuggetnews.app",
   "https://nugget-cyan.vercel.app"
-];
+].filter(Boolean);
 
 // Diagnostic middleware to log request details before CORS check
 app.use((req, res, next) => {
@@ -417,16 +418,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     });
   }
 
-  // Capture in Sentry with context
+  // Capture in Sentry with context — never include body for auth routes (may contain passwords)
+  const isAuthRoute = (req.path || '').startsWith('/api/auth');
   captureException(err, {
     requestId: req.id,
     route: req.path,
     userId: (req as any).userId,
-    extra: {
-      method: req.method,
-      body: req.body,
-      query: req.query,
-    },
+    extra: isAuthRoute
+      ? { method: req.method }
+      : { method: req.method, body: req.body, query: req.query },
   });
 
   // Send error response

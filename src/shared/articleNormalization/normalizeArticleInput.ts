@@ -652,8 +652,8 @@ async function buildSupportingMediaEdit(
     return {};
   }
 
-  // Normalize URL helper for comparison
-  const normalizeUrl = (url: string) => url.toLowerCase().trim();
+  // CRITICAL: Use normalizeImageUrl (strips query params) for all URL matching.
+  // toLowerCase().trim() broke Twitter/URL images (e.g. ?format=jpg) so reorder failed.
 
   // DEDUPLICATION FIX: Track ALL URLs that have been added to prevent duplicates
   const addedUrls = new Set<string>();
@@ -662,7 +662,7 @@ async function buildSupportingMediaEdit(
   const deduplicatedExisting: any[] = [];
   for (const media of existingSupportingMedia || []) {
     if (media.url) {
-      const normalizedUrl = normalizeUrl(media.url);
+      const normalizedUrl = normalizeImageUrl(media.url);
       if (!addedUrls.has(normalizedUrl)) {
         addedUrls.add(normalizedUrl);
         deduplicatedExisting.push(media);
@@ -674,19 +674,16 @@ async function buildSupportingMediaEdit(
 
   // Track which URLs are in the deduplicated existing list
   const existingSupportingUrls = new Set(
-    deduplicatedExisting.map(media => media.url ? normalizeUrl(media.url) : '').filter(Boolean)
+    deduplicatedExisting.map(media => media.url ? normalizeImageUrl(media.url) : '').filter(Boolean)
   );
 
   // Process existing supportingMedia items and update their showInMasonry flags
-  // FIX: Match items by URL instead of index-based ID (IDs are now URL-based hashes)
+  // FIX: Match items by URL (normalizeImageUrl) since IDs are now URL-based hashes
   const normalizedSupportingMedia = await Promise.all(
     deduplicatedExisting.map(async (media) => {
-      // Match by URL (normalized) since IDs are now URL-based hashes, not index-based
       const mediaUrl = media.url;
       const item = mediaUrl
-        ? masonryMediaItems.find(item => {
-            return normalizeUrl(item.url) === normalizeUrl(mediaUrl);
-          })
+        ? masonryMediaItems.find(item => normalizeImageUrl(item.url) === normalizeImageUrl(mediaUrl))
         : null;
 
       // Enrich if previewMetadata is missing
@@ -738,7 +735,7 @@ async function buildSupportingMediaEdit(
     if (item.source === 'legacy-image' || item.source === 'legacy') return false;
 
     // Skip if already in existingSupportingMedia or already added
-    const itemUrlNormalized = normalizeUrl(item.url);
+    const itemUrlNormalized = normalizeImageUrl(item.url);
     if (existingSupportingUrls.has(itemUrlNormalized) || addedUrls.has(itemUrlNormalized)) {
       return false;
     }
@@ -750,7 +747,7 @@ async function buildSupportingMediaEdit(
   if (newMasonryItems.length > 0) {
     const newItems = await Promise.all(
       newMasonryItems.map(async (item) => {
-        const normalizedUrl = normalizeUrl(item.url);
+        const normalizedUrl = normalizeImageUrl(item.url);
 
         // Double-check to prevent race condition duplicates
         if (addedUrls.has(normalizedUrl)) {
@@ -798,11 +795,11 @@ async function buildSupportingMediaEdit(
   });
 
   if (masonryMediaItems.length > 0 && normalizedSupportingMedia.length > 0) {
-    // Create a map of URL -> media item for quick lookup
+    // Create a map of URL -> media item (normalizeImageUrl so Twitter/URL query params match)
     const mediaByUrl = new Map<string, any>();
     for (const media of normalizedSupportingMedia) {
       if (media.url) {
-        mediaByUrl.set(normalizeUrl(media.url), media);
+        mediaByUrl.set(normalizeImageUrl(media.url), media);
       }
     }
 
@@ -813,7 +810,7 @@ async function buildSupportingMediaEdit(
     // First, add items in the order they appear in masonryMediaItems
     for (const item of masonryMediaItems) {
       if (item.source === 'primary') continue; // Skip primary media
-      const itemUrlNormalized = normalizeUrl(item.url);
+      const itemUrlNormalized = normalizeImageUrl(item.url);
       const existingMedia = mediaByUrl.get(itemUrlNormalized);
       if (existingMedia && !addedToReordered.has(itemUrlNormalized)) {
         reorderedMedia.push(existingMedia);
@@ -824,7 +821,7 @@ async function buildSupportingMediaEdit(
     // Then, add any remaining items that weren't in masonryMediaItems (shouldn't happen, but safe fallback)
     for (const media of normalizedSupportingMedia) {
       if (media.url) {
-        const urlNormalized = normalizeUrl(media.url);
+        const urlNormalized = normalizeImageUrl(media.url);
         if (!addedToReordered.has(urlNormalized)) {
           reorderedMedia.push(media);
         }

@@ -27,6 +27,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// SECURITY: Token in localStorage is vulnerable to XSS. Prefer HttpOnly cookies for production.
+// Migration: backend sets Set-Cookie on login/signup; apiClient uses credentials: 'include'; remove Authorization header.
 const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2'; // Bumped version for schema change
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

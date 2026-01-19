@@ -13,12 +13,16 @@ import {
   sendInternalError,
   handleDuplicateKeyError
 } from '../utils/errorResponse.js';
+import { createRequestLogger } from '../utils/logger.js';
 
-// Validation Schemas
+// Validation Schemas — email normalized for consistent lookups and user-enumeration resistance
 const loginSchema = z.object({
-  email: z.string().email('Invalid email format'),
+  email: z.string().email('Invalid email format').transform((s) => s.toLowerCase().trim()),
   password: z.string().min(1, 'Password is required')
 });
+
+// Generic login failure message to prevent user enumeration
+const LOGIN_FAILURE_MSG = 'Invalid email or password';
 
 // Helper function to format validation errors into user-friendly messages
 function formatValidationErrors(errors: z.ZodError['errors']): string {
@@ -56,8 +60,8 @@ function formatValidationErrors(errors: z.ZodError['errors']): string {
 
 const signupSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
-  username: z.string().min(3, 'Username must be at least 3 characters').transform(val => val.toLowerCase().trim()),
-  email: z.string().email('Invalid email format'),
+  username: z.string().min(3, 'Username must be at least 3 characters').transform((val) => val.toLowerCase().trim()),
+  email: z.string().email('Invalid email format').transform((s) => s.toLowerCase().trim()),
   password: z.string()
     .min(8, 'Password must be at least 8 characters long')
     .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
@@ -97,22 +101,23 @@ export const login = async (req: Request, res: Response) => {
     const { email, password } = validationResult.data;
 
     // Find user by email (password field is excluded by default, so we need to select it)
-    const user = await User.findOne({ 'auth.email': email.toLowerCase() })
+    const user = await User.findOne({ 'auth.email': email })
       .select('+password');
-    
+
     if (!user) {
-      return sendUnauthorizedError(res, 'Invalid email or password');
+      return sendUnauthorizedError(res, LOGIN_FAILURE_MSG);
     }
 
     // Check password (if user has one - social auth users may not)
+    // bcrypt.compare is timing-safe
     if (user.password) {
       const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
-        return sendUnauthorizedError(res, 'Invalid email or password');
+        return sendUnauthorizedError(res, LOGIN_FAILURE_MSG);
       }
     } else {
-      // User exists but has no password (social auth only)
-      return sendUnauthorizedError(res, 'This account was created with social login. Please use social login to continue.');
+      // User exists but has no password (social auth only) — same generic message to avoid enumeration
+      return sendUnauthorizedError(res, LOGIN_FAILURE_MSG);
     }
 
     // Update last login time
@@ -126,7 +131,11 @@ export const login = async (req: Request, res: Response) => {
     const userData = normalizeDoc(user);
     res.json({ user: userData, token });
   } catch (error: any) {
-    console.error('[Auth] Login error:', error);
+    const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+    requestLogger.error({
+      msg: 'Login failed',
+      err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) }
+    });
     sendInternalError(res);
   }
 };
@@ -162,59 +171,23 @@ export const signup = async (req: Request, res: Response) => {
     const data = validationResult.data;
     const now = new Date().toISOString();
 
-    // Normalize email and username for checking
-    normalizedEmail = data.email.toLowerCase().trim();
-    normalizedUsername = data.username.toLowerCase().trim();
-    
+    // Schema already normalizes email and username
+    normalizedEmail = data.email;
+    normalizedUsername = data.username;
+
     // Check if email already exists
-    // Try exact match first, then case-insensitive regex as fallback
-    existingUser = await User.findOne({ 
-      'auth.email': normalizedEmail
-    });
-    
-    // If not found with exact match, try case-insensitive search (handles edge cases)
-    if (!existingUser) {
-      existingUser = await User.findOne({
-        $expr: {
-          $eq: [
-            { $toLower: { $trim: { input: '$auth.email' } } },
-            normalizedEmail
-          ]
-        }
-      });
-    }
-    
-    // Log for debugging
-    if (existingUser) {
-      console.log('[Signup] Email conflict - Found existing user:', {
-        id: existingUser._id.toString(),
-        email: existingUser.auth?.email,
-        username: existingUser.profile?.username,
-        requestedEmail: normalizedEmail
-      });
-    }
-    
+    existingUser = await User.findOne({ 'auth.email': normalizedEmail });
     if (existingUser) {
       return sendConflictError(res, 'Email already registered', 'EMAIL_ALREADY_EXISTS');
     }
 
     // Check if username already exists (case-insensitive)
-    existingUsername = await User.findOne({ 
-      'profile.username': normalizedUsername
-    });
-    
+    existingUsername = await User.findOne({ 'profile.username': normalizedUsername });
     if (existingUsername) {
-      console.log('[Signup] Username conflict - Found existing user:', {
-        id: existingUsername._id.toString(),
-        email: existingUsername.auth?.email,
-        username: existingUsername.profile?.username,
-        requestedUsername: normalizedUsername
-      });
-      
       return sendConflictError(res, 'Username already taken', 'USERNAME_ALREADY_EXISTS');
     }
 
-    // Hash password if provided
+    // Hash password (bcrypt 10 rounds; NIST-acceptable; consider 12 for higher security)
     let hashedPassword: string | undefined;
     if (data.password) {
       hashedPassword = await bcrypt.hash(data.password, 10);
@@ -225,7 +198,7 @@ export const signup = async (req: Request, res: Response) => {
       role: 'user',
       password: hashedPassword,
       auth: {
-        email: data.email.toLowerCase(),
+        email: data.email,
         emailVerified: false,
         provider: 'email',
         createdAt: now,
@@ -267,58 +240,35 @@ export const signup = async (req: Request, res: Response) => {
     const userData = normalizeDoc(newUser);
     res.status(201).json({ user: userData, token });
   } catch (error: any) {
-    console.error('[Auth] Signup error:', error);
-    
     // Handle duplicate key error (MongoDB unique constraint)
     // This catches:
     // 1. Race conditions where another request created the user between our checks
     // 2. Stale index entries from deleted users (index not cleaned up)
     if (error.code === 11000) {
       const keyPattern = error.keyPattern || {};
-      const keyValue = error.keyValue || {};
-      
-      // Enhanced logging for debugging stale index issues
-      console.log('[Auth] MongoDB duplicate key error (11000):', {
-        keyPattern,
-        keyValue,
-        attemptedEmail: normalizedEmail,
-        attemptedUsername: normalizedUsername,
-        findOneFoundUser: !!existingUser,
-        findOneFoundUsername: !!existingUsername
-      });
-      
-      // Use helper to handle duplicate key error
       const handled = handleDuplicateKeyError(res, error, {
         'auth.email': { message: 'Email already registered', code: 'EMAIL_ALREADY_EXISTS' },
         'profile.username': { message: 'Username already taken', code: 'USERNAME_ALREADY_EXISTS' }
       });
-      
       if (handled) {
-        // Check for stale index issues
-        if (keyPattern['auth.email'] && !existingUser) {
-          console.warn('[Auth] STALE INDEX DETECTED: MongoDB index blocks email but no user found in database.');
-          console.warn('[Auth] Email in index:', keyValue['auth.email']);
-          console.warn('[Auth] This indicates a stale index entry. Run: npm run fix-indexes');
+        // Log only field names for stale-index diagnostics; no PII
+        if (keyPattern['auth.email']) {
+          const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+          requestLogger.warn({ msg: 'Signup duplicate key: auth.email. If unexpected, run: npm run fix-indexes' });
         }
-        if (keyPattern['profile.username'] && !existingUsername) {
-          console.warn('[Auth] STALE INDEX DETECTED: MongoDB index blocks username but no user found in database.');
-          console.warn('[Auth] Username in index:', keyValue['profile.username']);
-          console.warn('[Auth] This indicates a stale index entry. Run: npm run fix-indexes');
+        if (keyPattern['profile.username']) {
+          const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+          requestLogger.warn({ msg: 'Signup duplicate key: profile.username. If unexpected, run: npm run fix-indexes' });
         }
         return;
       }
     }
-    
-    // Generic error handler - log full error for debugging
-    console.error('[Auth] Signup error details:', {
-      error: error.message,
-      stack: error.stack,
-      attemptedEmail: normalizedEmail || 'unknown',
-      attemptedUsername: normalizedUsername || 'unknown',
-      errorCode: error.code,
-      errorName: error.name
+
+    const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+    requestLogger.error({
+      msg: 'Signup failed',
+      err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) }
     });
-    
     sendInternalError(res, 'Something went wrong on our end. Please try again in a moment.');
   }
 };
@@ -343,7 +293,11 @@ export const getMe = async (req: Request, res: Response) => {
     const userData = normalizeDoc(user);
     res.json(userData);
   } catch (error: any) {
-    console.error('[Auth] Get me error:', error);
+    const requestLogger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
+    requestLogger.error({
+      msg: 'Get me failed',
+      err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) }
+    });
     sendInternalError(res);
   }
 };

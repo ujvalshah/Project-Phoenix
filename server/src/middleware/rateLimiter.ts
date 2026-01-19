@@ -55,6 +55,7 @@ if (process.env.REDIS_URL) {
 // Create separate RedisStore instances for each rate limiter with unique prefixes
 const loginRedisStore = createRedisStore('rl:login');
 const signupRedisStore = createRedisStore('rl:signup');
+const passwordResetRedisStore = createRedisStore('rl:password-reset');
 const unfurlRedisStore = createRedisStore('rl:unfurl');
 const aiRedisStore = createRedisStore('rl:ai');
 
@@ -96,6 +97,22 @@ export const signupLimiter = rateLimit({
       message: 'Too many attempts. Please try again later.'
     });
   }
+});
+
+/**
+ * Rate limiter for password-reset endpoints (apply when POST /auth/forgot-password, etc. exist)
+ * 5 requests per 15 minutes per IP
+ */
+export const passwordResetLimiter = rateLimit({
+  store: passwordResetRedisStore,
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ message: 'Too many attempts. Please try again later.' });
+  },
 });
 
 /**

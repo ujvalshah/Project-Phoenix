@@ -19,6 +19,7 @@
 
 import type { Article, PrimaryMedia, SupportingMediaItem, MediaType, NuggetMedia } from '@/types';
 import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
+import { isImageUrl } from '@/utils/urlUtils';
 
 /**
  * Media type priority for primary media selection
@@ -468,10 +469,12 @@ export function getAllImageUrls(article: Article): string[] {
       addImageUrl(article.primaryMedia.url, 'primaryMedia');
     }
 
-    // Add supporting images
+    // Add supporting images (preserve supportingMedia array order)
+    // CRITICAL: Include type 'link' when URL is an image (e.g. Twitter pbs.twimg.com).
+    // Those are stored as 'link' but must appear in grid in supportingMedia order.
     if (article.supportingMedia) {
       article.supportingMedia.forEach(media => {
-        if (media.type === 'image' && media.url) {
+        if (media.url && (media.type === 'image' || isImageUrl(media.url))) {
           addImageUrl(media.url, 'supportingMedia');
         }
       });
@@ -485,9 +488,9 @@ export function getAllImageUrls(article: Article): string[] {
       addImageUrl(classified.primaryMedia.url, 'classified-primary');
     }
 
-    // Add supporting images
+    // Add supporting images (same rule: image type or image URL)
     classified.supportingMedia.forEach(media => {
-      if (media.type === 'image' && media.url) {
+      if (media.url && (media.type === 'image' || isImageUrl(media.url))) {
         addImageUrl(media.url, 'classified-supporting');
       }
     });
