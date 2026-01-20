@@ -80,10 +80,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     init();
   }, []);
 
-  const persistAuth = (u: ModularUser, t: string) => {
+  const persistAuth = (
+    u: ModularUser,
+    t: string,
+    refreshTkn?: string,
+    expiresIn?: number
+  ) => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ user: u, token: t }));
+        localStorage.setItem(
+          AUTH_STORAGE_KEY,
+          JSON.stringify({
+            user: u,
+            token: t,
+            accessToken: t,
+            refreshToken: refreshTkn,
+            expiresIn: expiresIn,
+            refreshedAt: Date.now(),
+          })
+        );
       }
     } catch (e) {
       console.warn('Failed to persist auth to storage:', e);
@@ -116,13 +131,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (payload: LoginPayload) => {
     const response = await authService.loginWithEmail(payload);
-    persistAuth(response.user, response.token);
+    persistAuth(response.user, response.token, response.refreshToken, response.expiresIn);
     closeAuthModal();
   };
 
   const signup = async (payload: SignupPayload) => {
     const response = await authService.signupWithEmail(payload);
-    persistAuth(response.user, response.token);
+    persistAuth(response.user, response.token, response.refreshToken, response.expiresIn);
     closeAuthModal();
   };
 
@@ -133,11 +148,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    // Get refresh token before clearing storage
+    let refreshTkn: string | undefined;
     try {
-        await authService.logoutApi();
-    } catch (e) {
-        console.error("Logout API failed", e);
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          refreshTkn = parsed.refreshToken;
+        }
+      }
+    } catch {
+      // Ignore parsing errors
     }
+
+    // Call backend to invalidate tokens
+    try {
+      await authService.logoutApi(refreshTkn);
+    } catch (e) {
+      console.error('Logout API failed', e);
+    }
+
+    // Clear local storage
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         localStorage.removeItem(AUTH_STORAGE_KEY);

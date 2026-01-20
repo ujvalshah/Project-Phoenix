@@ -29,8 +29,9 @@ export const ResetPasswordPage: React.FC = () => {
           await authService.resetPassword(token, password);
           setIsSuccess(true);
           setTimeout(() => navigate('/'), 3000);
-      } catch (err) {
-          setError("Failed to reset password. Token may be expired.");
+      } catch (err: any) {
+          // Show specific error from backend if available
+          setError(err.message || "Failed to reset password. The link may be expired.");
       } finally {
           setIsSubmitting(false);
       }

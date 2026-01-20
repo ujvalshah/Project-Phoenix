@@ -13,7 +13,7 @@ export interface StandardErrorResponse {
   code: string;
   timestamp: string;
   errors?: Array<{
-    path: string | string[];
+    path: string | (string | number)[];
     message: string;
     code?: string;
   }>;
@@ -27,7 +27,7 @@ export function sendErrorResponse(
   statusCode: number,
   message: string,
   code: string,
-  errors?: Array<{ path: string | string[]; message: string; code?: string }>
+  errors?: Array<{ path: string | (string | number)[]; message: string; code?: string }>
 ): void {
   const response: StandardErrorResponse = {
     error: true,
@@ -49,7 +49,7 @@ export function sendErrorResponse(
 export function sendValidationError(
   res: Response,
   message: string,
-  errors: Array<{ path: string | string[]; message: string; code?: string }>
+  errors: Array<{ path: string | (string | number)[]; message: string; code?: string }>
 ): void {
   sendErrorResponse(res, 400, message, 'VALIDATION_ERROR', errors);
 }

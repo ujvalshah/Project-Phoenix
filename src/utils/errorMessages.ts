@@ -8,7 +8,7 @@
 /**
  * Maps authentication-related error messages to user-friendly copy
  */
-export function mapAuthError(error: any, context: 'login' | 'signup' | 'general' = 'general'): string {
+export function mapAuthError(error: any, context: 'login' | 'signup' | 'password_reset' | 'general' = 'general'): string {
   const message = error?.message || error?.toString() || 'An unexpected error occurred';
   
   // Handle network/connection errors
@@ -82,6 +82,20 @@ export function mapAuthError(error: any, context: 'login' | 'signup' | 'general'
     }
   }
   
+  // Password reset-specific messages
+  if (context === 'password_reset') {
+    const errorCode = error?.response?.data?.code || error?.code;
+    if (errorCode === 'INVALID_RESET_TOKEN') {
+      return "This reset link has expired or is invalid. Please request a new one.";
+    }
+    if (lowerMessage.includes('expired') || lowerMessage.includes('invalid')) {
+      return "This reset link has expired or is invalid. Please request a new one.";
+    }
+    if (lowerMessage.includes('password')) {
+      return cleanValidationMessage(message);
+    }
+  }
+
   // Signup-specific messages
   if (context === 'signup') {
     // Check for error code first

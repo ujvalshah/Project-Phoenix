@@ -644,7 +644,7 @@ async function buildSupportingMediaEdit(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
 ): Promise<{ supportingMedia?: any[] }> {
-  const { masonryMediaItems, existingSupportingMedia, existingImages } = input;
+  const { masonryMediaItems, existingSupportingMedia } = input;
   const { enrichMediaItemIfNeeded } = options;
 
   if (!enrichMediaItemIfNeeded) {

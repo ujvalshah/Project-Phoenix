@@ -62,6 +62,7 @@ const AdminPanelPage = lazy(() =>
   })
 );
 const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then(module => ({ default: module.VerifyEmailPage })));
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage').then(module => ({ default: module.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage').then(module => ({ default: module.ResetPasswordPage })));
 
 const AppContent: React.FC = () => {
@@ -204,6 +205,11 @@ const AppContent: React.FC = () => {
           <Route path="/verify-email" element={
             <ErrorBoundary>
               <VerifyEmailPage />
+            </ErrorBoundary>
+          } />
+          <Route path="/forgot-password" element={
+            <ErrorBoundary>
+              <ForgotPasswordPage />
             </ErrorBoundary>
           } />
           <Route path="/reset-password" element={

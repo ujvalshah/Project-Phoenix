@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as articlesController from '../controllers/articlesController.js';
 import { authenticateToken } from '../middleware/authenticateToken.js';
+import { requireEmailVerified } from '../middleware/requireEmailVerified.js';
 
 const router = Router();
 
@@ -14,14 +15,14 @@ router.get('/my/counts', authenticateToken, articlesController.getMyArticleCount
 // GET /api/articles/:id - Get specific article
 router.get('/:id', articlesController.getArticleById);
 
-// POST /api/articles - Create new article (requires authentication)
-router.post('/', authenticateToken, articlesController.createArticle);
+// POST /api/articles - Create new article (requires auth + email verification)
+router.post('/', authenticateToken, requireEmailVerified, articlesController.createArticle);
 
-// PUT /api/articles/:id - Update article (requires authentication)
-router.put('/:id', authenticateToken, articlesController.updateArticle);
+// PUT /api/articles/:id - Update article (requires auth + email verification)
+router.put('/:id', authenticateToken, requireEmailVerified, articlesController.updateArticle);
 
-// PATCH /api/articles/:id - Partial update article (requires authentication)
-router.patch('/:id', authenticateToken, articlesController.updateArticle);
+// PATCH /api/articles/:id - Partial update article (requires auth + email verification)
+router.patch('/:id', authenticateToken, requireEmailVerified, articlesController.updateArticle);
 
 // OPTIONS handler for DELETE /api/articles/:id/images (CORS preflight)
 // This must come BEFORE the DELETE route to handle preflight requests
@@ -31,11 +32,11 @@ router.options('/:id/images', (req: Request, res: Response) => {
   res.status(204).send();
 });
 
-// DELETE /api/articles/:id/images - Delete a specific image from article (requires authentication)
+// DELETE /api/articles/:id/images - Delete a specific image from article (requires auth + email verification)
 // NOTE: This route must come BEFORE /:id route to ensure proper matching
-router.delete('/:id/images', authenticateToken, articlesController.deleteArticleImage);
+router.delete('/:id/images', authenticateToken, requireEmailVerified, articlesController.deleteArticleImage);
 
-// DELETE /api/articles/:id - Delete article (requires authentication)
-router.delete('/:id', authenticateToken, articlesController.deleteArticle);
+// DELETE /api/articles/:id - Delete article (requires auth + email verification)
+router.delete('/:id', authenticateToken, requireEmailVerified, articlesController.deleteArticle);
 
 export default router;

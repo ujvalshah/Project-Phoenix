@@ -320,6 +320,28 @@ export const createArticle = async (req: Request, res: Response) => {
       });
     }
     
+    // BACKWARD COMPAT (production): Old clients or proxies may send categories instead of tags,
+    // or tags may be missing when body is parsed differently (e.g. cross-origin, rewrite).
+    // Use categories as tags when tags is missing or empty. Only when body exists (parsed).
+    const rawBody = req.body;
+    if (
+      rawBody &&
+      (!rawBody.tags || (Array.isArray(rawBody.tags) && rawBody.tags.length === 0)) &&
+      Array.isArray(rawBody.categories) &&
+      rawBody.categories.length > 0
+    ) {
+      const fromCategories = (rawBody.categories as any[])
+        .filter((c: any) => typeof c === 'string' && String(c).trim().length > 0)
+        .slice(0, 20);
+      if (fromCategories.length > 0) {
+        rawBody.tags = fromCategories;
+        requestLogger.info({
+          msg: '[Articles] Create: Used categories as tags (tags missing/empty)',
+          tagCount: fromCategories.length,
+        });
+      }
+    }
+
     // Preprocess: Remove deprecated categoryIds field and log warning
     const preprocessedBody = preprocessArticleRequest(
       req.body,
@@ -327,12 +349,12 @@ export const createArticle = async (req: Request, res: Response) => {
       (req as any).user?.userId,
       '/api/articles'
     );
-    
+
     // Validate input
     const validationResult = createArticleSchema.safeParse(preprocessedBody);
     if (!validationResult.success) {
       // DIAGNOSTIC LOGGING: Log validation errors related to media
-      const mediaErrors = validationResult.error.errors.filter(err => 
+      const mediaErrors = validationResult.error.errors.filter(err =>
         err.path.join('.').includes('media')
       );
       if (mediaErrors.length > 0) {
@@ -350,7 +372,23 @@ export const createArticle = async (req: Request, res: Response) => {
           })),
         });
       }
-      
+
+      // PRODUCTION DEBUG: When tags validation fails, log what the backend received.
+      // Use this in deployed logs to see if body/parsing/proxy is dropping tags.
+      const tagErrors = validationResult.error.errors.filter(err =>
+        err.path.join('.').includes('tags')
+      );
+      if (tagErrors.length > 0) {
+        requestLogger.warn({
+          msg: '[TAGS_DEBUG] CreateArticle validation failed (tags) – check if body/proxy drops tags in production',
+          contentType: req.headers['content-type'],
+          hasTagsKey: rawBody && 'tags' in rawBody,
+          tagsValue: Array.isArray(rawBody?.tags) ? { length: rawBody.tags.length, sample: (rawBody.tags as string[]).slice(0, 3) } : rawBody?.tags,
+          bodyKeys: Object.keys(rawBody || {}),
+          preprocessedTags: Array.isArray(preprocessedBody?.tags) ? (preprocessedBody.tags as string[]).length : preprocessedBody?.tags,
+        });
+      }
+
       const errors = validationResult.error.errors.map(err => ({
         path: err.path,
         message: err.message,
@@ -1122,8 +1160,8 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
         }
       }
       
-      // Check if media.previewMetadata.imageUrl matches
-      if (updatedMedia.previewMetadata?.imageUrl) {
+      // Check if media.previewMetadata.imageUrl matches (updatedMedia may have been set to null above)
+      if (updatedMedia && updatedMedia.previewMetadata?.imageUrl) {
         const ogImageUrl = updatedMedia.previewMetadata.imageUrl.toLowerCase().trim();
         if (ogImageUrl === normalizedImageUrl) {
           // Remove imageUrl from previewMetadata but keep other metadata

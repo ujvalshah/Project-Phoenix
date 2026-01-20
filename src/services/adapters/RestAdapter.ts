@@ -170,6 +170,7 @@ export class RestAdapter implements IAdapter {
     // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
     // Tags are now the only classification field
     if (updatesWithoutCategoryIds.visibility !== undefined) payload.visibility = updatesWithoutCategoryIds.visibility;
+    if (updatesWithoutCategoryIds.tags !== undefined) payload.tags = updatesWithoutCategoryIds.tags;
     // CRITICAL: Preserve masonryTitle when updating media field
     // masonryTitle must flow through all layers to persist correctly
     if (updatesWithoutCategoryIds.media !== undefined) {

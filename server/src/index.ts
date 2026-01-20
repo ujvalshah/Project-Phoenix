@@ -39,6 +39,9 @@ import { connectDB, isMongoConnected } from './utils/db.js';
 import { seedDatabase } from './utils/seed.js';
 import { clearDatabase } from './utils/clearDatabase.js';
 
+// Token Service (Redis-based token management)
+import { initTokenService, closeTokenService } from './services/tokenService.js';
+
 // Cloudinary
 import { initializeCloudinary } from './services/cloudinaryService.js';
 
@@ -454,6 +457,10 @@ async function startServer() {
     
     // Initialize Cloudinary (optional - only if credentials provided)
     initializeCloudinary();
+
+    // Initialize Token Service (Redis-based auth features)
+    // Provides: token blacklisting, refresh tokens, account lockout
+    await initTokenService();
     
     // Seed database if empty
     // TEMPORARILY DISABLED: Seeding is disabled. Re-enable by uncommenting the line below when needed.
@@ -514,16 +521,23 @@ async function gracefulShutdown(signal: string) {
     }
   }
   
-  // Close Redis connection
+  // Close Redis connections (rate limiter and token service)
   try {
     const { closeRedisConnection } = await import('./middleware/rateLimiter.js');
     await closeRedisConnection();
-    logger.info({ msg: 'Redis connection closed' });
+    logger.info({ msg: 'Rate limiter Redis connection closed' });
   } catch (error: any) {
     // Redis might not be configured, so this is not critical
     if (error.message && !error.message.includes('Redis')) {
-      logger.warn({ msg: 'Error closing Redis connection', error: error.message });
+      logger.warn({ msg: 'Error closing rate limiter Redis connection', error: error.message });
     }
+  }
+
+  try {
+    await closeTokenService();
+    logger.info({ msg: 'Token service Redis connection closed' });
+  } catch (error: any) {
+    logger.warn({ msg: 'Error closing token service connection', error: error.message });
   }
   
   // Flush Sentry events before exit

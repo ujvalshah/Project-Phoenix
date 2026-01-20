@@ -7,6 +7,7 @@ import { createClient } from 'redis';
  * Only initialized if REDIS_URL is configured
  */
 let redisClient: ReturnType<typeof createClient> | null = null;
+let redisConnectionStatus: 'connecting' | 'connected' | 'error' | 'none' = 'none';
 
 /**
  * Helper function to create a RedisStore instance with a unique prefix
@@ -16,7 +17,7 @@ function createRedisStore(prefix: string): RedisStore | undefined {
   if (!redisClient) {
     return undefined;
   }
-  
+
   return new RedisStore({
     prefix: prefix, // Unique prefix for each rate limiter
     sendCommand: async (...args: string[]) => {
@@ -32,22 +33,28 @@ function createRedisStore(prefix: string): RedisStore | undefined {
 }
 
 // Initialize Redis client if REDIS_URL is provided
+// Note: Logging is deferred until logger is initialized (logs would fail at module load time)
 if (process.env.REDIS_URL) {
   try {
     redisClient = createClient({ url: process.env.REDIS_URL });
-    
-    // Handle connection errors
-    redisClient.on('error', (err) => {
-      console.error('Redis Client Error:', err);
+    redisConnectionStatus = 'connecting';
+
+    // Handle connection errors silently at module load (logger not ready yet)
+    redisClient.on('error', () => {
+      redisConnectionStatus = 'error';
     });
-    
+
+    redisClient.on('connect', () => {
+      redisConnectionStatus = 'connected';
+    });
+
     // Connect to Redis (non-blocking)
-    redisClient.connect().catch((err) => {
-      console.error('Failed to connect to Redis:', err);
+    redisClient.connect().catch(() => {
+      redisConnectionStatus = 'error';
       redisClient = null;
     });
-  } catch (error) {
-    console.error('Failed to initialize Redis:', error);
+  } catch {
+    redisConnectionStatus = 'error';
     redisClient = null;
   }
 }
@@ -56,6 +63,7 @@ if (process.env.REDIS_URL) {
 const loginRedisStore = createRedisStore('rl:login');
 const signupRedisStore = createRedisStore('rl:signup');
 const passwordResetRedisStore = createRedisStore('rl:password-reset');
+const resendVerificationRedisStore = createRedisStore('rl:resend-verification');
 const unfurlRedisStore = createRedisStore('rl:unfurl');
 const aiRedisStore = createRedisStore('rl:ai');
 
@@ -101,6 +109,7 @@ export const signupLimiter = rateLimit({
 
 /**
  * Rate limiter for password-reset endpoints (apply when POST /auth/forgot-password, etc. exist)
+ * Also used for GET /auth/verify-email (clicking verification links)
  * 5 requests per 15 minutes per IP
  */
 export const passwordResetLimiter = rateLimit({
@@ -112,6 +121,22 @@ export const passwordResetLimiter = rateLimit({
   legacyHeaders: false,
   handler: (req, res) => {
     res.status(429).json({ message: 'Too many attempts. Please try again later.' });
+  },
+});
+
+/**
+ * Rate limiter for POST /auth/resend-verification
+ * 3 requests per 15 minutes per IP
+ */
+export const resendVerificationLimiter = rateLimit({
+  store: resendVerificationRedisStore,
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: 'Too many requests. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ message: 'Too many requests. Please try again later.' });
   },
 });
 
