@@ -24,6 +24,8 @@ export function mapUserToAdminUser(user: User, stats?: {
     fullName: user.profile.displayName, // Backend doesn't have separate fullName
     username: user.profile.username,
     email: user.auth.email,
+    emailVerified: user.auth.emailVerified ?? false,
+    authProvider: user.auth.provider ?? 'email',
     role: user.role === 'admin' ? 'admin' : 'user',
     status: 'active', // Backend doesn't have status field, default to active
     avatarUrl: user.profile.avatarUrl,

@@ -180,8 +180,8 @@ MediaSchema.index({ ownerId: 1, status: 1 });
 MediaSchema.index({ 'usedBy.entityType': 1, 'usedBy.entityId': 1 });
 MediaSchema.index({ status: 1, deletedAt: 1 });
 
-// Prevent duplicate publicIds
-MediaSchema.index({ 'cloudinary.publicId': 1 }, { unique: true });
+// Note: Unique index on 'cloudinary.publicId' is already defined in schema field definition (line 73-74)
+// No need to duplicate it here - Mongoose automatically creates unique index from 'unique: true'
 
 export const Media = mongoose.model<IMedia>('Media', MediaSchema);
 

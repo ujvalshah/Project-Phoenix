@@ -71,6 +71,8 @@ export interface AdminUser {
   fullName: string; // Real Name
   username: string;
   email: string;
+  emailVerified: boolean;
+  authProvider: 'email' | 'google' | 'linkedin';
   role: AdminRole;
   status: AdminUserStatus;
   avatarUrl?: string;

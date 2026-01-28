@@ -72,11 +72,28 @@ export const Header: React.FC<HeaderProps> = ({
   });
   
   // Dropdown anchor refs - DropdownPortal handles positioning
+  // Separate refs for desktop and mobile to avoid ref collision
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileAvatarButtonRef = useRef<HTMLButtonElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
+
+  // Determine which avatar ref to use based on viewport width
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024); // lg breakpoint
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Use the appropriate ref for the current viewport
+  const activeAvatarRef = isMobile ? mobileAvatarButtonRef : avatarButtonRef;
   
   const location = useLocation();
   const { currentUser, isAuthenticated, openAuthModal, logout } = useAuth();
@@ -519,7 +536,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center shrink-0">
             {isAuthenticated ? (
               <button
-                ref={avatarButtonRef}
+                ref={mobileAvatarButtonRef}
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsUserMenuOpen(!isUserMenuOpen);
@@ -528,8 +545,8 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-label="User menu"
                 aria-expanded={isUserMenuOpen}
               >
-                <Avatar 
-                  name={currentUser?.name || 'User'} 
+                <Avatar
+                  name={currentUser?.name || 'User'}
                   src={currentUser?.avatarUrl}
                   size="md"
                   className="w-8 h-8"
@@ -551,7 +568,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Avatar Menu - uses DropdownPortal for positioning and click-outside */}
       <DropdownPortal
         isOpen={isUserMenuOpen}
-        anchorRef={avatarButtonRef}
+        anchorRef={activeAvatarRef}
         onClickOutside={() => setIsUserMenuOpen(false)}
         className="w-56 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden"
       >

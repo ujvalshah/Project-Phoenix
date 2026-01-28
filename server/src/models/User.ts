@@ -142,10 +142,9 @@ const UserSchema = new Schema<IUser>({
 });
 
 // Explicit indexes for performance
-// Unique indexes are automatically created by 'unique: true' constraints above
+// Note: Unique indexes on 'auth.email' and 'profile.username' are automatically created 
+// by 'unique: true' constraints in the schema fields above - no need to duplicate them here
 // Additional indexes for common query patterns
-UserSchema.index({ 'auth.email': 1 }); // Already unique, but explicit for clarity
-UserSchema.index({ 'profile.username': 1 }); // Already unique, but explicit for clarity
 UserSchema.index({ role: 1 }); // For admin queries
 UserSchema.index({ 'appState.lastLoginAt': -1 }); // For sorting by last login
 

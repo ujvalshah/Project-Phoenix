@@ -40,6 +40,11 @@ const envSchema = z.object({
   // Email (Resend) – optional; when set, verification and password-reset emails are sent
   RESEND_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(1).optional(),
+
+  // Redis configuration (optional)
+  REDIS_URL: z.string().url('REDIS_URL must be a valid URL').optional(),
+  USE_LOCAL_REDIS: z.string().transform((val) => val === 'true').optional(),
+  REDIS_LOCAL_URL: z.string().url('REDIS_LOCAL_URL must be a valid URL').optional(),
 });
 
 /**
@@ -87,6 +92,14 @@ export function validateEnv(): ValidatedEnv {
       console.error('Please set FRONTEND_URL in your .env file.\n');
       process.exit(1);
     }
+  }
+
+  // Redis configuration validation and warnings
+  if (process.env.USE_LOCAL_REDIS === 'true' && process.env.REDIS_URL) {
+    console.warn('\n⚠️  REDIS CONFIGURATION WARNING\n');
+    console.warn('USE_LOCAL_REDIS=true is set, but REDIS_URL is also configured.\n');
+    console.warn('Local Redis will be used (REDIS_URL will be ignored).\n');
+    console.warn('To use cloud Redis, set USE_LOCAL_REDIS=false or remove it.\n');
   }
 
   validatedEnv = result.data;

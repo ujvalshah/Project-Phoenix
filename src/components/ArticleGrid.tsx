@@ -118,6 +118,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     // Case 1: Transitioning from loading → loaded (initial load)
     if (prevLoadingRef.current && !isLoading && articles.length > 0) {
       const timer = setTimeout(() => setShouldAnimate(true), 50);
+      prevLoadingRef.current = isLoading;
       return () => clearTimeout(timer);
     }
 
@@ -126,11 +127,19 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     if (!hasInitializedRef.current && !isLoading && articles.length > 0) {
       hasInitializedRef.current = true;
       const timer = setTimeout(() => setShouldAnimate(true), 50);
+      prevLoadingRef.current = isLoading;
+      return () => clearTimeout(timer);
+    }
+
+    // Case 3: Fallback - ensure animation triggers when data becomes available
+    // This handles edge cases like navigation back with React Query cache
+    if (!shouldAnimate && !isLoading && articles.length > 0) {
+      const timer = setTimeout(() => setShouldAnimate(true), 50);
       return () => clearTimeout(timer);
     }
 
     prevLoadingRef.current = isLoading;
-  }, [isLoading, articles.length]);
+  }, [isLoading, articles.length, shouldAnimate]);
 
   // Infinite Scroll Handler
   const handleLoadMore = useCallback(() => {

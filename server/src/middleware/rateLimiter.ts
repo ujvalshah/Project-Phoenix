@@ -1,62 +1,28 @@
 import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
-import { createClient } from 'redis';
-
-/**
- * Redis client for distributed rate limiting
- * Only initialized if REDIS_URL is configured
- */
-let redisClient: ReturnType<typeof createClient> | null = null;
-let redisConnectionStatus: 'connecting' | 'connected' | 'error' | 'none' = 'none';
+import { getRedisClientOrFallback, isRedisAvailable } from '../utils/redisClient.js';
 
 /**
  * Helper function to create a RedisStore instance with a unique prefix
  * Each rate limiter must have its own RedisStore instance to avoid conflicts
+ * Uses shared Redis client from redisClient.ts
  */
 function createRedisStore(prefix: string): RedisStore | undefined {
-  if (!redisClient) {
+  if (!isRedisAvailable()) {
     return undefined;
   }
+
+  const client = getRedisClientOrFallback();
 
   return new RedisStore({
     prefix: prefix, // Unique prefix for each rate limiter
     sendCommand: async (...args: string[]) => {
-      if (!redisClient) {
-        throw new Error('Redis client not available');
-      }
       // Redis v5 sendCommand expects an array: [command, ...args]
       // rate-limit-redis passes arguments as individual parameters via rest syntax
       // So args is already an array containing [command, arg1, arg2, ...]
-      return await redisClient.sendCommand(args);
+      return await client.sendCommand(args);
     },
   });
-}
-
-// Initialize Redis client if REDIS_URL is provided
-// Note: Logging is deferred until logger is initialized (logs would fail at module load time)
-if (process.env.REDIS_URL) {
-  try {
-    redisClient = createClient({ url: process.env.REDIS_URL });
-    redisConnectionStatus = 'connecting';
-
-    // Handle connection errors silently at module load (logger not ready yet)
-    redisClient.on('error', () => {
-      redisConnectionStatus = 'error';
-    });
-
-    redisClient.on('connect', () => {
-      redisConnectionStatus = 'connected';
-    });
-
-    // Connect to Redis (non-blocking)
-    redisClient.connect().catch(() => {
-      redisConnectionStatus = 'error';
-      redisClient = null;
-    });
-  } catch {
-    redisConnectionStatus = 'error';
-    redisClient = null;
-  }
 }
 
 // Create separate RedisStore instances for each rate limiter with unique prefixes
@@ -204,14 +170,10 @@ export const aiLimiter = rateLimit({
 
 /**
  * Gracefully close Redis connection on shutdown
+ * Note: Uses shared Redis client, so this is handled by redisClient.ts
+ * Kept for backward compatibility
  */
 export async function closeRedisConnection(): Promise<void> {
-  if (redisClient) {
-    try {
-      await redisClient.quit();
-      redisClient = null;
-    } catch (error) {
-      console.error('Error closing Redis connection:', error);
-    }
-  }
+  // Rate limiter uses shared Redis client, closing is handled by redisClient.ts
+  // This function kept for backward compatibility
 }

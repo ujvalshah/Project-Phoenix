@@ -3,8 +3,11 @@ import { User } from '../models/User.js';
 import { Article } from '../models/Article.js';
 import { Report } from '../models/Report.js';
 import { Feedback } from '../models/Feedback.js';
+import { AdminAuditLog } from '../models/AdminAuditLog.js';
 import { LRUCache } from '../utils/lruCache.js';
 import { buildModerationQuery, getModerationStats } from '../services/moderationService.js';
+import { AdminRequest } from '../middleware/requireAdmin.js';
+import { getLogger } from '../utils/logger.js';
 
 // Short-lived cache to avoid hammering the database
 // Cache up to 10 entries for 2 minutes each
@@ -156,4 +159,87 @@ export async function getAdminStats(req: Request, res: Response) {
   return res.json(response);
 }
 
+/**
+ * Manually verify a user's email (admin action)
+ * PATCH /api/admin/users/:userId/verify-email
+ *
+ * This is idempotent - calling on an already-verified user returns success.
+ * Creates an audit log entry for compliance tracking.
+ */
+export async function verifyUserEmail(req: AdminRequest, res: Response) {
+  const { userId } = req.params;
+  const adminId = req.userId;
+
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  try {
+    // Find the target user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const previousValue = user.auth.emailVerified;
+
+    // Update emailVerified status (idempotent)
+    user.auth.emailVerified = true;
+    user.auth.updatedAt = new Date().toISOString();
+    await user.save();
+
+    // Create audit log entry
+    await AdminAuditLog.create({
+      adminId,
+      action: 'VERIFY_USER_EMAIL',
+      targetType: 'user',
+      targetId: userId,
+      previousValue: { emailVerified: previousValue },
+      newValue: { emailVerified: true },
+      metadata: {
+        targetEmail: user.auth.email,
+        targetUsername: user.profile.username,
+        wasAlreadyVerified: previousValue
+      },
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.get('User-Agent')
+    });
+
+    getLogger().info({
+      action: 'ADMIN_VERIFY_USER_EMAIL',
+      adminId,
+      targetUserId: userId,
+      targetEmail: user.auth.email,
+      wasAlreadyVerified: previousValue
+    }, 'Admin manually verified user email');
+
+    // Return updated user data (without password)
+    const userResponse = {
+      id: user._id,
+      role: user.role,
+      auth: {
+        email: user.auth.email,
+        emailVerified: user.auth.emailVerified,
+        provider: user.auth.provider,
+        createdAt: user.auth.createdAt,
+        updatedAt: user.auth.updatedAt
+      },
+      profile: user.profile,
+      appState: user.appState
+    };
+
+    return res.json({
+      message: previousValue ? 'Email was already verified' : 'Email verified successfully',
+      user: userResponse
+    });
+  } catch (error) {
+    getLogger().error({ error, userId, adminId }, 'Failed to verify user email');
+    return res.status(500).json({ message: 'Failed to verify user email' });
+  }
+}
 

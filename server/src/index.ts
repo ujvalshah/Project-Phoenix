@@ -41,6 +41,8 @@ import { clearDatabase } from './utils/clearDatabase.js';
 
 // Token Service (Redis-based token management)
 import { initTokenService, closeTokenService } from './services/tokenService.js';
+// Shared Redis Client
+import { initRedisClient, closeRedisClient } from './utils/redisClient.js';
 
 // Cloudinary
 import { initializeCloudinary } from './services/cloudinaryService.js';
@@ -57,6 +59,7 @@ import moderationRouter from './routes/moderation.js';
 import adminRouter from './routes/admin.js';
 import unfurlRouter from './routes/unfurl.js';
 import mediaRouter from './routes/media.js';
+import diagnosticsRouter from './routes/diagnostics.js';
 
 const app = express();
 const env = getEnv();
@@ -226,6 +229,7 @@ app.use('/api/moderation', moderationRouter);
 app.use('/api/unfurl', longOperationTimeout, unfurlRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/media', mediaRouter);
+app.use('/api/diagnostics', diagnosticsRouter);
 
 // Health Check - Enhanced to verify DB connectivity
 app.get('/api/health', async (req, res) => {
@@ -458,6 +462,9 @@ async function startServer() {
     // Initialize Cloudinary (optional - only if credentials provided)
     initializeCloudinary();
 
+    // Initialize shared Redis client first (used by token service and rate limiter)
+    await initRedisClient();
+    
     // Initialize Token Service (Redis-based auth features)
     // Provides: token blacklisting, refresh tokens, account lockout
     await initTokenService();
@@ -521,21 +528,20 @@ async function gracefulShutdown(signal: string) {
     }
   }
   
-  // Close Redis connections (rate limiter and token service)
+  // Close shared Redis connection (used by both rate limiter and token service)
   try {
-    const { closeRedisConnection } = await import('./middleware/rateLimiter.js');
-    await closeRedisConnection();
-    logger.info({ msg: 'Rate limiter Redis connection closed' });
+    await closeRedisClient();
+    logger.info({ msg: 'Shared Redis connection closed' });
   } catch (error: any) {
     // Redis might not be configured, so this is not critical
     if (error.message && !error.message.includes('Redis')) {
-      logger.warn({ msg: 'Error closing rate limiter Redis connection', error: error.message });
+      logger.warn({ msg: 'Error closing Redis connection', error: error.message });
     }
   }
 
   try {
     await closeTokenService();
-    logger.info({ msg: 'Token service Redis connection closed' });
+    logger.info({ msg: 'Token service closed' });
   } catch (error: any) {
     logger.warn({ msg: 'Error closing token service connection', error: error.message });
   }

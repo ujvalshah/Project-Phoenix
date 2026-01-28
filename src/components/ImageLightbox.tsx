@@ -57,6 +57,27 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
   const [panY, setPanY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
+  // Touch gesture state for mobile
+  const touchStateRef = React.useRef<{
+    isPinching: boolean;
+    isPanning: boolean;
+    initialDistance: number | null;
+    initialZoom: number;
+    panStart: { x: number; y: number } | null;
+    lastPan: { x: number; y: number } | null;
+    lastTapTime: number;
+    lastTapPosition: { x: number; y: number } | null;
+  }>({
+    isPinching: false,
+    isPanning: false,
+    initialDistance: null,
+    initialZoom: 1,
+    panStart: null,
+    lastPan: null,
+    lastTapTime: 0,
+    lastTapPosition: null,
+  });
 
   // Determine initial mode: single image = fullscreen, multiple = carousel
   useEffect(() => {
@@ -146,43 +167,195 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDragging || mode !== 'fullscreen' || zoom <= 1) return;
     e.preventDefault();
-    setPanX(e.clientX - dragStart.x);
-    setPanY(e.clientY - dragStart.y);
+    
+    // Calculate pan with boundary constraints
+    let newPanX = e.clientX - dragStart.x;
+    let newPanY = e.clientY - dragStart.y;
+    
+    // Get container dimensions for boundary calculation
+    const container = e.currentTarget as HTMLElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+    
+    // Calculate max pan based on zoom level
+    const maxPanX = Math.max(0, (containerWidth * (zoom - 1)) / 2);
+    const maxPanY = Math.max(0, (containerHeight * (zoom - 1)) / 2);
+    
+    // Constrain pan to boundaries
+    newPanX = Math.max(-maxPanX, Math.min(maxPanX, newPanX));
+    newPanY = Math.max(-maxPanY, Math.min(maxPanY, newPanY));
+    
+    setPanX(newPanX);
+    setPanY(newPanY);
   }, [isDragging, mode, zoom, dragStart]);
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
   }, []);
 
-  // Touch handlers for mobile pinch-to-zoom
+  // Touch handlers for mobile: supports both pinch-to-zoom AND single-touch pan
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (mode !== 'fullscreen' || e.touches.length !== 2) return;
-    e.preventDefault();
-    // Store initial touch distance for pinch
-    const touch1 = e.touches[0];
-    const touch2 = e.touches[1];
-    const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
-    (e.currentTarget as any).initialDistance = distance;
-    (e.currentTarget as any).initialZoom = zoom;
-  }, [mode, zoom]);
+    if (mode !== 'fullscreen') return;
+    
+    const touchCount = e.touches.length;
+    const state = touchStateRef.current;
+    const now = Date.now();
+    
+    if (touchCount === 2) {
+      // Two-finger pinch gesture
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+      
+      state.isPinching = true;
+      state.isPanning = false;
+      state.initialDistance = distance;
+      state.initialZoom = zoom;
+      state.panStart = null;
+      state.lastPan = null;
+      
+      // Prevent default only for pinch gesture
+      e.preventDefault();
+    } else if (touchCount === 1) {
+      const touch = e.touches[0];
+      const touchPos = { x: touch.clientX, y: touch.clientY };
+      
+      // Check for double-tap zoom (works when zoomed or not zoomed)
+      if (state.lastTapTime > 0 && state.lastTapPosition) {
+        const timeSinceLastTap = now - state.lastTapTime;
+        const distanceFromLastTap = Math.hypot(
+          touchPos.x - state.lastTapPosition.x,
+          touchPos.y - state.lastTapPosition.y
+        );
+        
+        // Double-tap detected: < 300ms and < 50px movement
+        if (timeSinceLastTap < 300 && distanceFromLastTap < 50) {
+          if (zoom <= 1) {
+            // Zoom to 2x on double-tap when not zoomed
+            setZoom(2);
+          } else {
+            // Reset zoom to 1x on double-tap when already zoomed
+            setZoom(1);
+          }
+          setPanX(0);
+          setPanY(0);
+          state.lastTapTime = 0;
+          state.lastTapPosition = null;
+          e.preventDefault();
+          return;
+        }
+      }
+      
+      if (zoom > 1) {
+        // Single-touch pan gesture (only when zoomed)
+        state.isPanning = true;
+        state.isPinching = false;
+        state.panStart = { x: touch.clientX - panX, y: touch.clientY - panY };
+        state.lastPan = { x: touch.clientX, y: touch.clientY };
+        
+        // Prevent default when panning (to prevent page scroll)
+        e.preventDefault();
+      } else {
+        // Single touch when not zoomed - prepare for potential double-tap
+        state.isPanning = false;
+        state.isPinching = false;
+        state.panStart = null;
+        state.lastPan = null;
+        // Don't prevent default - allow native double-tap zoom as fallback
+      }
+    }
+  }, [mode, zoom, panX, panY]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (mode !== 'fullscreen' || e.touches.length !== 2) return;
-    e.preventDefault();
-    const touch1 = e.touches[0];
-    const touch2 = e.touches[1];
-    const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
-    const initialDistance = (e.currentTarget as any).initialDistance;
-    const initialZoom = (e.currentTarget as any).initialZoom;
-    if (initialDistance) {
-      const scale = distance / initialDistance;
-      setZoom(Math.max(1, Math.min(5, initialZoom * scale)));
+    if (mode !== 'fullscreen') return;
+    
+    const touchCount = e.touches.length;
+    const state = touchStateRef.current;
+    
+    if (touchCount === 2 && state.isPinching && state.initialDistance !== null) {
+      // Two-finger pinch: update zoom
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+      
+      const scale = distance / state.initialDistance;
+      const newZoom = Math.max(1, Math.min(5, state.initialZoom * scale));
+      setZoom(newZoom);
+      
+      // Prevent default for pinch gesture
+      e.preventDefault();
+    } else if (touchCount === 1 && state.isPanning && state.panStart && zoom > 1) {
+      // Single-touch pan: update pan position with boundary constraints
+      const touch = e.touches[0];
+      
+      // Calculate pan delta from start position
+      let newPanX = touch.clientX - state.panStart.x;
+      let newPanY = touch.clientY - state.panStart.y;
+      
+      // Get container dimensions for boundary calculation
+      const container = e.currentTarget as HTMLElement;
+      const containerRect = container.getBoundingClientRect();
+      const containerWidth = containerRect.width;
+      const containerHeight = containerRect.height;
+      
+      // Calculate max pan based on zoom level and container size
+      // When zoomed, image is larger than container, so we can pan
+      // Max pan = (imageSize * zoom - containerSize) / 2
+      // For simplicity, we estimate image size from container (assuming image fills container at zoom=1)
+      const maxPanX = Math.max(0, (containerWidth * (zoom - 1)) / 2);
+      const maxPanY = Math.max(0, (containerHeight * (zoom - 1)) / 2);
+      
+      // Constrain pan to boundaries
+      newPanX = Math.max(-maxPanX, Math.min(maxPanX, newPanX));
+      newPanY = Math.max(-maxPanY, Math.min(maxPanY, newPanY));
+      
+      setPanX(newPanX);
+      setPanY(newPanY);
+      state.lastPan = { x: touch.clientX, y: touch.clientY };
+      
+      // Prevent default to prevent page scroll when panning
+      e.preventDefault();
     }
-  }, [mode]);
+  }, [mode, zoom]);
 
-  const handleTouchEnd = useCallback(() => {
-    // Reset touch state
-  }, []);
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const state = touchStateRef.current;
+    const now = Date.now();
+    
+    // If single touch ended and we weren't panning, record tap for double-tap detection
+    if (e.touches.length === 0 && !state.isPanning && !state.isPinching && zoom <= 1) {
+      const touch = e.changedTouches[0];
+      if (touch) {
+        // Record tap position and time for double-tap detection
+        state.lastTapTime = now;
+        state.lastTapPosition = { x: touch.clientX, y: touch.clientY };
+      }
+    }
+    
+    // If we were panning and touch ended, check if we should reset pan on next touch
+    if (state.isPanning && e.touches.length === 0) {
+      // Touch ended - keep pan position but reset gesture state
+      state.isPanning = false;
+      state.panStart = null;
+      state.lastPan = null;
+    }
+    
+    // If pinch ended, reset pinch state
+    if (state.isPinching && e.touches.length < 2) {
+      state.isPinching = false;
+      state.initialDistance = null;
+    }
+    
+    // If all touches ended, reset gesture flags (but keep tap info for double-tap)
+    if (e.touches.length === 0) {
+      state.isPinching = false;
+      state.isPanning = false;
+      state.panStart = null;
+      state.lastPan = null;
+      state.initialDistance = null;
+    }
+  }, [zoom]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -355,7 +528,11 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
             className="absolute inset-0 flex items-center justify-center overflow-hidden"
             style={{
               padding: '1rem',
-              cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
+              cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+              // Critical: Use 'none' to handle all gestures manually
+              // This allows us to implement pinch-zoom, pan, and double-tap zoom
+              // without browser interference
+              touchAction: 'none',
             }}
             onClick={(e) => e.stopPropagation()}
             onWheel={handleWheel}
@@ -375,7 +552,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
                 width: '100%',
                 height: '100%',
                 transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
-                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                transition: (isDragging || touchStateRef.current.isPanning) ? 'none' : 'transform 0.1s ease-out',
                 transformOrigin: 'center center',
               }}
             >
@@ -384,7 +561,9 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
                 alt={`View ${currentIndex + 1} of ${images.length}`} 
                 className="max-w-full max-h-full w-auto h-auto object-contain shadow-2xl select-none"
                 style={{ 
-                  userSelect: 'none', 
+                  userSelect: 'none',
+                  // Image inherits touch-action: none from container
+                  // This prevents any native gestures, allowing our handlers full control
                   touchAction: 'none',
                   maxWidth: '100%',
                   maxHeight: '100%',

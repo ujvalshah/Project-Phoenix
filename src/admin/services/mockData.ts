@@ -12,6 +12,8 @@ export const MOCK_ADMIN_USERS: AdminUser[] = Array.from({ length: 25 }).map((_, 
     fullName: i === 0 ? 'Akash Solanki' : `${firstName} James ${lastName}`,
     username: i === 0 ? 'akash_ux' : `user_${i + 1}`,
     email: i === 0 ? 'akash@nuggets.app' : `${firstName.toLowerCase()}.${lastName.toLowerCase()}@example.com`,
+    emailVerified: i % 4 !== 0, // 75% verified, 25% unverified for testing
+    authProvider: i % 5 === 0 ? 'google' : i % 7 === 0 ? 'linkedin' : 'email',
     role: i === 0 ? 'admin' : 'user',
     status: i % 7 === 0 ? 'suspended' : 'active',
     joinedAt: new Date(Date.now() - Math.random() * 10000000000).toISOString(),

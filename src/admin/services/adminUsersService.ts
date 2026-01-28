@@ -64,6 +64,47 @@ class AdminUsersService {
   async deleteUser(id: string): Promise<void> {
     await apiClient.delete(`/users/${id}`);
   }
+
+  /**
+   * Manually verify a user's email (admin action)
+   * @param userId - The ID of the user to verify
+   * @returns The updated user data with verification status
+   */
+  async verifyUserEmail(userId: string): Promise<{ message: string; user: AdminUser }> {
+    const response = await apiClient.patch<{ message: string; user: any }>(
+      `/admin/users/${userId}/verify-email`,
+      {}
+    );
+
+    // Map the returned user to AdminUser format
+    const mappedUser: AdminUser = {
+      id: response.user.id,
+      name: response.user.profile?.displayName || '',
+      fullName: response.user.profile?.displayName || '',
+      username: response.user.profile?.username || '',
+      email: response.user.auth?.email || '',
+      emailVerified: response.user.auth?.emailVerified ?? false,
+      authProvider: response.user.auth?.provider ?? 'email',
+      role: response.user.role === 'admin' ? 'admin' : 'user',
+      status: 'active',
+      avatarUrl: response.user.profile?.avatarUrl,
+      joinedAt: response.user.auth?.createdAt || '',
+      lastLoginAt: response.user.appState?.lastLoginAt,
+      stats: {
+        nuggets: 0,
+        nuggetsPublic: 0,
+        nuggetsPrivate: 0,
+        collections: 0,
+        collectionsFollowing: 0,
+        reports: 0
+      }
+    };
+
+    return {
+      message: response.message,
+      user: mappedUser
+    };
+  }
 }
 
 export const adminUsersService = new AdminUsersService();

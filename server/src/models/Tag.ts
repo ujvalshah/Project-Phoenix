@@ -34,18 +34,18 @@ const TagSchema = new Schema<ITag>({
   status: { 
     type: String, 
     enum: ['active', 'pending', 'deprecated'], 
-    default: 'active',
-    index: true
+    default: 'active'
+    // Note: index removed - using compound index below instead
   },
   isOfficial: { type: Boolean, default: false, index: true }
 }, {
   timestamps: true // Enable createdAt and updatedAt
 });
 
-// Index for efficient queries
-TagSchema.index({ status: 1, type: 1 });
+// Compound indexes for efficient queries (more efficient than single-field indexes)
+TagSchema.index({ status: 1, type: 1 }); // Covers both status and type queries
 TagSchema.index({ status: 1, canonicalName: 1 }); // Compound index for active tag lookups
-// Note: unique index on canonicalName is already defined in schema field definition
+// Note: unique index on canonicalName is already defined in schema field definition (line 25)
 
 /**
  * Static method: Find or create tag by name

@@ -65,19 +65,26 @@ export const DropdownPortal: React.FC<DropdownPortalProps> = ({
 
     const rect = anchorRef.current.getBoundingClientRect();
     const headerHeight = getHeaderHeight();
-    
+
     // Ensure dropdown doesn't render above header
+    // Use rect.bottom directly for more accurate positioning
     const top = Math.max(rect.bottom + offsetY, headerHeight + offsetY);
 
+    // Ensure position values are valid numbers (not NaN or Infinity)
+    const safeTop = Number.isFinite(top) ? top : headerHeight + offsetY;
+
     if (align === 'right') {
+      const rightPos = window.innerWidth - rect.right;
+      const safeRight = Number.isFinite(rightPos) && rightPos >= 0 ? rightPos : 0;
       setPosition({
-        top,
-        right: window.innerWidth - rect.right,
+        top: safeTop,
+        right: safeRight,
       });
     } else {
+      const safeLeft = Number.isFinite(rect.left) && rect.left >= 0 ? rect.left : 0;
       setPosition({
-        top,
-        left: rect.left,
+        top: safeTop,
+        left: safeLeft,
       });
     }
   }, [anchorRef, align, offsetY]);

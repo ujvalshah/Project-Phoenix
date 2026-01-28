@@ -247,14 +247,33 @@ function transformArticle(doc: any): any {
 
 /**
  * Create defensive proxy that intercepts legacy category field access
- * Returns empty arrays for categories/categoryIds with warning
+ * Returns empty arrays for categories/categoryIds with warning (debug-level in production)
  */
 function createDefensiveProxy(obj: any): any {
+  const logger = getLogger();
+  let warningCount = 0;
+  const MAX_WARNINGS = 10; // Limit warnings to prevent log spam
+  
   return new Proxy(obj, {
     get(target: any, prop: string | symbol) {
       // Intercept access to legacy category fields
       if (prop === 'categories' || prop === 'categoryIds') {
-        console.warn('Legacy category field accessed — ignored', { field: prop });
+        warningCount++;
+        // Only log warnings in development, or debug-level in production (first 10)
+        if (process.env.NODE_ENV === 'development') {
+          logger.debug({ 
+            msg: 'Legacy category field accessed — ignored', 
+            field: prop,
+            count: warningCount
+          });
+        } else if (warningCount <= MAX_WARNINGS) {
+          logger.debug({ 
+            msg: 'Legacy category field accessed — ignored', 
+            field: prop,
+            count: warningCount,
+            note: warningCount === MAX_WARNINGS ? 'Further warnings suppressed' : undefined
+          });
+        }
         return [];
       }
       // Forward all other property access

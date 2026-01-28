@@ -1,20 +1,14 @@
-# Email Verification & Password Reset Setup
+# Email Verification Setup (Custom Sign-In)
 
-This guide explains how email verification and password reset work and how to configure them.
+This guide explains how email verification works and how to configure it for the custom email/password sign-in flow.
 
 ---
 
 ## Overview
 
-### Email Verification Flow
 1. **Signup** → User is created with `auth.emailVerified: false`. If `RESEND_API_KEY` is set, a verification email is sent (fire-and-forget; signup does not fail if the email fails).
 2. **Verification link** → User clicks a link like `{FRONTEND_URL}/verify-email?token=...`. The frontend calls `GET /api/auth/verify-email?token=...`. The backend verifies the JWT, sets `auth.emailVerified = true`, and returns success.
 3. **Resend** → User can request a new verification email via `POST /api/auth/resend-verification` with `{ "email": "..." }` (rate-limited: 3 per 15 min per IP).
-
-### Password Reset Flow
-1. **Forgot Password** → User submits email at `/forgot-password`. Backend sends reset email (1 hour expiry).
-2. **Reset Link** → User clicks link like `{FRONTEND_URL}/reset-password?token=...`.
-3. **New Password** → User enters new password. All sessions are revoked after reset.
 
 ---
 
@@ -22,55 +16,11 @@ This guide explains how email verification and password reset work and how to co
 
 The app uses [Resend](https://resend.com) when `RESEND_API_KEY` is set. If it is not set, verification emails are **not sent** (signup and the verify endpoint still work; you can test verify with a manually crafted token).
 
-### Resend Setup - Development
+### Resend setup
 
 1. Sign up at [resend.com](https://resend.com).
-2. Use the free tier. You can send from `onboarding@resend.dev` to your own email.
-3. No domain verification needed for development.
-
-### Resend Setup - Production (Domain Verification)
-
-**Step 1: Add Your Domain**
-1. Go to [Resend Dashboard](https://resend.com/domains)
-2. Click "Add Domain"
-3. Enter your domain (e.g., `nuggetnews.app`)
-
-**Step 2: Add DNS Records**
-Resend will show you DNS records to add. You'll need to add these to your DNS provider (e.g., Cloudflare, GoDaddy, Namecheap):
-
-| Type | Name | Value | Purpose |
-|------|------|-------|---------|
-| TXT | `@` or `nuggetnews.app` | `v=spf1 include:_spf.resend.com -all` | SPF (prevents spoofing) |
-| CNAME | `resend._domainkey` | `resend._domainkey.resend.com` | DKIM (email authentication) |
-| TXT | `_dmarc` | `v=DMARC1; p=none;` | DMARC policy |
-
-**Step 3: Wait for Verification**
-- DNS propagation takes 1-48 hours
-- Resend will automatically verify once records are detected
-- Status changes from "Pending" to "Verified"
-
-**Step 4: Update Environment Variables**
-```env
-RESEND_API_KEY=re_xxxxxxxxxxxx
-EMAIL_FROM=Nuggets <noreply@nuggetnews.app>
-```
-
-**Step 5: Test Email Delivery**
-```bash
-# Test from your backend
-curl -X POST https://your-api.onrender.com/api/auth/forgot-password \
-  -H "Content-Type: application/json" \
-  -d '{"email":"your@email.com"}'
-```
-
-### Troubleshooting Domain Verification
-
-| Issue | Solution |
-|-------|----------|
-| DNS records not detected | Wait 24-48 hours, check for typos |
-| SPF record conflict | Merge with existing SPF (only one SPF record allowed) |
-| Emails going to spam | Check DKIM/DMARC are properly set up |
-| Still using onboarding@resend.dev | Update `EMAIL_FROM` env var |
+2. **Development:** Use the free tier. You can send from `onboarding@resend.dev` to your own email. No domain needed.
+3. **Production:** Add and verify your domain in the Resend dashboard, then send from e.g. `noreply@yourdomain.com`.
 
 ### Env vars
 

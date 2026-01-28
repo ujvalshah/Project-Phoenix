@@ -189,10 +189,33 @@ export const login = async (req: Request, res: Response) => {
     // Generate and store refresh token (if token service available)
     let refreshToken: string | undefined;
     if (isTokenServiceAvailable()) {
-      refreshToken = generateRefreshToken();
-      const deviceInfo = req.headers['user-agent'] || 'Unknown device';
-      const ipAddress = req.ip || req.socket.remoteAddress;
-      await storeRefreshToken(user._id.toString(), refreshToken, deviceInfo, ipAddress);
+      try {
+        refreshToken = generateRefreshToken();
+        const deviceInfo = req.headers['user-agent'] || 'Unknown device';
+        const ipAddress = req.ip || req.socket.remoteAddress;
+        // If storage failed, still proceed with login but without refresh token
+        const stored = await storeRefreshToken(user._id.toString(), refreshToken, deviceInfo, ipAddress);
+        if (!stored) {
+          requestLogger.error({ 
+            msg: 'CRITICAL: Failed to store refresh token during login', 
+            userId: user._id.toString(),
+            email: email.substring(0, 3) + '***'
+          });
+          refreshToken = undefined;
+        } else {
+          requestLogger.info({ 
+            msg: 'Refresh token stored successfully during login', 
+            userId: user._id.toString()
+          });
+        }
+      } catch (error: any) {
+        // If refresh token storage fails, continue without it (graceful degradation)
+        requestLogger.warn({ 
+          msg: 'Failed to store refresh token, continuing without it', 
+          err: { message: error.message } 
+        });
+        refreshToken = undefined;
+      }
     }
 
     // Return user data (without password) and tokens
@@ -566,20 +589,71 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     const userId = decoded.userId;
 
     // Validate refresh token
-    const tokenData = await validateRefreshToken(userId, oldRefreshToken);
+    let tokenData;
+    try {
+      tokenData = await validateRefreshToken(userId, oldRefreshToken);
+    } catch (error: any) {
+      // CRITICAL FIX: Handle connection loss errors - should retry, not fail immediately
+      if (error.message === 'Redis connection lost') {
+        requestLogger.warn({ 
+          msg: 'Redis connection lost during refresh token validation - retrying', 
+          userId 
+        });
+        // Retry once
+        try {
+          tokenData = await validateRefreshToken(userId, oldRefreshToken);
+        } catch (retryError: any) {
+          requestLogger.error({ 
+            msg: 'Refresh token validation failed after retry', 
+            userId,
+            err: { message: retryError.message }
+          });
+          return sendErrorResponse(res, 503, 'Token validation service temporarily unavailable', 'SERVICE_UNAVAILABLE');
+        }
+      } else {
+        requestLogger.error({ 
+          msg: 'Unexpected error during refresh token validation', 
+          userId,
+          err: { message: error.message }
+        });
+        return sendErrorResponse(res, 500, 'Token validation failed', 'VALIDATION_ERROR');
+      }
+    }
+    
     if (!tokenData) {
-      requestLogger.warn({ msg: 'Invalid refresh token attempt', userId });
+      requestLogger.warn({ 
+        msg: 'Invalid refresh token attempt', 
+        userId,
+        hasRefreshToken: !!oldRefreshToken,
+        tokenServiceAvailable: isTokenServiceAvailable()
+      });
       return sendUnauthorizedError(res, 'Invalid or expired refresh token');
     }
+
+    requestLogger.debug({ 
+      msg: 'Refresh token validated', 
+      userId,
+      tokenCreatedAt: tokenData.createdAt,
+      tokenExpiresAt: tokenData.expiresAt
+    });
 
     // Rotate refresh token (invalidates old one, issues new one)
     const deviceInfo = req.headers['user-agent'] || 'Unknown device';
     const ipAddress = req.ip || req.socket.remoteAddress;
+    
+    requestLogger.debug({ msg: 'Attempting token rotation', userId });
     const newRefreshToken = await rotateRefreshToken(userId, oldRefreshToken, deviceInfo, ipAddress);
 
     if (!newRefreshToken) {
+      requestLogger.error({ 
+        msg: 'Token rotation failed', 
+        userId,
+        error: 'rotateRefreshToken returned null'
+      });
       return sendErrorResponse(res, 500, 'Failed to rotate refresh token', 'TOKEN_ROTATION_FAILED');
     }
+
+    requestLogger.debug({ msg: 'Token rotation successful', userId });
 
     // Fetch user to generate new access token
     const user = await User.findById(userId).select('role auth.email');

@@ -5,7 +5,7 @@ import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
 import { AdminUser, AdminRole, AdminUserStatus } from '../types/admin';
 import { adminUsersService } from '../services/adminUsersService';
-import { Shield, Ban, CheckCircle, Edit, Users, UserPlus, BarChart3, ChevronDown, Layout } from 'lucide-react';
+import { Shield, Ban, CheckCircle, Edit, Users, UserPlus, BarChart3, ChevronDown, Layout, Mail, MailCheck } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { Avatar } from '@/components/shared/Avatar';
@@ -31,7 +31,7 @@ export const AdminUsersPage: React.FC = () => {
   // Selection & Columns
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
-    'user', 'fullName', 'role', 'status', 'nuggets', 'joinedDate', 'joinedTime', 'lastLoginDate', 'actions'
+    'user', 'fullName', 'role', 'status', 'emailVerified', 'nuggets', 'joinedDate', 'joinedTime', 'lastLoginDate', 'actions'
   ]);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
 
@@ -39,6 +39,7 @@ export const AdminUsersPage: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [roleChangeCandidate, setRoleChangeCandidate] = useState<{ user: AdminUser, newRole: AdminRole } | null>(null);
   const [statusChangeCandidate, setStatusChangeCandidate] = useState<{ user: AdminUser, newStatus: AdminUserStatus } | null>(null);
+  const [emailVerifyCandidate, setEmailVerifyCandidate] = useState<AdminUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<{ name: string; username: string; email: string }>({ name: '', username: '', email: '' });
 
@@ -197,6 +198,30 @@ export const AdminUsersPage: React.FC = () => {
     }
   };
 
+  const handleVerifyEmail = async () => {
+    if (!emailVerifyCandidate) return;
+    try {
+      const { message } = await adminUsersService.verifyUserEmail(emailVerifyCandidate.id);
+      // Update the user in the list
+      setUsers(prev => prev.map(u =>
+        u.id === emailVerifyCandidate.id
+          ? { ...u, emailVerified: true }
+          : u
+      ));
+      // Update selected user if it's the same
+      if (selectedUser?.id === emailVerifyCandidate.id) {
+        setSelectedUser(prev => prev ? { ...prev, emailVerified: true } : null);
+      }
+      toast.success(message);
+      setEmailVerifyCandidate(null);
+    } catch (e: unknown) {
+      const error = e as { response?: { data?: { message?: string } }; message?: string };
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to verify email';
+      toast.error(errorMessage);
+      throw e; // Re-throw so modal knows it failed
+    }
+  };
+
   const handleBulkAction = (action: 'suspend' | 'activate' | 'delete') => {
       toast.info(`${action} ${selectedUserIds.length} users (Not implemented)`);
       setSelectedUserIds([]);
@@ -276,13 +301,13 @@ export const AdminUsersPage: React.FC = () => {
       render: (u) => (
         <div onClick={(e) => e.stopPropagation()}>
             <div className="relative group/select w-28">
-                <select 
+                <select
                     value={u.status}
                     onChange={(e) => setStatusChangeCandidate({ user: u, newStatus: e.target.value as AdminUserStatus })}
                     className={`
                         appearance-none w-full pl-2 pr-6 py-1 rounded-lg text-[11px] font-bold capitalize tracking-wide border cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500/50
-                        ${u.status === 'active' 
-                            ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800' 
+                        ${u.status === 'active'
+                            ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800'
                             : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800'
                         }
                     `}
@@ -292,6 +317,30 @@ export const AdminUsersPage: React.FC = () => {
                 </select>
                 <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
             </div>
+        </div>
+      )
+    },
+    {
+      key: 'emailVerified',
+      header: 'Email',
+      width: 'w-28',
+      minWidth: '110px',
+      sortable: true,
+      render: (u) => (
+        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {u.emailVerified ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-[10px] font-bold dark:bg-green-900/20 dark:text-green-400 dark:border-green-800">
+              <MailCheck size={10} /> Verified
+            </span>
+          ) : (
+            <button
+              onClick={() => setEmailVerifyCandidate(u)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-bold hover:bg-amber-100 transition-colors dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-900/30"
+              title="Click to verify email"
+            >
+              <Mail size={10} /> Unverified
+            </button>
+          )}
         </div>
       )
     },
@@ -589,6 +638,18 @@ export const AdminUsersPage: React.FC = () => {
                                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold capitalize ${selectedUser.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                                     {selectedUser.status}
                                 </span>
+                                {selectedUser.emailVerified ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-bold dark:bg-green-900/20 dark:text-green-400 dark:border-green-800">
+                                        <MailCheck size={12} /> Email Verified
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => setEmailVerifyCandidate(selectedUser)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold hover:bg-amber-100 transition-colors dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-900/30"
+                                    >
+                                        <Mail size={12} /> Verify Email
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -626,13 +687,23 @@ export const AdminUsersPage: React.FC = () => {
         isDestructive={statusChangeCandidate?.newStatus === 'suspended'}
       />
 
-      <ConfirmActionModal 
+      <ConfirmActionModal
         isOpen={!!roleChangeCandidate}
         onClose={() => setRoleChangeCandidate(null)}
         onConfirm={handleRoleChange}
         title="Change Account Type?"
         description={`Are you sure you want to change ${roleChangeCandidate?.user?.name || 'this user'}'s role to ${roleChangeCandidate?.newRole.toUpperCase()}? This will affect their access permissions immediately.`}
         actionLabel="Update Role"
+      />
+
+      <ConfirmActionModal
+        isOpen={!!emailVerifyCandidate}
+        onClose={() => setEmailVerifyCandidate(null)}
+        onConfirm={handleVerifyEmail}
+        title="Manually Verify Email?"
+        description={`Are you sure you want to manually verify the email for ${emailVerifyCandidate?.email}? This action will be logged for audit purposes. The user will be able to access all features that require email verification.`}
+        actionLabel="Verify Email"
+        isDestructive={false}
       />
     </div>
   );
