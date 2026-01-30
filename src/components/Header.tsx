@@ -103,6 +103,7 @@ export const Header: React.FC<HeaderProps> = ({
   const currentPath = location.pathname;
   const isHome = currentPath === '/';
   const isCollections = currentPath === '/collections';
+  const isBookmarks = currentPath === '/bookmarks';
 
   // DropdownPortal handles positioning, scroll/resize updates, and click-outside detection
   // Only keyboard shortcuts need manual handling
@@ -263,6 +264,19 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-current={(currentPath.includes('/profile') || currentPath === '/myspace') ? 'page' : undefined}
                 >
                   My Space
+                </Link>
+              )}
+              {isAuthenticated && (
+                <Link
+                  to="/bookmarks"
+                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
+                    isBookmarks
+                      ? 'bg-white text-gray-900'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  aria-current={isBookmarks ? 'page' : undefined}
+                >
+                  Bookmarks
                 </Link>
               )}
               {isAdmin && (
@@ -593,6 +607,14 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <UserIcon size={16} />
             My Space
+          </Link>
+          <Link
+            to="/bookmarks"
+            onClick={() => setIsUserMenuOpen(false)}
+            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <BookOpen size={16} />
+            Bookmarks
           </Link>
           <Link
             to="/account"
@@ -1081,6 +1103,9 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Personal</p>
                <Link to={`/profile/${currentUser?.id || ''}`} onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
                   <UserIcon size={18} /> My Space
+               </Link>
+               <Link to="/bookmarks" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
+                  <BookOpen size={18} /> Bookmarks
                </Link>
                <Link to="/account" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
                   <Settings size={18} /> Settings

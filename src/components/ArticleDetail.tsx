@@ -47,6 +47,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Article } from '@/types';
 import { X, Clock, ExternalLink, FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'lucide-react';
+import { BookmarkButton } from './bookmarks';
 import { formatDate, formatReadTime } from '@/utils/formatters';
 import { Avatar } from './shared/Avatar';
 import { AddToCollectionModal } from './AddToCollectionModal';
@@ -156,12 +157,19 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                    <div className="text-sm font-bold text-slate-900 dark:text-white">{authorName}</div>
                </div>
                <div className="flex items-center gap-2">
-                   <ShareMenu 
-                       data={{ type: 'nugget', id: article?.id ?? '', title: article?.title ?? 'Untitled', shareUrl: window.location.href }} 
+                   <ShareMenu
+                       data={{ type: 'nugget', id: article?.id ?? '', title: article?.title ?? 'Untitled', shareUrl: `${window.location.origin}/article/${article?.id ?? ''}` }}
+                       meta={{ author: authorName, text: article?.excerpt ?? '' }}
                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
                    />
-                   <button 
-                       onClick={withAuth(handleAddToCollection)} 
+                   <BookmarkButton
+                       itemId={article?.id ?? ''}
+                       itemType="nugget"
+                       size="md"
+                       className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                   />
+                   <button
+                       onClick={withAuth(handleAddToCollection)}
                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                        title="Add to Collection"
                    >

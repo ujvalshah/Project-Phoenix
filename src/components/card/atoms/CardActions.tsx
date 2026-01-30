@@ -1,6 +1,7 @@
 import React from 'react';
 import { FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'lucide-react';
 import { ShareMenu } from '@/components/shared/ShareMenu';
+import { BookmarkButton } from '@/components/bookmarks';
 import { twMerge } from 'tailwind-merge';
 
 interface CardActionsProps {
@@ -22,6 +23,7 @@ interface CardActionsProps {
   className?: string;
   isPreview?: boolean; // Add preview flag to hide ShareMenu
   variant?: 'grid' | 'feed' | 'masonry' | 'utility'; // Variant for feed-specific styling
+  onBookmarkChangeCollection?: (bookmarkId: string) => void; // Callback when user wants to change collection
 }
 
 export const CardActions: React.FC<CardActionsProps> = ({
@@ -43,6 +45,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
   className,
   isPreview = false,
   variant = 'grid',
+  onBookmarkChangeCollection,
 }) => {
   // Mobile UX: Minimum 44px tap targets for better touch ergonomics
   const buttonSize = 'min-h-[44px] min-w-[44px]';
@@ -61,7 +64,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
             type: 'nugget',
             id: articleId,
             title: articleTitle,
-            shareUrl: `${window.location.origin}/#/article/${articleId}`,
+            shareUrl: `${window.location.origin}/article/${articleId}`,
           }}
           meta={{
             author: authorName,
@@ -70,6 +73,21 @@ export const CardActions: React.FC<CardActionsProps> = ({
         />
       )}
 
+      {/* Bookmark Button - Personal save feature */}
+      {!isPreview && (
+        <BookmarkButton
+          itemId={articleId}
+          itemType="nugget"
+          size="md"
+          onChangeCollection={onBookmarkChangeCollection}
+          className={twMerge(
+            buttonSize,
+            'flex items-center justify-center rounded-full',
+            hoverBg,
+            transitionClass
+          )}
+        />
+      )}
 
       {onAddToCollection && (
         <button

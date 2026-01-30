@@ -38,6 +38,12 @@ dist-ssr
 .vercel
 .env*.local
 
+# Windows reserved names (avoid accidental creation)
+nul
+NUL
+con
+CON
+
 # System files and directories
 AppData/
 OneDrive/

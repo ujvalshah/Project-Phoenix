@@ -64,6 +64,8 @@ const AdminPanelPage = lazy(() =>
 const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then(module => ({ default: module.VerifyEmailPage })));
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage').then(module => ({ default: module.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage').then(module => ({ default: module.ResetPasswordPage })));
+const SavedPage = lazy(() => import('@/pages/SavedPage').then(module => ({ default: module.SavedPage })));
+const ArticleDetailPage = lazy(() => import('@/pages/ArticleDetail').then(module => ({ default: module.ArticleDetailPage })));
 
 const AppContent: React.FC = () => {
   const [isDark, setIsDark] = useState(false);
@@ -162,7 +164,14 @@ const AppContent: React.FC = () => {
               <CollectionDetailPage />
             </ErrorBoundary>
           } />
-          
+
+          {/* Bookmarks - Protected */}
+          <Route path="/bookmarks" element={
+            <ProtectedRoute>
+              <SavedPage />
+            </ProtectedRoute>
+          } />
+
           {/* My Space (Current User) - Protected */}
           <Route path="/myspace" element={
             <ProtectedRoute>
@@ -215,6 +224,13 @@ const AppContent: React.FC = () => {
           <Route path="/reset-password" element={
             <ErrorBoundary>
               <ResetPasswordPage />
+            </ErrorBoundary>
+          } />
+
+          {/* Article detail page — canonical share URL target */}
+          <Route path="/article/:articleId" element={
+            <ErrorBoundary>
+              <ArticleDetailPage />
             </ErrorBoundary>
           } />
 

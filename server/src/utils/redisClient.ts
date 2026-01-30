@@ -15,7 +15,14 @@ let redisClient: RedisClientType | null = null;
 let isConnected = false;
 let isLimitExceeded = false;
 let connectionAttempts = 0;
-const MAX_CONNECTION_ATTEMPTS = 3;
+let isInitializing = false;
+
+// Environment-aware connection configuration
+const isDev = process.env.NODE_ENV !== 'production';
+const MAX_CONNECTION_ATTEMPTS = isDev ? 5 : 3;
+// Reconnection: how many times the redis client internally retries before emitting 'end'
+const MAX_RECONNECT_RETRIES = isDev ? 50 : 10;
+const MAX_RECONNECT_DELAY_MS = isDev ? 30_000 : 10_000;
 
 // In-memory fallback store for development
 const inMemoryStore = new Map<string, { value: string; expiresAt?: number }>();
@@ -104,26 +111,43 @@ export async function initRedisClient(): Promise<void> {
 
   // Don't retry if limit exceeded and max attempts reached
   if (isLimitExceeded && connectionAttempts >= MAX_CONNECTION_ATTEMPTS) {
-    logger.warn({ 
+    logger.warn({
       msg: '[Redis] Limit exceeded - using in-memory fallback',
-      attempts: connectionAttempts 
+      attempts: connectionAttempts
     });
     return;
   }
 
+  isInitializing = true;
   try {
     // Create client with optimized settings
     redisClient = createClient({ 
       url: redisUrl,
       socket: {
         reconnectStrategy: (retries) => {
-          if (retries > MAX_CONNECTION_ATTEMPTS) {
-            logger.warn({ msg: '[Redis] Max reconnection attempts reached' });
+          if (retries >= MAX_RECONNECT_RETRIES) {
+            logger.warn({
+              msg: '[Redis] Max reconnection attempts reached - giving up',
+              retries,
+              maxRetries: MAX_RECONNECT_RETRIES
+            });
             return false; // Stop reconnecting
           }
-          return Math.min(retries * 100, 3000); // Exponential backoff
+          // Exponential backoff with jitter, capped at MAX_RECONNECT_DELAY_MS
+          const baseDelay = Math.min(retries * 500, MAX_RECONNECT_DELAY_MS);
+          const jitter = Math.floor(Math.random() * 500);
+          const delay = baseDelay + jitter;
+          if (retries > 0 && retries % 5 === 0) {
+            logger.info({
+              msg: '[Redis] Reconnection in progress...',
+              attempt: retries,
+              maxRetries: MAX_RECONNECT_RETRIES,
+              nextDelayMs: delay
+            });
+          }
+          return delay;
         },
-        connectTimeout: 5000,
+        connectTimeout: 10_000,
       },
     });
 
@@ -151,7 +175,7 @@ export async function initRedisClient(): Promise<void> {
     
     // CRITICAL FIX: Handle connection end event (connection closed)
     redisClient.on('end', () => {
-      logger.warn({ msg: '[Redis] Connection ended' });
+      logger.warn({ msg: '[Redis] Connection ended - will re-create client on next ensureRedisConnection() call' });
       isConnected = false;
       redisClient = null;
     });
@@ -195,6 +219,8 @@ export async function initRedisClient(): Promise<void> {
     
     redisClient = null;
     isConnected = false;
+  } finally {
+    isInitializing = false;
   }
 }
 
@@ -210,6 +236,52 @@ export function getRedisClient(): RedisClientType | null {
  */
 export function isRedisAvailable(): boolean {
   return isConnected && redisClient !== null && !isLimitExceeded;
+}
+
+/**
+ * Ensure Redis connection is available, re-initializing if needed.
+ * Use this before critical operations (token validation/storage) instead of just checking isRedisAvailable().
+ * Returns true if Redis is connected, false if it could not be restored.
+ */
+export async function ensureRedisConnection(): Promise<boolean> {
+  // Fast path: already connected
+  if (isConnected && redisClient !== null && !isLimitExceeded) {
+    return true;
+  }
+
+  // Rate-limit exceeded (cloud Redis) - don't retry
+  if (isLimitExceeded) {
+    return false;
+  }
+
+  const logger = getLogger();
+  logger.info({ msg: '[Redis] Connection unavailable - attempting re-initialization' });
+
+  // If another init is in progress, wait for it
+  if (isInitializing) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    return isConnected && redisClient !== null;
+  }
+
+  // Reset connection attempts for fresh re-initialization
+  connectionAttempts = 0;
+
+  try {
+    await initRedisClient();
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error({
+      msg: '[Redis] Re-initialization failed',
+      err: { message: errMsg }
+    });
+  }
+
+  const result = isConnected && redisClient !== null;
+  logger.info({
+    msg: result ? '[Redis] Re-initialization successful' : '[Redis] Re-initialization failed - using in-memory fallback',
+    isConnected: result
+  });
+  return result;
 }
 
 /**

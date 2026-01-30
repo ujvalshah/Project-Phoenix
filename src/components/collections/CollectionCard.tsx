@@ -202,7 +202,7 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
                                 type: 'collection',
                                 id: collection.id,
                                 title: collection.name,
-                                shareUrl: `${window.location.origin}/#/collections/${collection.id}`
+                                shareUrl: `${window.location.origin}/collections/${collection.id}`
                             }}
                             meta={{
                                 text: collection.description

@@ -10,11 +10,24 @@
 
 import crypto from 'crypto';
 import { getLogger } from '../utils/logger.js';
-import { 
-  getRedisClientOrFallback, 
+import {
+  getRedisClientOrFallback,
   isRedisAvailable,
-  initRedisClient 
+  initRedisClient,
+  ensureRedisConnection,
 } from '../utils/redisClient.js';
+
+/**
+ * Error thrown when Redis is unavailable for a critical operation.
+ * Callers should catch this and return 503 (Service Unavailable), NOT 401 (Unauthorized).
+ * This prevents the frontend from misinterpreting a Redis outage as an invalid token.
+ */
+export class RedisUnavailableError extends Error {
+  constructor(message = 'Redis service unavailable') {
+    super(message);
+    this.name = 'RedisUnavailableError';
+  }
+}
 
 // Redis key prefixes
 const PREFIX = {
@@ -160,10 +173,14 @@ export async function storeRefreshToken(
   deviceInfo?: string,
   ipAddress?: string
 ): Promise<boolean> {
-  if (!isRedisAvailable()) {
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    const logger = getLogger();
+    logger.error({ msg: '[TokenService] Redis unavailable - cannot store refresh token', userId });
     return false;
   }
 
+  const logger = getLogger();
   try {
     const client = getClient();
     const tokenHash = hashToken(refreshToken);
@@ -273,12 +290,12 @@ export async function storeRefreshToken(
     });
 
     return true;
-  } catch (error: any) {
-    const logger = getLogger();
-    logger.error({ 
-      msg: '[TokenService] Failed to store refresh token', 
-      err: { message: error.message },
-      userId 
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error({
+      msg: '[TokenService] Failed to store refresh token',
+      err: { message: errMsg },
+      userId
     });
     return false;
   }
@@ -291,35 +308,43 @@ export async function validateRefreshToken(
   userId: string,
   refreshToken: string
 ): Promise<RefreshTokenData | null> {
-  if (!isRedisAvailable()) {
-    return null;
+  const logger = getLogger();
+
+  // Try to ensure Redis connection, throw if unavailable
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.error({
+      msg: '[TokenService] Redis unavailable for token validation',
+      userId
+    });
+    throw new RedisUnavailableError('Redis unavailable for token validation');
   }
 
   try {
     const client = getClient();
-    
-    // CRITICAL FIX: Verify connection before operation
-    if (isRedisAvailable() && typeof (client as any).ping === 'function') {
+
+    // Verify connection with ping before critical validation operation
+    if (typeof (client as any).ping === 'function') {
       try {
         await (client as any).ping();
-      } catch (pingError: any) {
-        const logger = getLogger();
-        logger.error({ 
-          msg: '[TokenService] CRITICAL: Redis connection lost during validation', 
-          err: { message: pingError.message },
-          userId 
+      } catch (pingError: unknown) {
+        const pingMsg = pingError instanceof Error ? pingError.message : String(pingError);
+        logger.error({
+          msg: '[TokenService] Redis connection lost during validation ping',
+          err: { message: pingMsg },
+          userId
         });
-        // Connection lost - this is a transient error, should retry
-        throw new Error('Redis connection lost');
+        throw new RedisUnavailableError('Redis connection lost during validation');
       }
     }
-    
+
     const tokenHash = hashToken(refreshToken);
     const key = `${PREFIX.REFRESH}${userId}:${tokenHash}`;
     const dataStr = await client.get(key);
 
     if (!dataStr) {
-      return null; // Token not found (distinct from error)
+      logger.debug({ msg: '[TokenService] Refresh token not found in Redis', userId });
+      return null; // Token not found (legitimate - distinct from error)
     }
 
     const data: RefreshTokenData = JSON.parse(dataStr);
@@ -327,28 +352,42 @@ export async function validateRefreshToken(
     // Verify expiration
     if (new Date(data.expiresAt) < new Date()) {
       await client.del(key);
+      logger.debug({ msg: '[TokenService] Refresh token expired in Redis', userId });
       return null; // Token expired
     }
 
     return data;
-  } catch (error: any) {
-    const logger = getLogger();
-    // CRITICAL FIX: Don't swallow errors - distinguish "not found" from "error"
-    if (error.message === 'Redis connection lost') {
-      // Transient error - should retry
-      logger.error({ 
-        msg: '[TokenService] Redis connection lost - should retry', 
-        err: { message: error.message },
-        userId 
-      });
-      throw error; // Re-throw to allow retry logic
+  } catch (error: unknown) {
+    // Re-throw RedisUnavailableError as-is (already a typed error for callers)
+    if (error instanceof RedisUnavailableError) {
+      throw error;
     }
-    logger.error({ 
-      msg: '[TokenService] Failed to validate refresh token', 
-      err: { message: error.message },
-      userId 
+
+    const errMsg = error instanceof Error ? error.message : String(error);
+
+    // Check for connection-related errors and wrap them
+    const isConnectionError =
+      errMsg.includes('Connection') ||
+      errMsg.includes('ECONNREFUSED') ||
+      errMsg.includes('ECONNRESET') ||
+      errMsg.includes('Socket closed') ||
+      errMsg.includes('network');
+
+    if (isConnectionError) {
+      logger.error({
+        msg: '[TokenService] Redis connection error during validation - retryable',
+        err: { message: errMsg },
+        userId
+      });
+      throw new RedisUnavailableError(`Redis connection error: ${errMsg}`);
+    }
+
+    logger.error({
+      msg: '[TokenService] Failed to validate refresh token',
+      err: { message: errMsg },
+      userId
     });
-    return null; // Other errors - return null (not found)
+    return null; // Non-connection errors (parse error, etc.) - return null
   }
 }
 
@@ -367,11 +406,13 @@ export async function rotateRefreshToken(
   deviceInfo?: string,
   ipAddress?: string
 ): Promise<string | null> {
-  if (!isRedisAvailable()) {
+  const logger = getLogger();
+
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.error({ msg: '[TokenService] Redis unavailable - cannot rotate refresh token', userId });
     return null;
   }
-
-  const logger = getLogger();
 
   try {
     const client = getClient();

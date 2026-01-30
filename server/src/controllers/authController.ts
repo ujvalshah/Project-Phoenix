@@ -26,6 +26,7 @@ import {
   isAccountLocked,
   getUserSessions,
   isTokenServiceAvailable,
+  RedisUnavailableError,
 } from '../services/tokenService.js';
 import { z } from 'zod';
 import {
@@ -589,40 +590,48 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     const userId = decoded.userId;
 
     // Validate refresh token
+    // CRITICAL: Distinguish between "token not found" (→ 401) and "Redis down" (→ 503)
+    // Returning 503 prevents the frontend from misinterpreting a Redis outage as an invalid token
     let tokenData;
     try {
       tokenData = await validateRefreshToken(userId, oldRefreshToken);
-    } catch (error: any) {
-      // CRITICAL FIX: Handle connection loss errors - should retry, not fail immediately
-      if (error.message === 'Redis connection lost') {
-        requestLogger.warn({ 
-          msg: 'Redis connection lost during refresh token validation - retrying', 
-          userId 
+    } catch (error: unknown) {
+      const isRedisError =
+        error instanceof RedisUnavailableError ||
+        (error instanceof Error && error.message === 'Redis connection lost');
+
+      if (isRedisError) {
+        requestLogger.warn({
+          msg: 'Redis unavailable during refresh token validation - retrying after delay',
+          userId
         });
-        // Retry once
+        // Wait briefly for Redis to recover, then retry once
+        await new Promise(resolve => setTimeout(resolve, 1000));
         try {
           tokenData = await validateRefreshToken(userId, oldRefreshToken);
-        } catch (retryError: any) {
-          requestLogger.error({ 
-            msg: 'Refresh token validation failed after retry', 
+        } catch (retryError: unknown) {
+          const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+          requestLogger.error({
+            msg: 'Refresh token validation failed after retry - Redis still unavailable',
             userId,
-            err: { message: retryError.message }
+            err: { message: retryMsg }
           });
-          return sendErrorResponse(res, 503, 'Token validation service temporarily unavailable', 'SERVICE_UNAVAILABLE');
+          return sendErrorResponse(res, 503, 'Token service temporarily unavailable. Please try again in a moment.', 'SERVICE_UNAVAILABLE');
         }
       } else {
-        requestLogger.error({ 
-          msg: 'Unexpected error during refresh token validation', 
+        const errMsg = error instanceof Error ? error.message : String(error);
+        requestLogger.error({
+          msg: 'Unexpected error during refresh token validation',
           userId,
-          err: { message: error.message }
+          err: { message: errMsg }
         });
         return sendErrorResponse(res, 500, 'Token validation failed', 'VALIDATION_ERROR');
       }
     }
-    
+
     if (!tokenData) {
-      requestLogger.warn({ 
-        msg: 'Invalid refresh token attempt', 
+      requestLogger.warn({
+        msg: 'Invalid refresh token attempt',
         userId,
         hasRefreshToken: !!oldRefreshToken,
         tokenServiceAvailable: isTokenServiceAvailable()

@@ -179,8 +179,38 @@ class ApiClient {
         body: JSON.stringify({ refreshToken: authData.refreshToken }),
       });
 
+      // 503 = Redis/token service temporarily unavailable - retry after delay
+      // CRITICAL: Do NOT treat this as "invalid token". The token may still be valid
+      // once the service recovers. Retry instead of failing.
+      if (response.status === 503) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryResponse = await fetch(`${BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authData.token}`,
+          },
+          body: JSON.stringify({ refreshToken: authData.refreshToken }),
+        });
+
+        if (!retryResponse.ok) {
+          return false;
+        }
+
+        const retryData = await retryResponse.json();
+        setStoredAuth({
+          ...authData,
+          token: retryData.accessToken || retryData.token,
+          accessToken: retryData.accessToken,
+          refreshToken: retryData.refreshToken || authData.refreshToken,
+          expiresIn: retryData.expiresIn,
+          refreshedAt: Date.now(),
+        });
+        return true;
+      }
+
       if (!response.ok) {
-        // Refresh failed - likely refresh token expired
+        // Refresh failed - likely refresh token expired or invalid
         return false;
       }
 
@@ -258,11 +288,14 @@ class ApiClient {
     let success = false;
     let aborted = false;
 
-    // Proactively refresh token if about to expire (non-blocking, best-effort)
+    // Proactively refresh token if about to expire
+    // Blocking: wait for refresh so the request uses the new token
     if (!_isRetry && !this.isPublicAuthEndpoint(endpoint)) {
-      this.maybeProactiveRefresh().catch(() => {
-        // Ignore proactive refresh errors
-      });
+      try {
+        await this.maybeProactiveRefresh();
+      } catch {
+        // Ignore proactive refresh errors - reactive refresh will catch it
+      }
     }
 
     const config = {

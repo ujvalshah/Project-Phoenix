@@ -60,6 +60,9 @@ import adminRouter from './routes/admin.js';
 import unfurlRouter from './routes/unfurl.js';
 import mediaRouter from './routes/media.js';
 import diagnosticsRouter from './routes/diagnostics.js';
+import bookmarksRouter from './routes/bookmarks.js';
+import bookmarkCollectionsRouter from './routes/bookmarkCollections.js';
+import { ogMiddleware } from './middleware/ogMiddleware.js';
 
 const app = express();
 const env = getEnv();
@@ -230,6 +233,8 @@ app.use('/api/unfurl', longOperationTimeout, unfurlRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/media', mediaRouter);
 app.use('/api/diagnostics', diagnosticsRouter);
+app.use('/api/bookmarks', bookmarksRouter);
+app.use('/api/bookmark-collections', bookmarkCollectionsRouter);
 
 // Health Check - Enhanced to verify DB connectivity
 app.get('/api/health', async (req, res) => {
@@ -372,12 +377,19 @@ app.all(/^\/api\/.+/, (req, res) => {
   });
 });
 
+// OG Middleware: Serve dynamic Open Graph HTML to social-media crawlers
+// (WhatsApp, Facebook, Twitter, etc.) for /article/:id and /collections/:id.
+// Must run before static file serving so crawlers get OG meta instead of SPA shell.
+app.use(ogMiddleware);
+
 // Production: Serve React Static Files
 if (env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../../../dist')));
-  // Catch-all handler for React Router (only for non-API routes)
-  app.use((req, res) => {
-    res.status(404).json({ error: 'Route not found' });
+  const distPath = path.join(__dirname, '../../../dist');
+  app.use(express.static(distPath));
+  // SPA catch-all: serve index.html for all non-API routes
+  // so React Router can handle client-side routing (e.g. /article/:id)
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 

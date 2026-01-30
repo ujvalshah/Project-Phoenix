@@ -27,7 +27,10 @@
       "Bash(dir \"C:\\\\Users\\\\ujval\\\\OneDrive\\\\Desktop\\\\Project Gold\\\\Project Nuggets\\\\server\\\\*.json\" /b)",
       "Bash(npx tsx:*)",
       "Bash(npm install:*)",
-      "Bash(npx vite build)"
+      "Bash(npx vite build)",
+      "Bash(node --import tsx:*)",
+      "Bash(git grep:*)",
+      "Bash(node -e:*)"
     ]
   }
 }

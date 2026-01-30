@@ -310,7 +310,7 @@ export const CollectionDetailPage: React.FC = () => {
                             type: 'collection',
                             id: collection.id,
                             title: collection.name,
-                            shareUrl: `${window.location.origin}/#/collections/${collection.id}`
+                            shareUrl: `${window.location.origin}/collections/${collection.id}`
                         }}
                         meta={{
                             text: collection.description
