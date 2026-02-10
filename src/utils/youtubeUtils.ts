@@ -103,3 +103,102 @@ export function isYouTubeUrl(url: string | null | undefined): boolean {
   return lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be');
 }
 
+/**
+ * Extract timestamp from YouTube URL
+ * Supports formats:
+ * - t=36 (36 seconds)
+ * - t=1m30s (1 minute 30 seconds = 90 seconds)
+ * - t=36s (36 seconds)
+ * - t=1h2m30s (1 hour 2 minutes 30 seconds)
+ * 
+ * @returns Timestamp in seconds, or null if not found/invalid
+ */
+export function extractYouTubeTimestamp(url: string): number | null {
+  if (!url) return null;
+
+  try {
+    const urlObj = new URL(url);
+    
+    // Check for 't' parameter (most common)
+    const tParam = urlObj.searchParams.get('t');
+    if (tParam) {
+      return parseTimestamp(tParam);
+    }
+    
+    // Check for 'time_continue' parameter (alternative format)
+    const timeContinue = urlObj.searchParams.get('time_continue');
+    if (timeContinue) {
+      const parsed = parseInt(timeContinue, 10);
+      return isNaN(parsed) ? null : parsed;
+    }
+    
+    return null;
+  } catch {
+    // If URL parsing fails, try regex fallback
+    const tMatch = url.match(/[?&]t=([^&]+)/);
+    if (tMatch) {
+      return parseTimestamp(tMatch[1]);
+    }
+    
+    return null;
+  }
+}
+
+/**
+ * Parse timestamp string to seconds
+ * Supports: "36", "1m30s", "36s", "1h2m30s"
+ */
+function parseTimestamp(timestamp: string): number | null {
+  if (!timestamp) return null;
+  
+  // If it's just a number, treat as seconds
+  const numericOnly = /^\d+$/.test(timestamp);
+  if (numericOnly) {
+    return parseInt(timestamp, 10);
+  }
+  
+  // Parse complex formats like "1m30s" or "1h2m30s"
+  let totalSeconds = 0;
+  
+  // Match hours: "1h" or "1h2m30s"
+  const hoursMatch = timestamp.match(/(\d+)h/);
+  if (hoursMatch) {
+    totalSeconds += parseInt(hoursMatch[1], 10) * 3600;
+  }
+  
+  // Match minutes: "2m" or "1h2m30s"
+  const minutesMatch = timestamp.match(/(\d+)m/);
+  if (minutesMatch) {
+    totalSeconds += parseInt(minutesMatch[1], 10) * 60;
+  }
+  
+  // Match seconds: "30s" or "1h2m30s" or just "30" at the end
+  const secondsMatch = timestamp.match(/(\d+)s?$/);
+  if (secondsMatch) {
+    totalSeconds += parseInt(secondsMatch[1], 10);
+  }
+  
+  return totalSeconds > 0 ? totalSeconds : null;
+}
+
+/**
+ * Check if a URL is a YouTube timestamp link (has timestamp parameter)
+ */
+export function isYouTubeTimestampLink(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return isYouTubeUrl(url) && extractYouTubeTimestamp(url) !== null;
+}
+
+/**
+ * Extract both video ID and timestamp from YouTube URL
+ */
+export function extractYouTubeVideoIdAndTimestamp(url: string): {
+  videoId: string | null;
+  timestamp: number | null;
+} {
+  return {
+    videoId: extractYouTubeVideoId(url),
+    timestamp: extractYouTubeTimestamp(url),
+  };
+}
+

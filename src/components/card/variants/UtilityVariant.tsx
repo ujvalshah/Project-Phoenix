@@ -128,6 +128,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
                     variant="utility"
                     allowExpansion={false}
                     cardType="media-only"
+                    onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
                   />
                 </div>
               </div>
@@ -176,6 +177,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
             allowExpansion={true}
             cardType="hybrid"
             title={data.shouldShowTitle ? data.title : undefined}
+            onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
           />
               
               {/* 4. Media anchored to bottom for uniformity across cards (or gradient fallback) */}

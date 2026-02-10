@@ -8,6 +8,7 @@ import { storageService } from '@/services/storageService';
 import { queryClient } from '@/queryClient';
 import { sanitizeArticle, hasValidAuthor, logError } from '@/utils/errorHandler';
 import { getAllImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
+import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 // formatDate removed - using relative time formatting in CardMeta instead
 
 // ────────────────────────────────────────
@@ -99,6 +100,8 @@ export const useNewsCard = ({
   const [showFullModal, setShowFullModal] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
   const [lightboxInitialIndex, setLightboxInitialIndex] = useState(0);
+  const [showYouTubeModal, setShowYouTubeModal] = useState(false);
+  const [youtubeStartTime, setYoutubeStartTime] = useState<number>(0);
   const [collectionMode, setCollectionMode] = useState<'public' | 'private'>('public');
   const [collectionAnchor, setCollectionAnchor] = useState<DOMRect | null>(null);
 
@@ -505,6 +508,23 @@ export const useNewsCard = ({
   const handleMediaClick = (e: React.MouseEvent, imageIndex?: number) => {
     e?.stopPropagation();
     
+    // YOUTUBE VIDEOS: Open lazy-loaded modal (not new tab)
+    // This maintains context and provides better UX
+    // Check multiple sources: primaryMedia, article.media, and article.video
+    const { primaryMedia } = classifyArticleMedia(article);
+    const isYouTube = 
+      primaryMedia?.type === 'youtube' ||
+      article.media?.type === 'youtube' ||
+      (article.video && (article.video.includes('youtube.com') || article.video.includes('youtu.be')));
+    
+    if (isYouTube) {
+      const youtubeUrl = primaryMedia?.url || article.media?.url || article.video;
+      if (youtubeUrl) {
+        setShowYouTubeModal(true);
+        return;
+      }
+    }
+    
     // IMAGES: Always open in-app viewer (never new tab)
     // This follows progressive-disclosure UX: images stay in context
     if (article.media?.type === 'image' || (article.images && article.images.length > 0)) {
@@ -581,6 +601,66 @@ export const useNewsCard = ({
 
   const handleAuthorClick = (authorId: string) => {
     navigate(`/profile/${authorId}`);
+  };
+
+  const handleYouTubeTimestampClick = (videoId: string, timestamp: number, originalUrl: string) => {
+    if (import.meta.env.DEV) {
+      console.log('[handleYouTubeTimestampClick] Called:', { videoId, timestamp, originalUrl });
+    }
+    
+    // Get the YouTube video URL from the article
+    const { primaryMedia } = classifyArticleMedia(article);
+    const youtubeUrl = primaryMedia?.url || article.media?.url || article.video;
+    
+    if (import.meta.env.DEV) {
+      console.log('[handleYouTubeTimestampClick] Article YouTube URL:', {
+        youtubeUrl,
+        primaryMediaType: primaryMedia?.type,
+        articleMediaType: article.media?.type,
+        articleVideo: article.video,
+      });
+    }
+    
+    // If no YouTube URL found in article, can't open modal
+    if (!youtubeUrl) {
+      if (import.meta.env.DEV) {
+        console.log('[handleYouTubeTimestampClick] No YouTube URL found in article');
+      }
+      // If originalUrl is a valid YouTube URL, open it in new tab
+      if (originalUrl && (originalUrl.includes('youtube.com') || originalUrl.includes('youtu.be'))) {
+        window.open(originalUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+    
+    const articleVideoId = extractYouTubeVideoId(youtubeUrl);
+    
+    if (import.meta.env.DEV) {
+      console.log('[handleYouTubeTimestampClick] Video ID comparison:', {
+        clickedVideoId: videoId || '(empty - plain text timestamp)',
+        articleVideoId,
+        match: !videoId || articleVideoId === videoId,
+      });
+    }
+    
+    // If videoId is empty (plain text timestamp), or if it matches the article's video
+    if (!videoId || articleVideoId === videoId) {
+      // Open modal with timestamp
+      if (import.meta.env.DEV) {
+        console.log('[handleYouTubeTimestampClick] Opening modal with timestamp:', timestamp);
+      }
+      setYoutubeStartTime(timestamp);
+      setShowYouTubeModal(true);
+      return;
+    }
+    
+    // If video doesn't match, fallback to opening link in new tab
+    if (import.meta.env.DEV) {
+      console.log('[handleYouTubeTimestampClick] Video mismatch, opening in new tab');
+    }
+    if (originalUrl) {
+      window.open(originalUrl, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const handleToggleVisibility = async () => {
@@ -730,10 +810,14 @@ export const useNewsCard = ({
         onReadMore: () => setShowFullModal(true),
       };
 
-  // Add onOpenDetails to handlers
-  const handlersWithDetails: NewsCardHandlers & { onOpenDetails?: () => void } = {
+  // Add onOpenDetails and onYouTubeTimestampClick to handlers
+  const handlersWithDetails: NewsCardHandlers & { 
+    onOpenDetails?: () => void;
+    onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
+  } = {
     ...handlers,
     onOpenDetails: handleOpenDetails,
+    onYouTubeTimestampClick: handleYouTubeTimestampClick,
   };
 
   return {
@@ -749,6 +833,8 @@ export const useNewsCard = ({
       showFullModal,
       showLightbox,
       lightboxInitialIndex,
+      showYouTubeModal,
+      youtubeStartTime,
       showMenu,
       showTagPopover,
       showEditModal,
@@ -757,6 +843,8 @@ export const useNewsCard = ({
       setShowFullModal,
       setShowLightbox,
       setLightboxInitialIndex,
+      setShowYouTubeModal,
+      setYoutubeStartTime,
       setShowEditModal,
       collectionMode,
       setCollectionMode,

@@ -23,7 +23,7 @@ interface CardActionsProps {
   className?: string;
   isPreview?: boolean; // Add preview flag to hide ShareMenu
   variant?: 'grid' | 'feed' | 'masonry' | 'utility'; // Variant for feed-specific styling
-  onBookmarkChangeCollection?: (bookmarkId: string) => void; // Callback when user wants to change collection
+  onBookmarkChangeCollection?: (bookmarkId: string) => void; // Callback when user wants to change folder
 }
 
 export const CardActions: React.FC<CardActionsProps> = ({

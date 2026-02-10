@@ -232,6 +232,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                         variant="grid"
                         allowExpansion={false}
                         cardType="media-only"
+                        onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
                       />
                     </div>
                   </div>
@@ -348,6 +349,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               allowExpansion={true}
               cardType={data.cardType}
               title={data.shouldShowTitle ? data.title : undefined}
+              onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
             />
           </div>
         </>

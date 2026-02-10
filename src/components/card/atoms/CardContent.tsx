@@ -13,6 +13,7 @@ interface CardContentProps {
   allowExpansion?: boolean; // Allow expansion via fade overlay click (Hybrid cards only)
   cardType?: 'hybrid' | 'media-only'; // Card type - truncation ONLY for Hybrid cards
   title?: string; // Optional title to include inside truncation wrapper
+  onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
 }
 
 /**
@@ -35,6 +36,7 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   allowExpansion = false,
   cardType = 'hybrid', // Default to hybrid for backward compatibility
   title, // Optional title to include inside truncation wrapper
+  onYouTubeTimestampClick,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   
@@ -331,7 +333,10 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
             isHybridCard ? 'leading-relaxed' : ''
           )}
         >
-          <MarkdownRenderer content={displayContent} />
+          <MarkdownRenderer 
+            content={displayContent} 
+            onYouTubeTimestampClick={onYouTubeTimestampClick}
+          />
         </div>
         {/* FADE OVERLAY WITH EXPAND BUTTON: Clickable overlay to expand (ONLY way to expand) */}
         {shouldClamp && (

@@ -35,7 +35,7 @@ import { LayoutGrid, ImageOff, RotateCcw } from 'lucide-react';
 interface CardThumbnailGridProps {
   images: string[];
   articleTitle?: string;
-  onGridClick?: (e: React.MouseEvent) => void;
+  onGridClick?: (e: React.MouseEvent, imageIndex?: number) => void;
   /** Phase 3: optional width/height ratio per image for aspect-ratio-aware layout */
   imageAspectRatios?: (number | null)[];
   // Link button is now rendered by parent (GridVariant) for consistency
@@ -51,6 +51,7 @@ interface ThumbnailCellProps {
   cellClassName: string;
   ariaLabel: string;
   onKeyDown: (e: React.KeyboardEvent) => void;
+  onClick?: (e: React.MouseEvent) => void;
   children?: React.ReactNode;
 }
 
@@ -60,6 +61,7 @@ const ThumbnailCell: React.FC<ThumbnailCellProps> = ({
   cellClassName,
   ariaLabel,
   onKeyDown,
+  onClick,
   children,
 }) => {
   const [loading, setLoading] = useState(true);
@@ -79,6 +81,7 @@ const ThumbnailCell: React.FC<ThumbnailCellProps> = ({
       tabIndex={0}
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
+      onClick={onClick}
       className={cellClassName}
     >
       {error ? (
@@ -169,6 +172,12 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
       }
     : undefined;
 
+  // Handle cell click - track which image was clicked
+  const handleCellClick = useCallback((e: React.MouseEvent, imageIndex: number) => {
+    e.stopPropagation();
+    onGridClick?.(e, imageIndex);
+  }, [onGridClick]);
+
   // ============================================================================
   // LAYOUT 1: Two Images (side-by-side; Phase 2: stack on mobile; Phase 3: optional aspect-ratio-aware)
   // ============================================================================
@@ -177,7 +186,6 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
       <div
         className={`grid gap-1 w-full h-full relative ${hasTwoAspectRatios ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}
         style={twoImageGridStyle}
-        onClick={onGridClick}
         role="group"
         aria-label={`Image gallery, ${imageCount} images`}
       >
@@ -189,6 +197,7 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
             cellClassName={baseCellClass}
             ariaLabel={`View image ${idx + 1} of ${imageCount}`}
             onKeyDown={handleKeyDown}
+            onClick={(e) => handleCellClick(e, idx)}
           >
             {hoverOverlay}
           </ThumbnailCell>
@@ -204,7 +213,6 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
     return (
       <div
         className="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full relative"
-        onClick={onGridClick}
         role="group"
         aria-label={`Image gallery, ${imageCount} images`}
       >
@@ -214,6 +222,7 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
           cellClassName={`row-span-2 ${baseCellClass}`}
           ariaLabel={`View image 1 of ${imageCount}`}
           onKeyDown={handleKeyDown}
+          onClick={(e) => handleCellClick(e, 0)}
         >
           {hoverOverlay}
         </ThumbnailCell>
@@ -225,6 +234,7 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
             cellClassName={baseCellClass}
             ariaLabel={`View image ${idx + 2} of ${imageCount}`}
             onKeyDown={handleKeyDown}
+            onClick={(e) => handleCellClick(e, idx + 1)}
           >
             {hoverOverlay}
           </ThumbnailCell>
@@ -242,7 +252,6 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
   return (
     <div
       className="grid grid-cols-2 gap-1 w-full h-full relative"
-      onClick={onGridClick}
       role="group"
       aria-label={`Image gallery, ${imageCount} images`}
     >
@@ -254,11 +263,18 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
           cellClassName={baseCellClass}
           ariaLabel={`View image ${idx + 1} of ${imageCount}`}
           onKeyDown={handleKeyDown}
+          onClick={(e) => handleCellClick(e, idx)}
         >
           {hoverOverlay}
           {/* "+N" overlay on 4th cell if more than 4 images (Phase 1: enhanced visibility) */}
           {idx === 3 && remainingCount > 0 && (
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none z-10">
+            <div 
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none z-10"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCellClick(e, 3);
+              }}
+            >
               <LayoutGrid className="w-5 h-5 mb-1 text-white" strokeWidth={2} />
               <span className="text-white text-base font-bold">+{remainingCount}</span>
               <span className="text-white/80 text-xs mt-0.5">more</span>

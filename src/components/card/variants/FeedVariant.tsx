@@ -130,6 +130,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
                     variant="feed"
                     allowExpansion={true}
                     cardType="media-only"
+                    onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
                   />
                 </div>
               </div>
@@ -184,6 +185,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
               allowExpansion={true}
               cardType="hybrid"
               title={data.shouldShowTitle ? data.title : undefined}
+              onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
             />
           </div>
         </>

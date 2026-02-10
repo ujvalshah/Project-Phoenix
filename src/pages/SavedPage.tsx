@@ -8,10 +8,10 @@
  * - ArticleGrid for cards (same grid as homepage)
  * - Infinite scroll pagination
  *
- * Collection toolbar shows:
+ * Folder toolbar shows:
  * - "All" (default) - shows all bookmarked items
- * - User's custom collections
- * - "+ New" button to create collection
+ * - User's custom folders
+ * - "+ New" button to create folder
  *
  * ============================================================================
  */
@@ -34,7 +34,7 @@ import { LAYOUT_CLASSES } from '@/constants/layout';
 import type { Article } from '@/types';
 
 /**
- * CollectionFilterBar - Collection toolbar matching TagFilterBar style
+ * CollectionFilterBar - Folder toolbar matching TagFilterBar style
  */
 interface CollectionFilterBarProps {
   collections: Array<{ id: string; name: string; bookmarkCount: number; isDefault: boolean }>;
@@ -105,7 +105,7 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
             />
           )}
 
-          {/* Collection buttons */}
+          {/* Folder buttons */}
           {collections.map((collection) => {
             const isActive = activeCollectionId === collection.id;
             return (
@@ -129,7 +129,7 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
             );
           })}
 
-          {/* Create collection input or button */}
+          {/* Create folder input or button */}
           {showCreateInput ? (
             <div className="flex items-center gap-1 shrink-0">
               <input
@@ -144,7 +144,7 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
                     setNewName('');
                   }
                 }}
-                placeholder="Collection name"
+                placeholder="Folder name"
                 maxLength={50}
                 className="w-28 px-2 py-1 text-[12px] rounded-full border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
@@ -230,9 +230,9 @@ export const SavedPage: React.FC = () => {
       toast.success(`Created "${name}"`);
     } catch (error: any) {
       if (error?.message?.includes('already exists')) {
-        toast.error('A collection with this name already exists');
+        toast.error('A folder with this name already exists');
       } else {
-        toast.error('Failed to create collection');
+        toast.error('Failed to create folder');
       }
     }
   };
@@ -282,13 +282,13 @@ export const SavedPage: React.FC = () => {
             <div className="py-4">
               <h1 className="text-lg font-bold text-slate-900 dark:text-white">
                 {activeCollectionId
-                  ? collections.find(c => c.id === activeCollectionId)?.name || 'Collection'
+                  ? collections.find(c => c.id === activeCollectionId)?.name || 'Folder'
                   : 'All Bookmarks'
                 }
               </h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {activeCollectionId
-                  ? 'Items in this collection'
+                  ? 'Items in this folder'
                   : 'All your saved nuggets'
                 }
               </p>
@@ -301,7 +301,7 @@ export const SavedPage: React.FC = () => {
             ) : articles.length === 0 ? (
               <EmptyState
                 icon={<Bookmark className="w-12 h-12" />}
-                title={activeCollectionId ? "No items in this collection" : "No bookmarks yet"}
+                title={activeCollectionId ? "No items in this folder" : "No bookmarks yet"}
                 description={
                   activeCollectionId
                     ? "Move items here from your bookmarks"

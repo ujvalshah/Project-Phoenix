@@ -62,6 +62,9 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
   const touchStateRef = React.useRef<{
     isPinching: boolean;
     isPanning: boolean;
+    isSwiping: boolean;
+    swipeStart: { x: number; y: number } | null;
+    swipeThreshold: number;
     initialDistance: number | null;
     initialZoom: number;
     panStart: { x: number; y: number } | null;
@@ -71,6 +74,9 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
   }>({
     isPinching: false,
     isPanning: false,
+    isSwiping: false,
+    swipeStart: null,
+    swipeThreshold: 50, // Minimum distance for swipe gesture
     initialDistance: null,
     initialZoom: 1,
     panStart: null,
@@ -194,25 +200,27 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
     setIsDragging(false);
   }, []);
 
-  // Touch handlers for mobile: supports both pinch-to-zoom AND single-touch pan
+  // Touch handlers for mobile: supports pinch-to-zoom, pan, swipe navigation, and swipe-to-close
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (mode !== 'fullscreen') return;
-    
     const touchCount = e.touches.length;
     const state = touchStateRef.current;
     const now = Date.now();
     
     if (touchCount === 2) {
-      // Two-finger pinch gesture
+      // Two-finger pinch gesture (only in fullscreen mode)
+      if (mode !== 'fullscreen') return;
+      
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
       const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
       
       state.isPinching = true;
       state.isPanning = false;
+      state.isSwiping = false;
       state.initialDistance = distance;
       state.initialZoom = zoom;
       state.panStart = null;
+      state.swipeStart = null;
       state.lastPan = null;
       
       // Prevent default only for pinch gesture
@@ -221,59 +229,70 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
       const touch = e.touches[0];
       const touchPos = { x: touch.clientX, y: touch.clientY };
       
-      // Check for double-tap zoom (works when zoomed or not zoomed)
-      if (state.lastTapTime > 0 && state.lastTapPosition) {
-        const timeSinceLastTap = now - state.lastTapTime;
-        const distanceFromLastTap = Math.hypot(
-          touchPos.x - state.lastTapPosition.x,
-          touchPos.y - state.lastTapPosition.y
-        );
-        
-        // Double-tap detected: < 300ms and < 50px movement
-        if (timeSinceLastTap < 300 && distanceFromLastTap < 50) {
-          if (zoom <= 1) {
-            // Zoom to 2x on double-tap when not zoomed
-            setZoom(2);
-          } else {
-            // Reset zoom to 1x on double-tap when already zoomed
-            setZoom(1);
+      if (mode === 'fullscreen') {
+        // Check for double-tap zoom (works when zoomed or not zoomed)
+        if (state.lastTapTime > 0 && state.lastTapPosition) {
+          const timeSinceLastTap = now - state.lastTapTime;
+          const distanceFromLastTap = Math.hypot(
+            touchPos.x - state.lastTapPosition.x,
+            touchPos.y - state.lastTapPosition.y
+          );
+          
+          // Double-tap detected: < 300ms and < 50px movement
+          if (timeSinceLastTap < 300 && distanceFromLastTap < 50) {
+            if (zoom <= 1) {
+              // Zoom to 2x on double-tap when not zoomed
+              setZoom(2);
+            } else {
+              // Reset zoom to 1x on double-tap when already zoomed
+              setZoom(1);
+            }
+            setPanX(0);
+            setPanY(0);
+            state.lastTapTime = 0;
+            state.lastTapPosition = null;
+            e.preventDefault();
+            return;
           }
-          setPanX(0);
-          setPanY(0);
-          state.lastTapTime = 0;
-          state.lastTapPosition = null;
-          e.preventDefault();
-          return;
         }
-      }
-      
-      if (zoom > 1) {
-        // Single-touch pan gesture (only when zoomed)
-        state.isPanning = true;
-        state.isPinching = false;
-        state.panStart = { x: touch.clientX - panX, y: touch.clientY - panY };
-        state.lastPan = { x: touch.clientX, y: touch.clientY };
         
-        // Prevent default when panning (to prevent page scroll)
-        e.preventDefault();
+        if (zoom > 1) {
+          // Single-touch pan gesture (only when zoomed)
+          state.isPanning = true;
+          state.isPinching = false;
+          state.isSwiping = false;
+          state.panStart = { x: touch.clientX - panX, y: touch.clientY - panY };
+          state.lastPan = { x: touch.clientX, y: touch.clientY };
+          
+          // Prevent default when panning (to prevent page scroll)
+          e.preventDefault();
+        } else {
+          // Single touch when not zoomed - prepare for swipe navigation
+          state.isPanning = false;
+          state.isPinching = false;
+          state.isSwiping = true;
+          state.swipeStart = { x: touch.clientX, y: touch.clientY };
+          state.panStart = null;
+          state.lastPan = null;
+          // Don't prevent default yet - wait to see if it's a swipe
+        }
       } else {
-        // Single touch when not zoomed - prepare for potential double-tap
+        // In carousel mode or any mode - prepare for swipe navigation
         state.isPanning = false;
         state.isPinching = false;
+        state.isSwiping = true;
+        state.swipeStart = { x: touch.clientX, y: touch.clientY };
         state.panStart = null;
         state.lastPan = null;
-        // Don't prevent default - allow native double-tap zoom as fallback
       }
     }
   }, [mode, zoom, panX, panY]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (mode !== 'fullscreen') return;
-    
     const touchCount = e.touches.length;
     const state = touchStateRef.current;
     
-    if (touchCount === 2 && state.isPinching && state.initialDistance !== null) {
+    if (touchCount === 2 && state.isPinching && state.initialDistance !== null && mode === 'fullscreen') {
       // Two-finger pinch: update zoom
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
@@ -285,8 +304,8 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
       
       // Prevent default for pinch gesture
       e.preventDefault();
-    } else if (touchCount === 1 && state.isPanning && state.panStart && zoom > 1) {
-      // Single-touch pan: update pan position with boundary constraints
+    } else if (touchCount === 1 && state.isPanning && state.panStart && zoom > 1 && mode === 'fullscreen') {
+      // Single-touch pan: update pan position with boundary constraints (only when zoomed)
       const touch = e.touches[0];
       
       // Calculate pan delta from start position
@@ -316,6 +335,26 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
       
       // Prevent default to prevent page scroll when panning
       e.preventDefault();
+    } else if (touchCount === 1 && state.isSwiping && state.swipeStart && zoom <= 1) {
+      // Swipe gesture detection (only when not zoomed)
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - state.swipeStart.x;
+      const deltaY = touch.clientY - state.swipeStart.y;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+      
+      // Determine swipe direction: horizontal (navigation) or vertical (close)
+      // Horizontal swipe takes precedence if both are significant
+      if (absDeltaX > state.swipeThreshold || absDeltaY > state.swipeThreshold) {
+        if (absDeltaX > absDeltaY) {
+          // Horizontal swipe - navigation
+          // Prevent default to allow swipe navigation
+          e.preventDefault();
+        } else if (absDeltaY > state.swipeThreshold && absDeltaY > absDeltaX) {
+          // Vertical swipe down - close modal
+          e.preventDefault();
+        }
+      }
     }
   }, [mode, zoom]);
 
@@ -323,8 +362,42 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
     const state = touchStateRef.current;
     const now = Date.now();
     
-    // If single touch ended and we weren't panning, record tap for double-tap detection
-    if (e.touches.length === 0 && !state.isPanning && !state.isPinching && zoom <= 1) {
+    if (e.touches.length === 0 && state.isSwiping && state.swipeStart) {
+      // Swipe gesture completed - check if it meets threshold
+      const touch = e.changedTouches[0];
+      if (touch) {
+        const deltaX = touch.clientX - state.swipeStart.x;
+        const deltaY = touch.clientY - state.swipeStart.y;
+        const absDeltaX = Math.abs(deltaX);
+        const absDeltaY = Math.abs(deltaY);
+        
+        // Horizontal swipe: navigate between images
+        if (absDeltaX > state.swipeThreshold && absDeltaX > absDeltaY && hasMultipleImages) {
+          if (deltaX > 0) {
+            // Swipe right: previous image
+            handlePrev();
+          } else {
+            // Swipe left: next image
+            handleNext();
+          }
+        }
+        // Vertical swipe down: close modal
+        else if (absDeltaY > state.swipeThreshold && absDeltaY > absDeltaX && deltaY > 0) {
+          handleClose();
+        }
+        // If single touch ended and we weren't panning/swiping, record tap for double-tap detection
+        else if (!state.isPanning && !state.isPinching && zoom <= 1 && absDeltaX < 10 && absDeltaY < 10) {
+          // Record tap position and time for double-tap detection
+          state.lastTapTime = now;
+          state.lastTapPosition = { x: touch.clientX, y: touch.clientY };
+        }
+      }
+      
+      // Reset swipe state
+      state.isSwiping = false;
+      state.swipeStart = null;
+    } else if (e.touches.length === 0 && !state.isPanning && !state.isPinching && !state.isSwiping && zoom <= 1) {
+      // If single touch ended and we weren't panning/swiping, record tap for double-tap detection
       const touch = e.changedTouches[0];
       if (touch) {
         // Record tap position and time for double-tap detection
@@ -351,11 +424,13 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
     if (e.touches.length === 0) {
       state.isPinching = false;
       state.isPanning = false;
+      state.isSwiping = false;
+      state.swipeStart = null;
       state.panStart = null;
       state.lastPan = null;
       state.initialDistance = null;
     }
-  }, [zoom]);
+  }, [zoom, hasMultipleImages, handlePrev, handleNext, handleClose]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -405,7 +480,13 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {/* LEFT: Image Carousel Panel */}
-          <div className="flex-1 relative flex items-center justify-center bg-black/50 overflow-hidden md:border-r border-slate-700">
+          <div 
+            className="flex-1 relative flex items-center justify-center bg-black/50 overflow-hidden md:border-r border-slate-700"
+            style={{ touchAction: 'pan-y' }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
             {/* Close Button */}
             <button 
               onClick={handleClose}

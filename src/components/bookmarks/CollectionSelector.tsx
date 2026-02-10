@@ -13,11 +13,11 @@ import type { BookmarkCollection } from '@/services/bookmarkService';
 /**
  * CollectionSelector Component
  *
- * Instagram/Pinterest style collection selector.
+ * Instagram/Pinterest style folder selector for bookmarks.
  * Features:
- * - Checkbox list of collections
- * - Create new collection inline
- * - Multi-collection support
+ * - Checkbox list of folders
+ * - Create new folder inline
+ * - Multi-folder support
  * - Keyboard navigation
  */
 
@@ -141,13 +141,13 @@ export function CollectionSelector({
         console.log('[CollectionSelector] Calling assignMutation with:', { bookmarkId, collectionIds });
         await assignMutation.mutateAsync({ bookmarkId, collectionIds });
         onCollectionChange?.();
-        toast.success('Collections updated');
+        toast.success('Folders updated');
       } catch (error) {
         console.error('[CollectionSelector] assignMutation failed:', error);
-        toast.error('Failed to update collections');
+        toast.error('Failed to update folders');
       }
     } else {
-      console.log('[CollectionSelector] No changes to save or no collections selected');
+      console.log('[CollectionSelector] No changes to save or no folders selected');
     }
 
     onClose();
@@ -190,9 +190,9 @@ export function CollectionSelector({
     } catch (error: any) {
       console.error('[CollectionSelector] Create collection failed:', error);
       if (error?.message?.includes('already exists')) {
-        toast.error('A collection with this name already exists');
+        toast.error('A folder with this name already exists');
       } else {
-        toast.error('Failed to create collection');
+        toast.error('Failed to create folder');
       }
     }
   }, [newCollectionName, createMutation, toast]);
@@ -257,12 +257,12 @@ export function CollectionSelector({
           left: position.left
         }}
         role="dialog"
-        aria-label="Select collections"
+        aria-label="Select folders"
       >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-          Save to collections
+          Save to folders
         </h3>
         <button
           onClick={onClose}
@@ -273,7 +273,7 @@ export function CollectionSelector({
         </button>
       </div>
 
-      {/* Collections list */}
+      {/* Folders list */}
       <div className="max-h-64 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
@@ -281,7 +281,7 @@ export function CollectionSelector({
           </div>
         ) : collections.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-gray-500">
-            No collections yet. Create one below.
+            No folders yet. Create one below.
           </div>
         ) : (
           <ul className="py-2" role="listbox" aria-multiselectable="true">
@@ -298,7 +298,7 @@ export function CollectionSelector({
         )}
       </div>
 
-      {/* Create new collection */}
+      {/* Create new folder */}
       <div className="border-t border-gray-200 dark:border-gray-700">
         {isCreating ? (
           <div className="p-3">
@@ -316,7 +316,7 @@ export function CollectionSelector({
                     setNewCollectionName('');
                   }
                 }}
-                placeholder="Collection name"
+                placeholder="Folder name"
                 className={twMerge(
                   'flex-1 px-3 py-1.5 text-sm rounded-md',
                   'border border-gray-300 dark:border-gray-600',
@@ -360,7 +360,7 @@ export function CollectionSelector({
             )}
           >
             <Plus className="w-4 h-4" />
-            Create new collection
+            Create new folder
           </button>
         )}
       </div>
@@ -391,7 +391,7 @@ export function CollectionSelector({
 }
 
 /**
- * Individual collection item in the list.
+ * Individual folder item in the list.
  */
 interface CollectionItemProps {
   collection: BookmarkCollection;
@@ -431,7 +431,7 @@ function CollectionItem({
         {isSelected && <Check className="w-3 h-3 text-white" />}
       </div>
 
-      {/* Collection info */}
+      {/* Folder info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <Folder className="w-4 h-4 text-gray-400 flex-shrink-0" />

@@ -130,6 +130,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
                     variant="masonry"
                     allowExpansion={false}
                     cardType="media-only"
+                    onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
                   />
                 </div>
               </div>
@@ -185,6 +186,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
                 allowExpansion={true}
                 cardType="hybrid"
                 title={data.shouldShowTitle ? data.title : undefined}
+                onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
               />
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, Suspense, lazy } from 'react';
 import { Article } from '@/types';
 import { useNewsCard } from '@/hooks/useNewsCard';
 import { GridVariant } from './card/variants/GridVariant';
@@ -14,6 +14,10 @@ import { CreateNuggetModal } from './CreateNuggetModal';
 import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { useAuth } from '@/hooks/useAuth';
+import { classifyArticleMedia } from '@/utils/mediaClassifier';
+
+// Lazy-load YouTube modal for code splitting (zero impact on initial bundle)
+const YouTubeModal = lazy(() => import('./YouTubeModal').then(module => ({ default: module.YouTubeModal })));
 
 interface NewsCardProps {
   article: Article;
@@ -205,6 +209,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             isOpen={modals.showFullModal}
             onClose={() => modals.setShowFullModal(false)}
             article={originalArticle}
+            onYouTubeTimestampClick={hookResult.logic.handlers.onYouTubeTimestampClick}
           />
         )}
         <ImageLightbox
@@ -222,6 +227,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
               <ArticleDetail
                 article={originalArticle}
                 isModal={false}
+                onYouTubeTimestampClick={hookResult.logic.handlers.onYouTubeTimestampClick}
               />
             ) : undefined
           }
@@ -232,6 +238,42 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
           mode="edit"
           initialData={originalArticle}
         />
+        {/* YouTube Modal - Lazy-loaded for performance */}
+        {modals.showYouTubeModal && (() => {
+          const { primaryMedia } = classifyArticleMedia(originalArticle);
+          // Get YouTube URL from multiple sources (same logic as handleMediaClick)
+          const videoUrl = 
+            primaryMedia?.type === 'youtube' ? primaryMedia.url :
+            originalArticle.media?.type === 'youtube' ? originalArticle.media.url :
+            (originalArticle.video && (originalArticle.video.includes('youtube.com') || originalArticle.video.includes('youtu.be'))) ? originalArticle.video :
+            null;
+          const videoTitle = 
+            primaryMedia?.previewMetadata?.title || 
+            originalArticle.media?.previewMetadata?.title || 
+            originalArticle.title;
+          
+          if (!videoUrl) return null;
+          
+          return (
+            <Suspense fallback={
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90">
+                <div className="text-white">Loading video player...</div>
+              </div>
+            }>
+              <YouTubeModal
+                isOpen={modals.showYouTubeModal}
+                onClose={(e) => {
+                  e?.stopPropagation?.();
+                  modals.setShowYouTubeModal(false);
+                  modals.setYoutubeStartTime(0); // Reset timestamp when closing
+                }}
+                videoUrl={videoUrl}
+                videoTitle={videoTitle}
+                startTime={modals.youtubeStartTime || 0}
+              />
+            </Suspense>
+          );
+        })()}
       </>
     );
   }

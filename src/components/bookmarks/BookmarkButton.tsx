@@ -18,7 +18,7 @@ import { CollectionSelector } from './CollectionSelector';
  * - Single tap to save/unsave
  * - Micro-animation on click
  * - Optimistic UI updates
- * - Toast with "Change" action for collection selection
+ * - Toast with "Change" action for folder selection
  *
  * HYBRID APPROACH:
  * - Uses localStorage for instant initial state (no API call on mount)
@@ -37,9 +37,9 @@ interface BookmarkButtonProps {
 }
 
 const sizeClasses = {
-  sm: 'w-4 h-4',
-  md: 'w-5 h-5',
-  lg: 'w-6 h-6'
+  sm: 'w-3.5 h-3.5', // 14px
+  md: 'w-4 h-4',     // 16px - matches CardActions iconSize
+  lg: 'w-5 h-5'      // 20px
 };
 
 const buttonSizeClasses = {
@@ -218,9 +218,7 @@ function BookmarkButtonInner({
         onClick={handleClick}
         disabled={toggleMutation.isPending || isFetchingStatus}
         className={twMerge(
-          'inline-flex items-center gap-1.5 rounded-md transition-all duration-200',
-          'hover:bg-gray-100 dark:hover:bg-gray-800',
-          'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+          'inline-flex items-center justify-center transition-colors duration-150',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           buttonSizeClasses[size],
           isAnimating && 'scale-125',
@@ -233,20 +231,22 @@ function BookmarkButtonInner({
         <Icon
           className={twMerge(
             sizeClasses[size],
-            'transition-all duration-200',
+            'transition-colors duration-150',
             isBookmarked
-              ? 'fill-blue-500 text-blue-500'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+              ? 'text-primary-600 dark:text-primary-500'
+              : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300',
             isAnimating && 'scale-110'
           )}
+          fill="none"
+          strokeWidth={1.5}
         />
         {showLabel && (
           <span
             className={twMerge(
               'text-sm font-medium',
               isBookmarked
-                ? 'text-blue-500'
-                : 'text-gray-600 dark:text-gray-300'
+                ? 'text-primary-600 dark:text-primary-500'
+                : 'text-slate-600 dark:text-slate-300'
             )}
           >
             {isBookmarked ? 'Saved' : 'Save'}
@@ -289,7 +289,7 @@ export const BookmarkButton = memo(BookmarkButtonInner);
  * BookmarkMenu Component
  *
  * Mini-menu shown when clicking on an already-bookmarked item.
- * Options: Remove bookmark, Change collection
+ * Options: Remove bookmark, Change folder
  */
 interface BookmarkMenuProps {
   isOpen: boolean;
@@ -412,7 +412,7 @@ function BookmarkMenu({
         role="menu"
         aria-label="Bookmark options"
       >
-        {/* Change Collection option */}
+        {/* Change Folder option */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -433,7 +433,7 @@ function BookmarkMenu({
           ) : (
             <FolderOpen className="w-4 h-4 text-gray-500 dark:text-gray-400" />
           )}
-          <span>Change Collection</span>
+          <span>Change Folder</span>
         </button>
 
         {/* Divider */}
@@ -507,9 +507,7 @@ function ControlledBookmarkButtonInner({
       onClick={handleClick}
       disabled={isLoading}
       className={twMerge(
-        'inline-flex items-center gap-1.5 rounded-md transition-all duration-200',
-        'hover:bg-gray-100 dark:hover:bg-gray-800',
-        'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+        'inline-flex items-center justify-center transition-colors duration-150',
         'disabled:opacity-50 disabled:cursor-not-allowed',
         buttonSizeClasses[size],
         isAnimating && 'scale-125',
@@ -521,20 +519,22 @@ function ControlledBookmarkButtonInner({
       <Icon
         className={twMerge(
           sizeClasses[size],
-          'transition-all duration-200',
+          'transition-colors duration-150',
           isBookmarked
-            ? 'fill-blue-500 text-blue-500'
-            : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+            ? 'text-primary-600 dark:text-primary-500'
+            : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300',
           isAnimating && 'scale-110'
         )}
+        fill="none"
+        strokeWidth={1.5}
       />
       {showLabel && (
         <span
           className={twMerge(
             'text-sm font-medium',
             isBookmarked
-              ? 'text-blue-500'
-              : 'text-gray-600 dark:text-gray-300'
+              ? 'text-primary-600 dark:text-primary-500'
+              : 'text-slate-600 dark:text-slate-300'
           )}
         >
           {isBookmarked ? 'Saved' : 'Save'}

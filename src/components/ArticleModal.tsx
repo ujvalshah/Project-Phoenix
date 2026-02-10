@@ -7,12 +7,14 @@ interface ArticleModalProps {
   isOpen: boolean;
   onClose: () => void;
   article: Article;
+  onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
 }
 
 export const ArticleModal: React.FC<ArticleModalProps> = ({ 
   isOpen, 
   onClose, 
-  article: initialArticle
+  article: initialArticle,
+  onYouTubeTimestampClick,
 }) => {
   const [article, setArticle] = useState(initialArticle);
 
@@ -75,6 +77,7 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({
               article={article} 
               isModal={true} 
               onClose={onClose}
+              onYouTubeTimestampClick={onYouTubeTimestampClick}
             />
         </div>
       </div>

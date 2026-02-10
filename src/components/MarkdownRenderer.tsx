@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
+import { isYouTubeTimestampLink, extractYouTubeVideoIdAndTimestamp } from '@/utils/youtubeUtils';
 
 interface MarkdownRendererProps {
   content: string;
@@ -10,6 +11,8 @@ interface MarkdownRendererProps {
   onTagClick?: (tag: string) => void;
   /** Whether to apply prose styling (for drawer/full view) */
   prose?: boolean;
+  /** Called when a YouTube timestamp link is clicked (videoId, timestamp in seconds) */
+  onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
 }
 
 /**
@@ -26,6 +29,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   className = '',
   onTagClick,
   prose = false,
+  onYouTubeTimestampClick,
 }) => {
   // Memoize components to avoid recreating on each render
   const components: Components = useMemo(() => ({
@@ -164,20 +168,80 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     ),
   }), []);
 
-  // Process hashtags in content before rendering
+  // Process hashtags and YouTube timestamps in content before rendering
   const processedContent = useMemo(() => {
     if (!content) return '';
+    
+    let processed = content;
     
     // Convert hashtags to clickable links (if onTagClick is provided)
     // Match #word patterns but not inside markdown links
     if (onTagClick) {
-      return content.replace(
+      processed = processed.replace(
         /(^|\s)(#[a-zA-Z0-9_]+)/g,
         (_, prefix, tag) => `${prefix}[${tag}](hashtag:${tag.slice(1)})`
       );
     }
-    return content;
-  }, [content, onTagClick]);
+    
+    // Convert plain text YouTube timestamps to clickable links
+    // Pattern: (MM:SS) or (H:MM:SS) - matches timestamps in parentheses
+    // Only convert if onYouTubeTimestampClick is provided
+    if (onYouTubeTimestampClick) {
+      if (import.meta.env.DEV) {
+        console.log('[MarkdownRenderer] Processing content for timestamps:', {
+          contentLength: processed.length,
+          hasTimestampPattern: /\(\d{2}:\d{2}\)/.test(processed),
+        });
+      }
+      
+      // Match timestamps like (00:36), (05:20), (1:23:45)
+      // Use two separate patterns for clarity
+      
+      // Pattern 1: (H:MM:SS) format - 3 parts with colons
+      const beforePattern1 = processed;
+      processed = processed.replace(
+        /(^|[^[])\s*\((\d{1,2}):(\d{2}):(\d{2})\)/g,
+        (match, prefix, hours, minutes, seconds) => {
+          const totalSeconds = parseInt(hours, 10) * 3600 + parseInt(minutes, 10) * 60 + parseInt(seconds, 10);
+          if (import.meta.env.DEV) {
+            console.log('[MarkdownRenderer] Pattern 1 match:', { match, hours, minutes, seconds, totalSeconds });
+          }
+          if (totalSeconds > 0) {
+            return `${prefix}[${match.trim()}](${`youtube-timestamp:${totalSeconds}`})`;
+          }
+          return match;
+        }
+      );
+      
+      // Pattern 2: (MM:SS) format - 2 parts, both 2 digits (most common)
+      processed = processed.replace(
+        /(^|[^[])\s*\((\d{2}):(\d{2})\)/g,
+        (match, prefix, minutes, seconds) => {
+          // Check if this was already converted by pattern 1 (avoid double conversion)
+          if (match.includes('youtube-timestamp:')) {
+            return match;
+          }
+          const totalSeconds = parseInt(minutes, 10) * 60 + parseInt(seconds, 10);
+          if (import.meta.env.DEV) {
+            console.log('[MarkdownRenderer] Pattern 2 match:', { match, minutes, seconds, totalSeconds });
+          }
+          if (totalSeconds > 0) {
+            return `${prefix}[${match.trim()}](${`youtube-timestamp:${totalSeconds}`})`;
+          }
+          return match;
+        }
+      );
+      
+      if (import.meta.env.DEV && beforePattern1 !== processed) {
+        console.log('[MarkdownRenderer] Content after timestamp processing:', {
+          original: beforePattern1.substring(0, 200),
+          processed: processed.substring(0, 200),
+        });
+      }
+    }
+    
+    return processed;
+  }, [content, onTagClick, onYouTubeTimestampClick]);
 
   // Custom link handler for hashtags
   const handleLinkClick = useMemo(() => {
@@ -193,14 +257,16 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     };
   }, [onTagClick]);
 
-  // Override link component if we have hashtag handling
+  // Override link component if we have hashtag or YouTube timestamp handling
   const finalComponents = useMemo(() => {
-    if (!onTagClick) return components;
+    const hasCustomHandlers = onTagClick || onYouTubeTimestampClick;
+    if (!hasCustomHandlers) return components;
     
     return {
       ...components,
       a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-        if (href?.startsWith('hashtag:')) {
+        // Handle hashtags
+        if (href?.startsWith('hashtag:') && onTagClick) {
           return (
             <span
               onClick={(e) => {
@@ -213,6 +279,71 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             </span>
           );
         }
+        
+        // Handle plain text timestamp links (converted from "(MM:SS)" format)
+        if (href?.startsWith('youtube-timestamp:') && onYouTubeTimestampClick) {
+          const timestamp = parseInt(href.slice('youtube-timestamp:'.length), 10);
+          if (import.meta.env.DEV) {
+            console.log('[MarkdownRenderer] Plain text timestamp link detected:', {
+              href,
+              timestamp,
+              isValid: !isNaN(timestamp) && timestamp > 0,
+              children: typeof children === 'string' ? children : 'ReactNode',
+            });
+          }
+          if (!isNaN(timestamp) && timestamp > 0) {
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (import.meta.env.DEV) {
+                    console.log('[MarkdownRenderer] Plain text timestamp clicked:', { timestamp });
+                  }
+                  // Pass empty videoId - handler will get it from article context
+                  onYouTubeTimestampClick('', timestamp, '');
+                }}
+                className="text-primary-600 dark:text-primary-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+              >
+                {children}
+              </button>
+            );
+          }
+        }
+        
+        // Handle YouTube timestamp links (actual YouTube URLs with timestamp parameter)
+        if (href && isYouTubeTimestampLink(href) && onYouTubeTimestampClick) {
+          const { videoId, timestamp } = extractYouTubeVideoIdAndTimestamp(href);
+          if (import.meta.env.DEV) {
+            console.log('[MarkdownRenderer] YouTube timestamp link detected:', {
+              href,
+              videoId,
+              timestamp,
+              children: typeof children === 'string' ? children : 'ReactNode',
+            });
+          }
+          if (videoId && timestamp !== null) {
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (import.meta.env.DEV) {
+                    console.log('[MarkdownRenderer] Timestamp clicked:', { videoId, timestamp, href });
+                  }
+                  onYouTubeTimestampClick(videoId, timestamp, href);
+                }}
+                className="text-primary-600 dark:text-primary-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+              >
+                {children}
+              </button>
+            );
+          }
+        }
+        
+        // Regular link behavior
         return (
           <a
             href={href}
@@ -226,7 +357,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         );
       },
     };
-  }, [components, onTagClick]);
+  }, [components, onTagClick, onYouTubeTimestampClick]);
 
   if (!content) return null;
 

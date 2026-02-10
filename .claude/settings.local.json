@@ -31,7 +31,9 @@
       "Bash(node --import tsx:*)",
       "Bash(git grep:*)",
       "Bash(node -e:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(npm run lint)",
+      "Bash(git restore:*)"
     ]
   }
 }

@@ -68,6 +68,7 @@ interface ArticleDetailProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onToggleVisibility?: () => void;
+  onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
 }
 
 export const ArticleDetail: React.FC<ArticleDetailProps> = ({ 
@@ -78,6 +79,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   onEdit,
   onDelete,
   onToggleVisibility,
+  onYouTubeTimestampClick,
 }) => {
   // Early return if article is not available
   if (!article) {
@@ -302,7 +304,10 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                   This ensures GitHub-style markdown (links, tables, inline formatting) renders
                   identically to the card preview. */}
               <div className="nugget-content text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  <MarkdownRenderer content={article?.content ?? article?.excerpt ?? ''} />
+                  <MarkdownRenderer 
+                    content={article?.content ?? article?.excerpt ?? ''} 
+                    onYouTubeTimestampClick={onYouTubeTimestampClick}
+                  />
               </div>
 
                {/* Primary Media Embed */}
