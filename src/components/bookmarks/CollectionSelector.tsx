@@ -28,18 +28,19 @@ interface CollectionSelectorProps {
   isOpen: boolean;
   onClose: () => void;
   onCollectionChange?: () => void;
-  anchorRef?: React.RefObject<HTMLElement>;
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function CollectionSelector({
   bookmarkId,
-  itemId,
+  itemId: _itemId,
   currentCollectionIds = [],
   isOpen,
   onClose,
   onCollectionChange,
   anchorRef
 }: CollectionSelectorProps) {
+  // Note: itemId is kept for potential future use (e.g., syncing with localStorage)
   const toast = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +60,7 @@ export function CollectionSelector({
 
   // Sync selected IDs when currentCollectionIds changes
   useEffect(() => {
+    console.log('[CollectionSelector] currentCollectionIds changed, resetting selectedIds to:', currentCollectionIds);
     setSelectedIds(new Set(currentCollectionIds));
   }, [currentCollectionIds]);
 
@@ -119,20 +121,33 @@ export function CollectionSelector({
   const handleSave = useCallback(async () => {
     const collectionIds = Array.from(selectedIds);
 
+    // Debug logging
+    console.log('[CollectionSelector] handleSave called', {
+      selectedIds: collectionIds,
+      currentCollectionIds,
+      bookmarkId
+    });
+
     // Only save if there are changes
     const currentSet = new Set(currentCollectionIds);
     const hasChanges =
       selectedIds.size !== currentSet.size ||
       [...selectedIds].some((id) => !currentSet.has(id));
 
+    console.log('[CollectionSelector] hasChanges:', hasChanges, 'collectionIds.length:', collectionIds.length);
+
     if (hasChanges && collectionIds.length > 0) {
       try {
+        console.log('[CollectionSelector] Calling assignMutation with:', { bookmarkId, collectionIds });
         await assignMutation.mutateAsync({ bookmarkId, collectionIds });
         onCollectionChange?.();
         toast.success('Collections updated');
       } catch (error) {
+        console.error('[CollectionSelector] assignMutation failed:', error);
         toast.error('Failed to update collections');
       }
+    } else {
+      console.log('[CollectionSelector] No changes to save or no collections selected');
     }
 
     onClose();
@@ -151,13 +166,21 @@ export function CollectionSelector({
     if (!name) return;
 
     try {
+      console.log('[CollectionSelector] Creating collection:', name);
       const newCollection = await createMutation.mutateAsync({
         name,
         description: ''
       });
 
+      console.log('[CollectionSelector] Collection created:', newCollection);
+      console.log('[CollectionSelector] New collection ID:', newCollection.id);
+
       // Add to selected
-      setSelectedIds((prev) => new Set([...prev, newCollection.id]));
+      setSelectedIds((prev) => {
+        const next = new Set([...prev, newCollection.id]);
+        console.log('[CollectionSelector] Updated selectedIds:', Array.from(next));
+        return next;
+      });
 
       // Reset form
       setNewCollectionName('');
@@ -165,6 +188,7 @@ export function CollectionSelector({
 
       toast.success(`Created "${name}"`);
     } catch (error: any) {
+      console.error('[CollectionSelector] Create collection failed:', error);
       if (error?.message?.includes('already exists')) {
         toast.error('A collection with this name already exists');
       } else {

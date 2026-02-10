@@ -73,6 +73,18 @@ export async function getAdminStats(req: Request, res: Response) {
     // Article (nugget) stats
     Article.aggregate([
       {
+        $project: {
+          visibility: 1,
+          publishedAtDate: {
+            $cond: [
+              { $ne: ['$publishedAt', null] },
+              { $dateFromString: { dateString: '$publishedAt', onError: null, onNull: null } },
+              null
+            ]
+          }
+        }
+      },
+      {
         $group: {
           _id: null,
           total: { $sum: 1 },
@@ -81,6 +93,20 @@ export async function getAdminStats(req: Request, res: Response) {
           },
           private: {
             $sum: { $cond: [{ $eq: ['$visibility', 'private'] }, 1, 0] }
+          },
+          createdToday: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$publishedAtDate', null] },
+                    { $gte: ['$publishedAtDate', startOfToday] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
           }
         }
       }
@@ -110,7 +136,7 @@ export async function getAdminStats(req: Request, res: Response) {
   ]);
 
   const userStatsRaw = userAgg[0] || { total: 0, admins: 0, newToday: 0 };
-  const articleStatsRaw = articleAgg[0] || { total: 0, public: 0, private: 0 };
+  const articleStatsRaw = articleAgg[0] || { total: 0, public: 0, private: 0, createdToday: 0 };
   const flaggedNuggets = flaggedNuggetsAgg[0]?.flagged || 0;
 
   // Moderation stats already in correct format from getModerationStats()
@@ -136,6 +162,7 @@ export async function getAdminStats(req: Request, res: Response) {
       total: articleStatsRaw.total || 0,
       public: articleStatsRaw.public || 0,
       private: articleStatsRaw.private || 0,
+      createdToday: articleStatsRaw.createdToday || 0,
       flagged: flaggedNuggets,
       pendingModeration: moderationStats.open || 0
     },

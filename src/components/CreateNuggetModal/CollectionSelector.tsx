@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Globe, Lock, Check } from 'lucide-react';
 import { SelectableDropdown, SelectableDropdownOption } from './SelectableDropdown';
 import { Collection } from '@/types';
@@ -27,12 +27,18 @@ export function CollectionSelector({
   listboxRef,
 }: CollectionSelectorProps) {
   const [searchValue, setSearchValue] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const toast = useToast();
+
+  // Track pending creations to prevent duplicate API calls
+  const pendingCreationsRef = useRef<Set<string>>(new Set());
 
   const visibleCollections = availableCollections.filter(c => c.type === visibility);
 
+  // Use collection ID for proper tracking, but still display name
+  // Note: Using name as ID for backward compatibility with selection logic
   const collectionOptions: SelectableDropdownOption[] = visibleCollections.map(col => ({
-    id: col.name,
+    id: col.name, // Keep using name for now to maintain compatibility
     label: col.name,
   }));
 
@@ -44,25 +50,27 @@ export function CollectionSelector({
     return selected.some(selectedName => selectedName.toLowerCase().trim() === normalizedName);
   };
 
-  const handleSelect = (optionId: string) => {
+  const handleSelect = useCallback((optionId: string) => {
     // Case-insensitive duplicate check
     if (!isDuplicate(optionId)) {
       onSelectedChange([...selected, optionId]);
     }
     setSearchValue('');
-  };
+  }, [selected, onSelectedChange]);
 
-  const handleDeselect = (optionId: string) => {
-    onSelectedChange(selected.filter(id => id !== optionId));
-  };
+  const handleDeselect = useCallback((optionId: string) => {
+    // Case-insensitive removal
+    const normalizedId = optionId.toLowerCase().trim();
+    onSelectedChange(selected.filter(id => id.toLowerCase().trim() !== normalizedId));
+  }, [selected, onSelectedChange]);
 
-  const handleCreateNew = async (searchValue: string) => {
+  const handleCreateNew = useCallback(async (searchValueInput: string) => {
     // Trim and validate: ignore empty or 1-char values
-    const trimmed = searchValue.trim();
+    const trimmed = searchValueInput.trim();
     if (!trimmed || trimmed.length <= 1) {
       return;
     }
-    
+
     // Case-insensitive duplicate check
     if (isDuplicate(trimmed)) {
       return;
@@ -74,6 +82,17 @@ export function CollectionSelector({
       return;
     }
 
+    // Prevent duplicate API calls
+    const normalizedName = trimmed.toLowerCase();
+    if (pendingCreationsRef.current.has(normalizedName)) {
+      return;
+    }
+
+    // Prevent double creation
+    if (isCreating) return;
+    setIsCreating(true);
+    pendingCreationsRef.current.add(normalizedName);
+
     try {
       // Create the collection via API
       const newCollection = await storageService.createCollection(
@@ -83,7 +102,7 @@ export function CollectionSelector({
         visibility
       );
 
-      // Optimistically add to available collections immediately
+      // Add to available collections (single update, no double refresh)
       // Normalize by ID to prevent duplicates
       const existingIds = new Set(availableCollections.map(c => c.id));
       if (!existingIds.has(newCollection.id)) {
@@ -93,61 +112,44 @@ export function CollectionSelector({
 
       // Add to selected collections (auto-select the newly created collection)
       onSelectedChange([...selected, trimmed]);
-      
-      // Refetch collections of the current visibility type to sync with backend
-      // This ensures we have the latest data from the server
-      try {
-        const refreshedCollections = await storageService.getCollections({ type: visibility });
-        
-        // Merge strategy: Keep collections of OTHER types, replace collections of CURRENT type with refreshed
-        const otherTypeCollections = availableCollections.filter(c => (c.type || 'public') !== visibility);
-        const mergedCollections = [...otherTypeCollections, ...refreshedCollections];
-        
-        // Normalize by ID to remove any duplicates (defensive)
-        const collectionsMap = new Map<string, Collection>();
-        mergedCollections.forEach(c => {
-          if (!collectionsMap.has(c.id)) {
-            collectionsMap.set(c.id, c);
-          }
-        });
-        
-        onAvailableCollectionsChange?.(Array.from(collectionsMap.values()));
-      } catch (refetchError) {
-        // If refetch fails, the optimistic update is still in place
-        // Just log the error - the collection was created successfully
-        console.warn('Failed to refetch collections after creation:', refetchError);
-      }
-      
-      setSearchValue('');
-    } catch (error: any) {
-      console.error('Failed to create collection:', error);
-      toast.error(error?.message || 'Failed to create collection');
-    }
-  };
 
-  const filterOptions = (options: SelectableDropdownOption[], search: string): SelectableDropdownOption[] => {
+      // Note: Removed the double refetch that was causing flicker
+      // The optimistic update above is sufficient
+      // If we need fresh data, it should be handled at a higher level (React Query)
+
+      setSearchValue('');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create collection';
+      toast.error(errorMessage);
+    } finally {
+      setIsCreating(false);
+      pendingCreationsRef.current.delete(normalizedName);
+    }
+  }, [selected, availableCollections, visibility, currentUserId, isCreating, onSelectedChange, onAvailableCollectionsChange, toast]);
+
+  const filterOptions = useCallback((options: SelectableDropdownOption[], search: string): SelectableDropdownOption[] => {
     return options.filter(opt =>
       opt.label && typeof opt.label === 'string' && opt.label.toLowerCase().includes(search.toLowerCase())
     );
-  };
+  }, []);
 
-  const canCreateNew = (search: string, options: SelectableDropdownOption[]): boolean => {
+  const canCreateNew = useCallback((search: string, options: SelectableDropdownOption[]): boolean => {
     // Never auto-create on empty string or 1-char values
     const trimmed = search.trim();
     if (!trimmed || trimmed.length <= 1) return false;
-    
+
     // Check against both options and selected items (case-insensitive)
     const existsInOptions = options.some(opt =>
       opt.label && typeof opt.label === 'string' && opt.label.toLowerCase().trim() === trimmed.toLowerCase().trim()
     );
     const existsInSelected = isDuplicate(trimmed);
-    
+
     return !existsInOptions && !existsInSelected;
-  };
+  }, [selected]); // Re-compute when selected changes
 
   const label = visibility === 'public' ? 'Community Collection' : 'Private Collection';
-  const placeholder = visibility === 'public' 
-    ? 'Find or create community collection...' 
+  const placeholder = visibility === 'public'
+    ? 'Find or create community collection...'
     : 'Find or create private collection...';
   const helperText = visibility === 'public'
     ? 'Create or Add your nugget to a Community Collection'
@@ -155,13 +157,10 @@ export function CollectionSelector({
   const emptyPlaceholder = visibility === 'public'
     ? 'Add to community collection'
     : 'Add to your private collection';
-  const createText = visibility === 'public'
-    ? 'Create community collection'
-    : 'Create private collection';
 
   return (
     <SelectableDropdown
-      id="collections-combobox"
+      id={`collections-combobox-${visibility}`}
       label={label}
       selected={selected}
       options={collectionOptions}
@@ -173,6 +172,7 @@ export function CollectionSelector({
       placeholder={placeholder}
       helperText={helperText}
       emptyPlaceholder={emptyPlaceholder}
+      isLoading={isCreating}
       filterOptions={filterOptions}
       canCreateNew={canCreateNew}
       comboboxRef={comboboxRef}

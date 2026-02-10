@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Check } from 'lucide-react';
 import { SelectableDropdown, SelectableDropdownOption } from './SelectableDropdown';
 import { normalizeCategoryLabel } from '@/utils/formatters';
@@ -31,6 +31,10 @@ export function TagSelector({
   listboxRef,
 }: TagSelectorProps) {
   const [searchValue, setSearchValue] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Track pending API calls to prevent race conditions
+  const pendingCreationsRef = useRef<Set<string>>(new Set());
 
   const validateTags = (): string | null => {
     if (selected.length === 0) {
@@ -60,33 +64,54 @@ export function TagSelector({
     return selected.some(selectedTag => selectedTag.toLowerCase().trim() === normalizedTag);
   };
 
-  const handleSelect = async (optionId: string) => {
+  const handleSelect = useCallback(async (optionId: string) => {
     const normalized = normalizeCategoryLabel(optionId);
-    if (normalized) {
-      const cleanCat = normalized.replace(/^#/, '');
-      // Case-insensitive duplicate check
-      if (!isDuplicate(cleanCat)) {
-        onSelectedChange([...selected, cleanCat]);
-        setSearchValue('');
-        if (!touched) onTouchedChange(true);
-        // Clear error immediately when tag is added
-        if (error) {
-          const newError = validateTags();
-          onErrorChange(newError);
-        }
-        // CATEGORY PHASE-OUT: Add to available tags if missing (case-insensitive check)
-        const tagExists = availableCategories.some(
-          tag => tag.toLowerCase().trim() === cleanCat.toLowerCase().trim()
-        );
-        if (!tagExists) {
-          await storageService.addCategory(cleanCat); // Method name kept for backward compatibility but creates tags
-          onAvailableCategoriesChange([...availableCategories, cleanCat].sort());
-        }
+    if (!normalized) return;
+
+    const cleanCat = normalized.replace(/^#/, '');
+
+    // Case-insensitive duplicate check
+    if (isDuplicate(cleanCat)) return;
+
+    // Optimistically update UI immediately
+    onSelectedChange([...selected, cleanCat]);
+    setSearchValue('');
+    if (!touched) onTouchedChange(true);
+
+    // Clear error immediately when tag is added
+    if (error) {
+      const newError = validateTags();
+      onErrorChange(newError);
+    }
+
+    // CATEGORY PHASE-OUT: Add to available tags if missing (case-insensitive check)
+    const tagExists = availableCategories.some(
+      tag => tag.toLowerCase().trim() === cleanCat.toLowerCase().trim()
+    );
+
+    if (!tagExists) {
+      // Prevent duplicate API calls for the same tag
+      if (pendingCreationsRef.current.has(cleanCat.toLowerCase())) {
+        return;
+      }
+
+      pendingCreationsRef.current.add(cleanCat.toLowerCase());
+
+      try {
+        // Method name kept for backward compatibility but creates tags
+        await storageService.addCategory(cleanCat);
+        onAvailableCategoriesChange([...availableCategories, cleanCat].sort());
+      } catch (err) {
+        // Log error but don't remove from selection (optimistic update stays)
+        // Tag is already in local state, user can still use it
+        console.error('[TagSelector] Failed to persist tag to backend:', err);
+      } finally {
+        pendingCreationsRef.current.delete(cleanCat.toLowerCase());
       }
     }
-  };
+  }, [selected, availableCategories, touched, error, onSelectedChange, onTouchedChange, onErrorChange, onAvailableCategoriesChange]);
 
-  const handleDeselect = (optionId: string) => {
+  const handleDeselect = useCallback((optionId: string) => {
     // Use case-insensitive removal to handle rawName casing differences
     onSelectedChange(removeTag(selected, optionId));
     if (!touched) onTouchedChange(true);
@@ -95,57 +120,68 @@ export function TagSelector({
       const newError = validateTags();
       onErrorChange(newError);
     }
-  };
+  }, [selected, touched, onSelectedChange, onTouchedChange, onErrorChange]);
 
-  const handleCreateNew = async (searchValue: string) => {
+  const handleCreateNew = useCallback(async (searchValueInput: string) => {
     // Trim and validate: ignore empty or 1-char values
-    const trimmed = searchValue.trim();
+    const trimmed = searchValueInput.trim();
     if (!trimmed || trimmed.length <= 1) {
       return;
     }
-    
-    // Normalize the input
-    const normalized = normalizeCategoryLabel(trimmed);
-    if (normalized) {
-      const cleanCat = normalized.replace(/^#/, '');
-      // Case-insensitive duplicate check
-      if (!isDuplicate(cleanCat)) {
-        await handleSelect(cleanCat);
-      }
-    }
-  };
 
-  const filterOptions = (options: SelectableDropdownOption[], search: string): SelectableDropdownOption[] => {
-    return options.filter(opt => 
-      typeof opt.label === 'string' && 
-      opt.label.trim() !== '' && 
+    // Prevent double-creation if already creating
+    if (isCreating) return;
+    setIsCreating(true);
+
+    try {
+      // Normalize the input
+      const normalized = normalizeCategoryLabel(trimmed);
+      if (normalized) {
+        const cleanCat = normalized.replace(/^#/, '');
+        // Case-insensitive duplicate check
+        if (!isDuplicate(cleanCat)) {
+          await handleSelect(cleanCat);
+        }
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  }, [isCreating, handleSelect]);
+
+  const filterOptions = useCallback((options: SelectableDropdownOption[], search: string): SelectableDropdownOption[] => {
+    return options.filter(opt =>
+      typeof opt.label === 'string' &&
+      opt.label.trim() !== '' &&
       opt.label.toLowerCase().includes(search.toLowerCase())
     );
-  };
+  }, []);
 
-  const canCreateNew = (search: string, options: SelectableDropdownOption[]): boolean => {
+  const canCreateNew = useCallback((search: string, options: SelectableDropdownOption[]): boolean => {
     // Never auto-create on empty string or 1-char values
     const trimmed = search.trim();
     if (!trimmed || trimmed.length <= 1) return false;
-    
+
     const normalized = normalizeCategoryLabel(trimmed);
     if (!normalized) return false;
     const cleanCat = normalized.replace(/^#/, '');
-    
+
     // Check against both options and selected items (case-insensitive)
     const existsInOptions = options.some(opt =>
       opt.label && typeof opt.label === 'string' && opt.label.toLowerCase().trim() === cleanCat.toLowerCase().trim()
     );
     const existsInSelected = isDuplicate(cleanCat);
-    
-    return !existsInOptions && !existsInSelected;
-  };
 
-  const handleBlur = () => {
+    return !existsInOptions && !existsInSelected;
+  }, [selected]); // Re-compute when selected changes
+
+  const handleBlur = useCallback(() => {
     if (!touched) onTouchedChange(true);
     const newError = validateTags();
     onErrorChange(newError);
-  };
+  }, [touched, onTouchedChange, onErrorChange]);
+
+  // Format tag labels with # prefix for display in badges
+  const formatTagLabel = useCallback((label: string) => `#${label}`, []);
 
   return (
     <SelectableDropdown
@@ -166,6 +202,8 @@ export function TagSelector({
       onBlur={handleBlur}
       touched={touched}
       emptyPlaceholder="Add tags (required)..."
+      isLoading={isCreating}
+      formatSelectedLabel={formatTagLabel}
       renderOption={(option, isSelected) => (
         <>
           <span>#{option.label}</span>

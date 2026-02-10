@@ -1,9 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { ChevronDown, Check, Loader2 } from 'lucide-react';
 import { Badge } from '../UI/Badge';
 import { tagsInclude } from '@/utils/tagUtils';
 
 export interface SelectableDropdownOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Stored selection item - preserves label even if options change
+ * This prevents selected items from disappearing when options reload
+ */
+export interface StoredSelection {
   id: string;
   label: string;
 }
@@ -35,6 +44,10 @@ export interface SelectableDropdownProps<T extends SelectableDropdownOption> {
   className?: string;
   icon?: React.ReactNode;
   onBlur?: () => void;
+  /** Show loading spinner in dropdown */
+  isLoading?: boolean;
+  /** Custom label format for selected badges (e.g., add # prefix for tags) */
+  formatSelectedLabel?: (label: string) => string;
 }
 
 export function SelectableDropdown<T extends SelectableDropdownOption>({
@@ -64,6 +77,8 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
   className = "",
   icon,
   onBlur: externalOnBlur,
+  isLoading = false,
+  formatSelectedLabel,
 }: SelectableDropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
@@ -72,6 +87,36 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
   const inputRef = useRef<HTMLInputElement>(null);
   const comboboxRef = externalComboboxRef || internalComboboxRef;
   const listboxRef = externalListboxRef || internalListboxRef;
+
+  // Track blur timeout for cleanup
+  const blurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  /**
+   * Cache of selected item labels - prevents items from disappearing
+   * when options array changes or is loading.
+   * Maps ID -> label for quick lookup
+   */
+  const selectedLabelsCache = useRef<Map<string, string>>(new Map());
+
+  // Update cache whenever options or selected change
+  useEffect(() => {
+    selected.forEach(id => {
+      // Only update cache if we find a matching option
+      const option = options.find(opt => getOptionId(opt) === id);
+      if (option) {
+        selectedLabelsCache.current.set(id, getOptionLabel(option));
+      }
+    });
+  }, [options, selected, getOptionId, getOptionLabel]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const filteredOptions = filterOptions
     ? filterOptions(options, searchValue)
@@ -200,18 +245,47 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
     }
   };
 
-  const handleBlur = () => {
-    // Delay to allow click events to fire
-    setTimeout(() => {
-      if (!listboxRef.current?.contains(document.activeElement)) {
+  /**
+   * Handles blur events with improved focus tracking.
+   * Uses relatedTarget to check if focus is moving within the component,
+   * with a fallback timeout for browsers that don't support relatedTarget.
+   */
+  const handleBlur = useCallback((e?: React.FocusEvent) => {
+    // Clear any existing timeout to prevent race conditions
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+
+    // Check relatedTarget to see if focus is moving within the component
+    const relatedTarget = e?.relatedTarget as HTMLElement | null;
+    const isMovingWithinDropdown =
+      listboxRef.current?.contains(relatedTarget) ||
+      comboboxRef.current?.contains(relatedTarget);
+
+    if (isMovingWithinDropdown) {
+      // Focus is staying within the component, don't close
+      return;
+    }
+
+    // Use a short timeout as a safety net for edge cases
+    // (some browsers don't properly set relatedTarget)
+    blurTimeoutRef.current = setTimeout(() => {
+      // Double-check that focus has actually left the component
+      const activeElement = document.activeElement;
+      const isStillInDropdown =
+        listboxRef.current?.contains(activeElement) ||
+        comboboxRef.current?.contains(activeElement);
+
+      if (!isStillInDropdown) {
         setIsOpen(false);
         setFocusedIndex(-1);
         if (externalOnBlur) {
           externalOnBlur();
         }
       }
-    }, 200);
-  };
+    }, 50); // Reduced from 200ms to 50ms - just enough for event propagation
+  }, [externalOnBlur, listboxRef, comboboxRef]);
 
   return (
     <div className={`relative group space-y-1.5 ${className}`}>
@@ -246,16 +320,37 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
         
         <div className="flex-1 flex flex-nowrap gap-1.5 items-center overflow-x-auto custom-scrollbar no-scrollbar-visual">
           {selected.length > 0 ? (
-            selected.map(id => {
-              const option = options.find(opt => getOptionId(opt) === id);
-              return option ? (
+            selected.map(selectedId => {
+              // First try to get label from current options
+              const option = options.find(opt => getOptionId(opt) === selectedId);
+              let displayLabel: string;
+
+              if (option) {
+                // Found in options - use and update cache
+                displayLabel = getOptionLabel(option);
+                selectedLabelsCache.current.set(selectedId, displayLabel);
+              } else if (selectedLabelsCache.current.has(selectedId)) {
+                // Not in options but cached - use cached label
+                // This prevents items from disappearing during loading
+                displayLabel = selectedLabelsCache.current.get(selectedId)!;
+              } else {
+                // Fallback: use the ID itself as label (better than disappearing)
+                displayLabel = selectedId;
+              }
+
+              // Apply custom label formatting if provided (e.g., # prefix for tags)
+              const formattedLabel = formatSelectedLabel
+                ? formatSelectedLabel(displayLabel)
+                : displayLabel;
+
+              return (
                 <Badge
-                  key={id}
-                  label={getOptionLabel(option)}
+                  key={selectedId}
+                  label={formattedLabel}
                   variant="primary"
-                  onRemove={() => onDeselect(id)}
+                  onRemove={() => onDeselect(selectedId)}
                 />
-              ) : null;
+              );
             })
           ) : (
             <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{emptyPlaceholder}</span>
@@ -291,7 +386,16 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
           aria-label={label}
           className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 p-2 z-30"
         >
-          <div className="fixed inset-0 -z-10" onClick={() => { setIsOpen(false); setFocusedIndex(-1); }} />
+          {/* Backdrop to close dropdown when clicking outside */}
+          <div
+            className="fixed inset-0 z-[-1]"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+              setFocusedIndex(-1);
+            }}
+            aria-hidden="true"
+          />
           <input
             ref={inputRef}
             autoFocus
@@ -319,7 +423,23 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
             aria-controls={`${id}-listbox`}
           />
           <div className="max-h-32 overflow-y-auto custom-scrollbar flex flex-col gap-1">
-            {filteredOptions.map((option, idx) => {
+            {/* Loading state */}
+            {isLoading && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 size={16} className="animate-spin text-slate-400" />
+                <span className="ml-2 text-xs text-slate-500">Loading...</span>
+              </div>
+            )}
+
+            {/* Empty state (not loading, no options) */}
+            {!isLoading && filteredOptions.length === 0 && !showCreateOption && (
+              <div className="text-center py-4 text-xs text-slate-500">
+                {searchValue ? 'No matches found' : 'No options available'}
+              </div>
+            )}
+
+            {/* Options list */}
+            {!isLoading && filteredOptions.map((option, idx) => {
               const optionId = getOptionId(option);
               // Use case-insensitive comparison for tag matching
               const isSelected = tagsInclude(selected, optionId);
@@ -363,7 +483,8 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
               );
             })}
             
-            {showCreateOption && onCreateNew && (
+            {/* Create new option - don't show during loading */}
+            {!isLoading && showCreateOption && onCreateNew && (
               <button
                 role="option"
                 aria-selected={false}

@@ -39,6 +39,7 @@ import { normalizeTags } from '@/shared/articleNormalization/normalizeTags';
 import { useImageManager } from '@/hooks/useImageManager';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
+import { useTags, useAllCollections, nuggetFormKeys } from '@/hooks/useNuggetFormData';
 
 interface CreateNuggetModalProps {
   isOpen: boolean;
@@ -159,10 +160,37 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // Explicitly deleted images tracked by useImageManager hook (Phase 9: Legacy code removed)
   const explicitlyDeletedImages = imageManager.explicitlyDeletedUrls;
   
-  // Data Source State
+  // Data Source State - Now using React Query for caching and automatic refetch
   // CATEGORY PHASE-OUT: Renamed availableCategories to availableTags
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
-  const [allCollections, setAllCollections] = useState<Collection[]>([]);
+  // Note: queryClient is imported from @/queryClient (singleton instance)
+
+  const {
+    data: availableTags = [],
+    isLoading: _isLoadingTags, // eslint-disable-line @typescript-eslint/no-unused-vars -- Available for future loading state UI
+  } = useTags();
+
+  const {
+    data: allCollections = [],
+    isLoading: _isLoadingCollections, // eslint-disable-line @typescript-eslint/no-unused-vars -- Available for future loading state UI
+  } = useAllCollections();
+
+  /**
+   * Callback to optimistically update the tags cache when a new tag is created.
+   * This is called by TagSelector after it creates a new tag via storageService.
+   * The callback updates the React Query cache immediately for instant UI feedback.
+   */
+  const handleAvailableTagsChange = React.useCallback((newTags: string[]) => {
+    queryClient.setQueryData<string[]>(nuggetFormKeys.tags(), newTags);
+  }, []); // queryClient is a module-level singleton, no need in deps
+
+  /**
+   * Callback to optimistically update the collections cache when a new collection is created.
+   * This is called by CollectionSelector after it creates a new collection via storageService.
+   * The callback updates the React Query cache immediately for instant UI feedback.
+   */
+  const handleAvailableCollectionsChange = React.useCallback((newCollections: Collection[]) => {
+    queryClient.setQueryData<Collection[]>(nuggetFormKeys.collections(), newCollections);
+  }, []); // queryClient is a module-level singleton, no need in deps
   
   // UI State
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -186,7 +214,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   useEffect(() => {
     if (isOpen) {
-      loadData();
+      // Data loading is now handled by React Query hooks (useTags, useAllCollections)
+      // No need to call loadData() - React Query provides caching and automatic refetch
       document.body.style.overflow = 'hidden';
       
       // Initialize form from initialData when in edit mode (only once per nugget)
@@ -381,31 +410,17 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     };
   }, [isOpen]);
 
-  const loadData = async () => {
-    try {
-      // CATEGORY PHASE-OUT: Use getCategories (which now returns tags) instead of categories
-      const [tagNames, cols] = await Promise.all([
-        storageService.getCategories(), // This method name is kept for backward compatibility but returns tags
-        storageService.getCollections()
-      ]);
-      // Filter out any non-string or empty tag values
-      const validTags = (tagNames || []).filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '');
-      setAvailableTags(validTags);
-      // Handle union type: Collection[] | { data: Collection[], count: number }
-      const collectionsArray = Array.isArray(cols) ? cols : (cols?.data ?? []);
-      setAllCollections(collectionsArray);
-      setAvailableAliases([]); // Content aliases feature not yet implemented
+  // loadData function removed - now using React Query hooks (useTags, useAllCollections)
+  // which provide automatic caching, background refetch, and stale-while-revalidate pattern.
+  // This eliminates the need for manual data fetching on every modal open.
+
+  // Initialize aliases (content aliases feature not yet implemented)
+  useEffect(() => {
+    if (isOpen) {
+      setAvailableAliases([]);
       setSelectedAlias("Custom...");
-    } catch (e: any) {
-      // Handle request cancellation gracefully - don't log as error if request was cancelled
-      if (e?.message === 'Request cancelled' || e?.name === 'AbortError') {
-        // Request was cancelled (e.g., component unmounted or new request started)
-        // This is expected behavior and doesn't need to be logged
-        return;
-      }
-      console.error("Failed to load metadata", e);
     }
-  };
+  }, [isOpen]);
 
   const resetForm = () => {
     setTitle('');
@@ -2090,7 +2105,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         selected={tags}
                         availableCategories={availableTags}
                         onSelectedChange={setTags}
-                        onAvailableCategoriesChange={setAvailableTags}
+                        onAvailableCategoriesChange={handleAvailableTagsChange}
                         error={tagsError}
                         touched={tagsTouched}
                         onTouchedChange={setTagsTouched}
@@ -2103,7 +2118,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         availableCollections={allCollections}
                         visibility={visibility}
                         onSelectedChange={setSelectedCollections}
-                        onAvailableCollectionsChange={setAllCollections}
+                        onAvailableCollectionsChange={handleAvailableCollectionsChange}
                         currentUserId={currentUserId}
                         comboboxRef={collectionsComboboxRef}
                         listboxRef={collectionsListboxRef}
