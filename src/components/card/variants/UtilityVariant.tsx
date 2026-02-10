@@ -32,7 +32,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
   isAdmin,
   isPreview = false,
 }) => {
-  const { data, handlers, isVideoExpanded, youtubeStartTime } = logic;
+  const { data, handlers, isVideoExpanded, youtubeStartTime, miniPlayerShowingThisCard } = logic;
   
   // Warn if cardType is media-only but has long text
   React.useEffect(() => {
@@ -112,6 +112,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
                 isVideoExpanded={isVideoExpanded}
                 youtubeStartTime={youtubeStartTime}
                 onCollapseVideo={handlers.onCollapseVideo}
+                miniPlayerShowingThisCard={miniPlayerShowingThisCard}
               />
             </div>
           )}
@@ -193,6 +194,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
                     isVideoExpanded={isVideoExpanded}
                     youtubeStartTime={youtubeStartTime}
                     onCollapseVideo={handlers.onCollapseVideo}
+                    miniPlayerShowingThisCard={miniPlayerShowingThisCard}
                     className="rounded-lg shrink-0"
                   />
                 </div>

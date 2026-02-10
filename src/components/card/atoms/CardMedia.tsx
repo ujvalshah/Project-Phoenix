@@ -37,6 +37,8 @@ interface CardMediaProps {
   isVideoExpanded?: boolean; // Whether YouTube video is expanded inline
   youtubeStartTime?: number; // Start time in seconds for YouTube video
   onCollapseVideo?: () => void; // Handler to collapse expanded video
+  /** When true, mini player is showing this card's video — render thumbnail instead of iframe (single player) */
+  miniPlayerShowingThisCard?: boolean;
 }
 
 export const CardMedia: React.FC<CardMediaProps> = React.memo(({
@@ -48,6 +50,7 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   isVideoExpanded = false,
   youtubeStartTime = 0,
   onCollapseVideo,
+  miniPlayerShowingThisCard = false,
 }) => {
   // Track image load errors for Media-only cards
   const [imageError, setImageError] = useState(false);
@@ -276,8 +279,8 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
       ) : (
         /* MODE 2B: Single Thumbnail (YouTube, Image, Document - existing behavior) */
         <>
-          {/* INLINE YOUTUBE EXPANSION: Render iframe when expanded */}
-          {isYouTube && isVideoExpanded && embedUrl ? (
+          {/* INLINE YOUTUBE EXPANSION: Render iframe when expanded, but not when mini player has this video (single player) */}
+          {isYouTube && isVideoExpanded && embedUrl && !miniPlayerShowingThisCard ? (
             <div className="w-full h-full relative">
               <iframe
                 key={`${videoId}-${youtubeStartTime}`}
@@ -301,6 +304,20 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
                   <X size={16} />
                 </button>
               )}
+            </div>
+          ) : isYouTube && isVideoExpanded && miniPlayerShowingThisCard ? (
+            /* Mini player is showing this video — show thumbnail only (no iframe, single player) */
+            <div className="w-full h-full flex items-center justify-center relative bg-slate-900">
+              {thumbnailUrl && !imageError ? (
+                <Image
+                  src={thumbnailUrl}
+                  alt={article.title || 'Nugget thumbnail'}
+                  className="w-full h-full object-cover"
+                />
+              ) : null}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                <p className="text-white text-xs font-medium px-2 text-center">Playing in mini player</p>
+              </div>
             </div>
           ) : (
             /* THUMBNAIL VIEW: Show thumbnail when not expanded */

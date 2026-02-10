@@ -38,7 +38,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   isSelected = false,
   onSelect,
 }) => {
-  const { data, handlers, isVideoExpanded, youtubeStartTime } = logic;
+  const { data, handlers, isVideoExpanded, youtubeStartTime, miniPlayerShowingThisCard } = logic;
   
   // Calculate link button props (for rendering link button independently of media)
   // Priority: externalLinks > previewMetadata.url (original source) > media.url (for link-type only)
@@ -217,6 +217,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 isVideoExpanded={isVideoExpanded}
                 youtubeStartTime={youtubeStartTime}
                 onCollapseVideo={handlers.onCollapseVideo}
+                miniPlayerShowingThisCard={miniPlayerShowingThisCard}
               />
               
               {/* Optional short caption with compact bottom-band gradient - only render when caption exists */}
@@ -279,6 +280,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 isVideoExpanded={isVideoExpanded}
                 youtubeStartTime={youtubeStartTime}
                 onCollapseVideo={handlers.onCollapseVideo}
+                miniPlayerShowingThisCard={miniPlayerShowingThisCard}
               />
               {/* Source Badge Overlay */}
               {!data.isTextNugget && data.sourceType === 'link' && (

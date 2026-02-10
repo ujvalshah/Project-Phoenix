@@ -31,7 +31,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
   isAdmin,
   isPreview = false,
 }) => {
-  const { data, handlers, isVideoExpanded, youtubeStartTime } = logic;
+  const { data, handlers, isVideoExpanded, youtubeStartTime, miniPlayerShowingThisCard } = logic;
   
   // Warn if cardType is media-only but has long text
   React.useEffect(() => {
@@ -114,6 +114,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
                 isVideoExpanded={isVideoExpanded}
                 youtubeStartTime={youtubeStartTime}
                 onCollapseVideo={handlers.onCollapseVideo}
+                miniPlayerShowingThisCard={miniPlayerShowingThisCard}
               />
             </div>
           )}
@@ -155,9 +156,10 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
                   visibility={data.visibility}
                   onMediaClick={handlers.onMediaClick}
                   className="w-full rounded-lg"
-                  isVideoExpanded={isVideoExpanded}
-                  youtubeStartTime={youtubeStartTime}
-                  onCollapseVideo={handlers.onCollapseVideo}
+                isVideoExpanded={isVideoExpanded}
+                youtubeStartTime={youtubeStartTime}
+                onCollapseVideo={handlers.onCollapseVideo}
+                miniPlayerShowingThisCard={miniPlayerShowingThisCard}
                 />
               </div>
             ) : (

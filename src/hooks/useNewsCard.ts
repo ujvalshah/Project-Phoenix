@@ -69,6 +69,8 @@ export interface NewsCardLogic {
   handlers: NewsCardHandlers;
   isVideoExpanded?: boolean;
   youtubeStartTime?: number;
+  /** When true, mini player is showing this card's video — card should hide its iframe to avoid two players */
+  miniPlayerShowingThisCard?: boolean;
 }
 
 interface UseNewsCardProps {
@@ -883,6 +885,8 @@ export const useNewsCard = ({
       isVideoExpanded,
       youtubeStartTime,
       cardElementId: cardElementIdRef.current, // For scroll detection
+      // When mini player is showing this card's video, card hides its iframe (single player)
+      miniPlayerShowingThisCard: Boolean(showMiniPlayer && videoState.articleId === article.id),
     },
     // Modal state and refs (used by Controller for rendering modals)
     modals: {
