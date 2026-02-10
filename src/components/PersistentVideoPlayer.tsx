@@ -53,15 +53,22 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!swipeStartRef.current) return;
     const t = e.touches[0];
+    const dx = t.clientX - swipeStartRef.current.x;
     const dy = t.clientY - swipeStartRef.current.y;
-    if (dy > 0) setSwipeOffset((prev) => ({ ...prev, y: dy }));
+    setSwipeOffset({
+      x: dx < 0 ? dx : 0,
+      y: dy > 0 ? dy : 0,
+    });
   }, []);
 
   const handleTouchEnd = useCallback(() => {
-    if (swipeOffset.y > 80) handleClose();
+    const { x, y } = swipeOffset;
+    const swipeDownEnough = y > 80;
+    const swipeLeftEnough = x < -80;
+    if (swipeDownEnough || swipeLeftEnough) handleClose();
     else setSwipeOffset({ x: 0, y: 0 });
     swipeStartRef.current = null;
-  }, [swipeOffset.y, handleClose]);
+  }, [swipeOffset, handleClose]);
 
   useEffect(() => {
     if (!state.videoUrl) return;
@@ -74,26 +81,32 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => 
 
   if (!state.videoUrl || !videoId || !embedUrl) return null;
 
+  const dismissProgress = Math.max(
+    swipeOffset.y / 180,
+    swipeOffset.x < 0 ? -swipeOffset.x / 180 : 0
+  );
+  const opacity = Math.max(0, 1 - dismissProgress);
+
   return createPortal(
     <div
       className="fixed z-[9999] overflow-hidden rounded-xl bg-black shadow-2xl transition-[transform,opacity] duration-300 ease-out
         w-[min(280px,calc(100vw-32px))] md:w-[min(400px,min(38vw,560px))] aspect-video
         bottom-[calc(16px+env(safe-area-inset-bottom,0px))] right-[calc(16px+env(safe-area-inset-right,0px))] left-auto"
       style={{
-        transform: `translate(0px, ${swipeOffset.y}px)`,
-        opacity: swipeOffset.y > 0 ? Math.max(0, 1 - swipeOffset.y / 180) : 1,
+        transform: `translate(${swipeOffset.x}px, ${swipeOffset.y}px)`,
+        opacity,
       }}
       role="dialog"
-      aria-label="Video player - swipe down or use close button to close"
+      aria-label="Video player - swipe down or left to close, or use close button"
     >
-      {/* Close (X): shown only when hover is available (desktop/laptop); hidden on touch-only devices */}
+      {/* Close (X): smaller on mobile, larger on desktop */}
       <button
         type="button"
         onClick={handleClose}
-        className="absolute top-2 right-2 z-20 hidden size-10 shrink-0 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black/90 focus:outline-none focus:ring-2 focus:ring-white/50 [@media(hover:hover)]:flex"
+        className="absolute top-1.5 right-1.5 md:top-2 md:right-2 z-20 flex size-7 shrink-0 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80 active:bg-black/90 focus:outline-none focus:ring-2 focus:ring-white/50 md:size-10 md:bg-black/70 md:hover:bg-black/90"
         aria-label="Close video"
       >
-        <X size={20} strokeWidth={2} />
+        <X className="size-3.5 md:size-5" strokeWidth={2} />
       </button>
       {/* Drag handle: swipe down from here on touch devices (iframe captures touches on the video) */}
       <div
