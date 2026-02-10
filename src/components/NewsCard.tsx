@@ -15,8 +15,6 @@ import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { useAuth } from '@/hooks/useAuth';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
-import { useVideoScrollDetection } from '@/hooks/useVideoScrollDetection';
-
 // Lazy-load YouTube modal for code splitting (zero impact on initial bundle)
 const YouTubeModal = lazy(() => import('./YouTubeModal').then(module => ({ default: module.YouTubeModal })));
 
@@ -66,22 +64,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
     });
 
     const { logic, modals, refs, article: originalArticle, isOwner, isAdmin } = hookResult;
-    
-    // Scroll detection for mini player (only when video is expanded)
-    useVideoScrollDetection({
-      cardElementId: logic.cardElementId || null,
-      enabled: logic.isVideoExpanded || false,
-    });
-    
-    // Handle expand from mini player - open YouTube modal
-    const handleMiniPlayerExpand = () => {
-      const { primaryMedia } = classifyArticleMedia(originalArticle);
-      const youtubeUrl = primaryMedia?.url || originalArticle.media?.url || originalArticle.video;
-      if (youtubeUrl) {
-        modals.setShowYouTubeModal(true);
-        modals.setYoutubeStartTime(logic.youtubeStartTime || 0);
-      }
-    };
 
     // Switch on viewMode to render the appropriate variant
     let variant;

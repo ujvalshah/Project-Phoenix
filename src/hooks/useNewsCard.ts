@@ -67,10 +67,7 @@ export interface NewsCardLogic {
   data: NewsCardData;
   flags: NewsCardFlags;
   handlers: NewsCardHandlers;
-  isVideoExpanded?: boolean;
-  youtubeStartTime?: number;
-  /** When true, mini player is showing this card's video — card should hide its iframe to avoid two players */
-  miniPlayerShowingThisCard?: boolean;
+  cardElementId?: string; // For scrollToCard from mini player
 }
 
 interface UseNewsCardProps {
@@ -107,13 +104,9 @@ export const useNewsCard = ({
   const [lightboxInitialIndex, setLightboxInitialIndex] = useState(0);
   const [showYouTubeModal, setShowYouTubeModal] = useState(false);
   const [youtubeStartTime, setYoutubeStartTime] = useState<number>(0);
-  const [isVideoExpanded, setIsVideoExpanded] = useState(false);
   const [collectionMode, setCollectionMode] = useState<'public' | 'private'>('public');
   
-  // Video player context for mini player
-  const { playVideo, state: videoState, showMiniPlayer } = useVideoPlayer();
-  
-  // Generate unique card element ID for scroll detection
+  const { playVideo } = useVideoPlayer();
   const cardElementIdRef = useRef<string>(`video-card-${article.id}`);
   const [collectionAnchor, setCollectionAnchor] = useState<DOMRect | null>(null);
 
@@ -532,21 +525,14 @@ export const useNewsCard = ({
     if (isYouTube) {
       const youtubeUrl = primaryMedia?.url || article.media?.url || article.video;
       const videoTitle = primaryMedia?.previewMetadata?.title || article.title || '';
-      
       if (youtubeUrl) {
-        const willExpand = !isVideoExpanded;
-        setIsVideoExpanded(willExpand);
-        
-        if (willExpand) {
-          // Register with video player context for mini player
-          playVideo({
-            videoUrl: youtubeUrl,
-            videoTitle,
-            startTime: youtubeStartTime,
-            cardElementId: cardElementIdRef.current,
-            articleId: article.id,
-          });
-        }
+        playVideo({
+          videoUrl: youtubeUrl,
+          videoTitle,
+          startTime: 0,
+          cardElementId: cardElementIdRef.current,
+          articleId: article.id,
+        });
       }
       return;
     }
@@ -671,14 +657,9 @@ export const useNewsCard = ({
     
     // If videoId is empty (plain text timestamp), or if it matches the article's video
     if (!videoId || articleVideoId === videoId) {
-      // Expand inline with timestamp
       if (import.meta.env.DEV) {
-        console.log('[handleYouTubeTimestampClick] Expanding inline with timestamp:', timestamp);
+        console.log('[handleYouTubeTimestampClick] Opening mini player with timestamp:', timestamp);
       }
-      setYoutubeStartTime(timestamp);
-      setIsVideoExpanded(true);
-      
-      // Register with video player context
       const { primaryMedia } = classifyArticleMedia(article);
       const videoTitle = primaryMedia?.previewMetadata?.title || article.title || '';
       playVideo({
@@ -699,31 +680,6 @@ export const useNewsCard = ({
       window.open(originalUrl, '_blank', 'noopener,noreferrer');
     }
   };
-
-  const handleCollapseVideo = useCallback(() => {
-    setIsVideoExpanded(false);
-    setYoutubeStartTime(0); // Reset timestamp when collapsing
-    // Note: VideoPlayerContext will handle cleanup when mini player is closed
-  }, []);
-  
-  // Sync local state with video player context
-  useEffect(() => {
-    // If mini player is showing, keep card expanded state
-    if (showMiniPlayer && videoState.videoUrl && videoState.articleId === article.id) {
-      setIsVideoExpanded(true);
-      if (videoState.startTime > 0) {
-        setYoutubeStartTime(videoState.startTime);
-      }
-    }
-  }, [showMiniPlayer, videoState, article.id]);
-
-  // Option 1: when context video is cleared (user closed persistent player), collapse this card
-  useEffect(() => {
-    if (!videoState.videoUrl && isVideoExpanded) {
-      setIsVideoExpanded(false);
-      setYoutubeStartTime(0);
-    }
-  }, [videoState.videoUrl, isVideoExpanded]);
 
   const handleToggleVisibility = async () => {
     if (isPreview) return;
@@ -872,16 +828,13 @@ export const useNewsCard = ({
         onReadMore: () => setShowFullModal(true),
       };
 
-  // Add onOpenDetails, onYouTubeTimestampClick, and onCollapseVideo to handlers
   const handlersWithDetails: NewsCardHandlers & { 
     onOpenDetails?: () => void;
     onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
-    onCollapseVideo?: () => void;
   } = {
     ...handlers,
     onOpenDetails: handleOpenDetails,
     onYouTubeTimestampClick: handleYouTubeTimestampClick,
-    onCollapseVideo: handleCollapseVideo,
   };
 
   return {
@@ -889,12 +842,7 @@ export const useNewsCard = ({
       data,
       flags,
       handlers: handlersWithDetails,
-      // Video expansion state for inline YouTube playback
-      isVideoExpanded,
-      youtubeStartTime,
-      cardElementId: cardElementIdRef.current, // For scroll detection
-      // When mini player is showing this card's video, card hides its iframe (single player)
-      miniPlayerShowingThisCard: Boolean(showMiniPlayer && videoState.articleId === article.id),
+      cardElementId: cardElementIdRef.current,
     },
     // Modal state and refs (used by Controller for rendering modals)
     modals: {
@@ -905,7 +853,6 @@ export const useNewsCard = ({
       lightboxInitialIndex,
       showYouTubeModal,
       youtubeStartTime,
-      isVideoExpanded,
       showMenu,
       showTagPopover,
       showEditModal,
@@ -916,7 +863,6 @@ export const useNewsCard = ({
       setLightboxInitialIndex,
       setShowYouTubeModal,
       setYoutubeStartTime,
-      setIsVideoExpanded,
       setShowEditModal,
       collectionMode,
       setCollectionMode,

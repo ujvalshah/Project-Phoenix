@@ -12,7 +12,7 @@
  * ============================================================================
  */
 
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 
 interface VideoPlayerState {
@@ -41,17 +41,9 @@ interface VideoPlayerContextType {
   resumeVideo: () => void;
   closeMiniPlayer: () => void;
   scrollToCard: () => void;
-  
-  // Mini player visibility
-  showMiniPlayer: boolean;
-  setShowMiniPlayer: (show: boolean) => void;
 }
 
 const VideoPlayerContext = createContext<VideoPlayerContextType | undefined>(undefined);
-
-/** ID of the card media wrapper element used for positioning the persistent player (Option 1). */
-export const getVideoCardMediaElementId = (articleId: string): string =>
-  `video-card-${articleId}-media`;
 
 const initialVideoState: VideoPlayerState = {
   isPlaying: false,
@@ -65,9 +57,6 @@ const initialVideoState: VideoPlayerState = {
 
 export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<VideoPlayerState>(initialVideoState);
-  
-  const [showMiniPlayer, setShowMiniPlayer] = useState(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Play video (replaces any existing video)
   const playVideo = useCallback((params: {
@@ -105,49 +94,18 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setState(prev => ({ ...prev, isPlaying: true }));
   }, []);
 
-  // Close player entirely (clears state so PersistentVideoPlayer unmounts; cards collapse via effect)
+  // Close player entirely (clears state so PersistentVideoPlayer unmounts)
   const closeMiniPlayer = useCallback(() => {
-    setShowMiniPlayer(false);
     setState(initialVideoState);
   }, []);
 
-  // Scroll to original card
+  // Scroll to original card (e.g. when user clicks on mini player)
   const scrollToCard = useCallback(() => {
     if (!state.cardElementId) return;
-
     const element = document.getElementById(state.cardElementId);
-    if (!element) {
-      console.warn('[VideoPlayerContext] Card element not found:', state.cardElementId);
-      return;
-    }
-
-    // Close mini player first
-    setShowMiniPlayer(false);
-
-    // Smooth scroll to card
-    element.scrollIntoView({ 
-      behavior: 'smooth', 
-      block: 'center' 
-    });
-
-    // Resume video after scroll completes
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    scrollTimeoutRef.current = setTimeout(() => {
-      setState(prev => ({ ...prev, isPlaying: true }));
-    }, 500); // Wait for scroll animation
+    if (!element) return;
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [state.cardElementId]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const value: VideoPlayerContextType = {
     state,
@@ -156,8 +114,6 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     resumeVideo,
     closeMiniPlayer,
     scrollToCard,
-    showMiniPlayer,
-    setShowMiniPlayer,
   };
 
   return (

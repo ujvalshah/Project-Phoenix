@@ -26,20 +26,12 @@ import { classifyArticleMedia, getThumbnailUrl, getSupportingMediaCount, getAllI
 import { useYouTubeTitle } from '@/hooks/useYouTubeTitle';
 import { CardThumbnailGrid } from './CardThumbnailGrid';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
-import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
-import { getVideoCardMediaElementId } from '@/context/VideoPlayerContext';
-
 interface CardMediaProps {
   article: Article;
   visibility: 'public' | 'private' | undefined;
   onMediaClick: (e: React.MouseEvent, imageIndex?: number) => void;
   className?: string;
   isMediaOnly?: boolean; // Flag to indicate this is for a Media-Only card (use object-contain for images)
-  isVideoExpanded?: boolean; // Whether YouTube video is expanded inline
-  youtubeStartTime?: number; // Start time in seconds for YouTube video
-  onCollapseVideo?: () => void; // Handler to collapse expanded video
-  /** When true, mini player is showing this card's video — render thumbnail instead of iframe (single player) */
-  miniPlayerShowingThisCard?: boolean;
 }
 
 export const CardMedia: React.FC<CardMediaProps> = React.memo(({
@@ -48,10 +40,6 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   onMediaClick,
   className,
   isMediaOnly = false,
-  isVideoExpanded = false,
-  youtubeStartTime = 0,
-  onCollapseVideo,
-  miniPlayerShowingThisCard = false,
 }) => {
   // Track image load errors for Media-only cards
   const [imageError, setImageError] = useState(false);
@@ -200,55 +188,20 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   // Check if className already includes aspect ratio (e.g., aspect-video)
   const hasAspectRatioInClassName = className?.includes('aspect-');
 
-  // Get YouTube video URL and ID for inline expansion
-  const youtubeUrl = useMemo(() => {
-    if (primaryMedia?.type === 'youtube') return primaryMedia.url;
-    if (article.media?.type === 'youtube') return article.media.url;
-    if (article.video && (article.video.includes('youtube.com') || article.video.includes('youtu.be'))) {
-      return article.video;
-    }
-    return null;
-  }, [primaryMedia, article.media, article.video]);
-
-  const videoId = useMemo(() => {
-    if (!youtubeUrl) return null;
-    return extractYouTubeVideoId(youtubeUrl);
-  }, [youtubeUrl]);
-
-  // Build YouTube embed URL with optional start time
-  const embedUrl = useMemo(() => {
-    if (!videoId) return null;
-    const baseUrl = `https://www.youtube.com/embed/${videoId}`;
-    const params = new URLSearchParams();
-    if (youtubeStartTime > 0) {
-      params.append('start', youtubeStartTime.toString());
-    }
-    params.append('autoplay', '1');
-    return params.toString() ? `${baseUrl}?${params.toString()}` : `${baseUrl}?autoplay=1`;
-  }, [videoId, youtubeStartTime]);
-
   const isYouTube = primaryMedia?.type === 'youtube' || article.media?.type === 'youtube' || !!article.video;
 
   return (
     <div
       className={twMerge(
-        // Base media styling
         'w-full rounded-xl overflow-hidden relative shrink-0 group/media',
         backgroundClass,
-        // Documents use fixed height
         isDocument ? 'h-16' : '',
-        // Smooth height transition for video expansion
-        isYouTube && isVideoExpanded ? 'transition-all duration-300 ease-in-out' : '',
         className
       )}
       style={
-        !isDocument && aspectRatio && !hasAspectRatioInClassName && !isVideoExpanded
-          ? { aspectRatio } 
-          : isVideoExpanded && isYouTube
-          ? { aspectRatio: '16/9', minHeight: '400px' }
-          : {}
+        !isDocument && aspectRatio && !hasAspectRatioInClassName ? { aspectRatio } : {}
       }
-      onClick={!isVideoExpanded ? onMediaClick : undefined}
+      onClick={onMediaClick}
     >
       {/* ============================================================================
           RENDERING STRATEGY: Three distinct modes
@@ -278,30 +231,8 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
           linkUrl={linkUrl}
         />
       ) : (
-        /* MODE 2B: Single Thumbnail (YouTube, Image, Document - existing behavior) */
+        /* MODE 2B: Single Thumbnail (YouTube, Image, Document) */
         <>
-          {/* OPTION 1: Single moving iframe — card never renders iframe; PersistentVideoPlayer overlays this area */}
-          {isYouTube && isVideoExpanded ? (
-            <div
-              id={getVideoCardMediaElementId(article.id)}
-              className="w-full h-full flex items-center justify-center relative bg-slate-900 rounded-xl overflow-hidden"
-            >
-              {thumbnailUrl && !imageError ? (
-                <Image
-                  src={thumbnailUrl}
-                  alt={article.title || 'Nugget thumbnail'}
-                  className="w-full h-full object-cover"
-                />
-              ) : null}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-                {miniPlayerShowingThisCard ? (
-                  <p className="text-white text-xs font-medium px-2 text-center">Playing in mini player</p>
-                ) : null}
-              </div>
-            </div>
-          ) : (
-            /* THUMBNAIL VIEW: Show thumbnail when not expanded */
-            <>
               {/* PRIMARY MEDIA ONLY - Render thumbnail
                   
                   CRITICAL DISTINCTION: YouTube thumbnails vs Uploaded images
@@ -361,8 +292,6 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
                   )}
                 </div>
               )}
-            </>
-          )}
           
           {/* Error placeholder for Media-only cards when image fails to load */}
           {isMediaOnly && imageError && (
