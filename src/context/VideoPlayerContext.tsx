@@ -49,16 +49,22 @@ interface VideoPlayerContextType {
 
 const VideoPlayerContext = createContext<VideoPlayerContextType | undefined>(undefined);
 
+/** ID of the card media wrapper element used for positioning the persistent player (Option 1). */
+export const getVideoCardMediaElementId = (articleId: string): string =>
+  `video-card-${articleId}-media`;
+
+const initialVideoState: VideoPlayerState = {
+  isPlaying: false,
+  videoUrl: null,
+  videoId: null,
+  videoTitle: null,
+  startTime: 0,
+  cardElementId: null,
+  articleId: null,
+};
+
 export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<VideoPlayerState>({
-    isPlaying: false,
-    videoUrl: null,
-    videoId: null,
-    videoTitle: null,
-    startTime: 0,
-    cardElementId: null,
-    articleId: null,
-  });
+  const [state, setState] = useState<VideoPlayerState>(initialVideoState);
   
   const [showMiniPlayer, setShowMiniPlayer] = useState(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -99,10 +105,10 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setState(prev => ({ ...prev, isPlaying: true }));
   }, []);
 
-  // Close mini player (pauses video and hides mini player)
+  // Close player entirely (clears state so PersistentVideoPlayer unmounts; cards collapse via effect)
   const closeMiniPlayer = useCallback(() => {
     setShowMiniPlayer(false);
-    setState(prev => ({ ...prev, isPlaying: false }));
+    setState(initialVideoState);
   }, []);
 
   // Scroll to original card

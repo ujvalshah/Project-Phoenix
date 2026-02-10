@@ -20,13 +20,14 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { Article } from '@/types';
 import { Image } from '@/components/Image';
-import { Lock, Layers, ExternalLink, X } from 'lucide-react';
+import { Lock, Layers, ExternalLink } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { classifyArticleMedia, getThumbnailUrl, getSupportingMediaCount, getAllImageUrls } from '@/utils/mediaClassifier';
 import { useYouTubeTitle } from '@/hooks/useYouTubeTitle';
 import { CardThumbnailGrid } from './CardThumbnailGrid';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
+import { getVideoCardMediaElementId } from '@/context/VideoPlayerContext';
 
 interface CardMediaProps {
   article: Article;
@@ -279,35 +280,12 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
       ) : (
         /* MODE 2B: Single Thumbnail (YouTube, Image, Document - existing behavior) */
         <>
-          {/* INLINE YOUTUBE EXPANSION: Render iframe when expanded, but not when mini player has this video (single player) */}
-          {isYouTube && isVideoExpanded && embedUrl && !miniPlayerShowingThisCard ? (
-            <div className="w-full h-full relative">
-              <iframe
-                key={`${videoId}-${youtubeStartTime}`}
-                src={embedUrl}
-                className="w-full h-full"
-                title={youtubeTitle || 'YouTube video player'}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                loading="lazy"
-              />
-              {/* Collapse button */}
-              {onCollapseVideo && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCollapseVideo();
-                  }}
-                  className="absolute top-2 right-2 z-10 bg-black/70 hover:bg-black/90 backdrop-blur-sm text-white p-2 rounded-full transition-colors"
-                  aria-label="Collapse video"
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          ) : isYouTube && isVideoExpanded && miniPlayerShowingThisCard ? (
-            /* Mini player is showing this video — show thumbnail only (no iframe, single player) */
-            <div className="w-full h-full flex items-center justify-center relative bg-slate-900">
+          {/* OPTION 1: Single moving iframe — card never renders iframe; PersistentVideoPlayer overlays this area */}
+          {isYouTube && isVideoExpanded ? (
+            <div
+              id={getVideoCardMediaElementId(article.id)}
+              className="w-full h-full flex items-center justify-center relative bg-slate-900 rounded-xl overflow-hidden"
+            >
               {thumbnailUrl && !imageError ? (
                 <Image
                   src={thumbnailUrl}
@@ -315,8 +293,10 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
                   className="w-full h-full object-cover"
                 />
               ) : null}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                <p className="text-white text-xs font-medium px-2 text-center">Playing in mini player</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                {miniPlayerShowingThisCard ? (
+                  <p className="text-white text-xs font-medium px-2 text-center">Playing in mini player</p>
+                ) : null}
               </div>
             </div>
           ) : (

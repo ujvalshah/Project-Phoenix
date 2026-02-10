@@ -717,6 +717,14 @@ export const useNewsCard = ({
     }
   }, [showMiniPlayer, videoState, article.id]);
 
+  // Option 1: when context video is cleared (user closed persistent player), collapse this card
+  useEffect(() => {
+    if (!videoState.videoUrl && isVideoExpanded) {
+      setIsVideoExpanded(false);
+      setYoutubeStartTime(0);
+    }
+  }, [videoState.videoUrl, isVideoExpanded]);
+
   const handleToggleVisibility = async () => {
     if (isPreview) return;
     

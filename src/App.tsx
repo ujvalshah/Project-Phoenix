@@ -17,7 +17,7 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { LegalPageRenderer } from '@/pages/LegalPageRenderer';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
-import { FloatingMiniPlayer } from '@/components/FloatingMiniPlayer';
+import { PersistentVideoPlayer } from '@/components/PersistentVideoPlayer';
 
 // Legacy hash URL redirect handler
 // Redirects old /#/path URLs to clean /path URLs for backwards compatibility
@@ -242,7 +242,7 @@ const AppContent: React.FC = () => {
         
         <BackToTopButton />
         <ToastContainer />
-        <FloatingMiniPlayer />
+        <PersistentVideoPlayer />
         
         <CreateNuggetModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
         <AuthModal />
