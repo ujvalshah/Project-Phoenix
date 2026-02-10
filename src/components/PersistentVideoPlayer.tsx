@@ -1,28 +1,26 @@
 /**
  * ============================================================================
- * PERSISTENT VIDEO PLAYER: Mini player in corner + fullscreen on expand
+ * PERSISTENT VIDEO PLAYER: Mini player (YouTube-style, responsive)
  * ============================================================================
  *
- * - Clicking a video thumbnail opens playback in this fixed corner player only.
- * - One iframe; expand button uses requestFullscreen() so playback continues.
- * - Close, swipe-to-dismiss, scroll-to-card, ESC supported.
+ * - Mobile/touch: Swipe down to dismiss; drag handle at top. No X (reduces clutter).
+ * - Desktop/laptop: Larger player, close (X) button (no swipe). ESC closes.
+ * - Fullscreen via YouTube’s native player control.
  *
  * ============================================================================
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Maximize2 } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useVideoPlayer } from '@/context/VideoPlayerContext';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 
-const MINI_WIDTH = 280;
 const MINI_RIGHT = 16;
 const MINI_BOTTOM = 16;
 
-export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = ({ onExpand }) => {
-  const { state, closeMiniPlayer, scrollToCard } = useVideoPlayer();
-  const containerRef = useRef<HTMLDivElement>(null);
+export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => {
+  const { state, closeMiniPlayer } = useVideoPlayer();
   const [swipeOffset, setSwipeOffset] = useState({ x: 0, y: 0 });
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -47,26 +45,6 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = ({ onE
     setSwipeOffset({ x: 0, y: 0 });
   }, [closeMiniPlayer]);
 
-  const handleExpand = useCallback(() => {
-    const el = containerRef.current;
-    if (el?.requestFullscreen) {
-      el.requestFullscreen();
-    } else if (onExpand) {
-      onExpand();
-    } else {
-      scrollToCard();
-    }
-  }, [onExpand, scrollToCard]);
-
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('button') || target.closest('[role="button"]')) return;
-      scrollToCard();
-    },
-    [scrollToCard]
-  );
-
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const t = e.touches[0];
     swipeStartRef.current = { x: t.clientX, y: t.clientY };
@@ -80,7 +58,7 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = ({ onE
   }, []);
 
   const handleTouchEnd = useCallback(() => {
-    if (swipeOffset.y > 100) handleClose();
+    if (swipeOffset.y > 80) handleClose();
     else setSwipeOffset({ x: 0, y: 0 });
     swipeStartRef.current = null;
   }, [swipeOffset.y, handleClose]);
@@ -98,24 +76,34 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = ({ onE
 
   return createPortal(
     <div
-      ref={containerRef}
-      className="fixed z-[9999] overflow-hidden rounded-xl bg-black shadow-2xl transition-transform duration-300 ease-out"
+      className="fixed z-[9999] overflow-hidden rounded-xl bg-black shadow-2xl transition-[transform,opacity] duration-300 ease-out
+        w-[min(280px,calc(100vw-32px))] md:w-[min(400px,min(38vw,560px))] aspect-video
+        bottom-[calc(16px+env(safe-area-inset-bottom,0px))] right-[calc(16px+env(safe-area-inset-right,0px))] left-auto"
       style={{
-        bottom: `calc(${MINI_BOTTOM}px + env(safe-area-inset-bottom, 0px))`,
-        right: `calc(${MINI_RIGHT}px + env(safe-area-inset-right, 0px))`,
-        left: 'auto',
-        width: `min(${MINI_WIDTH}px, calc(100vw - 32px))`,
-        aspectRatio: '16/9',
-        transform: `translate(${swipeOffset.x}px, ${swipeOffset.y}px)`,
-        opacity: swipeOffset.y > 0 ? Math.max(0, 1 - swipeOffset.y / 200) : 1,
+        transform: `translate(0px, ${swipeOffset.y}px)`,
+        opacity: swipeOffset.y > 0 ? Math.max(0, 1 - swipeOffset.y / 180) : 1,
       }}
-      onClick={handleClick}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
       role="dialog"
-      aria-label="Video player"
+      aria-label="Video player - swipe down or use close button to close"
     >
+      {/* Close (X): shown only when hover is available (desktop/laptop); hidden on touch-only devices */}
+      <button
+        type="button"
+        onClick={handleClose}
+        className="absolute top-2 right-2 z-20 hidden size-10 shrink-0 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black/90 focus:outline-none focus:ring-2 focus:ring-white/50 [@media(hover:hover)]:flex"
+        aria-label="Close video"
+      >
+        <X size={20} strokeWidth={2} />
+      </button>
+      {/* Drag handle: swipe down from here on touch devices (iframe captures touches on the video) */}
+      <div
+        className="absolute top-0 left-0 right-0 z-10 h-8 flex items-center justify-center touch-none select-none [@media(hover:hover)]:h-6"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <span className="w-10 h-1 rounded-full bg-white/40 [@media(hover:hover)]:bg-white/30" aria-hidden />
+      </div>
       <div className="absolute inset-0">
         <iframe
           key={videoId}
@@ -127,33 +115,13 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = ({ onE
           loading="lazy"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none">
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-2 pointer-events-auto">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full bg-black/70 hover:bg-black/90 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white/50 backdrop-blur-sm"
-            aria-label="Close video"
-          >
-            <X size={16} className="sm:w-4 sm:h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={handleExpand}
-            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full bg-black/70 hover:bg-black/90 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white/50 backdrop-blur-sm"
-            aria-label="Expand to fullscreen"
-          >
-            <Maximize2 size={16} className="sm:w-4 sm:h-4" />
-          </button>
-        </div>
-        {state.videoTitle && (
-          <div className="absolute bottom-0 left-0 right-0 p-2 pointer-events-none">
-            <div className="bg-gradient-to-t from-black/80 via-black/60 to-transparent rounded-b-xl p-2">
-              <p className="text-white text-xs sm:text-sm font-medium truncate">{state.videoTitle}</p>
-            </div>
+      {state.videoTitle && (
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none">
+          <div className="absolute bottom-0 left-0 right-0 p-2">
+            <p className="text-white text-xs sm:text-sm font-medium truncate">{state.videoTitle}</p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>,
     document.body
   );
