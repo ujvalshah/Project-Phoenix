@@ -19,7 +19,7 @@
 
 import React, { useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ExternalLink } from 'lucide-react';
+import { X } from 'lucide-react';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 
 interface YouTubeModalProps {
@@ -79,10 +79,6 @@ export const YouTubeModal: React.FC<YouTubeModalProps> = ({
     }
   }, [handleClose]);
 
-  const handleOpenInYouTube = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    window.open(videoUrl, '_blank', 'noopener,noreferrer');
-  }, [videoUrl]);
 
   if (!isOpen || !videoId) return null;
 
@@ -140,22 +136,12 @@ export const YouTubeModal: React.FC<YouTubeModalProps> = ({
           </div>
         </div>
 
-        {/* Footer with title and actions */}
-        {(videoTitle || videoUrl) && (
-          <div className="mt-2 sm:mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
-            {videoTitle && (
-              <h3 className="text-white text-sm sm:text-lg font-medium truncate flex-1 w-full sm:w-auto">
-                {videoTitle}
-              </h3>
-            )}
-            <button
-              onClick={handleOpenInYouTube}
-              className="flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-md sm:rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-black shrink-0 text-xs sm:text-sm font-medium"
-              aria-label="Open video in YouTube"
-            >
-              <ExternalLink size={14} className="sm:w-4 sm:h-4" />
-              <span>Open in YouTube</span>
-            </button>
+        {/* Footer with title (optional, only if needed for context) */}
+        {videoTitle && (
+          <div className="mt-2 sm:mt-4">
+            <h3 className="text-white text-sm sm:text-lg font-medium truncate">
+              {videoTitle}
+            </h3>
           </div>
         )}
       </div>

@@ -31,7 +31,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
   isAdmin,
   isPreview = false,
 }) => {
-  const { data, handlers } = logic;
+  const { data, handlers, isVideoExpanded, youtubeStartTime } = logic;
   
   // Warn if cardType is media-only but has long text
   React.useEffect(() => {
@@ -110,6 +110,9 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
                   handlers.onMediaClick(e);
                 }}
                 className="w-full h-full"
+                isVideoExpanded={isVideoExpanded}
+                youtubeStartTime={youtubeStartTime}
+                onCollapseVideo={handlers.onCollapseVideo}
               />
             </div>
           )}
@@ -153,6 +156,9 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
                   visibility={data.visibility}
                   onMediaClick={handlers.onMediaClick}
                   className="rounded-lg shrink-0"
+                  isVideoExpanded={isVideoExpanded}
+                  youtubeStartTime={youtubeStartTime}
+                  onCollapseVideo={handlers.onCollapseVideo}
                 />
               </div>
             ) : (

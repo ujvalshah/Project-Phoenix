@@ -66,6 +66,8 @@ export interface NewsCardLogic {
   data: NewsCardData;
   flags: NewsCardFlags;
   handlers: NewsCardHandlers;
+  isVideoExpanded?: boolean;
+  youtubeStartTime?: number;
 }
 
 interface UseNewsCardProps {
@@ -102,6 +104,7 @@ export const useNewsCard = ({
   const [lightboxInitialIndex, setLightboxInitialIndex] = useState(0);
   const [showYouTubeModal, setShowYouTubeModal] = useState(false);
   const [youtubeStartTime, setYoutubeStartTime] = useState<number>(0);
+  const [isVideoExpanded, setIsVideoExpanded] = useState(false);
   const [collectionMode, setCollectionMode] = useState<'public' | 'private'>('public');
   const [collectionAnchor, setCollectionAnchor] = useState<DOMRect | null>(null);
 
@@ -508,7 +511,7 @@ export const useNewsCard = ({
   const handleMediaClick = (e: React.MouseEvent, imageIndex?: number) => {
     e?.stopPropagation();
     
-    // YOUTUBE VIDEOS: Open lazy-loaded modal (not new tab)
+    // YOUTUBE VIDEOS: Expand inline in card (not modal)
     // This maintains context and provides better UX
     // Check multiple sources: primaryMedia, article.media, and article.video
     const { primaryMedia } = classifyArticleMedia(article);
@@ -518,11 +521,9 @@ export const useNewsCard = ({
       (article.video && (article.video.includes('youtube.com') || article.video.includes('youtu.be')));
     
     if (isYouTube) {
-      const youtubeUrl = primaryMedia?.url || article.media?.url || article.video;
-      if (youtubeUrl) {
-        setShowYouTubeModal(true);
-        return;
-      }
+      // Toggle inline expansion instead of opening modal
+      setIsVideoExpanded(prev => !prev);
+      return;
     }
     
     // IMAGES: Always open in-app viewer (never new tab)
@@ -621,7 +622,7 @@ export const useNewsCard = ({
       });
     }
     
-    // If no YouTube URL found in article, can't open modal
+    // If no YouTube URL found in article, can't expand inline
     if (!youtubeUrl) {
       if (import.meta.env.DEV) {
         console.log('[handleYouTubeTimestampClick] No YouTube URL found in article');
@@ -645,12 +646,12 @@ export const useNewsCard = ({
     
     // If videoId is empty (plain text timestamp), or if it matches the article's video
     if (!videoId || articleVideoId === videoId) {
-      // Open modal with timestamp
+      // Expand inline with timestamp
       if (import.meta.env.DEV) {
-        console.log('[handleYouTubeTimestampClick] Opening modal with timestamp:', timestamp);
+        console.log('[handleYouTubeTimestampClick] Expanding inline with timestamp:', timestamp);
       }
       setYoutubeStartTime(timestamp);
-      setShowYouTubeModal(true);
+      setIsVideoExpanded(true);
       return;
     }
     
@@ -662,6 +663,11 @@ export const useNewsCard = ({
       window.open(originalUrl, '_blank', 'noopener,noreferrer');
     }
   };
+
+  const handleCollapseVideo = useCallback(() => {
+    setIsVideoExpanded(false);
+    setYoutubeStartTime(0); // Reset timestamp when collapsing
+  }, []);
 
   const handleToggleVisibility = async () => {
     if (isPreview) return;
@@ -810,14 +816,16 @@ export const useNewsCard = ({
         onReadMore: () => setShowFullModal(true),
       };
 
-  // Add onOpenDetails and onYouTubeTimestampClick to handlers
+  // Add onOpenDetails, onYouTubeTimestampClick, and onCollapseVideo to handlers
   const handlersWithDetails: NewsCardHandlers & { 
     onOpenDetails?: () => void;
     onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
+    onCollapseVideo?: () => void;
   } = {
     ...handlers,
     onOpenDetails: handleOpenDetails,
     onYouTubeTimestampClick: handleYouTubeTimestampClick,
+    onCollapseVideo: handleCollapseVideo,
   };
 
   return {
@@ -825,6 +833,9 @@ export const useNewsCard = ({
       data,
       flags,
       handlers: handlersWithDetails,
+      // Video expansion state for inline YouTube playback
+      isVideoExpanded,
+      youtubeStartTime,
     },
     // Modal state and refs (used by Controller for rendering modals)
     modals: {
@@ -835,6 +846,7 @@ export const useNewsCard = ({
       lightboxInitialIndex,
       showYouTubeModal,
       youtubeStartTime,
+      isVideoExpanded,
       showMenu,
       showTagPopover,
       showEditModal,
@@ -845,6 +857,7 @@ export const useNewsCard = ({
       setLightboxInitialIndex,
       setShowYouTubeModal,
       setYoutubeStartTime,
+      setIsVideoExpanded,
       setShowEditModal,
       collectionMode,
       setCollectionMode,

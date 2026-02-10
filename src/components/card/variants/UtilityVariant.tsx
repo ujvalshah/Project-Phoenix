@@ -32,7 +32,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
   isAdmin,
   isPreview = false,
 }) => {
-  const { data, handlers } = logic;
+  const { data, handlers, isVideoExpanded, youtubeStartTime } = logic;
   
   // Warn if cardType is media-only but has long text
   React.useEffect(() => {
@@ -109,6 +109,9 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
                   handlers.onMediaClick(e);
                 }}
                 className="w-full h-full"
+                isVideoExpanded={isVideoExpanded}
+                youtubeStartTime={youtubeStartTime}
+                onCollapseVideo={handlers.onCollapseVideo}
               />
             </div>
           )}
@@ -187,6 +190,9 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
                     article={data}
                     visibility={data.visibility}
                     onMediaClick={handlers.onMediaClick}
+                    isVideoExpanded={isVideoExpanded}
+                    youtubeStartTime={youtubeStartTime}
+                    onCollapseVideo={handlers.onCollapseVideo}
                     className="rounded-lg shrink-0"
                   />
                 </div>

@@ -20,12 +20,13 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { Article } from '@/types';
 import { Image } from '@/components/Image';
-import { Lock, Layers, ExternalLink } from 'lucide-react';
+import { Lock, Layers, ExternalLink, X } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { classifyArticleMedia, getThumbnailUrl, getSupportingMediaCount, getAllImageUrls } from '@/utils/mediaClassifier';
 import { useYouTubeTitle } from '@/hooks/useYouTubeTitle';
 import { CardThumbnailGrid } from './CardThumbnailGrid';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
+import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 
 interface CardMediaProps {
   article: Article;
@@ -33,6 +34,9 @@ interface CardMediaProps {
   onMediaClick: (e: React.MouseEvent, imageIndex?: number) => void;
   className?: string;
   isMediaOnly?: boolean; // Flag to indicate this is for a Media-Only card (use object-contain for images)
+  isVideoExpanded?: boolean; // Whether YouTube video is expanded inline
+  youtubeStartTime?: number; // Start time in seconds for YouTube video
+  onCollapseVideo?: () => void; // Handler to collapse expanded video
 }
 
 export const CardMedia: React.FC<CardMediaProps> = React.memo(({
@@ -41,6 +45,9 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   onMediaClick,
   className,
   isMediaOnly = false,
+  isVideoExpanded = false,
+  youtubeStartTime = 0,
+  onCollapseVideo,
 }) => {
   // Track image load errors for Media-only cards
   const [imageError, setImageError] = useState(false);
@@ -189,22 +196,55 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   // Check if className already includes aspect ratio (e.g., aspect-video)
   const hasAspectRatioInClassName = className?.includes('aspect-');
 
+  // Get YouTube video URL and ID for inline expansion
+  const youtubeUrl = useMemo(() => {
+    if (primaryMedia?.type === 'youtube') return primaryMedia.url;
+    if (article.media?.type === 'youtube') return article.media.url;
+    if (article.video && (article.video.includes('youtube.com') || article.video.includes('youtu.be'))) {
+      return article.video;
+    }
+    return null;
+  }, [primaryMedia, article.media, article.video]);
+
+  const videoId = useMemo(() => {
+    if (!youtubeUrl) return null;
+    return extractYouTubeVideoId(youtubeUrl);
+  }, [youtubeUrl]);
+
+  // Build YouTube embed URL with optional start time
+  const embedUrl = useMemo(() => {
+    if (!videoId) return null;
+    const baseUrl = `https://www.youtube.com/embed/${videoId}`;
+    const params = new URLSearchParams();
+    if (youtubeStartTime > 0) {
+      params.append('start', youtubeStartTime.toString());
+    }
+    params.append('autoplay', '1');
+    return params.toString() ? `${baseUrl}?${params.toString()}` : `${baseUrl}?autoplay=1`;
+  }, [videoId, youtubeStartTime]);
+
+  const isYouTube = primaryMedia?.type === 'youtube' || article.media?.type === 'youtube' || !!article.video;
+
   return (
     <div
       className={twMerge(
         // Base media styling
-        'w-full rounded-xl overflow-hidden relative shrink-0 cursor-pointer group/media',
+        'w-full rounded-xl overflow-hidden relative shrink-0 group/media',
         backgroundClass,
         // Documents use fixed height
         isDocument ? 'h-16' : '',
+        // Smooth height transition for video expansion
+        isYouTube && isVideoExpanded ? 'transition-all duration-300 ease-in-out' : '',
         className
       )}
       style={
-        !isDocument && aspectRatio && !hasAspectRatioInClassName
+        !isDocument && aspectRatio && !hasAspectRatioInClassName && !isVideoExpanded
           ? { aspectRatio } 
+          : isVideoExpanded && isYouTube
+          ? { aspectRatio: '16/9', minHeight: '400px' }
           : {}
       }
-      onClick={onMediaClick}
+      onClick={!isVideoExpanded ? onMediaClick : undefined}
     >
       {/* ============================================================================
           RENDERING STRATEGY: Three distinct modes
@@ -236,64 +276,95 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
       ) : (
         /* MODE 2B: Single Thumbnail (YouTube, Image, Document - existing behavior) */
         <>
-          {/* PRIMARY MEDIA ONLY - Render thumbnail
-              
-              CRITICAL DISTINCTION: YouTube thumbnails vs Uploaded images
-              
-              YouTube Thumbnails:
-              - Use object-cover (fill container, edge-to-edge)
-              - Standard YouTube appearance (cropped if needed)
-              - No letterboxing or centering artifacts
-              
-              Uploaded Images (charts, screenshots, slides):
-              - Use object-contain (no cropping, full visibility)
-              - Preserve aspect ratio
-              - Background fills gaps
-              
-              This distinction is intentional and type-based (not heuristic).
-          */}
-          {thumbnailUrl && !imageError && (
-            <div className="w-full h-full flex items-center justify-center">
-              <Image
-                src={thumbnailUrl}
-                alt={article.title || 'Nugget thumbnail'}
-                className={
-                  primaryMedia?.type === 'youtube'
-                    ? // YouTube thumbnails: fill container with object-cover (standard YouTube look)
-                      "w-full h-full object-cover transition-transform duration-300 group-hover/media:scale-105"
-                    : isMediaOnly
-                    ? // Media-Only cards: use object-contain to show complete image without cropping
-                      "max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-300 group-hover/media:scale-105"
-                    : // Hybrid cards with uploaded images: preserve full image with object-contain (no cropping)
-                      "max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-300 group-hover/media:scale-105"
-                }
-                onError={() => {
-                  if (isMediaOnly) {
-                    setImageError(true);
-                  }
-                }}
+          {/* INLINE YOUTUBE EXPANSION: Render iframe when expanded */}
+          {isYouTube && isVideoExpanded && embedUrl ? (
+            <div className="w-full h-full relative">
+              <iframe
+                key={`${videoId}-${youtubeStartTime}`}
+                src={embedUrl}
+                className="w-full h-full"
+                title={youtubeTitle || 'YouTube video player'}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                loading="lazy"
               />
-              
-              {/* YouTube video indicator - bottom overlay with logo and title (gradient background) */}
-              {primaryMedia?.type === 'youtube' && (
-                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 via-black/60 to-transparent pointer-events-none">
-                  <div className="flex items-center gap-2">
-                    {/* YouTube logo */}
-                    <div className="flex-shrink-0">
-                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#FF0000"/>
-                      </svg>
-                    </div>
-                    {/* Video title - fetched via YouTube oEmbed API */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-xs font-medium truncate">
-                        {youtubeTitle}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              {/* Collapse button */}
+              {onCollapseVideo && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCollapseVideo();
+                  }}
+                  className="absolute top-2 right-2 z-10 bg-black/70 hover:bg-black/90 backdrop-blur-sm text-white p-2 rounded-full transition-colors"
+                  aria-label="Collapse video"
+                >
+                  <X size={16} />
+                </button>
               )}
             </div>
+          ) : (
+            /* THUMBNAIL VIEW: Show thumbnail when not expanded */
+            <>
+              {/* PRIMARY MEDIA ONLY - Render thumbnail
+                  
+                  CRITICAL DISTINCTION: YouTube thumbnails vs Uploaded images
+                  
+                  YouTube Thumbnails:
+                  - Use object-cover (fill container, edge-to-edge)
+                  - Standard YouTube appearance (cropped if needed)
+                  - No letterboxing or centering artifacts
+                  
+                  Uploaded Images (charts, screenshots, slides):
+                  - Use object-contain (no cropping, full visibility)
+                  - Preserve aspect ratio
+                  - Background fills gaps
+                  
+                  This distinction is intentional and type-based (not heuristic).
+              */}
+              {thumbnailUrl && !imageError && (
+                <div className="w-full h-full flex items-center justify-center cursor-pointer">
+                  <Image
+                    src={thumbnailUrl}
+                    alt={article.title || 'Nugget thumbnail'}
+                    className={
+                      primaryMedia?.type === 'youtube'
+                        ? // YouTube thumbnails: fill container with object-cover (standard YouTube look)
+                          "w-full h-full object-cover transition-transform duration-300 group-hover/media:scale-105"
+                        : isMediaOnly
+                        ? // Media-Only cards: use object-contain to show complete image without cropping
+                          "max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-300 group-hover/media:scale-105"
+                        : // Hybrid cards with uploaded images: preserve full image with object-contain (no cropping)
+                          "max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-300 group-hover/media:scale-105"
+                    }
+                    onError={() => {
+                      if (isMediaOnly) {
+                        setImageError(true);
+                      }
+                    }}
+                  />
+                  
+                  {/* YouTube video indicator - bottom overlay with logo and title (gradient background) */}
+                  {primaryMedia?.type === 'youtube' && (
+                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 via-black/60 to-transparent pointer-events-none">
+                      <div className="flex items-center gap-2">
+                        {/* YouTube logo */}
+                        <div className="flex-shrink-0">
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#FF0000"/>
+                          </svg>
+                        </div>
+                        {/* Video title - fetched via YouTube oEmbed API */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-xs font-medium truncate">
+                            {youtubeTitle}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
           
           {/* Error placeholder for Media-only cards when image fails to load */}
