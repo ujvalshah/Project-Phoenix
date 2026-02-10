@@ -7,6 +7,7 @@ import { ToastContainer } from '@/components/UI/Toast';
 import { ToastProvider } from '@/context/ToastContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { FeedScrollStateProvider } from '@/context/FeedScrollStateContext';
+import { VideoPlayerProvider } from '@/context/VideoPlayerContext';
 import { MainLayout } from '@/components/layouts/MainLayout';
 import { SortOrder } from '@/types';
 import { Loader2 } from 'lucide-react';
@@ -16,6 +17,7 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { LegalPageRenderer } from '@/pages/LegalPageRenderer';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
+import { FloatingMiniPlayer } from '@/components/FloatingMiniPlayer';
 
 // Legacy hash URL redirect handler
 // Redirects old /#/path URLs to clean /path URLs for backwards compatibility
@@ -240,6 +242,7 @@ const AppContent: React.FC = () => {
         
         <BackToTopButton />
         <ToastContainer />
+        <FloatingMiniPlayer />
         
         <CreateNuggetModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
         <AuthModal />
@@ -253,9 +256,11 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <ToastProvider>
         <AuthProvider>
-          <FeedScrollStateProvider>
-            <AppContent />
-          </FeedScrollStateProvider>
+          <VideoPlayerProvider>
+            <FeedScrollStateProvider>
+              <AppContent />
+            </FeedScrollStateProvider>
+          </VideoPlayerProvider>
         </AuthProvider>
       </ToastProvider>
     </ErrorBoundary>

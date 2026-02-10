@@ -9,6 +9,7 @@ import { queryClient } from '@/queryClient';
 import { sanitizeArticle, hasValidAuthor, logError } from '@/utils/errorHandler';
 import { getAllImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
+import { useVideoPlayer } from '@/context/VideoPlayerContext';
 // formatDate removed - using relative time formatting in CardMeta instead
 
 // ────────────────────────────────────────
@@ -106,6 +107,12 @@ export const useNewsCard = ({
   const [youtubeStartTime, setYoutubeStartTime] = useState<number>(0);
   const [isVideoExpanded, setIsVideoExpanded] = useState(false);
   const [collectionMode, setCollectionMode] = useState<'public' | 'private'>('public');
+  
+  // Video player context for mini player
+  const { playVideo, state: videoState, showMiniPlayer } = useVideoPlayer();
+  
+  // Generate unique card element ID for scroll detection
+  const cardElementIdRef = useRef<string>(`video-card-${article.id}`);
   const [collectionAnchor, setCollectionAnchor] = useState<DOMRect | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -521,8 +528,24 @@ export const useNewsCard = ({
       (article.video && (article.video.includes('youtube.com') || article.video.includes('youtu.be')));
     
     if (isYouTube) {
-      // Toggle inline expansion instead of opening modal
-      setIsVideoExpanded(prev => !prev);
+      const youtubeUrl = primaryMedia?.url || article.media?.url || article.video;
+      const videoTitle = primaryMedia?.previewMetadata?.title || article.title || '';
+      
+      if (youtubeUrl) {
+        const willExpand = !isVideoExpanded;
+        setIsVideoExpanded(willExpand);
+        
+        if (willExpand) {
+          // Register with video player context for mini player
+          playVideo({
+            videoUrl: youtubeUrl,
+            videoTitle,
+            startTime: youtubeStartTime,
+            cardElementId: cardElementIdRef.current,
+            articleId: article.id,
+          });
+        }
+      }
       return;
     }
     
@@ -652,6 +675,17 @@ export const useNewsCard = ({
       }
       setYoutubeStartTime(timestamp);
       setIsVideoExpanded(true);
+      
+      // Register with video player context
+      const { primaryMedia } = classifyArticleMedia(article);
+      const videoTitle = primaryMedia?.previewMetadata?.title || article.title || '';
+      playVideo({
+        videoUrl: youtubeUrl,
+        videoTitle,
+        startTime: timestamp,
+        cardElementId: cardElementIdRef.current,
+        articleId: article.id,
+      });
       return;
     }
     
@@ -667,7 +701,19 @@ export const useNewsCard = ({
   const handleCollapseVideo = useCallback(() => {
     setIsVideoExpanded(false);
     setYoutubeStartTime(0); // Reset timestamp when collapsing
+    // Note: VideoPlayerContext will handle cleanup when mini player is closed
   }, []);
+  
+  // Sync local state with video player context
+  useEffect(() => {
+    // If mini player is showing, keep card expanded state
+    if (showMiniPlayer && videoState.videoUrl && videoState.articleId === article.id) {
+      setIsVideoExpanded(true);
+      if (videoState.startTime > 0) {
+        setYoutubeStartTime(videoState.startTime);
+      }
+    }
+  }, [showMiniPlayer, videoState, article.id]);
 
   const handleToggleVisibility = async () => {
     if (isPreview) return;
@@ -836,6 +882,7 @@ export const useNewsCard = ({
       // Video expansion state for inline YouTube playback
       isVideoExpanded,
       youtubeStartTime,
+      cardElementId: cardElementIdRef.current, // For scroll detection
     },
     // Modal state and refs (used by Controller for rendering modals)
     modals: {
