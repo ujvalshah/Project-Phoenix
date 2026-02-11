@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Article } from '@/types';
 import { NewsCard } from './NewsCard';
 import { MasonryGrid } from './MasonryGrid';
@@ -9,6 +10,8 @@ import { ErrorBoundary } from './UI/ErrorBoundary';
 import { sanitizeArticle } from '@/utils/errorHandler';
 import { CardSkeleton } from './card/CardSkeleton';
 import { CardError } from './card/CardError';
+import { ArticleDrawer } from './ArticleDrawer';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface ArticleGridProps {
   articles: Article[];
@@ -112,6 +115,116 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   const [shouldAnimate, setShouldAnimate] = useState(false);
   const prevLoadingRef = useRef(isLoading);
   const hasInitializedRef = useRef(false);
+  
+  // URL state synchronization
+  const [searchParams, setSearchParams] = useSearchParams();
+  const expandedIdFromUrl = searchParams.get('expanded');
+  
+  // Drawer state for desktop multi-column grid
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [expandedArticleId, setExpandedArticleId] = useState<string | null>(null);
+  const previousScrollPositionRef = useRef<number>(0);
+  const isUpdatingFromUrlRef = useRef(false); // Prevent double updates
+  
+  // Detect if we're in desktop multi-column grid mode
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const isMultiColumnGrid = viewMode === 'grid' && isDesktop;
+  
+  // Initialize drawer state from URL on mount or when URL changes
+  // CRITICAL: Only sync URL → state here, not state → URL (prevents bounce)
+  useEffect(() => {
+    if (!isMultiColumnGrid) {
+      // Not in multi-column grid mode - ensure drawer is closed
+      if (drawerOpen) {
+        setDrawerOpen(false);
+        setExpandedArticleId(null);
+      }
+      return;
+    }
+    
+    // Skip if we're already updating from URL (prevents double updates)
+    if (isUpdatingFromUrlRef.current) {
+      return;
+    }
+    
+    if (expandedIdFromUrl) {
+      const article = articles.find(a => a.id === expandedIdFromUrl);
+      if (article) {
+        // Only update if state doesn't match URL (prevents unnecessary updates)
+        if (expandedArticleId !== expandedIdFromUrl || !drawerOpen) {
+          isUpdatingFromUrlRef.current = true;
+          setExpandedArticleId(expandedIdFromUrl);
+          setDrawerOpen(true);
+          // Reset flag after state update
+          setTimeout(() => {
+            isUpdatingFromUrlRef.current = false;
+          }, 0);
+        }
+      } else {
+        // Invalid article ID in URL - clean it up and close drawer
+        if (drawerOpen || expandedArticleId) {
+          setDrawerOpen(false);
+          setExpandedArticleId(null);
+        }
+        setSearchParams((prev) => {
+          const newParams = new URLSearchParams(prev);
+          newParams.delete('expanded');
+          return newParams;
+        }, { replace: true });
+      }
+    } else {
+      // No expanded param in URL - ensure drawer is closed
+      if (drawerOpen || expandedArticleId) {
+        setDrawerOpen(false);
+        setExpandedArticleId(null);
+      }
+    }
+  }, [expandedIdFromUrl, articles, isMultiColumnGrid, setSearchParams]); // Removed drawerOpen from deps
+  
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    if (!isMultiColumnGrid) return;
+    
+    const handlePopState = () => {
+      // Read URL directly from window.location (popstate doesn't update React state immediately)
+      const params = new URLSearchParams(window.location.search);
+      const expandedId = params.get('expanded');
+      
+      if (expandedId) {
+        const article = articles.find(a => a.id === expandedId);
+        if (article) {
+          setExpandedArticleId(expandedId);
+          setDrawerOpen(true);
+        } else {
+          // Invalid article ID - close drawer
+          setDrawerOpen(false);
+          setExpandedArticleId(null);
+        }
+      } else {
+        // No expanded param - close drawer
+        setDrawerOpen(false);
+        setExpandedArticleId(null);
+      }
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [articles, isMultiColumnGrid]);
+  
+  // Find expanded article and sanitize it to ensure author data exists
+  const expandedArticle = expandedArticleId 
+    ? (() => {
+        const found = articles.find(a => a.id === expandedArticleId);
+        return found ? sanitizeArticle(found) : null;
+      })()
+    : null;
+  
+  // Find current article index for navigation
+  const currentIndex = expandedArticleId 
+    ? articles.findIndex(a => a.id === expandedArticleId)
+    : -1;
+  const canNavigatePrev = currentIndex > 0;
+  const canNavigateNext = currentIndex >= 0 && currentIndex < articles.length - 1;
 
   // Trigger animations when loading completes OR when component mounts with data
   useEffect(() => {
@@ -147,6 +260,101 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
       onLoadMore();
     }
   }, [isFetchingNextPage, hasNextPage, onLoadMore]);
+  
+  // Drawer handlers
+  const handleCardClick = useCallback((article: Article) => {
+    if (isMultiColumnGrid) {
+      // Desktop multi-column grid: Open drawer
+      previousScrollPositionRef.current = window.scrollY;
+      
+      // Set flag to prevent useEffect from double-updating
+      isUpdatingFromUrlRef.current = true;
+      
+      // Update state first
+      setExpandedArticleId(article.id);
+      setDrawerOpen(true);
+      
+      // Update URL without navigation (use replace to avoid adding history entry)
+      setSearchParams((prev) => {
+        const newParams = new URLSearchParams(prev);
+        newParams.set('expanded', article.id);
+        return newParams;
+      }, { replace: true });
+      
+      // Reset flag after a brief delay to allow URL update to complete
+      setTimeout(() => {
+        isUpdatingFromUrlRef.current = false;
+      }, 100);
+    } else {
+      // Mobile/Feed: Use existing onClick handler (opens modal or inline expansion)
+      onArticleClick(article);
+    }
+  }, [isMultiColumnGrid, onArticleClick, setSearchParams]);
+  
+  // YouTube timestamp click handler (for drawer)
+  const handleYouTubeTimestampClick = useCallback((videoId: string, timestamp: number, originalUrl: string) => {
+    // This will be handled by ArticleDetail component in the drawer
+    // The handler is passed through to maintain consistency
+  }, []);
+  
+  const handleDrawerClose = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
+    // Set flag to prevent useEffect from double-updating
+    isUpdatingFromUrlRef.current = true;
+    
+    setDrawerOpen(false);
+    
+    // Remove expanded param from URL
+    setSearchParams((prev) => {
+      const newParams = new URLSearchParams(prev);
+      newParams.delete('expanded');
+      return newParams;
+    }, { replace: true });
+    
+    // Reset flag after a brief delay
+    setTimeout(() => {
+      isUpdatingFromUrlRef.current = false;
+    }, 100);
+    
+    // Restore scroll position after animation
+    setTimeout(() => {
+      window.scrollTo({ top: previousScrollPositionRef.current, behavior: 'auto' });
+      setExpandedArticleId(null);
+    }, 300);
+  }, [setSearchParams]);
+  
+  const handleNavigateToCard = useCallback((direction: 'prev' | 'next') => {
+    if (currentIndex === -1) return;
+    
+    const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex >= 0 && newIndex < articles.length) {
+      const newArticle = articles[newIndex];
+      
+      // Set flag to prevent useEffect from double-updating
+      isUpdatingFromUrlRef.current = true;
+      
+      setExpandedArticleId(newArticle.id);
+      
+      // Update URL with new article ID
+      setSearchParams((prev) => {
+        const newParams = new URLSearchParams(prev);
+        newParams.set('expanded', newArticle.id);
+        return newParams;
+      }, { replace: true });
+      
+      // Reset flag after a brief delay
+      setTimeout(() => {
+        isUpdatingFromUrlRef.current = false;
+      }, 100);
+      
+      // Scroll to new card in grid (optional enhancement)
+      const cardElement = document.querySelector(`[data-article-id="${newArticle.id}"]`);
+      if (cardElement) {
+        cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [currentIndex, articles, setSearchParams]);
 
   // Error State: Show error UI when query fails
   if (error && !isLoading) {
@@ -274,9 +482,11 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
                 article={sanitized}
                 viewMode={viewMode}
                 onCategoryClick={onCategoryClick}
-                onClick={onArticleClick}
+                onClick={handleCardClick}
                 currentUserId={currentUserId}
                 onTagClick={onTagClick}
+                // Disable inline expansion for desktop multi-column grid
+                disableInlineExpansion={isMultiColumnGrid}
               />
             </div>
           </ErrorBoundary>
@@ -289,6 +499,19 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
           onIntersect={handleLoadMore}
           isLoading={isFetchingNextPage}
           hasMore={hasNextPage}
+        />
+      )}
+      
+      {/* Article Drawer - Only for desktop multi-column grid */}
+      {isMultiColumnGrid && expandedArticle && (
+        <ArticleDrawer
+          isOpen={drawerOpen}
+          onClose={handleDrawerClose}
+          article={expandedArticle}
+          onNavigateToCard={handleNavigateToCard}
+          canNavigatePrev={canNavigatePrev}
+          canNavigateNext={canNavigateNext}
+          onYouTubeTimestampClick={handleYouTubeTimestampClick}
         />
       )}
     </div>

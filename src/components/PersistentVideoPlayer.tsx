@@ -128,13 +128,6 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => 
           loading="lazy"
         />
       </div>
-      {state.videoTitle && (
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none">
-          <div className="absolute bottom-0 left-0 right-0 p-2">
-            <p className="text-white text-xs sm:text-sm font-medium truncate">{state.videoTitle}</p>
-          </div>
-        </div>
-      )}
     </div>,
     document.body
   );

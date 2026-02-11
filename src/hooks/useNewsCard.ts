@@ -105,6 +105,8 @@ export const useNewsCard = ({
   const [showYouTubeModal, setShowYouTubeModal] = useState(false);
   const [youtubeStartTime, setYoutubeStartTime] = useState<number>(0);
   const [collectionMode, setCollectionMode] = useState<'public' | 'private'>('public');
+  const [showLinkPreview, setShowLinkPreview] = useState(false);
+  const [linkPreviewUrl, setLinkPreviewUrl] = useState<string | null>(null);
   
   const { playVideo } = useVideoPlayer();
   const cardElementIdRef = useRef<string>(`video-card-${article.id}`);
@@ -548,12 +550,13 @@ export const useNewsCard = ({
       return;
     }
     
-    // NON-IMAGE MEDIA: Preserve existing behavior
-    // Links, documents, etc. can still open source URLs
+    // NON-IMAGE MEDIA: Progressive disclosure - show preview modal for links
+    // Links, documents, etc. show preview modal before opening
     const linkUrl = article.media?.previewMetadata?.url || article.media?.url;
     if (linkUrl) {
-      // Open source URL in new tab (for non-image media only)
-      window.open(linkUrl, '_blank', 'noopener,noreferrer');
+      // Show link preview modal for progressive disclosure
+      setLinkPreviewUrl(linkUrl);
+      setShowLinkPreview(true);
     } else {
       // For other media types without URL, open full modal
       setShowFullModal(true);
@@ -856,6 +859,8 @@ export const useNewsCard = ({
       showMenu,
       showTagPopover,
       showEditModal,
+      showLinkPreview,
+      linkPreviewUrl,
       setShowCollection,
       setShowReport,
       setShowFullModal,
@@ -864,6 +869,8 @@ export const useNewsCard = ({
       setShowYouTubeModal,
       setYoutubeStartTime,
       setShowEditModal,
+      setShowLinkPreview,
+      setLinkPreviewUrl,
       collectionMode,
       setCollectionMode,
       collectionAnchor,

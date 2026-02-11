@@ -12,16 +12,27 @@ export const TagPill: React.FC<TagPillProps> = ({ label, onClick }) => {
     <span
       onClick={onClick}
       className={twMerge(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+        'inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium',
         'bg-slate-50 border border-slate-200 text-slate-600',
         'dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400',
         onClick && [
           'cursor-pointer',
           'hover:border-slate-300 hover:bg-slate-100',
           'dark:hover:bg-slate-700',
-          'hover:shadow-sm'
+          'hover:shadow-sm',
+          'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2'
         ]
       )}
+      tabIndex={onClick ? 0 : undefined}
+      role={onClick ? 'button' : undefined}
+      aria-label={onClick ? `Filter by tag: ${label}` : undefined}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick(e as unknown as React.MouseEvent);
+        }
+      } : undefined}
     >
       {label}
     </span>
@@ -84,7 +95,10 @@ export const CardTags: React.FC<CardTagsProps> = ({
                 onToggleTagPopover(e);
               }
             }}
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-slate-50 border border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 cursor-pointer hover:border-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:shadow-sm transition-colors"
+            className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium bg-slate-50 border border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 cursor-pointer hover:border-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+            aria-label={`Show ${remainingCount} more tags`}
+            aria-expanded={showTagPopover}
+            aria-haspopup="menu"
           >
             +{remainingCount}
           </button>

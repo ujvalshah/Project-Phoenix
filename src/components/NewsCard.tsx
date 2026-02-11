@@ -11,6 +11,7 @@ import { ArticleModal } from './ArticleModal';
 import { ImageLightbox } from './ImageLightbox';
 import { ArticleDetail } from './ArticleDetail';
 import { CreateNuggetModal } from './CreateNuggetModal';
+import { LinkPreviewModal } from './LinkPreviewModal';
 import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { useAuth } from '@/hooks/useAuth';
@@ -32,6 +33,8 @@ interface NewsCardProps {
   selectionMode?: boolean;
   isSelected?: boolean;
   onSelect?: (id: string) => void;
+  // Drawer Props
+  disableInlineExpansion?: boolean; // Disable inline expansion for desktop multi-column grid
 }
 
 export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
@@ -47,6 +50,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
       selectionMode = false,
       isSelected = false,
       onSelect,
+      disableInlineExpansion = false,
     },
     ref
   ) => {
@@ -82,6 +86,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             selectionMode={selectionMode}
             isSelected={isSelected}
             onSelect={onSelect ? () => onSelect(article.id) : undefined}
+            disableInlineExpansion={disableInlineExpansion}
           />
         );
         break;
@@ -243,6 +248,28 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
           mode="edit"
           initialData={originalArticle}
         />
+        {/* Link Preview Modal - Progressive disclosure for external links */}
+        {modals.showLinkPreview && modals.linkPreviewUrl && (
+          <LinkPreviewModal
+            isOpen={modals.showLinkPreview}
+            onClose={(e) => {
+              e?.stopPropagation?.();
+              modals.setShowLinkPreview(false);
+              modals.setLinkPreviewUrl(null);
+            }}
+            url={modals.linkPreviewUrl}
+            title={originalArticle.media?.previewMetadata?.title}
+            description={originalArticle.media?.previewMetadata?.description}
+            imageUrl={originalArticle.media?.previewMetadata?.imageUrl}
+            domain={originalArticle.media?.previewMetadata?.url ? (() => {
+              try {
+                return new URL(originalArticle.media.previewMetadata.url).hostname.replace('www.', '');
+              } catch {
+                return undefined;
+              }
+            })() : undefined}
+          />
+        )}
         {/* YouTube Modal - Lazy-loaded for performance */}
         {modals.showYouTubeModal && (() => {
           const { primaryMedia } = classifyArticleMedia(originalArticle);

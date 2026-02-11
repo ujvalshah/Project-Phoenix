@@ -217,6 +217,24 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
     }
   }, [allowExpansion, isExpanded]);
 
+  // Handle content area click to expand (for mobile/feed views)
+  const handleContentClick = useCallback((e: React.MouseEvent) => {
+    // Only expand if:
+    // 1. Expansion is allowed
+    // 2. Content is not already expanded
+    // 3. Content is truncated (has overflow)
+    // 4. Not clicking on interactive elements (links, buttons)
+    const target = e.target as HTMLElement;
+    if (target.closest('a') || target.closest('button') || target.closest('[role="button"]')) {
+      return; // Let interactive elements handle their own clicks
+    }
+    
+    if (allowExpansion && !isExpanded && hadOverflowWhenCollapsed && measured) {
+      e.stopPropagation(); // Prevent card click (drawer) on desktop
+      setIsExpanded(true);
+    }
+  }, [allowExpansion, isExpanded, hadOverflowWhenCollapsed, measured]);
+
   // Handle collapse click
   const handleCollapse = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent drawer/card click
@@ -238,18 +256,25 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   // 3. If overflow detected → keep max-height, show "Read more"
   // 4. If no overflow → remove max-height, hide "Read more"
 
-  // shouldApplyMaxHeight: Apply constraint during measurement OR when overflow confirmed
-  // This breaks the circular dependency by ensuring max-height exists for measurement
-  // Now applies to BOTH hybrid and media-only cards when allowExpansion is true
-  const shouldApplyMaxHeight = allowExpansion && !isExpanded && (!measured || hadOverflowWhenCollapsed);
+  // CRITICAL FIX: Separate truncation from expansion
+  // - Truncation should ALWAYS apply when content overflows (for grid cards)
+  // - Expansion controls only show when allowExpansion={true}
+  // - When allowExpansion={false}, content is truncated but clicking opens drawer instead
+  
+  // shouldApplyMaxHeight: Apply constraint when overflow detected, regardless of allowExpansion
+  // This ensures content is always truncated in grid view, even when expansion is disabled
+  const shouldApplyMaxHeight = !isExpanded && (!measured || hadOverflowWhenCollapsed);
 
-  // shouldClamp: Show fade + "Read more" button only when:
-  // - Measurement is complete AND overflow was detected
-  // Now applies to BOTH hybrid and media-only cards
-  const shouldClamp = allowExpansion && !isExpanded && hadOverflowWhenCollapsed && measured;
+  // shouldShowFade: Show fade overlay when content is truncated
+  // - If allowExpansion={true}: Show fade with "Read more" button
+  // - If allowExpansion={false}: Show subtle fade only (no button) to indicate truncation
+  const shouldShowFade = !isExpanded && hadOverflowWhenCollapsed && measured;
+
+  // shouldClamp: Show "Read more" button only when expansion is allowed
+  // When allowExpansion={false}, content is truncated but no "Read more" button is shown
+  const shouldClamp = allowExpansion && shouldShowFade;
 
   // Show collapse control when: expanded, AND allowExpansion, AND content had overflow
-  // Now applies to BOTH hybrid and media-only cards
   const showCollapse = allowExpansion && isExpanded && hadOverflowWhenCollapsed;
   
   // 🔍 AUDIT LOGGING - Truncation Application
@@ -295,8 +320,11 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
         className={twMerge(
           // DEFAULT STATE: Fixed max-height with overflow hidden when collapsed
           // EXPANDED STATE: No height constraint, content shows fully
-          shouldClamp ? 'relative overflow-hidden' : ''
+          shouldClamp ? 'relative overflow-hidden' : '',
+          // Make content clickable for expansion when truncated (mobile/feed)
+          allowExpansion && !isExpanded && hadOverflowWhenCollapsed && measured ? 'cursor-pointer' : ''
         )}
+        onClick={handleContentClick}
         style={{
           // DEFAULT STATE: Fixed max-height constraint when collapsed (Hybrid cards only)
           // EXPANDED STATE: No max-height, content fills naturally
@@ -338,39 +366,50 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
             onYouTubeTimestampClick={onYouTubeTimestampClick}
           />
         </div>
-        {/* FADE OVERLAY WITH EXPAND BUTTON: Clickable overlay to expand (ONLY way to expand) */}
-        {shouldClamp && (
+        {/* FADE OVERLAY: Show when content is truncated */}
+        {/* - If allowExpansion={true}: Show fade with "Read more" button */}
+        {/* - If allowExpansion={false}: Show subtle fade only (indicates truncation, clicking card opens drawer) */}
+        {shouldShowFade && (
           <>
             {/* Light mode fade overlay */}
             <div 
-              className="absolute inset-x-0 bottom-0 h-16 pointer-events-none dark:hidden"
+              className="absolute inset-x-0 bottom-0 h-20 pointer-events-none dark:hidden"
               style={{
-                background: 'linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.8) 40%, rgba(255, 255, 255, 1) 100%)',
+                background: 'linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.7) 30%, rgba(255, 255, 255, 0.9) 60%, rgba(255, 255, 255, 1) 100%)',
                 zIndex: 5
               }}
             />
             {/* Dark mode fade overlay */}
             <div 
-              className="absolute inset-x-0 bottom-0 h-16 pointer-events-none hidden dark:block"
+              className="absolute inset-x-0 bottom-0 h-20 pointer-events-none hidden dark:block"
               style={{
-                background: 'linear-gradient(to bottom, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.8) 40%, rgba(15, 23, 42, 1) 100%)',
+                background: 'linear-gradient(to bottom, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.7) 30%, rgba(15, 23, 42, 0.9) 60%, rgba(15, 23, 42, 1) 100%)',
                 zIndex: 5
               }}
             />
-            {/* Clickable expand button overlay */}
-            <div 
-              className="absolute inset-x-0 bottom-0 h-16 pointer-events-auto cursor-pointer flex items-end justify-center pb-2"
-              onClick={handleFadeClick}
-              style={{ zIndex: 10 }}
-            >
-              <button
-                className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all"
-                aria-label="Expand content"
+            {/* Clickable expand button overlay - Only show when expansion is allowed */}
+            {shouldClamp && (
+              <div 
+                className="absolute inset-x-0 bottom-0 h-20 pointer-events-auto cursor-pointer flex items-end justify-center pb-3"
+                onClick={handleFadeClick}
+                style={{ zIndex: 10 }}
               >
-                <span>Read more</span>
-                <ChevronDown size={14} />
-              </button>
-            </div>
+                <button
+                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 bg-white dark:bg-slate-800 backdrop-blur-sm px-4 py-2 rounded-lg border-2 border-slate-300 dark:border-slate-600 shadow-md hover:shadow-lg hover:border-primary-400 dark:hover:border-primary-500 transition-all min-h-[44px]"
+                  aria-label="Expand content to read more"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleFadeClick(e as unknown as React.MouseEvent);
+                    }
+                  }}
+                >
+                  <span>Read more</span>
+                  <ChevronDown size={16} />
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

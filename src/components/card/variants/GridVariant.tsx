@@ -23,6 +23,7 @@ interface GridVariantProps {
   selectionMode?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+  disableInlineExpansion?: boolean; // Disable inline expansion for desktop multi-column grid
 }
 
 export const GridVariant: React.FC<GridVariantProps> = ({
@@ -37,6 +38,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   selectionMode = false,
   isSelected = false,
   onSelect,
+  disableInlineExpansion = false,
 }) => {
   const { data, handlers } = logic;
   
@@ -141,6 +143,17 @@ export const GridVariant: React.FC<GridVariantProps> = ({
       aria-label={selectionMode ? `${ariaLabel} ${isSelected ? 'Selected' : 'Not selected'}` : ariaLabel}
       tabIndex={selectionMode ? -1 : 0}
       onKeyDown={handleKeyDown}
+      onClick={(e) => {
+        // Only trigger drawer if clicking on card itself (not content or interactive elements)
+        const target = e.target as HTMLElement;
+        // Don't trigger if clicking on content, tags, buttons, or links
+        if (target.closest('[data-no-card-click]') || target.closest('button') || target.closest('a')) {
+          return;
+        }
+        if (!selectionMode && handlers.onClick) {
+          handlers.onClick();
+        }
+      }}
       className={`
         group relative flex flex-col h-full overflow-hidden
         bg-white dark:bg-slate-900
@@ -153,7 +166,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
           ? isSelected
             ? 'border-primary-500 ring-1 ring-primary-500'
             : 'border-slate-200 dark:border-slate-700'
-          : 'border-slate-200 dark:border-slate-700'
+          : 'border-slate-200 dark:border-slate-700 cursor-pointer'
         }
       `}
     >
@@ -248,10 +261,18 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 e.stopPropagation();
                 window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
               }}
-              className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20"
-              aria-label="Open link in new tab"
+              className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/70"
+              aria-label="Open source link in new tab"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
+                }
+              }}
             >
-              <ExternalLink size={10} />
+              <ExternalLink size={12} />
               <span>Link</span>
             </button>
           )}
@@ -292,10 +313,18 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                     e.stopPropagation();
                     window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
                   }}
-                  className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20"
-                  aria-label="Open link in new tab"
+                  className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/70"
+                  aria-label="Open source link in new tab"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
                 >
-                  <ExternalLink size={10} />
+                  <ExternalLink size={12} />
                   <span>Link</span>
                 </button>
               )}
@@ -310,22 +339,46 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                     e.stopPropagation();
                     window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
                   }}
-                  className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20"
-                  aria-label="Open link in new tab"
+                  className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/70"
+                  aria-label="Open source link in new tab"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
                 >
-                  <ExternalLink size={10} />
+                  <ExternalLink size={12} />
                   <span>Link</span>
                 </button>
               )}
             </div>
           )}
 
-          {/* Card Body - Clickable for opening drawer */}
+          {/* Card Body - Content area */}
           {/* PHASE 2: 8-pt spacing rhythm (p-4 = 16px, gap-2 = 8px) */}
           {/* overflow-hidden + min-h-0 ensure content doesn't overflow in equal-height grid rows */}
+          {/* Content/title clicks trigger drawer (desktop) or allow inline expansion (mobile/feed) */}
           <div
-            className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden px-4 pb-2 gap-2 cursor-pointer"
-            onClick={handleCardClick}
+            className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden px-4 pb-2 gap-2"
+            onClick={(e) => {
+              // Allow content clicks to trigger card action, but prevent clicks on interactive elements
+              const target = e.target as HTMLElement;
+              // Don't propagate if clicking on links, buttons, or tags (they have their own handlers)
+              if (target.closest('a') || target.closest('button') || target.closest('[role="button"]')) {
+                e.stopPropagation();
+                return;
+              }
+              // For desktop grid: content click opens drawer
+              // For mobile/feed: content click allows inline expansion (handled by CardContent fade)
+              if (disableInlineExpansion && handlers.onClick) {
+                // Desktop grid: Open drawer on content click
+                handlers.onClick();
+              }
+              // Mobile/feed: Let CardContent handle expansion via fade overlay click
+            }}
           >
             {/* 2) TAGS - max 3, muted pills */}
             {data.tags && data.tags.length > 0 && (
@@ -346,7 +399,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               content={data.content}
               isTextNugget={data.isTextNugget}
               variant="grid"
-              allowExpansion={true}
+              allowExpansion={!disableInlineExpansion} // Disable for desktop multi-column grid
               cardType={data.cardType}
               title={data.shouldShowTitle ? data.title : undefined}
               onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
@@ -355,17 +408,49 @@ export const GridVariant: React.FC<GridVariantProps> = ({
         </>
       )}
 
-      {/* 5) METADATA ROW + 6) ACTION ROW */}
+      {/* 5) METADATA ROW + 6) ACTION ROW + VIEW FULL ARTICLE BUTTON */}
       {/* PHASE 2: 8-pt spacing (px-4 = 16px, py-2 = 8px) */}
       <div 
         className={`
           mt-auto px-4 py-2
           border-t border-slate-100 dark:border-slate-800 
-          flex items-center justify-between
+          flex flex-col gap-2
           ${selectionMode ? 'opacity-50 pointer-events-none' : ''}
         `}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* View Full Article Button - Compact pill-style button */}
+        {/* Only show if inline expansion is disabled (desktop grid) or if content is truncated */}
+        {!selectionMode && (disableInlineExpansion || (data.content && data.content.length > 200)) && (
+          <div className="flex justify-center">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (handlers.onClick) {
+                  handlers.onClick();
+                }
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              aria-label={disableInlineExpansion ? "View full article in drawer" : "View full article"}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (handlers.onClick) {
+                    handlers.onClick();
+                  }
+                }
+              }}
+            >
+              <span>View Full Article</span>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        )}
+        <div className="flex items-center justify-between">
         {/* 5) METADATA - author, date (small + muted) */}
         <CardMeta
           authorName={data.authorName}
@@ -394,6 +479,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
           menuRef={menuRef}
           isPreview={isPreview}
         />
+        </div>
       </div>
 
       {/* Contributor badge (if applicable) */}

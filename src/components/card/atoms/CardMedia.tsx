@@ -190,18 +190,45 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
 
   const isYouTube = primaryMedia?.type === 'youtube' || article.media?.type === 'youtube' || !!article.video;
 
+  // Generate ARIA label based on media type
+  const getMediaAriaLabel = (): string => {
+    if (shouldRenderMultiImageGrid) {
+      return `Image gallery with ${allImageUrls.length} images. Click to view gallery.`;
+    }
+    if (primaryMedia?.type === 'youtube') {
+      return `YouTube video thumbnail. Click to play video.`;
+    }
+    if (primaryMedia?.type === 'image') {
+      return `Image thumbnail. Click to view full size.`;
+    }
+    if (primaryMedia?.type === 'document' || primaryMedia?.type === 'pdf') {
+      return `Document thumbnail. Click to view document.`;
+    }
+    return `Media thumbnail. Click to view.`;
+  };
+
   return (
     <div
       className={twMerge(
         'w-full rounded-xl overflow-hidden relative shrink-0 group/media',
         backgroundClass,
         isDocument ? 'h-16' : '',
-        className
+        className,
+        'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 cursor-pointer'
       )}
       style={
         !isDocument && aspectRatio && !hasAspectRatioInClassName ? { aspectRatio } : {}
       }
       onClick={onMediaClick}
+      role="button"
+      tabIndex={0}
+      aria-label={getMediaAriaLabel()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onMediaClick(e as unknown as React.MouseEvent);
+        }
+      }}
     >
       {/* ============================================================================
           RENDERING STRATEGY: Three distinct modes
@@ -254,6 +281,8 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
                   <Image
                     src={thumbnailUrl}
                     alt={article.title || 'Nugget thumbnail'}
+                    loading="lazy"
+                    decoding="async"
                     className={
                       primaryMedia?.type === 'youtube'
                         ? // YouTube thumbnails: fill container with object-cover (standard YouTube look)
