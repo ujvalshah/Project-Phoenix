@@ -14,6 +14,10 @@ interface CardContentProps {
   cardType?: 'hybrid' | 'media-only'; // Card type - truncation ONLY for Hybrid cards
   title?: string; // Optional title to include inside truncation wrapper
   onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
+  hideFadeButton?: boolean; // Hide the "Read more" button in fade overlay (for split button layout)
+  expandRef?: React.MutableRefObject<(() => void) | null>; // Ref to expose expand function to parent (for split button layout)
+  collapseRef?: React.MutableRefObject<(() => void) | null>; // Ref to expose collapse function to parent (for split button layout)
+  onExpansionChange?: (isExpanded: boolean) => void; // Callback when expansion state changes (for split button layout)
 }
 
 /**
@@ -37,6 +41,10 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   cardType = 'hybrid', // Default to hybrid for backward compatibility
   title, // Optional title to include inside truncation wrapper
   onYouTubeTimestampClick,
+  hideFadeButton = false,
+  expandRef,
+  collapseRef,
+  onExpansionChange,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   
@@ -235,6 +243,45 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
     }
   }, [allowExpansion, isExpanded, hadOverflowWhenCollapsed, measured]);
 
+  // Expose expansion function to parent via ref (for split button layout)
+  const expandContent = useCallback(() => {
+    if (allowExpansion && !isExpanded && hadOverflowWhenCollapsed && measured) {
+      setIsExpanded(true);
+    }
+  }, [allowExpansion, isExpanded, hadOverflowWhenCollapsed, measured]);
+
+  // Expose collapse function to parent via ref (for split button layout)
+  const collapseContent = useCallback(() => {
+    if (allowExpansion && isExpanded) {
+      setIsExpanded(false);
+    }
+  }, [allowExpansion, isExpanded]);
+
+  // Expose expand/collapse functions to parent
+  useEffect(() => {
+    if (expandRef) {
+      expandRef.current = expandContent;
+    }
+    if (collapseRef) {
+      collapseRef.current = collapseContent;
+    }
+    return () => {
+      if (expandRef) {
+        expandRef.current = null;
+      }
+      if (collapseRef) {
+        collapseRef.current = null;
+      }
+    };
+  }, [expandRef, collapseRef, expandContent, collapseContent]);
+
+  // Notify parent when expansion state changes
+  useEffect(() => {
+    if (onExpansionChange) {
+      onExpansionChange(isExpanded);
+    }
+  }, [isExpanded, onExpansionChange]);
+
   // Handle collapse click
   const handleCollapse = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent drawer/card click
@@ -387,8 +434,8 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
                 zIndex: 5
               }}
             />
-            {/* Clickable expand button overlay - Only show when expansion is allowed */}
-            {shouldClamp && (
+            {/* Clickable expand button overlay - Only show when expansion is allowed and not hidden */}
+            {shouldClamp && !hideFadeButton && (
               <div 
                 className="absolute inset-x-0 bottom-0 h-20 pointer-events-auto cursor-pointer flex items-end justify-center pb-3"
                 onClick={handleFadeClick}
@@ -414,7 +461,8 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
         )}
       </div>
       {/* EXPANDED STATE: Collapse control appears at bottom when expanded */}
-      {showCollapse && (
+      {/* Hide this when using split buttons (hideFadeButton=true means split buttons are shown) */}
+      {showCollapse && !hideFadeButton && (
         <div className="mt-2 flex justify-center">
           <button
             onClick={handleCollapse}

@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Check, ExternalLink } from 'lucide-react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { Check, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { NewsCardLogic } from '@/hooks/useNewsCard';
 import { CardMedia } from '../atoms/CardMedia';
 import { CardTitle } from '../atoms/CardTitle';
@@ -41,6 +41,9 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   disableInlineExpansion = false,
 }) => {
   const { data, handlers } = logic;
+  const contentExpandRef = useRef<(() => void) | null>(null);
+  const contentCollapseRef = useRef<(() => void) | null>(null);
+  const [isContentExpanded, setIsContentExpanded] = useState(false);
   
   // Calculate link button props (for rendering link button independently of media)
   // Priority: externalLinks > previewMetadata.url (original source) > media.url (for link-type only)
@@ -403,6 +406,10 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               cardType={data.cardType}
               title={data.shouldShowTitle ? data.title : undefined}
               onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
+              hideFadeButton={!disableInlineExpansion} // Hide fade button when showing split buttons (mobile/feed)
+              expandRef={!disableInlineExpansion ? contentExpandRef : undefined} // Expose expand function for split button
+              collapseRef={!disableInlineExpansion ? contentCollapseRef : undefined} // Expose collapse function for split button
+              onExpansionChange={!disableInlineExpansion ? setIsContentExpanded : undefined} // Update expanded state for split button
             />
           </div>
         </>
@@ -419,36 +426,130 @@ export const GridVariant: React.FC<GridVariantProps> = ({
         `}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* View Full Article Button - Compact pill-style button */}
-        {/* Only show if inline expansion is disabled (desktop grid) or if content is truncated */}
-        {!selectionMode && (disableInlineExpansion || (data.content && data.content.length > 200)) && (
-          <div className="flex justify-center">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (handlers.onClick) {
-                  handlers.onClick();
-                }
-              }}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-              aria-label={disableInlineExpansion ? "View full article in drawer" : "View full article"}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (handlers.onClick) {
-                    handlers.onClick();
-                  }
-                }
-              }}
-            >
-              <span>View Full Article</span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          </div>
+        {/* Action Buttons Section */}
+        {/* Desktop grid: Single "View Full Article" button */}
+        {/* Mobile/Feed: Split buttons - "Expand" (inline) + "View Full Article" (modal) */}
+        {!selectionMode && (
+          <>
+            {disableInlineExpansion ? (
+              // Desktop grid: Single button to open drawer
+              (data.content && data.content.length > 200) && (
+                <div className="flex justify-center">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (handlers.onClick) {
+                        handlers.onClick();
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                    aria-label="View full article in drawer"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (handlers.onClick) {
+                          handlers.onClick();
+                        }
+                      }
+                    }}
+                  >
+                    <span>View Full Article</span>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              )
+            ) : (
+              // Mobile/Feed: Split buttons - only show if content exists
+              (data.content || data.excerpt) && (
+                <div className="flex gap-2">
+                  {/* Expand/Collapse Button - Left half (toggles based on expanded state) */}
+                  {isContentExpanded ? (
+                    // Collapse Button - shown when expanded
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Trigger collapse via ref
+                        if (contentCollapseRef.current) {
+                          contentCollapseRef.current();
+                        }
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 min-h-[44px]"
+                      aria-label="Collapse content"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (contentCollapseRef.current) {
+                            contentCollapseRef.current();
+                          }
+                        }
+                      }}
+                    >
+                      <span>Collapse</span>
+                      <ChevronUp size={14} />
+                    </button>
+                  ) : (
+                    // Expand Button - shown when collapsed
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Trigger inline expansion via ref
+                        if (contentExpandRef.current) {
+                          contentExpandRef.current();
+                        }
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 min-h-[44px]"
+                      aria-label="Expand content inline"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (contentExpandRef.current) {
+                            contentExpandRef.current();
+                          }
+                        }
+                      }}
+                    >
+                      <span>Expand</span>
+                      <ChevronDown size={14} />
+                    </button>
+                  )}
+                  {/* View Full Article Button - Right half */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (handlers.onClick) {
+                        handlers.onClick();
+                      }
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 min-h-[44px]"
+                    aria-label="View full article"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (handlers.onClick) {
+                          handlers.onClick();
+                        }
+                      }
+                    }}
+                  >
+                    <span>View Full Article</span>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              )
+            )}
+          </>
         )}
         <div className="flex items-center justify-between">
         {/* 5) METADATA - author, date (small + muted) */}
