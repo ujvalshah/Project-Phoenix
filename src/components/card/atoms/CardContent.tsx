@@ -172,6 +172,11 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
         
         setHadOverflowWhenCollapsed(shouldTruncate);
         setMeasured(true);
+        
+        // Notify parent of overflow state after measurement completes
+        if (onOverflowChange) {
+          onOverflowChange(shouldTruncate);
+        }
       });
       
       return () => cancelAnimationFrame(rafId2);
@@ -203,7 +208,16 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
         const shouldTruncate = isOverflowing && hasMinimumContent;
         
         // Only update if value actually changed
-        setHadOverflowWhenCollapsed(prev => prev !== shouldTruncate ? shouldTruncate : prev);
+        setHadOverflowWhenCollapsed(prev => {
+          if (prev !== shouldTruncate) {
+            // Notify parent when overflow state changes
+            if (onOverflowChange) {
+              onOverflowChange(shouldTruncate);
+            }
+            return shouldTruncate;
+          }
+          return prev;
+        });
       }, 100); // 100ms debounce to prevent flicker
     });
 
@@ -285,13 +299,15 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   }, [isExpanded, onExpansionChange]);
 
   // Notify parent when overflow state changes (for button visibility)
+  // CRITICAL: Check overflow regardless of allowExpansion - needed for desktop "View Full Article" button
   useEffect(() => {
     if (onOverflowChange) {
-      // Only report overflow if content is actually truncated (measured and has overflow)
-      const hasOverflow = measured && hadOverflowWhenCollapsed && allowExpansion;
+      // Report overflow if content is actually truncated (measured and has overflow)
+      // This works even when allowExpansion={false} (desktop) because we still measure overflow
+      const hasOverflow = measured && hadOverflowWhenCollapsed;
       onOverflowChange(hasOverflow);
     }
-  }, [onOverflowChange, measured, hadOverflowWhenCollapsed, allowExpansion]);
+  }, [onOverflowChange, measured, hadOverflowWhenCollapsed]);
 
   // Handle collapse click
   const handleCollapse = useCallback((e: React.MouseEvent) => {
