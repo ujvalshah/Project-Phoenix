@@ -44,6 +44,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   const contentExpandRef = useRef<(() => void) | null>(null);
   const contentCollapseRef = useRef<(() => void) | null>(null);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
+  const [hasContentOverflow, setHasContentOverflow] = useState(false);
   
   // Calculate link button props (for rendering link button independently of media)
   // Priority: externalLinks > previewMetadata.url (original source) > media.url (for link-type only)
@@ -410,6 +411,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               expandRef={!disableInlineExpansion ? contentExpandRef : undefined} // Expose expand function for split button
               collapseRef={!disableInlineExpansion ? contentCollapseRef : undefined} // Expose collapse function for split button
               onExpansionChange={!disableInlineExpansion ? setIsContentExpanded : undefined} // Update expanded state for split button
+              onOverflowChange={setHasContentOverflow} // Update overflow state for button visibility
             />
           </div>
         </>
@@ -433,7 +435,9 @@ export const GridVariant: React.FC<GridVariantProps> = ({
           <>
             {disableInlineExpansion ? (
               // Desktop grid: Single button to open drawer
-              (data.content && data.content.length > 200) && (
+              // Only show if content actually overflows (for hybrid cards)
+              // For media-only cards: don't show buttons (they don't have expandable content)
+              data.cardType === 'hybrid' && hasContentOverflow && (
                 <div className="flex justify-center">
                   <button
                     onClick={(e) => {
@@ -463,8 +467,9 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 </div>
               )
             ) : (
-              // Mobile/Feed: Split buttons - only show if content exists
-              (data.content || data.excerpt) && (
+              // Mobile/Feed: Split buttons - only show if content actually overflows
+              // Don't show for media-only cards (they don't have expandable text content)
+              data.cardType === 'hybrid' && hasContentOverflow && (
                 <div className="flex gap-2">
                   {/* Expand/Collapse Button - Left half (toggles based on expanded state) */}
                   {isContentExpanded ? (

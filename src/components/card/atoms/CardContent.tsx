@@ -18,6 +18,7 @@ interface CardContentProps {
   expandRef?: React.MutableRefObject<(() => void) | null>; // Ref to expose expand function to parent (for split button layout)
   collapseRef?: React.MutableRefObject<(() => void) | null>; // Ref to expose collapse function to parent (for split button layout)
   onExpansionChange?: (isExpanded: boolean) => void; // Callback when expansion state changes (for split button layout)
+  onOverflowChange?: (hasOverflow: boolean) => void; // Callback when overflow state changes (for button visibility)
 }
 
 /**
@@ -45,6 +46,7 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   expandRef,
   collapseRef,
   onExpansionChange,
+  onOverflowChange,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   
@@ -281,6 +283,15 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
       onExpansionChange(isExpanded);
     }
   }, [isExpanded, onExpansionChange]);
+
+  // Notify parent when overflow state changes (for button visibility)
+  useEffect(() => {
+    if (onOverflowChange) {
+      // Only report overflow if content is actually truncated (measured and has overflow)
+      const hasOverflow = measured && hadOverflowWhenCollapsed && allowExpansion;
+      onOverflowChange(hasOverflow);
+    }
+  }, [onOverflowChange, measured, hadOverflowWhenCollapsed, allowExpansion]);
 
   // Handle collapse click
   const handleCollapse = useCallback((e: React.MouseEvent) => {
