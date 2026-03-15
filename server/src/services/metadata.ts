@@ -135,12 +135,20 @@ function isImageUrl(urlString: string): boolean {
     const pathname = url.pathname.toLowerCase();
     const hostname = url.hostname.toLowerCase();
     
-    // Check for image file extensions
-    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+    // Check for image file extensions (svgz = gzip-compressed SVG)
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.svgz'];
     if (imageExts.some(ext => pathname.endsWith(ext))) {
       return true;
     }
-    
+
+    // CloudFront (AWS) - DocSend and similar: path contains _images, /images/, or /image/
+    if (
+      hostname.includes('cloudfront.net') &&
+      (pathname.includes('_images') || pathname.includes('/images/') || pathname.includes('/image/'))
+    ) {
+      return true;
+    }
+
     // Check for known CDN image hosts
     if (
       hostname.includes('images.ctfassets.net') ||
@@ -161,7 +169,7 @@ function isImageUrl(urlString: string): boolean {
     }
   } catch {
     // Invalid URL, fallback to extension check only
-    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.svgz'];
     if (imageExts.some(ext => urlString.toLowerCase().endsWith(ext))) {
       return true;
     }

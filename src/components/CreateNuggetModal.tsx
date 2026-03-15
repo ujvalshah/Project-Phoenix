@@ -1117,8 +1117,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   const handleDeleteMedia = (itemId: string) => {
     const item = masonryMediaItems.find(m => m.id === itemId);
-    if (item?.url) {
+    if (!item?.url) return;
+    // In edit mode, use full delete flow (API + cache invalidation) so the image is removed on the server
+    // and the nugget card / reopened modal reflect the change. Otherwise we only remove from local state.
+    if (mode === 'edit' && initialData) {
+      deleteImage(item.url);
+    } else {
       imageManager.deleteImage(item.url);
+      imageManager.confirmDeletion(item.url);
     }
   };
 

@@ -618,6 +618,21 @@ export const deleteArticle = async (req: Request, res: Response) => {
 };
 
 /**
+ * Normalize image URL for comparison (strip query/hash so frontend and stored URLs match).
+ * Must match frontend normalizeImageUrl logic so DELETE /articles/:id/images finds the image.
+ */
+function normalizeImageUrlForCompare(url: string): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  try {
+    const urlObj = new URL(trimmed);
+    return `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`.toLowerCase();
+  } catch {
+    return trimmed.toLowerCase();
+  }
+}
+
+/**
  * Delete a specific image from an article's images array
  * 
  * DELETE /api/articles/:id/images
@@ -649,15 +664,14 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
       return sendForbiddenError(res, 'You can only edit your own articles');
     }
 
+    // Normalize for comparison (strip query/hash) so stored URL and request URL match
+    const normalizedImageUrl = normalizeImageUrlForCompare(imageUrl);
+
     // Remove image from array (deduplicate by removing all occurrences)
-    // Use normalized comparison to handle URL variations
     const currentImages = article.images || [];
-    const normalizedImageUrl = imageUrl.toLowerCase().trim();
-    
     const updatedImages = currentImages.filter((img: string) => {
       if (!img || typeof img !== 'string') return true;
-      const normalized = img.toLowerCase().trim();
-      return normalized !== normalizedImageUrl;
+      return normalizeImageUrlForCompare(img) !== normalizedImageUrl;
     });
 
     // CRITICAL: Also check if image is in media field
@@ -667,7 +681,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
     
     if (updatedMedia) {
       // Check if media.url matches the image to delete
-      if (updatedMedia.url && updatedMedia.url.toLowerCase().trim() === normalizedImageUrl) {
+      if (updatedMedia.url && normalizeImageUrlForCompare(updatedMedia.url) === normalizedImageUrl) {
         if (updatedMedia.type === 'image') {
           // If media type is image and URL matches, clear the entire media object
           updatedMedia = null;
@@ -683,7 +697,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
       
       // Check if media.previewMetadata.imageUrl matches
       if (updatedMedia.previewMetadata?.imageUrl) {
-        const ogImageUrl = updatedMedia.previewMetadata.imageUrl.toLowerCase().trim();
+        const ogImageUrl = normalizeImageUrlForCompare(updatedMedia.previewMetadata.imageUrl);
         if (ogImageUrl === normalizedImageUrl) {
           // Remove imageUrl from previewMetadata but keep other metadata
           updatedMedia.previewMetadata = {
@@ -702,7 +716,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
     let updatedPrimaryMedia = article.primaryMedia ? { ...article.primaryMedia } : null;
     
     if (updatedPrimaryMedia && updatedPrimaryMedia.type === 'image' && updatedPrimaryMedia.url) {
-      const primaryMediaUrl = updatedPrimaryMedia.url.toLowerCase().trim();
+      const primaryMediaUrl = normalizeImageUrlForCompare(updatedPrimaryMedia.url);
       if (primaryMediaUrl === normalizedImageUrl) {
         // Remove primaryMedia if it matches the image to delete
         updatedPrimaryMedia = null;
@@ -718,7 +732,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
       const beforeCount = updatedSupportingMedia.length;
       updatedSupportingMedia = updatedSupportingMedia.filter((media: any) => {
         if (media.type === 'image' && media.url) {
-          const supportingUrl = media.url.toLowerCase().trim();
+          const supportingUrl = normalizeImageUrlForCompare(media.url);
           return supportingUrl !== normalizedImageUrl;
         }
         return true; // Keep non-image media or media without URL

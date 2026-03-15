@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, Mail, ClipboardType, Eye, EyeOff } from 'lucide-react';
+import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, Mail, ClipboardType, Eye, EyeOff, HardDrive } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { adminConfigService, AVAILABLE_SERVICES } from '../services/adminConfigService';
+import { adminSettingsService, MediaLimits } from '../services/adminSettingsService';
 import { RolePermissions, ServiceId, AdminRole, FeatureFlags, SignupConfig } from '../types/admin';
 
 interface SystemAnnouncement {
@@ -32,6 +33,9 @@ export const AdminConfigPage: React.FC = () => {
   const [flags, setFlags] = useState<FeatureFlags | null>(null);
   const [signupConfig, setSignupConfig] = useState<SignupConfig | null>(null);
   const [isSavingPerms, setIsSavingPerms] = useState(false);
+  const [mediaLimits, setMediaLimits] = useState<MediaLimits | null>(null);
+  const [mediaLimitsDraft, setMediaLimitsDraft] = useState<MediaLimits | null>(null);
+  const [isSavingMediaLimits, setIsSavingMediaLimits] = useState(false);
 
   useEffect(() => {
     setPageHeader("System Configuration", "Manage global settings, feature toggles, and system alerts.");
@@ -40,14 +44,19 @@ export const AdminConfigPage: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const [permData, flagsData, signupData] = await Promise.all([
+      const [permData, flagsData, signupData, limitsData] = await Promise.all([
         adminConfigService.getRolePermissions(),
         adminConfigService.getFeatureFlags(),
-        adminConfigService.getSignupConfig()
+        adminConfigService.getSignupConfig(),
+        adminSettingsService.getMediaLimits().catch(() => null)
       ]);
       setPermissions(permData);
       setFlags(flagsData);
       setSignupConfig(signupData);
+      if (limitsData) {
+        setMediaLimits(limitsData);
+        setMediaLimitsDraft(limitsData);
+      }
     } catch (e) {
       toast.error("Failed to load configuration");
     }
@@ -109,6 +118,25 @@ export const AdminConfigPage: React.FC = () => {
       toast.error("Failed to save privileges");
     } finally {
       setIsSavingPerms(false);
+    }
+  };
+
+  const handleSaveMediaLimits = async () => {
+    if (!mediaLimitsDraft) return;
+    setIsSavingMediaLimits(true);
+    try {
+      const result = await adminSettingsService.updateMediaLimits({
+        maxFilesPerUser: mediaLimitsDraft.maxFilesPerUser,
+        maxStorageMB: mediaLimitsDraft.maxStorageMB,
+        maxDailyUploads: mediaLimitsDraft.maxDailyUploads
+      });
+      setMediaLimits(result.limits);
+      setMediaLimitsDraft(result.limits);
+      toast.success(result.message || "Media limits updated");
+    } catch (e) {
+      toast.error("Failed to update media limits");
+    } finally {
+      setIsSavingMediaLimits(false);
     }
   };
 
@@ -391,7 +419,72 @@ export const AdminConfigPage: React.FC = () => {
           )}
         </section>
 
-        {/* 5. SYSTEM ANNOUNCEMENT */}
+        {/* 5. MEDIA / STORAGE LIMITS */}
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-lg">
+                <HardDrive size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Media / Storage Limits</h3>
+                <p className="text-xs text-slate-500">Per-user upload quotas. Admin accounts are exempt from these limits.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleSaveMediaLimits}
+              disabled={!mediaLimitsDraft || isSavingMediaLimits}
+              className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {isSavingMediaLimits ? 'Saving...' : <><Save size={14} /> Save Limits</>}
+            </button>
+          </div>
+
+          {mediaLimitsDraft ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Max files per user</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100000}
+                  value={mediaLimitsDraft.maxFilesPerUser}
+                  onChange={(e) => setMediaLimitsDraft((p) => p ? { ...p, maxFilesPerUser: Math.max(1, Math.min(100000, parseInt(e.target.value, 10) || 1)) } : p)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">1 – 100,000</p>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Max storage (MB) per user</label>
+                <input
+                  type="number"
+                  min={10}
+                  max={5000}
+                  value={mediaLimitsDraft.maxStorageMB}
+                  onChange={(e) => setMediaLimitsDraft((p) => p ? { ...p, maxStorageMB: Math.max(10, Math.min(5000, parseInt(e.target.value, 10) || 10)) } : p)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">10 – 5,000 MB</p>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Max daily uploads per user</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={mediaLimitsDraft.maxDailyUploads}
+                  onChange={(e) => setMediaLimitsDraft((p) => p ? { ...p, maxDailyUploads: Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 1)) } : p)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">1 – 1,000 per day</p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4 text-slate-400">Loading media limits...</div>
+          )}
+        </section>
+
+        {/* 6. SYSTEM ANNOUNCEMENT */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">

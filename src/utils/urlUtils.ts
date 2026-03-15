@@ -8,11 +8,14 @@
  *
  * DO NOT fetch metadata for image URLs.
  */
+/** Image extensions; (\\?|#|$) allows query/hash so URLs like image.webp?itok=xxx are recognized. */
+const IMAGE_EXT_REGEX = /\.(jpg|jpeg|png|gif|webp|svgz?)(\?|#|$)/i;
+
 export const isImageUrl = (url: string): boolean => {
   if (!url) return false;
 
-  // Check for image file extensions (most common case)
-  if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)) {
+  // Check for image file extensions (with or without query/hash, e.g. .webp?itok=xxx, .svgz?cq=50)
+  if (/\.(jpg|jpeg|png|gif|webp|svgz?)$/i.test(url) || IMAGE_EXT_REGEX.test(url)) {
     return true;
   }
 
@@ -45,6 +48,19 @@ export const isImageUrl = (url: string): boolean => {
 
     // Imgur: i.imgur.com serves images
     if (hostname === 'i.imgur.com') {
+      return true;
+    }
+
+    // Static asset CDNs with /images/ path (e.g. static.ffx.io - no file extension in URL)
+    if (pathname.startsWith('/images/') && (hostname.includes('static.') || hostname.includes('ffx.io'))) {
+      return true;
+    }
+
+    // CloudFront (AWS) - DocSend and similar: signed URLs with path containing _images, /images/, or /image/
+    if (
+      hostname.includes('cloudfront.net') &&
+      (pathname.includes('_images') || pathname.includes('/images/') || pathname.includes('/image/'))
+    ) {
       return true;
     }
 

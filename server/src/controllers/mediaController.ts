@@ -10,14 +10,10 @@ import {
 } from '../services/cloudinaryService.js';
 import { sendInternalError, sendValidationError, sendNotFoundError, sendUnauthorizedError } from '../utils/errorResponse.js';
 import { getUserStorageStats } from '../services/mediaCleanupService.js';
+import { getMediaQuotaConfig } from '../services/mediaQuotaConfigService.js';
 import mongoose from 'mongoose';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
-
-// Security limits (configurable via env in production)
-const MAX_FILES_PER_USER = 1000; // Maximum total files per user
-const MAX_STORAGE_BYTES = 500 * 1024 * 1024; // 500MB max storage per user
-const MAX_DAILY_UPLOADS = 100; // Maximum uploads per day per user
 
 /**
  * Media Controller
@@ -85,55 +81,56 @@ export const uploadMedia = async (req: Request, res: Response) => {
       return sendValidationError(res, 'No file provided', []);
     }
 
-    // SECURITY: Check user quotas before upload
-    try {
-      const stats = await getUserStorageStats(userId);
-      
-      // Check total file count
-      if (stats.totalFiles >= MAX_FILES_PER_USER) {
-        return res.status(403).json({
-          error: 'Quota Exceeded',
-          message: `Maximum file limit reached (${MAX_FILES_PER_USER} files). Please delete some files before uploading.`
+    const userRole = (req as any).user?.role;
+
+    // SECURITY: Check user quotas before upload (admins are exempt)
+    if (userRole !== 'admin') {
+      try {
+        const limits = await getMediaQuotaConfig();
+        const stats = await getUserStorageStats(userId);
+
+        if (stats.totalFiles >= limits.maxFilesPerUser) {
+          return res.status(403).json({
+            error: 'Quota Exceeded',
+            message: `Maximum file limit reached (${limits.maxFilesPerUser} files). Please delete some files before uploading.`
+          });
+        }
+
+        if (stats.totalBytes >= limits.maxStorageBytes) {
+          return res.status(403).json({
+            error: 'Storage Quota Exceeded',
+            message: `Maximum storage limit reached (${(limits.maxStorageBytes / 1024 / 1024).toFixed(0)}MB). Please delete some files before uploading.`
+          });
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayUploads = await Media.countDocuments({
+          ownerId: userId,
+          createdAt: { $gte: today }
         });
-      }
-      
-      // Check storage quota
-      if (stats.totalBytes >= MAX_STORAGE_BYTES) {
-        return res.status(403).json({
-          error: 'Storage Quota Exceeded',
-          message: `Maximum storage limit reached (${(MAX_STORAGE_BYTES / 1024 / 1024).toFixed(0)}MB). Please delete some files before uploading.`
+
+        if (todayUploads >= limits.maxDailyUploads) {
+          return res.status(403).json({
+            error: 'Daily Limit Exceeded',
+            message: `Maximum daily upload limit reached (${limits.maxDailyUploads} files). Please try again tomorrow.`
+          });
+        }
+      } catch (quotaError: any) {
+        const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+        requestLogger.error({
+          msg: '[Media] Quota check failed',
+          error: {
+            message: quotaError.message,
+            stack: quotaError.stack,
+          },
         });
-      }
-      
-      // Check daily upload limit
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayUploads = await Media.countDocuments({
-        ownerId: userId,
-        createdAt: { $gte: today }
-      });
-      
-      if (todayUploads >= MAX_DAILY_UPLOADS) {
-        return res.status(403).json({
-          error: 'Daily Limit Exceeded',
-          message: `Maximum daily upload limit reached (${MAX_DAILY_UPLOADS} files). Please try again tomorrow.`
+        captureException(quotaError instanceof Error ? quotaError : new Error(String(quotaError)), {
+          requestId: req.id,
+          route: req.path,
         });
+        // Don't block upload if quota check fails, but log it
       }
-    } catch (quotaError: any) {
-      // Audit Phase-1 Fix: Use structured logging and Sentry capture
-      const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
-      requestLogger.error({
-        msg: '[Media] Quota check failed',
-        error: {
-          message: quotaError.message,
-          stack: quotaError.stack,
-        },
-      });
-      captureException(quotaError instanceof Error ? quotaError : new Error(String(quotaError)), {
-        requestId: req.id,
-        route: req.path,
-      });
-      // Don't block upload if quota check fails, but log it
     }
 
     const purpose = req.body.purpose as 'avatar' | 'nugget' | 'attachment' | 'other';

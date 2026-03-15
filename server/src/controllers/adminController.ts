@@ -1,13 +1,25 @@
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { User } from '../models/User.js';
 import { Article } from '../models/Article.js';
 import { Report } from '../models/Report.js';
 import { Feedback } from '../models/Feedback.js';
 import { AdminAuditLog } from '../models/AdminAuditLog.js';
+import { MediaQuotaConfig } from '../models/MediaQuotaConfig.js';
 import { LRUCache } from '../utils/lruCache.js';
 import { buildModerationQuery, getModerationStats } from '../services/moderationService.js';
+import {
+  getMediaQuotaConfig,
+  invalidateMediaQuotaCache
+} from '../services/mediaQuotaConfigService.js';
 import { AdminRequest } from '../middleware/requireAdmin.js';
 import { getLogger } from '../utils/logger.js';
+
+const updateMediaLimitsSchema = z.object({
+  maxFilesPerUser: z.number().int().min(1).max(100000).optional(),
+  maxStorageMB: z.number().int().min(10).max(5000).optional(),
+  maxDailyUploads: z.number().int().min(1).max(1000).optional()
+});
 
 // Short-lived cache to avoid hammering the database
 // Cache up to 10 entries for 2 minutes each
@@ -267,6 +279,105 @@ export async function verifyUserEmail(req: AdminRequest, res: Response) {
   } catch (error) {
     getLogger().error({ error, userId, adminId }, 'Failed to verify user email');
     return res.status(500).json({ message: 'Failed to verify user email' });
+  }
+}
+
+/**
+ * Get current media quota limits (admin only).
+ * GET /api/admin/settings/media-limits
+ * Returns effective limits (from DB or defaults).
+ */
+export async function getMediaLimits(req: AdminRequest, res: Response) {
+  try {
+    const limits = await getMediaQuotaConfig();
+    return res.json({
+      maxFilesPerUser: limits.maxFilesPerUser,
+      maxStorageMB: Math.round(limits.maxStorageBytes / (1024 * 1024)),
+      maxDailyUploads: limits.maxDailyUploads
+    });
+  } catch (error) {
+    getLogger().error({ error }, 'Failed to get media limits');
+    return res.status(500).json({ message: 'Failed to get media limits' });
+  }
+}
+
+/**
+ * Update media quota limits (admin only).
+ * PATCH /api/admin/settings/media-limits
+ * Body: { maxFilesPerUser?, maxStorageMB?, maxDailyUploads? }
+ */
+export async function updateMediaLimits(req: AdminRequest, res: Response) {
+  const adminId = req.userId;
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+
+  const parseResult = updateMediaLimitsSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    const message = parseResult.error.errors.map((e) => e.message).join('; ') || 'Validation failed';
+    return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
+  }
+
+  const updates = parseResult.data;
+  if (!updates.maxFilesPerUser && updates.maxStorageMB === undefined && !updates.maxDailyUploads) {
+    return res.status(400).json({ message: 'At least one limit must be provided' });
+  }
+
+  try {
+    const current = await getMediaQuotaConfig();
+    const previousValue = {
+      maxFilesPerUser: current.maxFilesPerUser,
+      maxStorageMB: Math.round(current.maxStorageBytes / (1024 * 1024)),
+      maxDailyUploads: current.maxDailyUploads
+    };
+
+    const maxStorageBytes =
+      updates.maxStorageMB !== undefined ? updates.maxStorageMB * 1024 * 1024 : current.maxStorageBytes;
+    const newDoc = {
+      id: 'default' as const,
+      maxFilesPerUser: updates.maxFilesPerUser ?? current.maxFilesPerUser,
+      maxStorageBytes,
+      maxDailyUploads: updates.maxDailyUploads ?? current.maxDailyUploads,
+      updatedAt: new Date()
+    };
+
+    await MediaQuotaConfig.findOneAndUpdate(
+      { id: 'default' },
+      { $set: newDoc },
+      { upsert: true, new: true }
+    );
+
+    invalidateMediaQuotaCache();
+
+    const newValue = {
+      maxFilesPerUser: newDoc.maxFilesPerUser,
+      maxStorageMB: Math.round(newDoc.maxStorageBytes / (1024 * 1024)),
+      maxDailyUploads: newDoc.maxDailyUploads
+    };
+
+    await AdminAuditLog.create({
+      adminId,
+      action: 'UPDATE_MEDIA_QUOTA',
+      targetType: 'system',
+      targetId: 'media_limits',
+      previousValue: previousValue as Record<string, unknown>,
+      newValue: newValue as Record<string, unknown>,
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.get('User-Agent')
+    });
+
+    getLogger().info(
+      { action: 'UPDATE_MEDIA_QUOTA', adminId, previousValue, newValue },
+      'Admin updated media quota limits'
+    );
+
+    return res.json({
+      message: 'Media limits updated',
+      limits: newValue
+    });
+  } catch (error) {
+    getLogger().error({ error, adminId }, 'Failed to update media limits');
+    return res.status(500).json({ message: 'Failed to update media limits' });
   }
 }
 

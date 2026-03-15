@@ -14,7 +14,8 @@ export type AdminAction =
   | 'ACTIVATE_USER'
   | 'DELETE_USER'
   | 'UPDATE_USER_PROFILE'
-  | 'RESET_USER_PASSWORD';
+  | 'RESET_USER_PASSWORD'
+  | 'UPDATE_MEDIA_QUOTA';
 
 export interface IAdminAuditLog extends Document {
   adminId: string;
@@ -44,7 +45,8 @@ const AdminAuditLogSchema = new Schema<IAdminAuditLog>({
       'ACTIVATE_USER',
       'DELETE_USER',
       'UPDATE_USER_PROFILE',
-      'RESET_USER_PASSWORD'
+      'RESET_USER_PASSWORD',
+      'UPDATE_MEDIA_QUOTA'
     ],
     required: true,
     index: true
