@@ -13,6 +13,7 @@ import { adminModerationService } from '@/admin/services/adminModerationService'
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
 import { getMasonryVisibleMedia } from '@/utils/masonryMediaHelper';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface MasonryAtomProps {
   article: Article;
@@ -44,6 +45,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
   const toast = useToast();
   const { currentUser } = useAuth();
   const queryClient = useQueryClient();
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
 
   const {
     handleClick,
@@ -207,8 +209,8 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
             />
           )}
 
-          {/* Hover-triggered Action HUD */}
-          {isHovered && (
+          {/* Hover-triggered Action HUD (desktop) + Always-visible Source (mobile/tablet) */}
+          {(!!sourceLink && (isHovered || !isDesktop)) && (
             <ActionHUD
               article={article}
               onAddToCollection={(e) => {
@@ -223,6 +225,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
                 setShowMoreMenu(!showMoreMenu);
               }}
               sourceLink={sourceLink}
+              showMenuButton={isDesktop ? true : isHovered}
               showMoreMenu={showMoreMenu}
               moreMenuRef={moreMenuRef}
               isOwner={isOwner}

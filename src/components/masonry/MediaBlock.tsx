@@ -213,7 +213,10 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
                         text-xs font-medium
                         truncate
                         bg-black/60 text-white
-                        opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-focus-visible:opacity-100
+                        opacity-100 lg:opacity-0
+                        lg:group-hover:opacity-100
+                        lg:group-focus-within:opacity-100
+                        lg:group-focus-visible:opacity-100
                         transition-opacity duration-150
                         pointer-events-none
                       "
@@ -279,7 +282,10 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
                         text-xs font-medium
                         truncate
                         bg-black/60 text-white
-                        opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-focus-visible:opacity-100
+                        opacity-100 lg:opacity-0
+                        lg:group-hover:opacity-100
+                        lg:group-focus-within:opacity-100
+                        lg:group-focus-visible:opacity-100
                         transition-opacity duration-150
                         pointer-events-none
                       "

@@ -9,6 +9,7 @@ interface ActionHUDProps {
   onAddToCollection: (e: React.MouseEvent) => void;
   onMore: (e: React.MouseEvent) => void;
   sourceLink?: { url: string; label: SourceLinkLabel } | null;
+  showMenuButton?: boolean;
   showMoreMenu?: boolean;
   moreMenuRef?: React.RefObject<HTMLDivElement>;
   isOwner?: boolean;
@@ -33,6 +34,7 @@ export const ActionHUD: React.FC<ActionHUDProps> = ({
   onAddToCollection,
   onMore,
   sourceLink = null,
+  showMenuButton = true,
   showMoreMenu = false,
   moreMenuRef,
   isOwner = false,
@@ -103,71 +105,73 @@ export const ActionHUD: React.FC<ActionHUDProps> = ({
       )}
 
       {/* More Menu */}
-      <div className="relative" ref={moreMenuRef}>
-        <button
-          onClick={onMore}
-          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded"
-          title="More options"
-        >
-          <MoreVertical size={14} />
-        </button>
-        {showMoreMenu && (
-          <div
-            ref={panelRef}
-            className={[
-              'absolute w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-20 overflow-hidden',
-              placement === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
-              align === 'right' ? 'right-0' : 'left-0',
-            ].join(' ')}
+      {showMenuButton && (
+        <div className="relative" ref={moreMenuRef}>
+          <button
+            onClick={onMore}
+            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded"
+            title="More options"
           >
-            {/* Add to Collection */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddToCollection(e);
-              }}
-              className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-              aria-label="Add to collection"
+            <MoreVertical size={14} />
+          </button>
+          {showMoreMenu && (
+            <div
+              ref={panelRef}
+              className={[
+                'absolute w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-20 overflow-hidden',
+                placement === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
+                align === 'right' ? 'right-0' : 'left-0',
+              ].join(' ')}
             >
-              <FolderPlus size={12} /> Add to collection
-            </button>
+              {/* Add to Collection */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToCollection(e);
+                }}
+                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                aria-label="Add to collection"
+              >
+                <FolderPlus size={12} /> Add to collection
+              </button>
 
-            {(isOwner || isAdmin) && onEdit && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-              >
-                <Edit2 size={12} /> Edit
-              </button>
-            )}
-            {onReport && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReport();
-                }}
-                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-              >
-                <Flag size={12} /> Report
-              </button>
-            )}
-            {(isOwner || isAdmin) && onDelete && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
-              >
-                <Trash2 size={12} /> Delete
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+              {(isOwner || isAdmin) && onEdit && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit();
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                >
+                  <Edit2 size={12} /> Edit
+                </button>
+              )}
+              {onReport && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReport();
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                >
+                  <Flag size={12} /> Report
+                </button>
+              )}
+              {(isOwner || isAdmin) && onDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                >
+                  <Trash2 size={12} /> Delete
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
