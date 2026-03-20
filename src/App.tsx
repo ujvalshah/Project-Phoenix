@@ -9,7 +9,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { FeedScrollStateProvider } from '@/context/FeedScrollStateContext';
 import { VideoPlayerProvider } from '@/context/VideoPlayerContext';
 import { MainLayout } from '@/components/layouts/MainLayout';
-import { SortOrder } from '@/types';
+import { useFilterState } from '@/hooks/useFilterState';
 import { Loader2 } from 'lucide-react';
 import { CreateNuggetModal } from '@/components/CreateNuggetModal';
 import { useAuth } from '@/hooks/useAuth';
@@ -71,13 +71,12 @@ const ArticleDetailPage = lazy(() => import('@/pages/ArticleDetail').then(module
 
 const AppContent: React.FC = () => {
   const [isDark, setIsDark] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'masonry' | 'utility'>('grid');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<SortOrder>('latest');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Unified filter state — single source of truth with URL sync + debounce
+  const filters = useFilterState();
 
   // Use Auth hook for user context
   const { currentUserId } = useAuth();
@@ -119,23 +118,24 @@ const AppContent: React.FC = () => {
         Header height: h-14 (56px) mobile, h-16 (64px) desktop
         HeaderSpacer MUST be used in PageStack to reserve this space.
       */}
-      <Header 
-        isDark={isDark} 
-        toggleTheme={() => setIsDark(!isDark)} 
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
+      <Header
+        isDark={isDark}
+        toggleTheme={() => setIsDark(!isDark)}
+        searchQuery={filters.searchInputValue}
+        setSearchQuery={filters.setSearchInput}
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         viewMode={viewMode}
         setViewMode={setViewMode}
-        selectedCategories={selectedCategories}
-        setSelectedCategories={setSelectedCategories}
-        selectedTag={selectedTag}
-        setSelectedTag={setSelectedTag}
-        sortOrder={sortOrder}
-        setSortOrder={setSortOrder}
+        selectedCategories={filters.selectedCategories}
+        setSelectedCategories={filters.setSelectedCategories}
+        selectedTag={filters.selectedTag}
+        setSelectedTag={filters.setSelectedTag}
+        sortOrder={filters.sortOrder}
+        setSortOrder={filters.setSortOrder}
         onCreateNugget={() => setIsCreateOpen(true)}
         currentUserId={currentUserId}
+        filters={filters}
       />
 
       <MainLayout>
@@ -148,7 +148,7 @@ const AppContent: React.FC = () => {
           {/* Feed/Content Areas - Wrapped in Error Boundaries */}
           <Route path="/" element={
             <ErrorBoundary>
-              <HomePage searchQuery={searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={selectedCategories} setSelectedCategories={setSelectedCategories} selectedTag={selectedTag} setSelectedTag={setSelectedTag} sortOrder={sortOrder} />
+              <HomePage searchQuery={filters.searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={filters.selectedCategories} setSelectedCategories={filters.setSelectedCategories} selectedTag={filters.selectedTag} setSelectedTag={filters.setSelectedTag} sortOrder={filters.sortOrder} />
             </ErrorBoundary>
           } />
           

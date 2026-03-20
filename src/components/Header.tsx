@@ -6,6 +6,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom'; // Still needed for NavigationDrawer
 import { Avatar } from './shared/Avatar';
 import { FilterPopover, FilterState } from './header/FilterPopover';
+import { FilterChips } from './header/FilterChips';
 import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useToast } from '@/hooks/useToast';
@@ -13,6 +14,8 @@ import { adminFeedbackService } from '@/admin/services/adminFeedbackService';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 import { DropdownPortal } from './UI/DropdownPortal';
+import type { SortOrder } from '@/types';
+import type { UseFilterStateReturn } from '@/hooks/useFilterState';
 
 interface HeaderProps {
   isDark: boolean;
@@ -27,15 +30,16 @@ interface HeaderProps {
   setSelectedCategories: (c: string[]) => void;
   selectedTag: string | null;
   setSelectedTag: (t: string | null) => void;
-  sortOrder: any;
-  setSortOrder: (s: any) => void;
+  sortOrder: SortOrder;
+  setSortOrder: (s: SortOrder) => void;
   onCreateNugget: () => void;
   currentUserId?: string;
+  filters?: UseFilterStateReturn;
 }
 
-export const Header: React.FC<HeaderProps> = ({ 
-  searchQuery, 
-  setSearchQuery, 
+export const Header: React.FC<HeaderProps> = ({
+  searchQuery,
+  setSearchQuery,
   onCreateNugget,
   sidebarOpen,
   setSidebarOpen,
@@ -45,7 +49,8 @@ export const Header: React.FC<HeaderProps> = ({
   sortOrder,
   setSortOrder,
   isDark,
-  toggleTheme
+  toggleTheme,
+  filters,
 }) => {
   // Dropdown state - managed by DropdownPortal
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -579,6 +584,31 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </header>
 
+      {/* Active filter chips bar — shown below header when filters are active */}
+      {filters?.hasActiveFilters && (
+        <div className="fixed left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-100 dark:border-slate-800" style={{ top: '56px', zIndex: Z_INDEX.HEADER - 1 }}>
+          <FilterChips
+            searchQuery={filters.searchQuery}
+            selectedCategories={filters.selectedCategories}
+            selectedTag={filters.selectedTag}
+            sortOrder={filters.sortOrder}
+            favorites={filters.favorites}
+            unread={filters.unread}
+            formats={filters.formats}
+            timeRange={filters.timeRange}
+            onClearSearch={filters.clearSearch}
+            onRemoveCategory={(cat) => filters.toggleCategory(cat)}
+            onClearTag={filters.clearTag}
+            onClearSort={filters.clearSort}
+            onClearFavorites={() => filters.setFavorites(false)}
+            onClearUnread={() => filters.setUnread(false)}
+            onRemoveFormat={(fmt) => filters.toggleFormat(fmt)}
+            onClearTimeRange={() => filters.setTimeRange('all')}
+            onClearAll={filters.clearAll}
+          />
+        </div>
+      )}
+
       {/* Avatar Menu - uses DropdownPortal for positioning and click-outside */}
       <DropdownPortal
         isOpen={isUserMenuOpen}
@@ -732,26 +762,25 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={isSortOpen}
         anchorRef={sortButtonRef}
         onClickOutside={() => setIsSortOpen(false)}
-        className="w-36 bg-white rounded-lg border border-gray-100 overflow-hidden"
+        className="w-40 bg-white rounded-lg border border-gray-100 overflow-hidden"
       >
-        <button
-          onClick={() => { setSortOrder('latest'); setIsSortOpen(false); }}
-          className={`w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
-            sortOrder === 'latest' ? 'bg-gray-50' : ''
-          }`}
-          aria-label="Sort by Latest"
-        >
-          Latest
-        </button>
-        <button
-          onClick={() => { setSortOrder('oldest'); setIsSortOpen(false); }}
-          className={`w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
-            sortOrder === 'oldest' ? 'bg-gray-50' : ''
-          }`}
-          aria-label="Sort by Oldest"
-        >
-          Oldest
-        </button>
+        {([
+          { value: 'latest' as const, label: 'Latest' },
+          { value: 'oldest' as const, label: 'Oldest' },
+          { value: 'title' as const, label: 'Title A–Z' },
+          { value: 'title-desc' as const, label: 'Title Z–A' },
+        ]).map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => { setSortOrder(opt.value); setIsSortOpen(false); }}
+            className={`w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
+              sortOrder === opt.value ? 'bg-gray-50' : ''
+            }`}
+            aria-label={`Sort by ${opt.label}`}
+          >
+            {opt.label}
+          </button>
+        ))}
       </DropdownPortal>
 
       {/* Tablet More Menu - uses DropdownPortal */}
@@ -822,30 +851,26 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="border-t border-gray-100 pt-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Sort</h3>
             <div className="space-y-1">
-              <button
-                onClick={() => { 
-                  setSortOrder('latest'); 
-                  setIsFilterPopoverOpen(false);
-                }}
-                className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors ${
-                  sortOrder === 'latest' ? 'bg-gray-50 text-gray-900' : 'text-gray-700'
-                }`}
-                aria-label="Sort by Latest"
-              >
-                Latest
-              </button>
-              <button
-                onClick={() => { 
-                  setSortOrder('oldest'); 
-                  setIsFilterPopoverOpen(false);
-                }}
-                className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors ${
-                  sortOrder === 'oldest' ? 'bg-gray-50 text-gray-900' : 'text-gray-700'
-                }`}
-                aria-label="Sort by Oldest"
-              >
-                Oldest
-              </button>
+              {([
+                { value: 'latest' as const, label: 'Latest' },
+                { value: 'oldest' as const, label: 'Oldest' },
+                { value: 'title' as const, label: 'Title A–Z' },
+                { value: 'title-desc' as const, label: 'Title Z–A' },
+              ]).map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    setSortOrder(opt.value);
+                    setIsFilterPopoverOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors ${
+                    sortOrder === opt.value ? 'bg-gray-50 text-gray-900' : 'text-gray-700'
+                  }`}
+                  aria-label={`Sort by ${opt.label}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

@@ -116,6 +116,13 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
    * Handle keyboard navigation (Enter/Space)
    */
   const handleKeyDown = (e: React.KeyboardEvent, item: MasonryMediaItem, index: number) => {
+    // If focus is on an interactive child (e.g., the overlay link button),
+    // do not trigger the tile's open behavior.
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a')) {
+      return;
+    }
+
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
@@ -206,7 +213,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
                         text-xs font-medium
                         truncate
                         bg-black/60 text-white
-                        opacity-0 group-hover:opacity-100
+                        opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-focus-visible:opacity-100
                         transition-opacity duration-150
                         pointer-events-none
                       "
@@ -272,7 +279,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
                         text-xs font-medium
                         truncate
                         bg-black/60 text-white
-                        opacity-0 group-hover:opacity-100
+                        opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-focus-visible:opacity-100
                         transition-opacity duration-150
                         pointer-events-none
                       "

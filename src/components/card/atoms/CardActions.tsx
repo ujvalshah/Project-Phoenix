@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'lucide-react';
 import { ShareMenu } from '@/components/shared/ShareMenu';
 import { BookmarkButton } from '@/components/bookmarks';
@@ -132,10 +132,12 @@ export const CardActions: React.FC<CardActionsProps> = ({
             isOwner={isOwner}
             isAdmin={isAdmin}
             visibility={visibility}
+            onAddToCollection={onAddToCollection}
             onEdit={onEdit}
             onToggleVisibility={onToggleVisibility}
             onReport={onReport}
             onDelete={onDelete}
+            anchorRef={menuRef}
             onClose={(e?: React.MouseEvent) => {
               if (e) {
                 onToggleMenu(e);
@@ -157,25 +159,73 @@ interface MenuDropdownProps {
   isOwner: boolean;
   isAdmin: boolean;
   visibility?: 'public' | 'private';
+  onAddToCollection?: () => void;
   onEdit?: () => void;
   onToggleVisibility?: () => void;
   onReport?: () => void;
   onDelete?: () => void;
   onClose: (e?: React.MouseEvent) => void;
+  anchorRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const MenuDropdown: React.FC<MenuDropdownProps> = ({
   isOwner,
   isAdmin,
   visibility,
+  onAddToCollection,
   onEdit,
   onToggleVisibility,
   onReport,
   onDelete,
   onClose,
+  anchorRef,
 }) => {
-  const menuRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [placement, setPlacement] = useState<'up' | 'down'>('up');
+  const [align, setAlign] = useState<'right' | 'left'>('right');
+
+  const computeDeps = useMemo(
+    () => [
+      isOwner,
+      isAdmin,
+      visibility,
+      !!onAddToCollection,
+      !!onEdit,
+      !!onToggleVisibility,
+      !!onReport,
+      !!onDelete,
+    ],
+    [isOwner, isAdmin, visibility, onAddToCollection, onEdit, onToggleVisibility, onReport, onDelete]
+  );
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!anchorRef?.current || !panelRef.current) return;
+
+    const anchorRect = anchorRef.current.getBoundingClientRect();
+    const panelRect = panelRef.current.getBoundingClientRect();
+
+    const margin = 8;
+    const spaceAbove = anchorRect.top;
+    const spaceBelow = window.innerHeight - anchorRect.bottom;
+
+    const canFitUp = spaceAbove >= panelRect.height + margin;
+    const canFitDown = spaceBelow >= panelRect.height + margin;
+
+    if (canFitUp) setPlacement('up');
+    else if (canFitDown) setPlacement('down');
+    else setPlacement(spaceAbove > spaceBelow ? 'up' : 'down');
+
+    const spaceLeft = anchorRect.left;
+    const spaceRight = window.innerWidth - anchorRect.right;
+
+    const canFitRight = spaceRight >= panelRect.width + margin;
+    const canFitLeft = spaceLeft >= panelRect.width + margin;
+
+    if (!canFitRight && canFitLeft) setAlign('left');
+    else setAlign('right');
+  }, [computeDeps, anchorRef]);
 
   // Build menu items array
   const menuItems: Array<{
@@ -186,6 +236,16 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
     className?: string;
     visible: boolean;
   }> = [];
+
+  if (onAddToCollection) {
+    menuItems.push({
+      id: 'add-to-collection',
+      label: 'Add to collection',
+      icon: <FolderPlus size={12} aria-hidden="true" />,
+      onClick: onAddToCollection,
+      visible: true,
+    });
+  }
 
   if (isOwner || isAdmin) {
     if (onEdit) {
@@ -239,7 +299,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!menuRef.current) return;
+      if (!panelRef.current) return;
 
       switch (e.key) {
         case 'ArrowDown':
@@ -288,8 +348,8 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
 
   // Focus the focused item
   useEffect(() => {
-    if (focusedIndex >= 0 && menuRef.current) {
-      const items = menuRef.current.querySelectorAll('[role="menuitem"]');
+    if (focusedIndex >= 0 && panelRef.current) {
+      const items = panelRef.current.querySelectorAll('[role="menuitem"]');
       if (items[focusedIndex]) {
         (items[focusedIndex] as HTMLElement).focus();
       }
@@ -298,10 +358,14 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
 
   return (
     <div
-      ref={menuRef}
+      ref={panelRef}
       role="menu"
       aria-label="Article actions"
-      className="absolute right-0 bottom-full mb-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-20 overflow-hidden"
+      className={[
+        'absolute w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-20 overflow-hidden',
+        placement === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
+        align === 'right' ? 'right-0' : 'left-0',
+      ].join(' ')}
       onKeyDown={(e) => {
         // Prevent default arrow key behavior
         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {

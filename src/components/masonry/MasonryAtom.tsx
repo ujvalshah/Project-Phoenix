@@ -70,6 +70,32 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
   const isOwner = currentUserId && article.author ? currentUserId === article.author.id : false;
   const isAdmin = currentUser?.role === 'admin';
 
+  const currentTileItem = mediaItemId
+    ? visibleMediaItems.find((i) => i.id === mediaItemId)
+    : undefined;
+
+  const sourceLink = (() => {
+    const primaryExternalLink = article.externalLinks?.find((l) => l.isPrimary);
+    if (primaryExternalLink?.url) {
+      return { url: primaryExternalLink.url, label: 'Source' as const };
+    }
+
+    const previewUrl = currentTileItem?.previewMetadata
+      ? (currentTileItem.previewMetadata as any).url
+      : undefined;
+
+    // Mirror GridVariant behavior: don't show link for YouTube thumbnail sources
+    if (previewUrl && currentTileItem?.type !== 'youtube') {
+      return { url: previewUrl as string, label: 'Source' as const };
+    }
+
+    if (currentTileItem?.type === 'link' && currentTileItem.url) {
+      return { url: currentTileItem.url, label: 'Source' as const };
+    }
+
+    return null;
+  })();
+
   // Handle more menu click outside
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -143,6 +169,20 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
           setIsHovered(false);
           setShowMoreMenu(false);
         }}
+        onFocusCapture={() => {
+          // Show Action HUD when any tile content receives focus (keyboard + tap-to-focus behavior).
+          setIsHovered(true);
+        }}
+        onBlurCapture={(e) => {
+          const relatedTarget = e.relatedTarget as Node | null;
+          const currentTarget = e.currentTarget as HTMLElement;
+          // Only hide when focus actually leaves the entire masonry tile subtree.
+          if (relatedTarget && currentTarget.contains(relatedTarget)) {
+            return;
+          }
+          setIsHovered(false);
+          setShowMoreMenu(false);
+        }}
       >
         {/* Transparent hit-box container */}
         <div
@@ -182,6 +222,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
                 e.stopPropagation();
                 setShowMoreMenu(!showMoreMenu);
               }}
+              sourceLink={sourceLink}
               showMoreMenu={showMoreMenu}
               moreMenuRef={moreMenuRef}
               isOwner={isOwner}

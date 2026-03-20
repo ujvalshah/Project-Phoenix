@@ -13,7 +13,7 @@
  * - 5+ images: 2x2 grid with "+N" badge on 4th cell
  * 
  * RENDERING PRINCIPLES:
- * - Uses object-contain to preserve full image visibility (no cropping)
+ * - Uses object-cover to fill grid cells edge-to-edge (Twitter/X style cropping)
  * - Maintains card aspect ratio and rounded corners
  * - Consistent neutral background for all cells
  * - Click behavior unchanged (opens drawer)
@@ -112,7 +112,7 @@ const ThumbnailCell: React.FC<ThumbnailCellProps> = ({
             alt={alt}
             onLoad={() => setLoading(false)}
             onError={() => setError(true)}
-            className={`w-full h-full object-contain transition-transform duration-300 group-hover/image:scale-[1.02] transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
+            className={`w-full h-full object-cover transition-transform duration-300 group-hover/image:scale-[1.02] transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
           />
         </>
       )}

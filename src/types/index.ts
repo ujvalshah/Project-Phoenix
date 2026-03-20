@@ -336,7 +336,9 @@ export interface CollectionEntry {
 // --- UI & State ---
 
 export type Theme = 'light' | 'dark';
-export type SortOrder = 'latest' | 'oldest';
+export type SortOrder = 'latest' | 'oldest' | 'title' | 'title-desc';
+
+export type TimeRange = 'all' | '24h' | '7d';
 
 export interface FilterState {
   query: string;
@@ -344,6 +346,22 @@ export interface FilterState {
   tag: string | null;
   sort: SortOrder;
   limit?: number;
+  favorites?: boolean;
+  unread?: boolean;
+  formats?: string[];
+  timeRange?: TimeRange;
+}
+
+/** Serializable filter state for URL params and localStorage */
+export interface SerializableFilterState {
+  q?: string;
+  categories?: string[];
+  tag?: string;
+  sort?: SortOrder;
+  favorites?: boolean;
+  unread?: boolean;
+  formats?: string[];
+  timeRange?: TimeRange;
 }
 
 

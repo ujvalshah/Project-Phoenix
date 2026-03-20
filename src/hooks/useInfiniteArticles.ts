@@ -8,6 +8,7 @@ interface UseInfiniteArticlesOptions {
   activeCategory: string; // 'All', 'Today', or category name
   sortOrder?: SortOrder;
   limit?: number;
+  tag?: string | null;    // Tag filter — sent to backend for server-side filtering
 }
 
 /**
@@ -34,14 +35,15 @@ export const useInfiniteArticles = ({
   activeCategory,
   sortOrder = 'latest',
   limit = 25,
+  tag = null,
 }: UseInfiniteArticlesOptions): UseInfiniteArticlesResult => {
   // useInfiniteQuery automatically handles:
   // - Page accumulation
-  // - Reset on query key change (category/search/sort changes)
+  // - Reset on query key change (category/search/sort/tag changes)
   // - Caching
   // - Race condition protection
   const query = useInfiniteQuery<PaginatedArticlesResponse>({
-    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit],
+    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? ''],
     queryFn: async ({ pageParam = 1 }) => {
       // Build filters inside queryFn to avoid stale closures
       // Determine category parameter for backend
@@ -52,9 +54,9 @@ export const useInfiniteArticles = ({
 
       // Build filter state
       const filters: FilterState = {
-        query: searchQuery.trim() || undefined,
+        query: searchQuery.trim(),
         categories: categoryParam,
-        tag: null,
+        tag: tag || null,
         sort: sortOrder,
         limit,
       };

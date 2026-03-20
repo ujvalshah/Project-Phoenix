@@ -78,7 +78,7 @@ async function resolveCategoryIds(categoryNames: string[]): Promise<string[]> {
 
 export const getArticles = async (req: Request, res: Response) => {
   try {
-    const { authorId, q, category, categories, sort } = req.query;
+    const { authorId, q, category, categories, tag, sort } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
     const skip = (page - 1) * limit;
@@ -198,6 +198,12 @@ export const getArticles = async (req: Request, res: Response) => {
       }
     }
     
+    // Tag filter (case-insensitive exact match on tags array)
+    // Separate from category filter — allows filtering by a specific tag within a category
+    if (tag && typeof tag === 'string' && tag.trim().length > 0) {
+      query.tags = { $in: [createExactMatchRegex(tag.trim())] };
+    }
+
     // Sort parameter (map frontend values to MongoDB sort)
     const sortMap: Record<string, any> = {
       'latest': { publishedAt: -1 },

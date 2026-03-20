@@ -120,7 +120,7 @@ export class LocalAdapter implements IAdapter {
     }
   }
 
-  async getArticlesPaginated(): Promise<import('./IAdapter').PaginatedArticlesResponse> {
+  async getArticlesPaginated(_params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string }): Promise<import('./IAdapter').PaginatedArticlesResponse> {
     throw new Error('Pagination not supported by LocalAdapter. Use RestAdapter for paginated queries.');
   }
 

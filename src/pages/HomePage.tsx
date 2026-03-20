@@ -24,15 +24,13 @@
  * ============================================================================
  */
 
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Article, SortOrder } from '@/types';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
-import { TagFilterBar } from '@/components/header/TagFilterBar';
 import { PageStack } from '@/components/layouts/PageStack';
-import { storageService } from '@/services/storageService';
 import { useAuth } from '@/hooks/useAuth';
 
 interface HomePageProps {
@@ -73,8 +71,9 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   // CRITICAL FIX: Use infinite scroll for ALL view modes (grid, feed, masonry, utility)
   // This ensures consistent pagination behavior and allows loading more than 25 items
+  // Tag filtering is now server-side — no client-side filtering needed
   const {
-    articles: allArticles = [],
+    articles = [],
     isLoading: isLoadingArticles,
     isFetchingNextPage,
     hasNextPage,
@@ -86,6 +85,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     activeCategory,
     sortOrder,
     limit: 25,
+    tag: selectedTag,
   });
 
   // Create query-like object for backward compatibility with error handling
@@ -95,111 +95,6 @@ export const HomePage: React.FC<HomePageProps> = ({
     error: articlesError,
     refetch: refetchArticles,
     data: null, // Not used for infinite query
-  };
-
-
-  // CATEGORY PHASE-OUT: Fetch tags to get correct casing (rawName) for tag display
-  const [tagNameMap, setTagNameMap] = useState<Map<string, string>>(new Map());
-  
-  useEffect(() => {
-    const loadTagNames = async () => {
-      try {
-        // Fetch tags with format=full to get rawName (correct casing)
-        // Use type assertion since method exists in RestAdapter
-        const adapter = storageService as any;
-        if (adapter.getCategoriesWithIds) {
-          const tags = await adapter.getCategoriesWithIds();
-          const map = new Map<string, string>();
-          
-          // Create mapping: canonicalName (lowercase) -> rawName (correct casing)
-          tags.forEach((tag: any) => {
-            const canonical = tag.canonicalName || tag.rawName?.toLowerCase() || '';
-            const rawName = tag.rawName || tag.name || '';
-            if (canonical && rawName) {
-              map.set(canonical, rawName);
-            }
-          });
-          
-          setTagNameMap(map);
-        }
-      } catch (error) {
-        console.warn('Failed to load tag names for casing correction:', error);
-      }
-    };
-    
-    loadTagNames();
-  }, []);
-
-  // CATEGORY PHASE-OUT: Calculate tag counts from articles (tags are now the only classification field)
-  // CRITICAL FIX: Only show tags that exist in the Tag collection to prevent discrepancy with admin page
-  const tagsWithCountsForFilter = useMemo(() => {
-    const tagCountMap = new Map<string, number>();
-    
-    allArticles.forEach(article => {
-      const articleTags = article.tags || [];
-      articleTags.forEach(tag => {
-        // Use canonical name (lowercase) for counting to group case variants
-        if (!tag) return;
-        const canonical = tag.toLowerCase().trim();
-        
-        // CRITICAL FIX: Only count tags that exist in the Tag collection
-        // This ensures filter bar matches admin page tags
-        if (!tagNameMap.has(canonical)) {
-          return; // Skip tags that don't exist in Tag collection
-        }
-        
-        const count = tagCountMap.get(canonical) || 0;
-        tagCountMap.set(canonical, count + 1);
-      });
-    });
-
-    // Map back to correct casing using tagNameMap
-    // Filter to only include tags that exist in Tag collection
-    return Array.from(tagCountMap.entries())
-      .filter(([canonical]) => tagNameMap.has(canonical)) // Double-check: only include tags in Tag collection
-      .map(([canonical, count]) => {
-        // Get correct casing from tagNameMap (guaranteed to exist due to filter above)
-        const correctLabel = tagNameMap.get(canonical) || canonical;
-        
-        return {
-          id: canonical.replace(/\s+/g, '-'),
-          label: correctLabel, // Use correct casing from backend tags
-          count,
-        };
-      });
-  }, [allArticles, tagNameMap]);
-
-  // NOTE: Tags are mandatory - all nuggets must have at least one tag
-  // tagsWithCountsForFilter is used for the filter bar (above)
-
-  // Handle tag filtering client-side (backend doesn't support tag filtering)
-  // "Today" filter is now handled by backend - no client-side filtering needed
-  const articles = useMemo(() => {
-    let filtered = allArticles;
-    
-    // Apply tag filter if selected
-    // Tags are mandatory - filter for nuggets containing the selected tag
-    if (selectedTag) {
-      filtered = filtered.filter(article => {
-        const tags = article.tags || [];
-        return tags.includes(selectedTag);
-      });
-    }
-    
-    return filtered;
-  }, [allArticles, activeCategory, selectedTag]);
-
-  // CATEGORY PHASE-OUT: Handle tag selection from TagFilterBar with toggle behavior
-  // TOGGLE LOGIC: Clicking the currently selected tag unselects it (sets to null/empty)
-  // Clicking an unselected tag selects it. Only one tag can be active at a time.
-  const handleTagSelect = (tagLabel: string) => {
-    // If clicking the currently active tag, unselect it (toggle off)
-    if (activeCategory === tagLabel) {
-      setSelectedCategories([]); // Clear selection - will show "All" as active
-    } else {
-      // Select the clicked tag (single-select pattern)
-      setSelectedCategories([tagLabel]);
-    }
   };
 
   const handleRefreshFeed = async () => {
@@ -238,9 +133,9 @@ export const HomePage: React.FC<HomePageProps> = ({
   // CATEGORY PHASE-OUT: Renamed toggleCategory to toggleTag
   const toggleTag = (tag: string) => {
       setSelectedCategories(
-          selectedCategories.includes(cat)
-            ? selectedCategories.filter(c => c !== cat)
-            : [...selectedCategories, cat]
+          selectedCategories.includes(tag)
+            ? selectedCategories.filter(c => c !== tag)
+            : [...selectedCategories, tag]
       );
   };
 
@@ -272,13 +167,6 @@ export const HomePage: React.FC<HomePageProps> = ({
           Always add explicit spacing before content.
         */}
         <PageStack
-          categoryToolbar={
-            <TagFilterBar
-              tags={tagsWithCountsForFilter}
-              activeTag={activeCategory}
-              onSelect={handleTagSelect}
-            />
-          }
           mainContent={
             // Grid/Masonry/Utility View: Full-width for maximum content density
             <div className="max-w-[1800px] mx-auto px-4 lg:px-6 pb-4">

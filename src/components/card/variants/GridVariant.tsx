@@ -266,7 +266,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
               }}
               className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/70"
-              aria-label="Open source link in new tab"
+              aria-label="Open source in new tab"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -277,7 +277,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               }}
             >
               <ExternalLink size={12} />
-              <span>Link</span>
+              <span>Source</span>
             </button>
           )}
         </div>
@@ -318,7 +318,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                     window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
                   }}
                   className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/70"
-                  aria-label="Open source link in new tab"
+                  aria-label="Open source in new tab"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -329,7 +329,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                   }}
                 >
                   <ExternalLink size={12} />
-                  <span>Link</span>
+                  <span>Source</span>
                 </button>
               )}
             </div>
@@ -344,7 +344,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                     window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
                   }}
                   className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full tracking-wide flex items-center gap-1 transition-all hover:bg-black/90 hover:scale-105 z-20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/70"
-                  aria-label="Open source link in new tab"
+                  aria-label="Open source in new tab"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -355,7 +355,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                   }}
                 >
                   <ExternalLink size={12} />
-                  <span>Link</span>
+                  <span>Source</span>
                 </button>
               )}
             </div>

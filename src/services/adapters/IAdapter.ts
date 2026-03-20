@@ -17,7 +17,7 @@ export interface ArticleCountsResponse {
 export interface IAdapter {
   // Articles
   getAllArticles(params?: { q?: string; page?: number; limit?: number }): Promise<Article[]>;
-  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; sort?: string }): Promise<PaginatedArticlesResponse>;
+  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string }): Promise<PaginatedArticlesResponse>;
   getArticleById(id: string): Promise<Article | undefined>;
   getArticlesByAuthor(authorId: string): Promise<Article[]>;
   getMyArticleCounts(): Promise<ArticleCountsResponse>;

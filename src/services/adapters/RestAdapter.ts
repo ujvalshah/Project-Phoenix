@@ -44,10 +44,11 @@ export class RestAdapter implements IAdapter {
   }
 
   // Paginated articles method - returns full pagination metadata
-  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; sort?: string }): Promise<PaginatedArticlesResponse> {
+  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string }): Promise<PaginatedArticlesResponse> {
     const queryParams = new URLSearchParams();
     if (params.q) queryParams.set('q', params.q);
     if (params.category) queryParams.set('category', params.category);
+    if (params.tag) queryParams.set('tag', params.tag);
     if (params.sort) queryParams.set('sort', params.sort);
     queryParams.set('page', params.page.toString());
     queryParams.set('limit', params.limit.toString());

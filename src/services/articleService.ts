@@ -35,6 +35,7 @@ export const articleService = {
       return await storageService.getArticlesPaginated({
         q: trimmedQuery || undefined,
         category: category,
+        tag: filters.tag || undefined,
         sort: sort,
         page,
         limit
