@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Article } from '../models/Article.js';
+import { Collection } from '../models/Collection.js';
 import { Tag } from '../models/Tag.js';
 import { normalizeDoc, normalizeDocs } from '../utils/db.js';
 import { createArticleSchema, updateArticleSchema } from '../utils/validation.js';
@@ -78,18 +79,32 @@ async function resolveCategoryIds(categoryNames: string[]): Promise<string[]> {
 
 export const getArticles = async (req: Request, res: Response) => {
   try {
-    const { authorId, q, category, categories, tag, sort } = req.query;
+    const { authorId, q, category, categories, tag, sort, collectionId } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
     const skip = (page - 1) * limit;
-    
+
     // Get current user from token (optional - for privacy filtering)
     // This allows authenticated users to see their own private articles
     const currentUserId = getOptionalUserId(req);
-    
+
     // Build MongoDB query object
     const query: any = {};
-    
+
+    // Collection filter: restrict to articles in a specific community collection
+    if (collectionId && typeof collectionId === 'string') {
+      const collection = await Collection.findById(collectionId).select('entries type').lean();
+      if (!collection || collection.type !== 'public') {
+        // Non-existent or private collection → empty result (not a 404, so the feed degrades gracefully)
+        return res.json({ data: [], total: 0, page, limit, hasMore: false });
+      }
+      const articleIds = collection.entries.map((e: { articleId: string }) => e.articleId);
+      if (articleIds.length === 0) {
+        return res.json({ data: [], total: 0, page, limit, hasMore: false });
+      }
+      query._id = { $in: articleIds };
+    }
+
     // Author filter
     if (authorId) {
       query.authorId = authorId;

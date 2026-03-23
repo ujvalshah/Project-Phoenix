@@ -4,13 +4,14 @@ import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
 import { AdminCollection } from '../types/admin';
 import { adminCollectionsService } from '../services/adminCollectionsService';
-import { Eye, Trash2, Lock, Globe, EyeOff, Folder, Layers, Pencil, Check, X } from 'lucide-react';
+import { Eye, Trash2, Lock, Globe, EyeOff, Folder, Layers, Pencil, Check, X, Star } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { AdminDrawer } from '../components/AdminDrawer';
 import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
 import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 export const AdminCollectionsPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
@@ -39,6 +40,7 @@ export const AdminCollectionsPage: React.FC = () => {
 
   const toast = useToast();
   const { can } = useAdminPermissions();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const loadData = async (q?: string) => {
@@ -192,6 +194,60 @@ export const AdminCollectionsPage: React.FC = () => {
     }
   };
 
+  const handleToggleFeatured = async (col: AdminCollection) => {
+    const newFeatured = !col.isFeatured;
+    // Optimistic update
+    setCollections(prev => prev.map(c => c.id === col.id ? { ...c, isFeatured: newFeatured } : c));
+    if (selectedCollection?.id === col.id) {
+      setSelectedCollection(prev => prev ? { ...prev, isFeatured: newFeatured } : null);
+    }
+    try {
+      await adminCollectionsService.setFeatured(col.id, newFeatured);
+      // Invalidate the featured collections cache so the category toolbar updates immediately
+      queryClient.invalidateQueries({ queryKey: ['collections', 'featured'] });
+      toast.success(newFeatured ? 'Added to category toolbar' : 'Removed from category toolbar');
+    } catch (e) {
+      // Revert
+      setCollections(prev => prev.map(c => c.id === col.id ? { ...c, isFeatured: col.isFeatured } : c));
+      if (selectedCollection?.id === col.id) {
+        setSelectedCollection(prev => prev ? { ...prev, isFeatured: col.isFeatured } : null);
+      }
+      toast.error('Failed to update featured status');
+    }
+  };
+
+  // Locally update the order number instantly (no API call)
+  const handleOrderInputChange = (col: AdminCollection, newOrder: number) => {
+    setCollections(prev => prev.map(c => c.id === col.id ? { ...c, featuredOrder: newOrder } : c));
+    if (selectedCollection?.id === col.id) {
+      setSelectedCollection(prev => prev ? { ...prev, featuredOrder: newOrder } : null);
+    }
+  };
+
+  // Commit the order to the backend on blur — includes optimistic shift of siblings
+  const handleOrderCommit = async (col: AdminCollection) => {
+    const newOrder = col.featuredOrder;
+    // Optimistic shift: bump siblings at or above newOrder up by 1
+    setCollections(prev => prev.map(c => {
+      if (c.id !== col.id && c.isFeatured && c.featuredOrder >= newOrder) {
+        return { ...c, featuredOrder: c.featuredOrder + 1 };
+      }
+      return c;
+    }));
+    try {
+      await adminCollectionsService.setFeatured(col.id, col.isFeatured, newOrder);
+      queryClient.invalidateQueries({ queryKey: ['collections', 'featured'] });
+      // Reload to get the authoritative order from backend
+      const fresh = await adminCollectionsService.listCollections();
+      setCollections(fresh);
+    } catch (_e) {
+      // Reload to revert to backend state
+      const fresh = await adminCollectionsService.listCollections();
+      setCollections(fresh);
+      toast.error('Failed to update position');
+    }
+  };
+
   const handleBulkAction = (action: string) => {
       toast.info(`${action} ${selectedIds.length} items (Not implemented)`);
       setSelectedIds([]);
@@ -280,6 +336,45 @@ export const AdminCollectionsPage: React.FC = () => {
             {c.type === 'private' ? <Lock size={12} /> : <Globe size={12} />}
             {c.type}
         </span>
+      )
+    },
+    {
+      key: 'isFeatured',
+      header: 'Featured',
+      width: 'w-28',
+      minWidth: '100px',
+      sortable: true,
+      align: 'center',
+      render: (c) => (
+        <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-center gap-1.5">
+          <button
+            onClick={() => handleToggleFeatured(c)}
+            disabled={c.type === 'private'}
+            title={c.type === 'private' ? 'Private collections cannot be featured' : c.isFeatured ? 'Remove from toolbar' : 'Add to toolbar'}
+            className={`p-1.5 rounded-lg transition-colors ${
+              c.isFeatured
+                ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30'
+                : 'text-slate-300 dark:text-slate-600 hover:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            } ${c.type === 'private' ? 'opacity-30 cursor-not-allowed' : ''}`}
+          >
+            <Star size={14} fill={c.isFeatured ? 'currentColor' : 'none'} />
+          </button>
+          {c.isFeatured && (
+            <input
+              type="number"
+              min={0}
+              value={c.featuredOrder}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val >= 0) handleOrderInputChange(c, val);
+              }}
+              onBlur={() => handleOrderCommit(c)}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              title="Position in toolbar (lower = further left)"
+              className="w-10 h-7 text-center text-xs font-bold rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          )}
+        </div>
       )
     },
     {
@@ -535,6 +630,41 @@ export const AdminCollectionsPage: React.FC = () => {
                             <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Created</label>
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{new Date(selectedCollection.createdAt).toLocaleString()}</span>
                         </div>
+                        {selectedCollection.type === 'public' && can('admin.collections.edit') && (
+                            <div className="col-span-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Category Toolbar</label>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => handleToggleFeatured(selectedCollection)}
+                                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
+                                            selectedCollection.isFeatured
+                                                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                        }`}
+                                    >
+                                        <Star size={16} fill={selectedCollection.isFeatured ? 'currentColor' : 'none'} />
+                                        {selectedCollection.isFeatured ? 'Featured in toolbar' : 'Add to toolbar'}
+                                    </button>
+                                    {selectedCollection.isFeatured && (
+                                        <div className="flex items-center gap-1.5">
+                                            <label className="text-xs text-slate-500 dark:text-slate-400">Position:</label>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={selectedCollection.featuredOrder}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value, 10);
+                                                    if (!isNaN(val) && val >= 0) handleOrderInputChange(selectedCollection, val);
+                                                }}
+                                                onBlur={() => handleOrderCommit(selectedCollection)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                                className="w-14 h-8 text-center text-sm font-bold rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

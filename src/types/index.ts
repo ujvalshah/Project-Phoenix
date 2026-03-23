@@ -40,6 +40,9 @@ export interface NuggetMedia {
   // Defaults: primary media → true, all other media → false
   // Backward compatibility: if missing, treat only primary media as selected
   showInMasonry?: boolean;
+  // Grid card visibility: if false, image is omitted from grid thumbnails / multi-image strip (masonry-only)
+  // Backward compatibility: if missing, treat as true
+  showInGrid?: boolean;
   // Masonry tile title (optional)
   // Displayed as hover caption at bottom of tile in Masonry layout
   // Max 80 characters, single-line, no markdown
@@ -116,6 +119,8 @@ export interface PrimaryMedia {
   // Primary media always shows in Masonry (defaults to true, cannot be deselected)
   // Backward compatibility: if missing, treat as true (primary media always visible)
   showInMasonry?: boolean;
+  // Grid card visibility (see NuggetMedia.showInGrid)
+  showInGrid?: boolean;
   // Masonry tile title (optional)
   // Displayed as hover caption at bottom of tile in Masonry layout
   // Max 80 characters, single-line, no markdown
@@ -135,6 +140,8 @@ export interface SupportingMediaItem {
   // Defaults to false (only primary media shows by default)
   // Backward compatibility: if missing, treat as false (not shown in Masonry)
   showInMasonry?: boolean;
+  // Grid card visibility (see NuggetMedia.showInGrid)
+  showInGrid?: boolean;
   // Masonry tile title (optional)
   // Displayed as hover caption at bottom of tile in Masonry layout
   // Max 80 characters, single-line, no markdown
@@ -317,7 +324,11 @@ export interface Collection {
   entries: CollectionEntry[];
   validEntriesCount?: number; // Backend-validated count (preferred over entries.length)
   type: 'public' | 'private';
-  
+  /** Whether this collection appears in the public category toolbar */
+  isFeatured?: boolean;
+  /** Display order in the category toolbar */
+  featuredOrder?: number;
+
   // Display
   creator?: {
     id: string;
@@ -350,6 +361,8 @@ export interface FilterState {
   unread?: boolean;
   formats?: string[];
   timeRange?: TimeRange;
+  /** Filter by community collection ID (category toolbar) */
+  collectionId?: string;
 }
 
 /** Serializable filter state for URL params and localStorage */
@@ -362,6 +375,8 @@ export interface SerializableFilterState {
   unread?: boolean;
   formats?: string[];
   timeRange?: TimeRange;
+  /** Community collection ID for category toolbar filtering */
+  collectionId?: string;
 }
 
 

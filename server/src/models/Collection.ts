@@ -19,6 +19,10 @@ export interface ICollection extends Document {
   entries: ICollectionEntry[];
   validEntriesCount?: number; // Validated count of entries (computed, may be undefined for legacy data)
   type: 'private' | 'public';
+  /** Whether this collection appears in the public category toolbar */
+  isFeatured: boolean;
+  /** Display order in the category toolbar (lower = earlier) */
+  featuredOrder: number;
   // Legacy field - kept for backward compatibility, maps to rawName
   name?: string;
 }
@@ -41,7 +45,9 @@ const CollectionSchema = new Schema<ICollection>({
   followers: { type: [String], default: [] }, // Array of userIds
   entries: { type: [CollectionEntrySchema], default: [] },
   validEntriesCount: { type: Number }, // Optional validated count (computed field)
-  type: { type: String, enum: ['private', 'public'], default: 'public' }
+  type: { type: String, enum: ['private', 'public'], default: 'public' },
+  isFeatured: { type: Boolean, default: false },
+  featuredOrder: { type: Number, default: 0 }
 }, {
   timestamps: false
 });
@@ -65,6 +71,8 @@ CollectionSchema.index(
 );
 // Non-unique index for public collections (controller handles global uniqueness)
 CollectionSchema.index({ canonicalName: 1, type: 1 });
+// Featured collections index for fast toolbar queries
+CollectionSchema.index({ isFeatured: 1, featuredOrder: 1 });
 
 // FOLLOW-UP REFACTOR: Text index for search queries (P2-14)
 // Improves performance of $or queries with regex on canonicalName, rawName, and description

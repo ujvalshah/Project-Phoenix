@@ -45,6 +45,9 @@ export interface MasonryMediaItem {
   // All media items (including primary) default to false (opt-in)
   // Users must explicitly select which media appears in Masonry view
   showInMasonry: boolean;
+
+  /** When false, omit from grid card image strip (masonry-only for this asset) */
+  showInGrid: boolean;
   
   // Whether this toggle can be changed
   // Primary media is NO LONGER locked - all media can be toggled
@@ -106,6 +109,7 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
       showInMasonry: primaryMedia.showInMasonry === false
         ? false  // Respect explicit false
         : true,  // Default to true (backward compatible + sensible default)
+      showInGrid: primaryMedia.showInGrid !== false,
       isLocked: false, // Primary media can now be toggled (no longer locked)
       masonryTitle: primaryMedia.masonryTitle, // Optional masonry tile title
       previewMetadata: primaryMedia.previewMetadata,
@@ -135,6 +139,7 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
         showInMasonry: media.showInMasonry !== undefined
           ? media.showInMasonry
           : false, // Default to false for supporting media (backward compatibility)
+        showInGrid: media.showInGrid !== false,
         isLocked: false,
         masonryTitle: media.masonryTitle, // Optional masonry tile title
         previewMetadata: media.previewMetadata,
@@ -168,6 +173,7 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
         showInMasonry: legacyMedia.showInMasonry === false
           ? false  // Respect explicit false
           : true,  // Default to true (backward compatible)
+        showInGrid: legacyMedia.showInGrid !== false,
         isLocked: false,
         masonryTitle: legacyMedia.masonryTitle, // CRITICAL: Read masonryTitle from stored media field
         previewMetadata: legacyMedia.previewMetadata,
@@ -182,6 +188,9 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
       }
       if (primaryItem && legacyMedia.showInMasonry !== undefined) {
         primaryItem.showInMasonry = legacyMedia.showInMasonry;
+      }
+      if (primaryItem && legacyMedia.showInGrid !== undefined) {
+        primaryItem.showInGrid = legacyMedia.showInGrid;
       }
     }
   }
@@ -200,6 +209,7 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
           thumbnail: imageUrl,
           source: 'legacy-image',
           showInMasonry: false, // Legacy images default to false (backward compatibility)
+          showInGrid: true,
           isLocked: false,
         });
         includedUrls.add(normalizedUrl);
@@ -233,5 +243,51 @@ export function getMasonryVisibleMedia(article: Article): MasonryMediaItem[] {
   const visibleItems = allItems.filter(item => item.showInMasonry === true);
   
   return visibleItems;
+}
+
+/** Matches ActionHUD / MasonryAtom “Source” pill resolution for a given media item */
+export type MasonrySourceLink = { url: string; label: 'Source' | 'Link' };
+
+export function resolveMasonrySourceLink(
+  article: Article,
+  mediaItem: MasonryMediaItem | undefined
+): MasonrySourceLink | null {
+  const primaryExternalLink = article.externalLinks?.find((l) => l.isPrimary);
+  if (primaryExternalLink?.url) {
+    return { url: primaryExternalLink.url, label: 'Source' };
+  }
+
+  const previewUrl = mediaItem?.previewMetadata?.url;
+
+  if (previewUrl && mediaItem?.type !== 'youtube') {
+    return { url: previewUrl, label: 'Source' };
+  }
+
+  if (mediaItem?.type === 'link' && mediaItem.url) {
+    return { url: mediaItem.url, label: 'Source' };
+  }
+
+  return null;
+}
+
+function findMasonryItemByImageUrl(
+  items: MasonryMediaItem[],
+  imageUrl: string
+): MasonryMediaItem | undefined {
+  const normalized = normalizeImageUrl(imageUrl);
+  return items.find(
+    (item) => item.type === 'image' && normalizeImageUrl(item.url) === normalized
+  );
+}
+
+/** One entry per lightbox slide URL (same order as `images` passed to ImageLightbox) */
+export function buildLightboxSourceLinksForImageUrls(
+  article: Article,
+  imageUrls: string[]
+): Array<MasonrySourceLink | null> {
+  const allItems = collectMasonryMediaItems(article);
+  return imageUrls.map((url) =>
+    resolveMasonrySourceLink(article, findMasonryItemByImageUrl(allItems, url))
+  );
 }
 

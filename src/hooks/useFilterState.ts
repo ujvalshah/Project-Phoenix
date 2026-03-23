@@ -18,6 +18,7 @@ const DEFAULTS: Required<SerializableFilterState> = {
   unread: false,
   formats: [],
   timeRange: 'all' as TimeRange,
+  collectionId: '',
 };
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,7 @@ export function filtersToParams(f: SerializableFilterState): URLSearchParams {
     f.formats.forEach(fmt => p.append('fmt', fmt));
   }
   if (f.timeRange && f.timeRange !== 'all') p.set('time', f.timeRange);
+  if (f.collectionId) p.set('col', f.collectionId);
   return p;
 }
 
@@ -56,6 +58,7 @@ export function paramsToFilters(p: URLSearchParams): SerializableFilterState {
     unread: p.get('unread') === '1' || undefined,
     formats: p.getAll('fmt').filter(Boolean),
     timeRange: validTimeRanges.includes(timeRange as TimeRange) ? (timeRange as TimeRange) : undefined,
+    collectionId: p.get('col') || undefined,
   };
 }
 
@@ -108,6 +111,8 @@ export interface UseFilterStateReturn {
   unread: boolean;
   formats: string[];
   timeRange: TimeRange;
+  /** Active community collection ID (category toolbar), null = "All" */
+  collectionId: string | null;
 
   // Derived
   activeCategory: string;        // 'All', 'Today', or first category
@@ -124,6 +129,7 @@ export interface UseFilterStateReturn {
   setUnread: (v: boolean) => void;
   toggleFormat: (fmt: string) => void;
   setTimeRange: (t: TimeRange) => void;
+  setCollectionId: (id: string | null) => void;
 
   // Reset
   clearAll: () => void;
@@ -131,6 +137,7 @@ export interface UseFilterStateReturn {
   clearCategories: () => void;
   clearTag: () => void;
   clearSort: () => void;
+  clearCollection: () => void;
 }
 
 export function useFilterState(): UseFilterStateReturn {
@@ -154,6 +161,7 @@ export function useFilterState(): UseFilterStateReturn {
       ? urlFilters.formats
       : persisted.formats || DEFAULTS.formats,
     timeRange: urlFilters.timeRange || persisted.timeRange || DEFAULTS.timeRange,
+    collectionId: urlFilters.collectionId || DEFAULTS.collectionId,
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- State ----
@@ -166,6 +174,7 @@ export function useFilterState(): UseFilterStateReturn {
   const [unread, setUnread] = useState(initial.unread);
   const [formats, setFormats] = useState<string[]>(initial.formats);
   const [timeRange, setTimeRange] = useState<TimeRange>(initial.timeRange);
+  const [collectionId, setCollectionId] = useState<string | null>(initial.collectionId || null);
 
   // ---- Debounce search input ----
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -187,7 +196,7 @@ export function useFilterState(): UseFilterStateReturn {
   // ---- URL sync (write) ----
   // CRITICAL: Must preserve URL params that belong to other components (e.g. "expanded"
   // used by ArticleGrid's drawer). Only touch params that belong to the filter system.
-  const FILTER_PARAM_KEYS = new Set(['q', 'cat', 'tag', 'sort', 'favorites', 'unread', 'fmt', 'time']);
+  const FILTER_PARAM_KEYS = new Set(['q', 'cat', 'tag', 'sort', 'favorites', 'unread', 'fmt', 'time', 'col']);
 
   const syncRef = useRef(false);
   useEffect(() => {
@@ -205,6 +214,7 @@ export function useFilterState(): UseFilterStateReturn {
       unread: unread || undefined,
       formats: formats.length > 0 ? formats : undefined,
       timeRange: timeRange !== 'all' ? timeRange : undefined,
+      collectionId: collectionId || undefined,
     };
     const filterParams = filtersToParams(serializable);
 
@@ -224,7 +234,7 @@ export function useFilterState(): UseFilterStateReturn {
     }, { replace: true });
 
     persistFilters(serializable);
-  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, setSearchParams]);
+  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, setSearchParams]);
 
   // ---- Derived ----
   const activeCategory = useMemo(() => {
@@ -243,6 +253,7 @@ export function useFilterState(): UseFilterStateReturn {
     if (unread) count++;
     count += formats.length;
     if (timeRange !== 'all') count++;
+    // collectionId is intentionally NOT counted here — it has its own visual indicator (category toolbar)
     return count;
   }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange]);
 
@@ -273,6 +284,7 @@ export function useFilterState(): UseFilterStateReturn {
     setUnread(false);
     setFormats([]);
     setTimeRange('all');
+    setCollectionId(null);
     clearTimeout(debounceRef.current);
   }, []);
 
@@ -285,6 +297,7 @@ export function useFilterState(): UseFilterStateReturn {
   const clearCategories = useCallback(() => setCategories([]), []);
   const clearTag = useCallback(() => setTag(null), []);
   const clearSort = useCallback(() => setSort('latest'), []);
+  const clearCollection = useCallback(() => setCollectionId(null), []);
 
   return {
     searchQuery: debouncedQuery,
@@ -296,6 +309,7 @@ export function useFilterState(): UseFilterStateReturn {
     unread,
     formats,
     timeRange,
+    collectionId,
     activeCategory,
     hasActiveFilters,
     activeFilterCount,
@@ -308,10 +322,12 @@ export function useFilterState(): UseFilterStateReturn {
     setUnread,
     toggleFormat,
     setTimeRange,
+    setCollectionId,
     clearAll,
     clearSearch,
     clearCategories,
     clearTag,
     clearSort,
+    clearCollection,
   };
 }

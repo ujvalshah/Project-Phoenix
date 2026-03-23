@@ -37,6 +37,7 @@ export const articleService = {
         category: category,
         tag: filters.tag || undefined,
         sort: sort,
+        collectionId: filters.collectionId || undefined,
         page,
         limit
       });

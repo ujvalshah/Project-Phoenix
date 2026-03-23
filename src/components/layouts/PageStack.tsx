@@ -1,6 +1,7 @@
 import React from 'react';
 import { HeaderSpacer } from './HeaderSpacer';
 import { CategorySpacer } from './CategorySpacer';
+import { MainContentTopSpacer } from './MainContentTopSpacer';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 
@@ -60,6 +61,8 @@ export const PageStack: React.FC<PageStackProps> = ({
       
       {/* CategorySpacer: MUST follow CategoryToolbar to reserve space */}
       {categoryToolbar && <CategorySpacer />}
+
+      <MainContentTopSpacer />
       
       {/* MainContent - NO padding-top hack, spacers handle spacing */}
       <div>

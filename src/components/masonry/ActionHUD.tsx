@@ -123,18 +123,6 @@ export const ActionHUD: React.FC<ActionHUDProps> = ({
                 align === 'right' ? 'right-0' : 'left-0',
               ].join(' ')}
             >
-              {/* Add to Collection */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAddToCollection(e);
-                }}
-                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-                aria-label="Add to collection"
-              >
-                <FolderPlus size={12} /> Add to collection
-              </button>
-
               {(isOwner || isAdmin) && onEdit && (
                 <button
                   onClick={(e) => {
@@ -146,6 +134,18 @@ export const ActionHUD: React.FC<ActionHUDProps> = ({
                   <Edit2 size={12} /> Edit
                 </button>
               )}
+
+              {/* Add to collection — below Edit in the menu */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToCollection(e);
+                }}
+                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                aria-label="Add to collection"
+              >
+                <FolderPlus size={12} /> Add to collection
+              </button>
               {onReport && (
                 <button
                   onClick={(e) => {

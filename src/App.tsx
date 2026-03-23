@@ -148,7 +148,7 @@ const AppContent: React.FC = () => {
           {/* Feed/Content Areas - Wrapped in Error Boundaries */}
           <Route path="/" element={
             <ErrorBoundary>
-              <HomePage searchQuery={filters.searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={filters.selectedCategories} setSelectedCategories={filters.setSelectedCategories} selectedTag={filters.selectedTag} setSelectedTag={filters.setSelectedTag} sortOrder={filters.sortOrder} />
+              <HomePage searchQuery={filters.searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={filters.selectedCategories} setSelectedCategories={filters.setSelectedCategories} selectedTag={filters.selectedTag} setSelectedTag={filters.setSelectedTag} sortOrder={filters.sortOrder} collectionId={filters.collectionId} setCollectionId={filters.setCollectionId} />
             </ErrorBoundary>
           } />
           

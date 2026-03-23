@@ -30,6 +30,8 @@ export interface INuggetMedia {
   // Defaults: primary media → true, all other media → false
   // Backward compatibility: if missing, treat only primary media as selected
   showInMasonry?: boolean;
+  // Grid card: omit from grid thumbnails when false
+  showInGrid?: boolean;
   // Masonry tile title (optional)
   // Displayed as hover caption at bottom of tile in Masonry layout
   // Max 80 characters, single-line, no markdown
@@ -164,6 +166,7 @@ const NuggetMediaSchema = new Schema<INuggetMedia>({
   },
   // Masonry layout visibility flag (optional for backward compatibility)
   showInMasonry: { type: Boolean, required: false },
+  showInGrid: { type: Boolean, required: false },
   // Masonry tile title (optional)
   masonryTitle: { type: String, required: false, maxlength: 80 }
 }, { _id: false });

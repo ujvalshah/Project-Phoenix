@@ -9,6 +9,7 @@ interface UseInfiniteArticlesOptions {
   sortOrder?: SortOrder;
   limit?: number;
   tag?: string | null;    // Tag filter — sent to backend for server-side filtering
+  collectionId?: string | null; // Community collection filter — server-side via collectionId param
 }
 
 /**
@@ -36,14 +37,15 @@ export const useInfiniteArticles = ({
   sortOrder = 'latest',
   limit = 25,
   tag = null,
+  collectionId = null,
 }: UseInfiniteArticlesOptions): UseInfiniteArticlesResult => {
   // useInfiniteQuery automatically handles:
   // - Page accumulation
-  // - Reset on query key change (category/search/sort/tag changes)
+  // - Reset on query key change (category/search/sort/tag/collection changes)
   // - Caching
   // - Race condition protection
   const query = useInfiniteQuery<PaginatedArticlesResponse>({
-    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? ''],
+    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? '', collectionId ?? ''],
     queryFn: async ({ pageParam = 1 }) => {
       // Build filters inside queryFn to avoid stale closures
       // Determine category parameter for backend
@@ -59,6 +61,7 @@ export const useInfiniteArticles = ({
         tag: tag || null,
         sort: sortOrder,
         limit,
+        collectionId: collectionId || undefined,
       };
 
       return articleService.getArticles(filters, pageParam as number);

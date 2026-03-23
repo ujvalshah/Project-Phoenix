@@ -123,6 +123,10 @@ export interface AdminCollection {
   status: 'active' | 'hidden';
   createdAt: string;
   updatedAt: string;
+  /** Whether this collection appears in the home feed category toolbar */
+  isFeatured: boolean;
+  /** Display order in the category toolbar (lower = earlier) */
+  featuredOrder: number;
 }
 
 export interface AdminTag {

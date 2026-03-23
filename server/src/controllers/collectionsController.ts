@@ -3,7 +3,7 @@ import { Collection } from '../models/Collection.js';
 import { Article } from '../models/Article.js';
 import { User } from '../models/User.js';
 import { normalizeDoc, normalizeDocs } from '../utils/db.js';
-import { createCollectionSchema, updateCollectionSchema, addEntrySchema, flagEntrySchema } from '../utils/validation.js';
+import { createCollectionSchema, updateCollectionSchema, addEntrySchema, flagEntrySchema, setFeaturedSchema } from '../utils/validation.js';
 import { getCommunityCollections, getCommunityCollectionsCount, CollectionQueryFilters } from '../utils/collectionQueryHelpers.js';
 import { createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { createRequestLogger } from '../utils/logger.js';
@@ -929,6 +929,188 @@ export const unfollowCollection = async (req: Request, res: Response) => {
         message: error.message,
         stack: error.stack,
       },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
+ * GET /api/collections/featured
+ * Returns featured collections for the public category toolbar.
+ * Lightweight: only returns id, name, description, isFeatured, featuredOrder.
+ * No entry validation or pagination needed (small curated set).
+ */
+export const getFeaturedCollections = async (req: Request, res: Response) => {
+  try {
+    const collections = await Collection.find({
+      isFeatured: true,
+      type: 'public',
+    })
+      .sort({ featuredOrder: 1, rawName: 1 })
+      .select('rawName canonicalName description isFeatured featuredOrder validEntriesCount')
+      .lean();
+
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+    res.json(normalizeDocs(collections));
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Collections] Get featured collections error',
+      error: { message: error instanceof Error ? error.message : String(error) },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
+ * PATCH /api/collections/:id/featured
+ * Admin-only: Toggle or set featured status and order for a collection.
+ * Body: { isFeatured: boolean, featuredOrder?: number }
+ */
+export const setFeatured = async (req: Request, res: Response) => {
+  try {
+    const userRole = (req as any).user?.role;
+    if (userRole !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const parsed = setFeaturedSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten().fieldErrors });
+    }
+
+    const { isFeatured, featuredOrder } = parsed.data;
+    const update: Record<string, unknown> = {
+      isFeatured,
+      updatedAt: new Date().toISOString(),
+    };
+    if (featuredOrder !== undefined) {
+      update.featuredOrder = featuredOrder;
+
+      // Auto-shift: bump all other featured collections at or above this position up by 1
+      if (isFeatured) {
+        await Collection.updateMany(
+          {
+            _id: { $ne: req.params.id },
+            isFeatured: true,
+            featuredOrder: { $gte: featuredOrder },
+          },
+          { $inc: { featuredOrder: 1 } }
+        );
+      }
+    }
+
+    const collection = await Collection.findByIdAndUpdate(
+      req.params.id,
+      update,
+      { new: true }
+    ).lean();
+
+    if (!collection) {
+      return res.status(404).json({ message: 'Collection not found' });
+    }
+
+    res.json(normalizeDoc(collection));
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Collections] Set featured error',
+      error: { message: error instanceof Error ? error.message : String(error) },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
+ * GET /api/collections/:id/articles
+ * Returns paginated articles belonging to a collection.
+ * Supports q, sort, page, limit params.
+ */
+export const getCollectionArticles = async (req: Request, res: Response) => {
+  try {
+    const collection = await Collection.findById(req.params.id).select('entries type').lean();
+    if (!collection) {
+      return res.status(404).json({ message: 'Collection not found' });
+    }
+
+    // Check access
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    if (!canViewCollection(collection, userId, userRole)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const articleIds = collection.entries.map((e: { articleId: string }) => e.articleId);
+    if (articleIds.length === 0) {
+      return res.json({ data: [], total: 0, page: 1, limit: 25, hasMore: false });
+    }
+
+    const { q, sort } = req.query;
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
+    const skip = (page - 1) * limit;
+
+    // Build query: articles in this collection + public visibility
+    const articleQuery: Record<string, unknown> = {
+      _id: { $in: articleIds },
+    };
+
+    // Privacy: non-admins only see public articles
+    if (!userId || userRole !== 'admin') {
+      articleQuery.$or = [
+        { visibility: 'public' },
+        { visibility: { $exists: false } },
+        { visibility: null },
+      ];
+    }
+
+    // Search within collection articles
+    if (q && typeof q === 'string' && q.trim().length > 0) {
+      const regex = createSearchRegex(q);
+      const searchConditions = [
+        { title: regex },
+        { excerpt: regex },
+        { content: regex },
+        { tags: regex },
+      ];
+      if (articleQuery.$or) {
+        articleQuery.$and = [
+          { $or: articleQuery.$or as Record<string, unknown>[] },
+          { $or: searchConditions },
+        ];
+        delete articleQuery.$or;
+      } else {
+        articleQuery.$or = searchConditions;
+      }
+    }
+
+    const sortMap: Record<string, Record<string, number>> = {
+      latest: { publishedAt: -1, _id: -1 },
+      oldest: { publishedAt: 1, _id: 1 },
+      title: { title: 1 },
+    };
+    const sortOrder = sortMap[sort as string] || { publishedAt: -1, _id: -1 };
+
+    const [articles, total] = await Promise.all([
+      Article.find(articleQuery).sort(sortOrder).skip(skip).limit(limit).lean(),
+      Article.countDocuments(articleQuery),
+    ]);
+
+    res.json({
+      data: normalizeDocs(articles),
+      total,
+      page,
+      limit,
+      hasMore: page * limit < total,
+    });
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Collections] Get collection articles error',
+      error: { message: error instanceof Error ? error.message : String(error) },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     res.status(500).json({ message: 'Internal server error' });

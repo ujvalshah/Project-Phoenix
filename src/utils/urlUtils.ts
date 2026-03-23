@@ -11,6 +11,35 @@
 /** Image extensions; (\\?|#|$) allows query/hash so URLs like image.webp?itok=xxx are recognized. */
 const IMAGE_EXT_REGEX = /\.(jpg|jpeg|png|gif|webp|svgz?)(\?|#|$)/i;
 
+/**
+ * Split pasted text into candidate URL strings for the nugget URL field.
+ *
+ * Important: Do **not** split on every comma — CDN URLs (e.g. Substack imgproxy) embed commas in the path
+ * (`f_auto,q_auto:good,...`). Only treat comma as a separator when it starts another `https://` URL.
+ */
+export function splitPastedUrlCandidates(text: string): string[] {
+  const lines = text.split(/\r?\n|;/).map((l) => l.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const line of lines) {
+    const commaSeparated = line.split(/,(?=\s*https?:\/\/)/);
+    for (const segment of commaSeparated) {
+      const t = segment.trim();
+      if (!t) continue;
+      out.push(...t.split(/\s+/).filter((p) => p.length > 0));
+    }
+  }
+  return out;
+}
+
+/** True when pasted text should run multi-URL parsing (newlines or more than one http(s) URL). */
+export function looksLikeMultipleUrls(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (/\r|\n/.test(t)) return true;
+  const schemes = t.match(/https?:\/\//gi);
+  return schemes !== null && schemes.length > 1;
+}
+
 export const isImageUrl = (url: string): boolean => {
   if (!url) return false;
 

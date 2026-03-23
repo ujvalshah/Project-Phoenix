@@ -109,6 +109,12 @@ class AdminCollectionsService {
     throw new Error('Collection status update not supported by backend');
   }
 
+  async setFeatured(id: string, isFeatured: boolean, featuredOrder?: number): Promise<void> {
+    const body: Record<string, unknown> = { isFeatured };
+    if (featuredOrder !== undefined) body.featuredOrder = featuredOrder;
+    await apiClient.patch(`/collections/${id}/featured`, body, undefined, 'adminCollectionsService.setFeatured');
+  }
+
   async deleteCollection(id: string): Promise<void> {
     try {
       await apiClient.delete(`/collections/${id}`, undefined, 'adminCollectionsService.deleteCollection');

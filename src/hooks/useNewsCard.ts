@@ -7,7 +7,7 @@ import { useRequireAuth } from './useRequireAuth';
 import { storageService } from '@/services/storageService';
 import { queryClient } from '@/queryClient';
 import { sanitizeArticle, hasValidAuthor, logError } from '@/utils/errorHandler';
-import { getAllImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
+import { getAllImageUrls, getGridImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 import { useVideoPlayer } from '@/context/VideoPlayerContext';
 // formatDate removed - using relative time formatting in CardMeta instead
@@ -120,7 +120,9 @@ export const useNewsCard = ({
   // ────────────────────────────────────────
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      const target = event.target as HTMLElement | null;
+      const clickedMenuPanel = !!target?.closest('[data-card-actions-menu="true"]');
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && !clickedMenuPanel) {
         setShowMenu(false);
       }
       if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
@@ -270,7 +272,8 @@ export const useNewsCard = ({
   
   // Check for multi-image media
   const allImageUrls = getAllImageUrls(article);
-  const hasMultipleImages = allImageUrls.length > 1;
+  const gridImageUrls = getGridImageUrls(article);
+  const hasMultipleImages = gridImageUrls.length > 1;
   
   // ═══════════════════════════════════════════════════════════════════════
   // GHOST IMAGE DETECTION: Dev-mode only debugging check
@@ -349,7 +352,7 @@ export const useNewsCard = ({
     // Special case: Multi-image gets specific reason for debugging
     if (isMultiImageWithLongText) {
       cardType = 'hybrid';
-      classificationReason = `multi-image-long-text (${allImageUrls.length} images, ${trimmedBodyLineCount} lines > ${MAX_PREVIEW_LINES})`;
+      classificationReason = `multi-image-long-text (${gridImageUrls.length} images, ${trimmedBodyLineCount} lines > ${MAX_PREVIEW_LINES})`;
     } else {
       cardType = 'hybrid';
       classificationReason = `long-text (${trimmedBodyLineCount} lines > ${MAX_PREVIEW_LINES})`;
@@ -390,8 +393,8 @@ export const useNewsCard = ({
   const { primaryMedia } = classifyArticleMedia(article);
   let mediaVariant = 'none';
   if (hasMedia) {
-    if (hasMultipleImages && allImageUrls.length >= 2) {
-      mediaVariant = `gallery (${allImageUrls.length} images)`;
+    if (hasMultipleImages && gridImageUrls.length >= 2) {
+      mediaVariant = `gallery (${gridImageUrls.length} images)`;
     } else if (primaryMedia) {
       if (primaryMedia.type === 'youtube') {
         mediaVariant = 'video-youtube';
@@ -412,7 +415,7 @@ export const useNewsCard = ({
         mediaVariant = `embed-${article.media.type}`;
       }
     } else if (hasLegacyImages) {
-      mediaVariant = hasMultipleImages ? `gallery (${allImageUrls.length} images)` : 'single-image';
+      mediaVariant = hasMultipleImages ? `gallery (${gridImageUrls.length} images)` : 'single-image';
     } else if (hasLegacyVideo) {
       mediaVariant = 'video';
     }
@@ -437,7 +440,7 @@ export const useNewsCard = ({
     hasLegacyImages,
     hasLegacyVideo,
     primaryMediaType: primaryMedia?.type || article.media?.type || 'none',
-    mediaCount: allImageUrls.length,
+    mediaCount: gridImageUrls.length,
     hasMultipleImages,
     hasBodyText,
     hasOverlayText,

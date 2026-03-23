@@ -64,6 +64,7 @@ const makePrimaryImageMedia = (previewUrl: string): PrimaryMedia => ({
   url: 'https://example.com/image.jpg',
   thumbnail: 'https://example.com/thumb.jpg',
   showInMasonry: true,
+  showInGrid: true,
   masonryTitle: 'Masonry caption',
   previewMetadata: { url: previewUrl } as PreviewMetadata,
 });

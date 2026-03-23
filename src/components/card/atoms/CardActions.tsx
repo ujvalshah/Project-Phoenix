@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'lucide-react';
 import { ShareMenu } from '@/components/shared/ShareMenu';
 import { BookmarkButton } from '@/components/bookmarks';
@@ -89,22 +90,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
         />
       )}
 
-      {onAddToCollection && (
-        <button
-          onClick={onAddToCollection}
-          className={twMerge(
-            buttonSize,
-            'flex items-center justify-center rounded-full',
-            hoverBg,
-            textColor,
-            transitionClass
-          )}
-          aria-label="Add to collection"
-          title="Add to collection"
-        >
-          <FolderPlus size={iconSize} aria-hidden="true" />
-        </button>
-      )}
+      {/* Add to collection lives only in the ⋮ menu (avoids duplicate with grid cards) */}
 
       <div className="relative" ref={menuRef}>
         <button
@@ -182,8 +168,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-  const [placement, setPlacement] = useState<'up' | 'down'>('up');
-  const [align, setAlign] = useState<'right' | 'left'>('right');
+  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   const computeDeps = useMemo(
     () => [
@@ -203,28 +188,38 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
     if (typeof window === 'undefined') return;
     if (!anchorRef?.current || !panelRef.current) return;
 
-    const anchorRect = anchorRef.current.getBoundingClientRect();
-    const panelRect = panelRef.current.getBoundingClientRect();
+    const recomputePosition = () => {
+      if (!anchorRef.current || !panelRef.current) return;
 
-    const margin = 8;
-    const spaceAbove = anchorRect.top;
-    const spaceBelow = window.innerHeight - anchorRect.bottom;
+      const anchorRect = anchorRef.current.getBoundingClientRect();
+      const panelRect = panelRef.current.getBoundingClientRect();
+      const margin = 8;
+      const gap = 6;
 
-    const canFitUp = spaceAbove >= panelRect.height + margin;
-    const canFitDown = spaceBelow >= panelRect.height + margin;
+      const placeUp = anchorRect.top >= panelRect.height + margin;
+      let top = placeUp ? anchorRect.top - panelRect.height - gap : anchorRect.bottom + gap;
+      top = Math.max(margin, Math.min(top, window.innerHeight - panelRect.height - margin));
 
-    if (canFitUp) setPlacement('up');
-    else if (canFitDown) setPlacement('down');
-    else setPlacement(spaceAbove > spaceBelow ? 'up' : 'down');
+      const canAlignRight = window.innerWidth - anchorRect.right >= panelRect.width + margin;
+      const canAlignLeft = anchorRect.left >= panelRect.width + margin;
+      let left: number;
+      if (canAlignRight || !canAlignLeft) {
+        left = anchorRect.right - panelRect.width;
+      } else {
+        left = anchorRect.left;
+      }
+      left = Math.max(margin, Math.min(left, window.innerWidth - panelRect.width - margin));
 
-    const spaceLeft = anchorRect.left;
-    const spaceRight = window.innerWidth - anchorRect.right;
+      setPosition({ top, left });
+    };
 
-    const canFitRight = spaceRight >= panelRect.width + margin;
-    const canFitLeft = spaceLeft >= panelRect.width + margin;
-
-    if (!canFitRight && canFitLeft) setAlign('left');
-    else setAlign('right');
+    recomputePosition();
+    window.addEventListener('resize', recomputePosition);
+    window.addEventListener('scroll', recomputePosition, true);
+    return () => {
+      window.removeEventListener('resize', recomputePosition);
+      window.removeEventListener('scroll', recomputePosition, true);
+    };
   }, [computeDeps, anchorRef]);
 
   // Build menu items array
@@ -236,16 +231,6 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
     className?: string;
     visible: boolean;
   }> = [];
-
-  if (onAddToCollection) {
-    menuItems.push({
-      id: 'add-to-collection',
-      label: 'Add to collection',
-      icon: <FolderPlus size={12} aria-hidden="true" />,
-      onClick: onAddToCollection,
-      visible: true,
-    });
-  }
 
   if (isOwner || isAdmin) {
     if (onEdit) {
@@ -269,6 +254,16 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
         <Lock size={12} className="text-amber-500" aria-hidden="true" />
       ),
       onClick: onToggleVisibility,
+      visible: true,
+    });
+  }
+
+  if (onAddToCollection) {
+    menuItems.push({
+      id: 'add-to-collection',
+      label: 'Add to collection',
+      icon: <FolderPlus size={12} aria-hidden="true" />,
+      onClick: onAddToCollection,
       visible: true,
     });
   }
@@ -356,16 +351,14 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
     }
   }, [focusedIndex]);
 
-  return (
+  return createPortal(
     <div
       ref={panelRef}
       role="menu"
       aria-label="Article actions"
-      className={[
-        'absolute w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-20 overflow-hidden',
-        placement === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
-        align === 'right' ? 'right-0' : 'left-0',
-      ].join(' ')}
+      data-card-actions-menu="true"
+      className="fixed w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-[1000] overflow-hidden"
+      style={{ top: `${position.top}px`, left: `${position.left}px` }}
       onKeyDown={(e) => {
         // Prevent default arrow key behavior
         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
@@ -393,7 +386,8 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
           {item.icon} {item.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 };
 

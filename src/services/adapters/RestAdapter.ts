@@ -44,15 +44,16 @@ export class RestAdapter implements IAdapter {
   }
 
   // Paginated articles method - returns full pagination metadata
-  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string }): Promise<PaginatedArticlesResponse> {
+  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string; collectionId?: string }): Promise<PaginatedArticlesResponse> {
     const queryParams = new URLSearchParams();
     if (params.q) queryParams.set('q', params.q);
     if (params.category) queryParams.set('category', params.category);
     if (params.tag) queryParams.set('tag', params.tag);
     if (params.sort) queryParams.set('sort', params.sort);
+    if (params.collectionId) queryParams.set('collectionId', params.collectionId);
     queryParams.set('page', params.page.toString());
     queryParams.set('limit', params.limit.toString());
-    
+
     return apiClient.get<PaginatedArticlesResponse>(`/articles?${queryParams}`);
   }
 
@@ -182,6 +183,7 @@ export class RestAdapter implements IAdapter {
           ...updatesWithoutCategoryIds.media,
           masonryTitle: updatesWithoutCategoryIds.media.masonryTitle, // Explicitly preserve masonryTitle
           showInMasonry: updatesWithoutCategoryIds.media.showInMasonry, // Explicitly preserve showInMasonry
+          showInGrid: updatesWithoutCategoryIds.media.showInGrid,
         };
       }
     }
@@ -357,6 +359,19 @@ export class RestAdapter implements IAdapter {
         }
         return [];
       });
+  }
+
+  getFeaturedCollections(): Promise<Collection[]> {
+    return apiClient.get<Collection[]>('/collections/featured');
+  }
+
+  getCollectionArticles(collectionId: string, params: { q?: string; page: number; limit: number; sort?: string }): Promise<PaginatedArticlesResponse> {
+    const queryParams = new URLSearchParams();
+    if (params.q) queryParams.set('q', params.q);
+    if (params.sort) queryParams.set('sort', params.sort);
+    queryParams.set('page', params.page.toString());
+    queryParams.set('limit', params.limit.toString());
+    return apiClient.get<PaginatedArticlesResponse>(`/collections/${collectionId}/articles?${queryParams}`);
   }
 
   getCollectionById(id: string): Promise<Collection | undefined> {

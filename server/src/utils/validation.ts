@@ -32,6 +32,7 @@ const mediaSchema = z.object({
   previewMetadata: previewMetadataSchema,
   // Masonry layout visibility flag (optional for backward compatibility)
   showInMasonry: z.boolean().optional(),
+  showInGrid: z.boolean().optional(),
   // Masonry tile title (optional, max 80 characters, single-line)
   masonryTitle: z.string().max(80, 'Masonry title must be 80 characters or less').optional(),
   // Metadata override flag: true when user explicitly edits caption/title
@@ -54,6 +55,7 @@ const supportingMediaItemSchema = z.object({
   previewMetadata: previewMetadataSchema,
   // Masonry layout visibility flag (optional for backward compatibility)
   showInMasonry: z.boolean().optional(),
+  showInGrid: z.boolean().optional(),
   // Masonry tile title (optional, max 80 characters, single-line)
   masonryTitle: z.string().max(80, 'Masonry title must be 80 characters or less').optional(),
 });
@@ -232,6 +234,11 @@ export const createCollectionSchema = z.object({
 // Prevents ownership transfer via update - creatorId cannot be changed
 // Use .omit() to explicitly exclude fields that should never be updated
 export const updateCollectionSchema = createCollectionSchema.partial().strict().omit({ creatorId: true });
+
+export const setFeaturedSchema = z.object({
+  isFeatured: z.boolean(),
+  featuredOrder: z.number().int().min(0).optional(),
+}).strict();
 
 export const updateUserSchema = z.object({
   name: z.string().min(1).optional(),

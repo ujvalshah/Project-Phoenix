@@ -1,4 +1,4 @@
-import { forwardRef, Suspense, lazy } from 'react';
+import { forwardRef, Suspense, lazy, useMemo } from 'react';
 import { Article } from '@/types';
 import { useNewsCard } from '@/hooks/useNewsCard';
 import { GridVariant } from './card/variants/GridVariant';
@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { useAuth } from '@/hooks/useAuth';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
+import { buildLightboxSourceLinksForImageUrls } from '@/utils/masonryMediaHelper';
 // Lazy-load YouTube modal for code splitting (zero impact on initial bundle)
 const YouTubeModal = lazy(() => import('./YouTubeModal').then(module => ({ default: module.YouTubeModal })));
 
@@ -68,6 +69,14 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
     });
 
     const { logic, modals, refs, article: originalArticle, isOwner, isAdmin } = hookResult;
+
+    const { lightboxImageUrls, lightboxSourceLinksPerImage } = useMemo(() => {
+      const urls = originalArticle.images ?? [];
+      return {
+        lightboxImageUrls: urls,
+        lightboxSourceLinksPerImage: buildLightboxSourceLinksForImageUrls(originalArticle, urls),
+      };
+    }, [originalArticle]);
 
     // Switch on viewMode to render the appropriate variant
     let variant;
@@ -230,8 +239,9 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             e?.stopPropagation?.();
             modals.setShowLightbox(false);
           }}
-          images={originalArticle.images || []}
+          images={lightboxImageUrls}
           initialIndex={modals.lightboxInitialIndex || 0}
+          sourceLinksPerImage={lightboxSourceLinksPerImage}
           sidebarContent={
             modals.showLightbox ? (
               <ArticleDetail

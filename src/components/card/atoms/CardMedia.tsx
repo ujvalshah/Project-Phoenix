@@ -22,7 +22,7 @@ import { Article } from '@/types';
 import { Image } from '@/components/Image';
 import { Lock, Layers, ExternalLink } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
-import { classifyArticleMedia, getThumbnailUrl, getSupportingMediaCount, getAllImageUrls } from '@/utils/mediaClassifier';
+import { classifyArticleMedia, getThumbnailUrl, getSupportingMediaCount, getGridImageUrls } from '@/utils/mediaClassifier';
 import { useYouTubeTitle } from '@/hooks/useYouTubeTitle';
 import { CardThumbnailGrid } from './CardThumbnailGrid';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
@@ -51,23 +51,16 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   );
   
   
-  // Get all image URLs for multi-image grid detection (moved before thumbnailUrl to allow fallback)
-  const allImageUrls = useMemo(() => 
-    getAllImageUrls(article),
-    [article]
-  );
+  const gridImageUrls = useMemo(() => getGridImageUrls(article), [article]);
 
-  // Get thumbnail URL (deterministic, based on primary media only)
-  // Fallback to first legacy image if primaryMedia is null but images exist
+  // Get thumbnail URL (respects showInGrid; falls back to first grid-visible image)
   const thumbnailUrl = useMemo(() => {
     const url = getThumbnailUrl(article);
-    // If no thumbnail from primary media but we have legacy images, use first image
-    // This ensures legacy images are displayed even when primaryMedia hasn't been set
-    if (!url && allImageUrls.length > 0) {
-      return allImageUrls[0];
+    if (!url && gridImageUrls.length > 0) {
+      return gridImageUrls[0];
     }
     return url;
-  }, [article, allImageUrls]);
+  }, [article, gridImageUrls]);
   
   // Reset error state when thumbnail URL changes
   useEffect(() => {
@@ -91,7 +84,9 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   
   // Check if we have any media: primary media OR legacy images
   // This ensures legacy images are rendered even when primaryMedia is null
-  const hasMedia = !!primaryMedia || allImageUrls.length > 0;
+  const hasMedia =
+    gridImageUrls.length > 0 ||
+    (!!primaryMedia && primaryMedia.showInGrid !== false && primaryMedia.type !== 'image');
 
   // Determine if we should show the link badge and get URL
   // Priority: externalLinks > previewMetadata.url (original source) > media.url (for link-type only)
@@ -128,17 +123,11 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   // 2. MORE THAN ONE image available
   // 3. Primary media is an image (or null, but images exist in supporting media)
   const shouldRenderMultiImageGrid = useMemo(() => {
-    // Rule 1: If primary media is YouTube, NEVER show grid
     if (primaryMedia?.type === 'youtube') return false;
-    
-    // Rule 2: Need more than 1 image for grid
-    if (allImageUrls.length < 2) return false;
-    
-    // Rule 3: Primary media should be image or null (images-only nugget)
+    if (gridImageUrls.length < 2) return false;
     if (primaryMedia && primaryMedia.type !== 'image') return false;
-    
     return true;
-  }, [primaryMedia, allImageUrls.length]);
+  }, [primaryMedia, gridImageUrls.length]);
   
   // 🔍 AUDIT LOGGING - CardMedia Rendering Mode (moved after shouldRenderMultiImageGrid definition)
   useEffect(() => {
@@ -146,7 +135,7 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
     
     let mediaVariant = 'unknown';
     if (shouldRenderMultiImageGrid) {
-      mediaVariant = `multi-image-grid (${allImageUrls.length} images)`;
+      mediaVariant = `multi-image-grid (${gridImageUrls.length} images)`;
     } else if (primaryMedia) {
       if (primaryMedia.type === 'youtube') {
         mediaVariant = 'youtube-video';
@@ -159,7 +148,7 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
       }
     }
     
-  }, [article.id, hasMedia, primaryMedia, thumbnailUrl, shouldRenderMultiImageGrid, allImageUrls.length, className]);
+  }, [article.id, hasMedia, primaryMedia, thumbnailUrl, shouldRenderMultiImageGrid, gridImageUrls.length, className]);
 
   // PHASE 1: Consistent fixed aspect ratio across all cards (16:9 for uniformity)
   const { aspectRatio, backgroundClass } = useMemo(() => {
@@ -193,7 +182,7 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   // Generate ARIA label based on media type
   const getMediaAriaLabel = (): string => {
     if (shouldRenderMultiImageGrid) {
-      return `Image gallery with ${allImageUrls.length} images. Click to view gallery.`;
+      return `Image gallery with ${gridImageUrls.length} images. Click to view gallery.`;
     }
     if (primaryMedia?.type === 'youtube') {
       return `YouTube video thumbnail. Click to play video.`;
@@ -251,7 +240,7 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
       {/* MODE 1: Multi-Image Grid */}
       {shouldRenderMultiImageGrid ? (
         <CardThumbnailGrid
-          images={allImageUrls}
+          images={gridImageUrls}
           articleTitle={article.title}
           onGridClick={onMediaClick}
           showLinkBadge={shouldShowLinkBadge}

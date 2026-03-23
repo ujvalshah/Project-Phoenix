@@ -17,7 +17,7 @@ export interface ArticleCountsResponse {
 export interface IAdapter {
   // Articles
   getAllArticles(params?: { q?: string; page?: number; limit?: number }): Promise<Article[]>;
-  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string }): Promise<PaginatedArticlesResponse>;
+  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string; collectionId?: string }): Promise<PaginatedArticlesResponse>;
   getArticleById(id: string): Promise<Article | undefined>;
   getArticlesByAuthor(authorId: string): Promise<Article[]>;
   getMyArticleCounts(): Promise<ArticleCountsResponse>;
@@ -44,6 +44,8 @@ export interface IAdapter {
 
   // Collections
   getCollections(params?: { type?: 'public' | 'private'; includeCount?: boolean }): Promise<Collection[] | { data: Collection[]; count: number }>;
+  getFeaturedCollections(): Promise<Collection[]>;
+  getCollectionArticles(collectionId: string, params: { q?: string; page: number; limit: number; sort?: string }): Promise<PaginatedArticlesResponse>;
   getCollectionById(id: string): Promise<Collection | undefined>;
   createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private'): Promise<Collection>;
   deleteCollection(id: string): Promise<void>;

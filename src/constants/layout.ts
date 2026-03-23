@@ -82,6 +82,11 @@ export const LAYOUT_CLASSES = {
    * Power users want content immediately visible.
    */
   CATEGORY_SPACER: 'h-1',
+  /**
+   * Gap below header / category toolbar before main content (16px at default 16px root).
+   * Uniform across breakpoints for predictable density; rem scales with user font settings.
+   */
+  CONTENT_TOP_SPACER: 'h-4 shrink-0',
   /** Sticky top offset for elements below Header */
   STICKY_BELOW_HEADER: 'top-14',
   /** 

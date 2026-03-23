@@ -338,6 +338,7 @@ async function buildMediaObjectCreate(
       return {
         ...baseMedia,
         showInMasonry: primaryItem.showInMasonry !== undefined ? primaryItem.showInMasonry : true,
+        showInGrid: primaryItem.showInGrid !== undefined ? primaryItem.showInGrid : true,
         masonryTitle: primaryItem.masonryTitle || undefined,
       };
     } else {
@@ -346,6 +347,7 @@ async function buildMediaObjectCreate(
       return {
         ...baseMedia,
         showInMasonry: true,
+        showInGrid: true,
       };
     }
   }
@@ -478,6 +480,7 @@ async function buildMediaObjectEdit(
       const update: Partial<NuggetMedia> = {
         ...enrichedMedia,
         showInMasonry: mediaItemWithTitle.showInMasonry,
+        showInGrid: mediaItemWithTitle.showInGrid ?? true,
         masonryTitle: mediaItemWithTitle.masonryTitle || undefined,
       };
 
@@ -498,6 +501,7 @@ async function buildMediaObjectEdit(
               siteName: customDomain || linkMetadata.previewMetadata.siteName || enrichedMedia.previewMetadata?.siteName,
             },
             showInMasonry: mediaItemWithTitle.showInMasonry,
+            showInGrid: mediaItemWithTitle.showInGrid ?? true,
             masonryTitle: mediaItemWithTitle.masonryTitle || undefined,
           } as NuggetMedia;
         }
@@ -517,6 +521,7 @@ async function buildMediaObjectEdit(
             titleFetchedAt: enrichedMedia.previewMetadata?.titleFetchedAt || existingMedia.previewMetadata?.titleFetchedAt,
           },
           showInMasonry: mediaItemWithTitle.showInMasonry,
+          showInGrid: mediaItemWithTitle.showInGrid ?? true,
           masonryTitle: mediaItemWithTitle.masonryTitle || undefined,
         } as NuggetMedia;
       }
@@ -532,6 +537,7 @@ async function buildMediaObjectEdit(
           aspect_ratio: enrichedPrimaryMedia.aspect_ratio || classified.primaryMedia.aspect_ratio,
           previewMetadata: enrichedPrimaryMedia.previewMetadata || classified.primaryMedia.previewMetadata,
           showInMasonry: primaryItem.showInMasonry,
+          showInGrid: primaryItem.showInGrid ?? true,
           masonryTitle: primaryItem.masonryTitle || undefined,
         };
       }
@@ -592,6 +598,7 @@ async function buildSupportingMediaCreate(
       url: item.url,
       thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
       showInMasonry: item.showInMasonry,
+      showInGrid: item.showInGrid ?? true,
       masonryTitle: item.masonryTitle || undefined,
     }));
   }
@@ -603,6 +610,7 @@ async function buildSupportingMediaCreate(
         url: item.url,
         thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
         showInMasonry: item.showInMasonry,
+        showInGrid: item.showInGrid ?? true,
         masonryTitle: item.masonryTitle || undefined,
       };
 
@@ -710,6 +718,7 @@ async function buildSupportingMediaEdit(
           ...enriched,
           type: correctedType,
           showInMasonry: item.showInMasonry,
+          showInGrid: item.showInGrid ?? enriched.showInGrid ?? true,
           masonryTitle: item.masonryTitle || undefined,
         };
       }
@@ -761,6 +770,7 @@ async function buildSupportingMediaEdit(
           url: item.url,
           thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
           showInMasonry: item.showInMasonry,
+          showInGrid: item.showInGrid ?? true,
           masonryTitle: item.masonryTitle || undefined,
         };
 

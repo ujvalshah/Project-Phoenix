@@ -22,7 +22,7 @@ import { useState, useMemo, useCallback, useRef } from 'react';
 import type { Article, MediaType } from '@/types';
 import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 import { getAllImageUrls } from '@/utils/mediaClassifier';
-import { collectMasonryMediaItems, MasonryMediaItem } from '@/utils/masonryMediaHelper';
+import type { MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 
 /**
@@ -41,6 +41,8 @@ export interface ImageItem {
   storageLocation: 'images' | 'primaryMedia' | 'supportingMedia' | 'media' | 'upload';
   /** Whether to show in Masonry layout */
   showInMasonry: boolean;
+  /** Whether to show on grid card thumbnails / multi-image strip */
+  showInGrid: boolean;
   /** Optional title for Masonry tile */
   masonryTitle?: string;
   /** Current status of this image */
@@ -102,6 +104,7 @@ export interface UseImageManagerReturn {
     options?: {
       mediaId?: string;
       showInMasonry?: boolean;
+      showInGrid?: boolean;
       masonryTitle?: string;
       type?: MediaType;
       thumbnail?: string;
@@ -120,6 +123,9 @@ export interface UseImageManagerReturn {
 
   /** Toggle Masonry visibility for an image */
   toggleMasonry: (url: string, showInMasonry: boolean) => void;
+
+  /** Toggle grid card visibility for an image */
+  toggleGrid: (url: string, showInGrid: boolean) => void;
 
   /** Set Masonry title for an image */
   setMasonryTitle: (url: string, title: string) => void;
@@ -216,6 +222,7 @@ function articleToImageItems(article: Article): ImageItem[] {
       source,
       storageLocation,
       showInMasonry: options.showInMasonry ?? false,
+      showInGrid: options.showInGrid ?? true,
       masonryTitle: options.masonryTitle,
       status: 'active',
       mediaId: options.mediaId,
@@ -229,6 +236,7 @@ function articleToImageItems(article: Article): ImageItem[] {
   if (article.primaryMedia?.url) {
     addItem(article.primaryMedia.url, 'primary', 'primaryMedia', {
       showInMasonry: article.primaryMedia.showInMasonry ?? true,
+      showInGrid: article.primaryMedia.showInGrid ?? true,
       masonryTitle: article.primaryMedia.masonryTitle,
       type: article.primaryMedia.type,
       thumbnail: article.primaryMedia.thumbnail,
@@ -243,6 +251,7 @@ function articleToImageItems(article: Article): ImageItem[] {
       if (media.url) {
         addItem(media.url, 'supporting', 'supportingMedia', {
           showInMasonry: media.showInMasonry ?? false,
+          showInGrid: media.showInGrid ?? true,
           masonryTitle: media.masonryTitle,
           type: media.type || 'image',
           thumbnail: media.thumbnail,
@@ -257,6 +266,7 @@ function articleToImageItems(article: Article): ImageItem[] {
   if (article.media?.url) {
     addItem(article.media.url, 'legacy', 'media', {
       showInMasonry: article.media.showInMasonry ?? false,
+      showInGrid: article.media.showInGrid ?? true,
       masonryTitle: article.media.masonryTitle,
       type: article.media.type || 'image',
       previewMetadata: article.media.previewMetadata,
@@ -268,6 +278,7 @@ function articleToImageItems(article: Article): ImageItem[] {
     article.images.forEach((url) => {
       addItem(url, 'legacy', 'images', {
         showInMasonry: false,
+        showInGrid: true,
         type: 'image',
       });
     });
@@ -340,6 +351,7 @@ export function useImageManager(
                 img.source === 'supporting' ? 'supporting' :
                 img.source === 'legacy' ? 'legacy-image' : 'supporting',
         showInMasonry: img.showInMasonry,
+        showInGrid: img.showInGrid,
         isLocked: false,
         masonryTitle: img.masonryTitle,
         previewMetadata: img.previewMetadata,
@@ -369,6 +381,7 @@ export function useImageManager(
     options?: {
       mediaId?: string;
       showInMasonry?: boolean;
+      showInGrid?: boolean;
       masonryTitle?: string;
       type?: MediaType;
       thumbnail?: string;
@@ -403,7 +416,11 @@ export function useImageManager(
         normalizedUrl,
         source,
         storageLocation: source === 'upload' ? 'upload' : 'images',
-        showInMasonry: options?.showInMasonry ?? (source === 'primary'),
+        // Create flow: all images default to masonry-visible unless caller overrides; non-images default off unless primary
+        showInMasonry:
+          options?.showInMasonry ??
+          (source === 'primary' || detectMediaType(url) === 'image'),
+        showInGrid: options?.showInGrid ?? true,
         masonryTitle: options?.masonryTitle,
         status: 'active',
         mediaId: options?.mediaId,
@@ -534,6 +551,17 @@ export function useImageManager(
       ),
     }));
 
+    setHasChanges(true);
+  }, []);
+
+  const toggleGrid = useCallback((url: string, showInGrid: boolean) => {
+    const normalizedUrl = normalizeImageUrl(url);
+    setState((prev) => ({
+      ...prev,
+      images: prev.images.map((img) =>
+        img.normalizedUrl === normalizedUrl ? { ...img, showInGrid } : img
+      ),
+    }));
     setHasChanges(true);
   }, []);
 
@@ -686,6 +714,7 @@ export function useImageManager(
     confirmDeletion,
     rollbackDeletion,
     toggleMasonry,
+    toggleGrid,
     setMasonryTitle,
     reorderImages,
     syncFromArticle,
@@ -709,6 +738,7 @@ export function useImageManager(
     confirmDeletion,
     rollbackDeletion,
     toggleMasonry,
+    toggleGrid,
     setMasonryTitle,
     reorderImages,
     syncFromArticle,

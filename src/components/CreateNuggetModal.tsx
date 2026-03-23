@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { X, Globe, Lock, Loader2 } from 'lucide-react';
 import { getInitials } from '@/utils/formatters';
 import { storageService } from '@/services/storageService';
-import { detectProviderFromUrl } from '@/utils/urlUtils';
+import { detectProviderFromUrl, looksLikeMultipleUrls, splitPastedUrlCandidates } from '@/utils/urlUtils';
 import { queryClient } from '@/queryClient';
 import { GenericLinkPreview } from './embeds/GenericLinkPreview';
 import { Collection } from '@/types';
@@ -572,13 +572,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Parse multiple URLs from text (separated by newlines, spaces, commas, etc.)
   const parseMultipleUrls = (text: string): string[] => {
-    // Split by common delimiters: newlines, spaces, commas, tabs
-    const separators = /\s+|,|\n|\r\n|\r|\t/;
-    const parts = text.split(separators);
-    
+    const parts = splitPastedUrlCandidates(text);
+
     const validUrls: string[] = [];
     const errors: string[] = [];
-    
+
     for (const part of parts) {
       const trimmed = part.trim();
       if (!trimmed) continue;
@@ -620,10 +618,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     const trimmed = urlInput.trim();
     if (!trimmed) return;
     
-    // Check if input contains multiple URLs (has newlines or multiple URLs)
-    const hasMultipleUrls = trimmed.includes('\n') || 
-                           trimmed.includes('\r') || 
-                           trimmed.split(/\s+|,/).filter(p => p.trim().length > 0).length > 1;
+    // Multiple URLs: newlines or 2+ http(s) schemes — do NOT use bare commas (Substack CDN paths contain commas)
+    const hasMultipleUrls = looksLikeMultipleUrls(trimmed);
     
     if (hasMultipleUrls) {
       // Parse multiple URLs
@@ -747,10 +743,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const handleUrlPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const pastedText = e.clipboardData.getData('text');
     
-    // Check if pasted text looks like multiple URLs
-    const hasMultipleUrls = pastedText.includes('\n') || 
-                           pastedText.includes('\r') || 
-                           pastedText.split(/\s+|,/).filter(p => p.trim().length > 0 && (p.includes('.') || p.startsWith('http'))).length > 1;
+    const hasMultipleUrls = looksLikeMultipleUrls(pastedText);
     
     if (hasMultipleUrls) {
       e.preventDefault();
@@ -1015,8 +1008,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       item = masonryMediaItems.find(m => m.url === itemId || m.id === itemId);
     }
     if (item?.url) {
-      // TODO: Implement imageManager.toggleGrid() when backend support is ready
-      console.log('[GridToggle] Grid visibility:', itemId, showInGrid);
+      imageManager.toggleGrid(item.url, showInGrid);
     }
   };
 
@@ -1094,7 +1086,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       ? (displayImageId ? item.id === displayImageId : index === 0)
       : index === 0,
     showInMasonry: item.showInMasonry,
-    showInGrid: true, // Default to true (show in grid by default)
+    showInGrid: item.showInGrid,
     showInUtility: true, // Default to true (show in utility by default)
     masonryTitle: item.masonryTitle,
     previewMetadata: item.previewMetadata,
@@ -1234,8 +1226,9 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
    * 
    * CREATE MODE DEFAULT BEHAVIOR:
    * - Primary media: showInMasonry: true (selected by default), isLocked: false (can be unselected)
-   * - Supporting media: showInMasonry: false (opt-in)
-   * - If user unselects primary media, nugget won't appear in Masonry (no fallback)
+   * - Supporting images (URL or upload): showInMasonry: true (all images in masonry by default; user can unselect)
+   * - Supporting non-image URLs (video, etc.): showInMasonry: false (opt-in)
+   * - If user unselects all masonry-selected media, nugget won't appear in Masonry (no fallback)
    * 
    * EDIT MODE BEHAVIOR:
    * - Respects whatever values are stored in the DB
@@ -1282,8 +1275,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     // CREATE MODE DEFAULT BEHAVIOR:
     // - Primary media defaults to showInMasonry: true (selected by default)
     // - Primary media is NOT locked - user can unselect it
-    // - If user unselects primary media, nugget won't appear in Masonry (no fallback)
-    // - Supporting media remain opt-in (default to false)
+    // - All supporting images default to showInMasonry: true; user can unselect per image
+    // - Supporting non-image URLs stay opt-in (false)
     
     // 1. Add primary media
     if (primaryUrl) {
@@ -1300,7 +1293,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       if (url === primaryUrl) return;
       
       imageManager.addImage(url, 'url-input', {
-        showInMasonry: false, // Default to false, user can opt-in
+        showInMasonry: true,
         type: 'image',
         thumbnail: url,
       });
@@ -1325,7 +1318,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       if (!url || url === primaryUrl) return;
       
       imageManager.addImage(url, 'upload', {
-        showInMasonry: false, // Default to false, user can opt-in
+        showInMasonry: true,
         type: 'image',
         mediaId: att.mediaId,
         thumbnail: url,

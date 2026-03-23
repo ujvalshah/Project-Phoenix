@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ChevronLeft, ChevronRight, Minimize2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Minimize2, ExternalLink } from 'lucide-react';
 import { Image } from '@/components/Image';
+import type { MasonrySourceLink } from '@/utils/masonryMediaHelper';
 
 interface ImageLightboxProps {
   isOpen: boolean;
@@ -9,6 +10,8 @@ interface ImageLightboxProps {
   images: string[];
   initialIndex?: number;
   sidebarContent?: React.ReactNode;
+  /** Per-slide source URLs (aligned with `images`); when set, shows a Source pill on the active slide */
+  sourceLinksPerImage?: Array<MasonrySourceLink | null>;
 }
 
 type ViewerMode = 'carousel' | 'fullscreen';
@@ -38,12 +41,17 @@ type ViewerMode = 'carousel' | 'fullscreen';
  * ============================================================================
  */
 
+// Inset from `right-4` close control (44px target + gap) so the two don’t collide
+const lightboxSourcePillClass =
+  'absolute top-4 right-20 z-40 min-h-[44px] inline-flex items-center gap-1.5 bg-black/70 backdrop-blur-sm text-white text-xs font-bold px-3 py-2 rounded-full tracking-wide transition-all hover:bg-black/90 hover:scale-[1.02] shadow-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/70';
+
 export const ImageLightbox: React.FC<ImageLightboxProps> = ({ 
   isOpen, 
   onClose, 
   images, 
   initialIndex = 0,
-  sidebarContent
+  sidebarContent,
+  sourceLinksPerImage,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   // State model: mode switching with index preservation
@@ -461,6 +469,30 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
 
   const isFullscreen = mode === 'fullscreen';
   const showTwoPanel = hasMultipleImages && hasSidebar && !isFullscreen;
+  const slideSourceLink = sourceLinksPerImage?.[currentIndex] ?? null;
+
+  const sourcePillButton = slideSourceLink ? (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          window.open(slideSourceLink.url, '_blank', 'noopener,noreferrer');
+        }}
+        className={lightboxSourcePillClass}
+        aria-label="Open source in new tab"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(slideSourceLink.url, '_blank', 'noopener,noreferrer');
+          }
+        }}
+      >
+        <ExternalLink size={14} strokeWidth={2.5} />
+        <span>{slideSourceLink.label}</span>
+      </button>
+    ) : null;
 
   return createPortal(
     <div 
@@ -500,6 +532,8 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
             <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/70 font-medium z-50 bg-black/30 px-3 py-1.5 rounded-full backdrop-blur-md min-h-[44px] flex items-center">
               {currentIndex + 1} / {images.length}
             </div>
+
+            {sourcePillButton}
 
             {/* Navigation Buttons - Two Panel Mode */}
             <button 
@@ -583,6 +617,8 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
               {currentIndex + 1} / {images.length}
             </div>
           )}
+
+          {sourcePillButton}
 
           {/* Navigation Buttons - Fullscreen Mode */}
           {hasMultipleImages && (

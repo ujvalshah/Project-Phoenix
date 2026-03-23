@@ -101,6 +101,7 @@ function convertToPrimaryMedia(media: NuggetMedia): PrimaryMedia {
     // CRITICAL: Preserve masonry flags when converting from NuggetMedia
     // These flags determine which media items appear in masonry layout
     showInMasonry: media.showInMasonry,
+    showInGrid: media.showInGrid,
     masonryTitle: media.masonryTitle,
   };
 
@@ -137,8 +138,9 @@ function convertToSupportingMedia(media: NuggetMedia): SupportingMediaItem {
     previewMetadata: media.previewMetadata,
     // CRITICAL: Preserve masonry flags when converting from NuggetMedia
     // These flags determine which media items appear in masonry layout
-    showInMasonry: (media as any).showInMasonry,
-    masonryTitle: (media as any).masonryTitle,
+    showInMasonry: media.showInMasonry,
+    showInGrid: media.showInGrid,
+    masonryTitle: media.masonryTitle,
   };
 }
 
@@ -333,49 +335,55 @@ export function classifyArticleMedia(article: Article): {
   return result;
 }
 
+function resolvePrimaryMediaThumbnail(pm: PrimaryMedia): string | null {
+  if (pm.thumbnail) {
+    return pm.thumbnail;
+  }
+  if (pm.type === 'youtube') {
+    const videoId = extractYouTubeId(pm.url);
+    if (videoId) {
+      return getYouTubeThumbnail(videoId);
+    }
+  } else if (pm.type === 'image') {
+    return pm.url;
+  }
+  return null;
+}
+
+/** Grid cards: include URL unless author set showInGrid: false */
+function isVisibleInGrid(media: { showInGrid?: boolean } | null | undefined): boolean {
+  return media?.showInGrid !== false;
+}
+
 /**
  * ============================================================================
  * GET THUMBNAIL URL: Deterministic Thumbnail Selection
  * ============================================================================
- * 
- * Returns the thumbnail URL for a nugget based on primary media only.
- * Supporting media NEVER influences thumbnail selection.
- * 
- * ALGORITHM:
- * - IF primaryMedia exists:
- *   - IF type === "youtube" → return YouTube thumbnail
- *   - ELSE IF type === "image" → return image URL
- *   - ELSE → return null (use system fallback)
- * - ELSE → return null (use system fallback)
- * 
+ *
+ * If primary media is hidden from the grid (showInGrid: false), the card uses the
+ * first grid-visible image URL instead (so masonry-only primaries don't block thumbnails).
  */
 export function getThumbnailUrl(article: Article): string | null {
-  // First check if article has explicit primaryMedia
   if (article.primaryMedia) {
-    if (article.primaryMedia.thumbnail) {
-      return article.primaryMedia.thumbnail;
+    const thumb = resolvePrimaryMediaThumbnail(article.primaryMedia);
+    if (isVisibleInGrid(article.primaryMedia)) {
+      return thumb;
     }
-    
-    // Fallback: generate thumbnail based on type
-    if (article.primaryMedia.type === 'youtube') {
-      const videoId = extractYouTubeId(article.primaryMedia.url);
-      if (videoId) {
-        return getYouTubeThumbnail(videoId);
-      }
-    } else if (article.primaryMedia.type === 'image') {
-      return article.primaryMedia.url;
-    }
-    
-    return null;
+    const gridUrls = getAllImageUrls(article, { gridOnly: true });
+    return gridUrls.length > 0 ? gridUrls[0] : null;
   }
-  
-  // Fallback: classify media and get primary media thumbnail
+
   const classified = classifyArticleMedia(article);
   if (classified.primaryMedia) {
     return classified.primaryMedia.thumbnail || null;
   }
-  
+
   return null;
+}
+
+export interface GetAllImageUrlsOptions {
+  /** Only URLs marked visible on grid cards (showInGrid !== false on stored media) */
+  gridOnly?: boolean;
 }
 
 /**
@@ -424,7 +432,8 @@ export function hasAnyMedia(article: Article): boolean {
  * 
  * @returns Array of image URLs (may be empty)
  */
-export function getAllImageUrls(article: Article): string[] {
+export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptions): string[] {
+  const gridOnly = options?.gridOnly === true;
   const imageUrls: string[] = [];
   const seenUrls = new Set<string>(); // Deduplicate URLs
   const duplicatesDetected: Array<{ url: string; normalized: string; source: string }> = [];
@@ -465,7 +474,11 @@ export function getAllImageUrls(article: Article): string[] {
 
   if (hasClassifiedMedia) {
     // Add primary media if it's an image
-    if (article.primaryMedia?.type === 'image' && article.primaryMedia.url) {
+    if (
+      article.primaryMedia?.type === 'image' &&
+      article.primaryMedia.url &&
+      (!gridOnly || isVisibleInGrid(article.primaryMedia))
+    ) {
       addImageUrl(article.primaryMedia.url, 'primaryMedia');
     }
 
@@ -474,7 +487,11 @@ export function getAllImageUrls(article: Article): string[] {
     // Those are stored as 'link' but must appear in grid in supportingMedia order.
     if (article.supportingMedia) {
       article.supportingMedia.forEach(media => {
-        if (media.url && (media.type === 'image' || isImageUrl(media.url))) {
+        if (
+          media.url &&
+          (media.type === 'image' || isImageUrl(media.url)) &&
+          (!gridOnly || isVisibleInGrid(media))
+        ) {
           addImageUrl(media.url, 'supportingMedia');
         }
       });
@@ -484,13 +501,21 @@ export function getAllImageUrls(article: Article): string[] {
     const classified = classifyArticleMedia(article);
 
     // Add primary media if it's an image
-    if (classified.primaryMedia?.type === 'image' && classified.primaryMedia.url) {
+    if (
+      classified.primaryMedia?.type === 'image' &&
+      classified.primaryMedia.url &&
+      (!gridOnly || isVisibleInGrid(classified.primaryMedia))
+    ) {
       addImageUrl(classified.primaryMedia.url, 'classified-primary');
     }
 
     // Add supporting images (same rule: image type or image URL)
     classified.supportingMedia.forEach(media => {
-      if (media.url && (media.type === 'image' || isImageUrl(media.url))) {
+      if (
+        media.url &&
+        (media.type === 'image' || isImageUrl(media.url)) &&
+        (!gridOnly || isVisibleInGrid(media))
+      ) {
         addImageUrl(media.url, 'classified-supporting');
       }
     });
@@ -503,12 +528,16 @@ export function getAllImageUrls(article: Article): string[] {
   }
 
   // Also check media field if it's an image type
-  if (article.media?.type === 'image' && article.media.url) {
+  if (
+    article.media?.type === 'image' &&
+    article.media.url &&
+    (!gridOnly || isVisibleInGrid(article.media))
+  ) {
     addImageUrl(article.media.url, 'media-field');
   }
 
   // Check media.previewMetadata.imageUrl (for OG image URLs)
-  if (article.media?.previewMetadata?.imageUrl) {
+  if (article.media?.previewMetadata?.imageUrl && (!gridOnly || isVisibleInGrid(article.media))) {
     addImageUrl(article.media.previewMetadata.imageUrl, 'og-image');
   }
 
@@ -534,6 +563,13 @@ export function getAllImageUrls(article: Article): string[] {
   }
 
   return imageUrls;
+}
+
+/**
+ * Image URLs that should appear on grid cards (respects per-item showInGrid).
+ */
+export function getGridImageUrls(article: Article): string[] {
+  return getAllImageUrls(article, { gridOnly: true });
 }
 
 /**

@@ -139,6 +139,7 @@ async function legacyCreateNormalization(
       media = {
         ...baseMedia,
         showInMasonry: primaryItem.showInMasonry !== undefined ? primaryItem.showInMasonry : true,
+        showInGrid: primaryItem.showInGrid !== undefined ? primaryItem.showInGrid : true,
         masonryTitle: primaryItem.masonryTitle || undefined,
       };
     } else {
@@ -146,6 +147,7 @@ async function legacyCreateNormalization(
       media = {
         ...baseMedia,
         showInMasonry: true,
+        showInGrid: true,
       };
     }
   } else {
@@ -168,6 +170,7 @@ async function legacyCreateNormalization(
               url: item.url,
               thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
               showInMasonry: item.showInMasonry,
+              showInGrid: item.showInGrid !== undefined ? item.showInGrid : true,
               masonryTitle: item.masonryTitle || undefined,
             };
 
@@ -192,6 +195,7 @@ async function legacyCreateNormalization(
           url: item.url,
           thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
           showInMasonry: item.showInMasonry,
+          showInGrid: item.showInGrid !== undefined ? item.showInGrid : true,
           masonryTitle: item.masonryTitle || undefined,
         }));
       }

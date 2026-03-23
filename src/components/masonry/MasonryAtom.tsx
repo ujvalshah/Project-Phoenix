@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
-import { getMasonryVisibleMedia } from '@/utils/masonryMediaHelper';
+import { getMasonryVisibleMedia, resolveMasonrySourceLink } from '@/utils/masonryMediaHelper';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface MasonryAtomProps {
@@ -76,27 +76,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
     ? visibleMediaItems.find((i) => i.id === mediaItemId)
     : undefined;
 
-  const sourceLink = (() => {
-    const primaryExternalLink = article.externalLinks?.find((l) => l.isPrimary);
-    if (primaryExternalLink?.url) {
-      return { url: primaryExternalLink.url, label: 'Source' as const };
-    }
-
-    const previewUrl = currentTileItem?.previewMetadata
-      ? (currentTileItem.previewMetadata as any).url
-      : undefined;
-
-    // Mirror GridVariant behavior: don't show link for YouTube thumbnail sources
-    if (previewUrl && currentTileItem?.type !== 'youtube') {
-      return { url: previewUrl as string, label: 'Source' as const };
-    }
-
-    if (currentTileItem?.type === 'link' && currentTileItem.url) {
-      return { url: currentTileItem.url, label: 'Source' as const };
-    }
-
-    return null;
-  })();
+  const sourceLink = resolveMasonrySourceLink(article, currentTileItem);
 
   // Handle more menu click outside
   React.useEffect(() => {
@@ -225,7 +205,9 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
                 setShowMoreMenu(!showMoreMenu);
               }}
               sourceLink={sourceLink}
-              showMenuButton={isDesktop ? true : isHovered}
+              // On mobile/tablet we keep BOTH controls visible to avoid UI "breaking"
+              // when the user first taps Source (focus/hover state changes).
+              showMenuButton={true}
               showMoreMenu={showMoreMenu}
               moreMenuRef={moreMenuRef}
               isOwner={isOwner}

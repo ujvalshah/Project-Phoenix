@@ -6,13 +6,16 @@ import { requireEmailVerified } from '../middleware/requireEmailVerified.js';
 const router = Router();
 
 // Public routes
+router.get('/featured', collectionsController.getFeaturedCollections);
 router.get('/', collectionsController.getCollections);
 router.get('/:id', collectionsController.getCollectionById);
+router.get('/:id/articles', collectionsController.getCollectionArticles);
 
 // Collection CRUD (requires auth + email verification)
 router.post('/', authenticateToken, requireEmailVerified, collectionsController.createCollection);
 router.put('/:id', authenticateToken, requireEmailVerified, collectionsController.updateCollection);
 router.delete('/:id', authenticateToken, requireEmailVerified, collectionsController.deleteCollection);
+router.patch('/:id/featured', authenticateToken, collectionsController.setFeatured);
 
 // Entries (requires auth + email verification)
 router.post('/:id/entries', authenticateToken, requireEmailVerified, collectionsController.addEntry);

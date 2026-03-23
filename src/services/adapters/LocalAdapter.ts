@@ -346,9 +346,32 @@ export class LocalAdapter implements IAdapter {
     }
   }
 
+  async getFeaturedCollections(): Promise<Collection[]> {
+    const collections = await this.getCollections();
+    const all = Array.isArray(collections) ? collections : (collections as { data: Collection[] }).data;
+    return all.filter(c => c.isFeatured);
+  }
+
+  async getCollectionArticles(collectionId: string, params: { q?: string; page: number; limit: number; sort?: string }): Promise<import('./IAdapter').PaginatedArticlesResponse> {
+    const collection = await this.getCollectionById(collectionId);
+    if (!collection) return { data: [], total: 0, page: 1, limit: 25, hasMore: false };
+    const articleIds = new Set(collection.entries.map(e => e.articleId));
+    const allArticles = await this.getAllArticles();
+    const filtered = allArticles.filter(a => articleIds.has(a.id));
+    const start = (params.page - 1) * params.limit;
+    return {
+      data: filtered.slice(start, start + params.limit),
+      total: filtered.length,
+      page: params.page,
+      limit: params.limit,
+      hasMore: start + params.limit < filtered.length,
+    };
+  }
+
   async getCollectionById(id: string): Promise<Collection | undefined> {
     const collections = await this.getCollections();
-    return collections.find(c => c.id === id);
+    const all = Array.isArray(collections) ? collections : (collections as { data: Collection[] }).data;
+    return all.find(c => c.id === id);
   }
 
   async createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private' = 'public'): Promise<Collection> {

@@ -127,7 +127,9 @@ export function mapCollectionToAdminCollection(collection: Collection): AdminCol
     followerCount: collection.followersCount || 0,
     status: 'active', // Backend doesn't have status field
     createdAt: collection.createdAt,
-    updatedAt: collection.updatedAt || collection.createdAt
+    updatedAt: collection.updatedAt || collection.createdAt,
+    isFeatured: collection.isFeatured ?? false,
+    featuredOrder: collection.featuredOrder ?? 0,
   };
 }
 

@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Article } from '@/types';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
 import { Image } from '@/components/Image';
-import { getMasonryVisibleMedia, collectMasonryMediaItems, MasonryMediaItem } from '@/utils/masonryMediaHelper';
+import {
+  getMasonryVisibleMedia,
+  collectMasonryMediaItems,
+  buildLightboxSourceLinksForImageUrls,
+  MasonryMediaItem,
+} from '@/utils/masonryMediaHelper';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { ArticleDetail } from '@/components/ArticleDetail';
 import { Maximize2 } from 'lucide-react';
@@ -75,9 +80,15 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
   
   // Collect ALL image URLs from the complete media list (for carousel)
   // The carousel shows all images from the nugget, not just the visible masonry tiles
-  const allImageUrls = allMediaItems
-    .filter(item => item.type === 'image')
-    .map(item => item.url);
+  const allImageUrls = useMemo(() => {
+    const items = collectMasonryMediaItems(article);
+    return items.filter((item) => item.type === 'image').map((item) => item.url);
+  }, [article]);
+
+  const lightboxSourceLinks = useMemo(
+    () => buildLightboxSourceLinksForImageUrls(article, allImageUrls),
+    [article, allImageUrls]
+  );
 
   /**
    * Handle click on a media tile
@@ -310,6 +321,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
           onClose={handleCarouselClose}
           images={allImageUrls}
           initialIndex={lightboxIndex}
+          sourceLinksPerImage={lightboxSourceLinks}
           sidebarContent={
             <ArticleDetail
               article={article}

@@ -9,8 +9,14 @@ const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
 function getAuthToken(): string | null {
   try {
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+    // #region agent log
+    fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H1',location:'src/hooks/useMediaUpload.ts:getAuthToken',message:'Read auth storage',data:{hasStored:!!stored},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (stored) {
       const { token } = JSON.parse(stored);
+      // #region agent log
+      fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H1',location:'src/hooks/useMediaUpload.ts:getAuthToken',message:'Parsed auth token metadata',data:{hasToken:!!token,tokenLength:token?token.length:0},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return token || null;
     }
   } catch (e) {
@@ -142,9 +148,12 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
+      const apiBase = getNormalizedApiBase();
+      // #region agent log
+      fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H2',location:'src/hooks/useMediaUpload.ts:upload',message:'Preparing upload request',data:{apiBase,purpose:options.purpose||null,hasAuthHeader:!!headers.Authorization,fileType:file.type,fileSize:file.size},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       // Upload to backend
-      const apiBase = getNormalizedApiBase();
       const response = await fetch(`${apiBase}/media/upload/cloudinary`, {
         method: 'POST',
         body: formData,
@@ -154,6 +163,9 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Upload failed' }));
+        // #region agent log
+        fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H3',location:'src/hooks/useMediaUpload.ts:upload',message:'Upload request failed',data:{status:response.status,statusText:response.statusText,errorCode:errorData?.code||null,errorMessage:errorData?.message||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         throw new Error(errorData.message || `Upload failed: ${response.statusText}`);
       }
 
