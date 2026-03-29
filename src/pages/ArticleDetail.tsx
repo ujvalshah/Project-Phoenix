@@ -94,12 +94,20 @@ export const ArticleDetailPage: React.FC = () => {
     );
   }
 
+  // Dispatch article view event for contextual notification prompt
+  React.useEffect(() => {
+    if (article) {
+      window.dispatchEvent(new CustomEvent('nugget:article-view'));
+    }
+  }, [article]);
+
   // Render article detail (no HeaderSpacer - layout handles spacing)
   return (
     <ArticleDetail
       article={article}
       onClose={handleClose}
       isModal={false}
+      showHeader={false}
       constrainWidth={true}
     />
   );

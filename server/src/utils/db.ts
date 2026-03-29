@@ -318,47 +318,43 @@ function createDefensiveProxy(obj: any): any {
  */
 export function normalizeDoc(doc: any): any {
   if (!doc) return null;
-  
-  // Transform article documents specially
-  if (doc.title && doc.content) {
+
+  // Detect article documents by presence of authorId (unique to Article model).
+  // Previously used `doc.title && doc.content` which missed articles without titles
+  // or with empty content (e.g., image-only nuggets), causing author data to not
+  // be transformed into the { author: { id, name } } structure.
+  const plainDoc = doc.toObject ? doc.toObject() : doc;
+  const isArticle = !!(plainDoc.authorId || plainDoc.authorName);
+
+  if (isArticle) {
     const transformed = transformArticle(doc);
-    // Wrap in defensive proxy to intercept legacy category field access
     return transformed ? createDefensiveProxy(transformed) : null;
   }
-  
+
   // Handle other documents (User, Collection, Report, etc.)
   if (doc.toObject) {
     const obj = doc.toObject();
     const { _id, __v, ...rest } = obj;
     const normalized = { id: _id?.toString() || doc.id, ...rest };
-    // Only wrap in proxy if it looks like an article (has title/content)
-    if (normalized.title && normalized.content) {
-      return createDefensiveProxy(normalized);
-    }
-    return normalized;
-  }
-  
-  // Handle plain object
-  if (doc._id) {
-    const { _id, __v, ...rest } = doc;
-    const normalized = { id: _id.toString(), ...rest };
-    // Only wrap in proxy if it looks like an article (has title/content)
-    if (normalized.title && normalized.content) {
-      return createDefensiveProxy(normalized);
-    }
     // Add virtual `name` for collections (maps to rawName)
-    // This is needed because .lean() bypasses Mongoose virtuals
     if (normalized.rawName && !normalized.name) {
       normalized.name = normalized.rawName;
     }
     return normalized;
   }
-  
-  // Already normalized or has id
-  // Wrap in proxy if it looks like an article
-  if (doc.title && doc.content) {
-    return createDefensiveProxy(doc);
+
+  // Handle plain object
+  if (doc._id) {
+    const { _id, __v, ...rest } = doc;
+    const normalized = { id: _id.toString(), ...rest };
+    // Add virtual `name` for collections (maps to rawName)
+    if (normalized.rawName && !normalized.name) {
+      normalized.name = normalized.rawName;
+    }
+    return normalized;
   }
+
+  // Already normalized or has id
   // Add virtual `name` for collections (maps to rawName)
   if (doc.rawName && !doc.name) {
     return { ...doc, name: doc.rawName };

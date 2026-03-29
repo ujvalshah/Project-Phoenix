@@ -67,6 +67,7 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
               await storageService.unfollowCollection(collection.id);
           } else {
               await storageService.followCollection(collection.id);
+              window.dispatchEvent(new CustomEvent('nugget:collection-follow'));
           }
           
           // PHASE 5: Refetch collection from backend to ensure state is accurate

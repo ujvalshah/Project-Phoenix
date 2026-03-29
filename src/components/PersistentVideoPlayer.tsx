@@ -33,6 +33,7 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => 
       modestbranding: '1',
       playsinline: '1',
       autoplay: '1',
+      iv_load_policy: '3',
     });
     if (state.startTime > 0) {
       params.set('start', String(Math.floor(state.startTime)));

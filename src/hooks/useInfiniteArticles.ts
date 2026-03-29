@@ -5,11 +5,16 @@ import { FilterState, SortOrder, Article } from '@/types';
 
 interface UseInfiniteArticlesOptions {
   searchQuery: string;
-  activeCategory: string; // 'All', 'Today', or category name
+  activeCategory: string; // 'All', 'Today', or category name (derived for query key)
+  selectedCategories?: string[]; // Full categories array for multi-category filtering
   sortOrder?: SortOrder;
   limit?: number;
   tag?: string | null;    // Tag filter — sent to backend for server-side filtering
   collectionId?: string | null; // Community collection filter — server-side via collectionId param
+  favorites?: boolean;
+  unread?: boolean;
+  formats?: string[];
+  timeRange?: string;
 }
 
 /**
@@ -24,6 +29,8 @@ interface UseInfiniteArticlesOptions {
 export interface UseInfiniteArticlesResult {
   articles: Article[];
   isLoading: boolean;
+  /** True when fetching due to filter/sort change (not initial load or next page) */
+  isFilterRefetching: boolean;
   isFetchingNextPage: boolean;
   hasNextPage: boolean;
   fetchNextPage: () => void;
@@ -34,10 +41,15 @@ export interface UseInfiniteArticlesResult {
 export const useInfiniteArticles = ({
   searchQuery,
   activeCategory,
+  selectedCategories,
   sortOrder = 'latest',
   limit = 25,
   tag = null,
   collectionId = null,
+  favorites = false,
+  unread = false,
+  formats = [],
+  timeRange = 'all',
 }: UseInfiniteArticlesOptions): UseInfiniteArticlesResult => {
   // useInfiniteQuery automatically handles:
   // - Page accumulation
@@ -45,14 +57,15 @@ export const useInfiniteArticles = ({
   // - Caching
   // - Race condition protection
   const query = useInfiniteQuery<PaginatedArticlesResponse>({
-    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? '', collectionId ?? ''],
+    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? '', collectionId ?? '', favorites, unread, formats.join(','), timeRange],
     queryFn: async ({ pageParam = 1 }) => {
       // Build filters inside queryFn to avoid stale closures
-      // Determine category parameter for backend
-      // "Today" is now handled by backend, so pass it through
-      const categoryParam = activeCategory === 'All'
-        ? []
-        : [activeCategory]; // Include "Today" or any other category
+      // Use full selectedCategories array when available, fall back to activeCategory
+      const categoryParam = selectedCategories && selectedCategories.length > 0
+        ? selectedCategories
+        : activeCategory === 'All'
+          ? []
+          : [activeCategory];
 
       // Build filter state
       const filters: FilterState = {
@@ -62,6 +75,10 @@ export const useInfiniteArticles = ({
         sort: sortOrder,
         limit,
         collectionId: collectionId || undefined,
+        favorites: favorites || undefined,
+        unread: unread || undefined,
+        formats: formats.length > 0 ? formats : undefined,
+        timeRange: timeRange !== 'all' ? (timeRange as FilterState['timeRange']) : undefined,
       };
 
       return articleService.getArticles(filters, pageParam as number);
@@ -115,6 +132,7 @@ export const useInfiniteArticles = ({
   return {
     articles, // Return articles directly - backend has already filtered them
     isLoading: query.isLoading,
+    isFilterRefetching: query.isFetching && !query.isLoading && !query.isFetchingNextPage,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: query.hasNextPage ?? false, // Backend's hasMore is now accurate for filtered data
     fetchNextPage: () => query.fetchNextPage(),

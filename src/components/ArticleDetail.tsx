@@ -44,26 +44,28 @@
  * ============================================================================
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Article } from '@/types';
-import { X, Clock, ExternalLink, FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'lucide-react';
-import { BookmarkButton } from './bookmarks';
+import { Clock, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDate, formatReadTime } from '@/utils/formatters';
-import { Avatar } from './shared/Avatar';
 import { AddToCollectionModal } from './AddToCollectionModal';
-import { ShareMenu } from './shared/ShareMenu';
+import { DetailTopBar } from './shared/DetailTopBar';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { EmbeddedMedia } from './embeds/EmbeddedMedia';
-import { SupportingMediaSection } from './shared/SupportingMediaSection';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useAuth } from '@/hooks/useAuth';
 import { ReportModal } from './ReportModal';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
+import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
+import { useVideoPlayer } from '@/context/VideoPlayerContext';
 
 interface ArticleDetailProps {
   article: Article;
   onClose?: () => void;
   isModal?: boolean;
+  /** Controls whether the sticky top bar (author, actions, close) is shown.
+   *  Defaults to the value of isModal for backward compatibility. */
+  showHeader?: boolean;
   constrainWidth?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -75,6 +77,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   article, 
   onClose, 
   isModal = false,
+  showHeader,
   constrainWidth = true,
   onEdit,
   onDelete,
@@ -103,42 +106,172 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   }
 
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
-  const [collectionMode, setCollectionMode] = useState<'public' | 'private'>('public');
-  const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [drawerMediaIndex, setDrawerMediaIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [inlineVideoStartTime, setInlineVideoStartTime] = useState<number | null>(null);
+  const mediaCarouselRef = useRef<HTMLDivElement>(null);
   
   const { withAuth } = useRequireAuth();
   const { currentUser, isAdmin } = useAuth();
+  const { playVideo } = useVideoPlayer();
   
-  // Null-safe author access with defensive checks
-  const authorName = article?.author?.name ?? "Unknown";
+  const shouldShowHeader = showHeader ?? isModal;
+
+  // Author resolution: check both transformed (author.name) and raw DB (authorName) shapes
+  const rawAuthorName = article?.author?.name || (article as any)?.authorName;
+  const authorName = article?.displayAuthor?.name
+    || (rawAuthorName && rawAuthorName !== 'Unknown' ? rawAuthorName : '')
+    || article?.media?.previewMetadata?.authorName
+    || article?.media?.previewMetadata?.siteName
+    || article?.primaryMedia?.previewMetadata?.authorName
+    || article?.primaryMedia?.previewMetadata?.siteName
+    || '';
   const authorId = article?.author?.id ?? "";
   const isOwner = currentUser?.id === authorId;
   
   // Classify media into primary and supporting (safe with null checks)
   const { primaryMedia, supportingMedia } = classifyArticleMedia(article);
+  const drawerMediaItems = useMemo(() => {
+    const items: Array<{
+      type: string;
+      url: string;
+      thumbnail: string | undefined;
+      aspect_ratio: string | undefined;
+      previewMetadata: any;
+    }> = [];
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false);
+    // images[] preserves user drag/drop order — use it as canonical source first
+    if (article?.images && article.images.length > 0) {
+      for (const url of article.images) {
+        items.push({
+          type: 'image' as const,
+          url,
+          thumbnail: url,
+          aspect_ratio: undefined,
+          previewMetadata: undefined,
+        });
       }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    }
+
+    // Add classified media (primaryMedia, supportingMedia) for non-image types
+    // or images not already in images[]. Dedup below handles overlaps.
+    if (primaryMedia) {
+      items.push({
+        type: primaryMedia.type,
+        url: primaryMedia.url,
+        thumbnail: primaryMedia.thumbnail,
+        aspect_ratio: primaryMedia.aspect_ratio,
+        previewMetadata: primaryMedia.previewMetadata,
+      });
+    }
+    for (const item of supportingMedia || []) {
+      items.push({
+        type: item.type,
+        url: item.url,
+        thumbnail: item.thumbnail,
+        aspect_ratio: undefined,
+        previewMetadata: item.previewMetadata,
+      });
+    }
+
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      const key = `${item.type}:${item.url}`.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [primaryMedia, supportingMedia, article?.images]);
+  const currentDrawerMedia = drawerMediaItems[drawerMediaIndex] || null;
 
   const handleAddToCollection = () => {
-      setCollectionMode('public');
       setIsCollectionModalOpen(true);
   };
 
-  const handleToggleMenu = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowMenu(!showMenu);
+  const youtubeCarouselIndex = useMemo(() => {
+    return drawerMediaItems.findIndex((item) => item.type === 'youtube');
+  }, [drawerMediaItems]);
+
+  const articleYouTubeUrl = useMemo(() => {
+    const ytItem = drawerMediaItems.find((item) => item.type === 'youtube');
+    return ytItem?.url || article?.media?.url || article?.video || null;
+  }, [drawerMediaItems, article?.media?.url, article?.video]);
+
+  const handleDrawerTimestampClick = useCallback(
+    (videoId: string, timestamp: number, originalUrl: string) => {
+      if (!isModal) {
+        if (onYouTubeTimestampClick) {
+          onYouTubeTimestampClick(videoId, timestamp, originalUrl);
+        } else if (articleYouTubeUrl) {
+          playVideo({
+            videoUrl: articleYouTubeUrl,
+            videoTitle: article?.title || '',
+            startTime: timestamp,
+            cardElementId: `drawer-video-${article?.id ?? ''}`,
+            articleId: article?.id ?? '',
+          });
+        }
+        return;
+      }
+
+      if (youtubeCarouselIndex >= 0) {
+        setDrawerMediaIndex(youtubeCarouselIndex);
+        setInlineVideoStartTime(timestamp);
+        mediaCarouselRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else if (articleYouTubeUrl) {
+        playVideo({
+          videoUrl: articleYouTubeUrl,
+          videoTitle: article?.title || '',
+          startTime: timestamp,
+          cardElementId: `drawer-video-${article?.id ?? ''}`,
+          articleId: article?.id ?? '',
+        });
+      } else if (originalUrl) {
+        window.open(originalUrl, '_blank', 'noopener,noreferrer');
+      }
+    },
+    [isModal, onYouTubeTimestampClick, youtubeCarouselIndex, articleYouTubeUrl, playVideo, article?.id, article?.title]
+  );
+
+  useEffect(() => {
+    setDrawerMediaIndex(0);
+    setInlineVideoStartTime(null);
+  }, [article?.id, drawerMediaItems.length]);
+
+  const goToPreviousMedia = () => {
+    if (drawerMediaItems.length <= 1) return;
+    setDrawerMediaIndex((prev) => (prev === 0 ? drawerMediaItems.length - 1 : prev - 1));
+    setInlineVideoStartTime(null);
   };
+
+  const goToNextMedia = () => {
+    if (drawerMediaItems.length <= 1) return;
+    setDrawerMediaIndex((prev) => (prev === drawerMediaItems.length - 1 ? 0 : prev + 1));
+    setInlineVideoStartTime(null);
+  };
+
+  const isCurrentItemYouTube = currentDrawerMedia?.type === 'youtube';
+  const shouldShowInlineVideo = isModal && isCurrentItemYouTube && inlineVideoStartTime !== null;
+
+  const inlineEmbedUrl = useMemo(() => {
+    if (!shouldShowInlineVideo || !currentDrawerMedia) return null;
+    const vId = extractYouTubeVideoId(currentDrawerMedia.url);
+    if (!vId) return null;
+    const params = new URLSearchParams({
+      rel: '0',
+      modestbranding: '1',
+      playsinline: '1',
+      autoplay: '1',
+      iv_load_policy: '3',
+      playlist: vId,
+      loop: '0',
+    });
+    if (inlineVideoStartTime && inlineVideoStartTime > 0) {
+      params.set('start', String(Math.floor(inlineVideoStartTime)));
+    }
+    return `https://www.youtube-nocookie.com/embed/${vId}?${params.toString()}`;
+  }, [shouldShowInlineVideo, currentDrawerMedia, inlineVideoStartTime]);
 
   // Root container: Apply width constraints when not in modal mode
   // When constrainWidth = true (desktop right-pane), enforce max-width and center alignment
@@ -151,107 +284,19 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
 
   return (
     <div className={rootContainerClasses}>
-       {/* Header / Nav */}
-       {isModal && (
-           <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800">
-               <div className="flex items-center gap-3">
-                   <Avatar name={authorName} size="sm" />
-                   <div className="text-sm font-bold text-slate-900 dark:text-white">{authorName}</div>
-               </div>
-               <div className="flex items-center gap-2">
-                   <ShareMenu
-                       data={{ type: 'nugget', id: article?.id ?? '', title: article?.title ?? 'Untitled', shareUrl: `${window.location.origin}/article/${article?.id ?? ''}` }}
-                       meta={{ author: authorName, text: article?.excerpt ?? '' }}
-                       className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
-                   />
-                   <BookmarkButton
-                       itemId={article?.id ?? ''}
-                       itemType="nugget"
-                       size="md"
-                       className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-                   />
-                   <button
-                       onClick={withAuth(handleAddToCollection)}
-                       className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                       title="Add to Collection"
-                   >
-                       <FolderPlus size={20} />
-                   </button>
-                   <div className="relative" ref={menuRef}>
-                       <button 
-                           onClick={handleToggleMenu}
-                           className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                           title="More options"
-                       >
-                           <MoreVertical size={20} />
-                       </button>
-                       {showMenu && (
-                           <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-30 overflow-hidden">
-                               {(isOwner || isAdmin) && onEdit && (
-                                   <button
-                                       onClick={(e) => {
-                                           e.stopPropagation();
-                                           setShowMenu(false);
-                                           onEdit();
-                                       }}
-                                       className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-                                   >
-                                       <Edit2 size={12} /> Edit
-                                   </button>
-                               )}
-
-                               {isOwner && onToggleVisibility && (
-                                   <button
-                                       onClick={(e) => {
-                                           e.stopPropagation();
-                                           setShowMenu(false);
-                                           onToggleVisibility();
-                                       }}
-                                       className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-                                   >
-                                       {(article?.visibility ?? 'public') === 'private' ? (
-                                           <>
-                                               <Globe size={12} className="text-blue-500" /> Make Public
-                                           </>
-                                       ) : (
-                                           <>
-                                               <Lock size={12} className="text-amber-500" /> Make Private
-                                           </>
-                                       )}
-                                   </button>
-                               )}
-
-                               <button
-                                   onClick={(e) => {
-                                       e.stopPropagation();
-                                       setShowMenu(false);
-                                       setShowReportModal(true);
-                                   }}
-                                   className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-                               >
-                                   <Flag size={12} /> Report
-                               </button>
-
-                               {(isOwner || isAdmin) && onDelete && (
-                                   <button
-                                       onClick={(e) => {
-                                           e.stopPropagation();
-                                           setShowMenu(false);
-                                           onDelete();
-                                       }}
-                                       className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
-                                   >
-                                       <Trash2 size={12} /> Delete
-                                   </button>
-                               )}
-                           </div>
-                       )}
-                   </div>
-                   <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                       <X size={20} className="text-slate-500" />
-                   </button>
-               </div>
-           </div>
+       {shouldShowHeader && (
+           <DetailTopBar
+               authorName={authorName}
+               article={article}
+               onClose={onClose}
+               onEdit={onEdit}
+               onDelete={onDelete}
+               onToggleVisibility={onToggleVisibility}
+               onAddToCollection={withAuth(handleAddToCollection)}
+               onReport={() => setShowReportModal(true)}
+               isOwner={isOwner}
+               isAdmin={isAdmin}
+           />
        )}
 
        {/* Content Container
@@ -298,6 +343,108 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                    </div>
                </div>
 
+              {/* Unified drawer media carousel (primary + supporting, no duplicates).
+                  YouTube items swap from thumbnail → live iframe when a timestamp is clicked. */}
+              {isModal && currentDrawerMedia && (
+                  <div className="pt-2" ref={mediaCarouselRef}>
+                      <div
+                          className="relative"
+                          onTouchStart={(e) => {
+                              if (shouldShowInlineVideo) return;
+                              setTouchStartX(e.touches[0].clientX);
+                          }}
+                          onTouchEnd={(e) => {
+                              if (shouldShowInlineVideo) return;
+                              if (touchStartX === null) return;
+                              const deltaX = e.changedTouches[0].clientX - touchStartX;
+                              setTouchStartX(null);
+                              if (Math.abs(deltaX) < 40) return;
+                              if (deltaX > 0) {
+                                  goToPreviousMedia();
+                              } else {
+                                  goToNextMedia();
+                              }
+                          }}
+                      >
+                          <div
+                              className="w-full bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+                              style={{
+                                  aspectRatio: currentDrawerMedia.type === 'youtube'
+                                      ? '16/9'
+                                      : currentDrawerMedia.type === 'image'
+                                      ? (currentDrawerMedia.aspect_ratio || '4/3')
+                                      : undefined,
+                              }}
+                          >
+                              {shouldShowInlineVideo && inlineEmbedUrl ? (
+                                  <iframe
+                                      key={inlineEmbedUrl}
+                                      src={inlineEmbedUrl}
+                                      className="w-full h-full"
+                                      title={currentDrawerMedia.previewMetadata?.title || 'YouTube video'}
+                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                      allowFullScreen
+                                      loading="lazy"
+                                  />
+                              ) : (
+                                  <div
+                                      className="w-full h-full cursor-pointer"
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isCurrentItemYouTube) {
+                                              setInlineVideoStartTime(0);
+                                          } else {
+                                              const linkUrl = currentDrawerMedia.previewMetadata?.url || currentDrawerMedia.url;
+                                              if (linkUrl) {
+                                                  window.open(linkUrl, '_blank', 'noopener,noreferrer');
+                                              }
+                                          }
+                                      }}
+                                  >
+                                      <EmbeddedMedia
+                                          media={{
+                                              type: currentDrawerMedia.type,
+                                              url: currentDrawerMedia.url,
+                                              thumbnail_url: currentDrawerMedia.thumbnail,
+                                              aspect_ratio: currentDrawerMedia.aspect_ratio,
+                                              previewMetadata: currentDrawerMedia.previewMetadata,
+                                          }}
+                                      />
+                                  </div>
+                              )}
+                          </div>
+
+                          {drawerMediaItems.length > 1 && (
+                              <>
+                                  <button
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          goToPreviousMedia();
+                                      }}
+                                      className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 hover:bg-black/75 text-white transition-colors z-10"
+                                      aria-label="Previous media"
+                                  >
+                                      <ChevronLeft size={16} />
+                                  </button>
+                                  <button
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          goToNextMedia();
+                                      }}
+                                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 hover:bg-black/75 text-white transition-colors z-10"
+                                      aria-label="Next media"
+                                  >
+                                      <ChevronRight size={16} />
+                                  </button>
+                                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 text-white text-[10px] px-2 py-1 z-10">
+                                      {drawerMediaIndex + 1} / {drawerMediaItems.length}
+                                  </div>
+                              </>
+                          )}
+                      </div>
+                  </div>
+              )}
+
               {/* Content - RENDERING PARITY FIX: Uses exact same MarkdownRenderer configuration
                   as CardContent (no prose prop, same className structure). Removed extensive
                   className overrides that could interfere with MarkdownRenderer's component styles.
@@ -306,16 +453,13 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
               <div className="nugget-content text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   <MarkdownRenderer 
                     content={article?.content ?? article?.excerpt ?? ''} 
-                    onYouTubeTimestampClick={onYouTubeTimestampClick}
+                    onYouTubeTimestampClick={handleDrawerTimestampClick}
                   />
               </div>
 
                {/* Primary Media Embed */}
-               {primaryMedia && (
+               {!isModal && primaryMedia && (
                    <div className="pt-5 border-t border-slate-100 dark:border-slate-800">
-                       <div className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-3">
-                           Primary Source
-                       </div>
                        <div 
                            className="w-full bg-slate-100 dark:bg-slate-900 cursor-pointer rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
                            style={{
@@ -345,13 +489,6 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                )}
 
                {/* Supporting Media */}
-               {supportingMedia && supportingMedia.length > 0 && (
-                   <SupportingMediaSection 
-                       supportingMedia={supportingMedia}
-                       className="pt-5"
-                   />
-               )}
-
                {/* Link Source */}
                {article?.source_type === 'link' && !primaryMedia && (article?.media?.url || (article as any)?.url) && (
                    <a 
@@ -367,11 +504,10 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
            </div>
        </div>
 
-      <AddToCollectionModal 
-          isOpen={isCollectionModalOpen} 
-          onClose={() => setIsCollectionModalOpen(false)} 
-          articleIds={[article?.id ?? '']} 
-          mode={collectionMode} 
+      <AddToCollectionModal
+          isOpen={isCollectionModalOpen}
+          onClose={() => setIsCollectionModalOpen(false)}
+          articleIds={[article?.id ?? '']}
       />
 
       <ReportModal

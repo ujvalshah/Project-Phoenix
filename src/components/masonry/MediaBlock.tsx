@@ -326,6 +326,8 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
             <ArticleDetail
               article={article}
               isModal={false}
+              showHeader={true}
+              onClose={handleCarouselClose}
             />
           }
         />

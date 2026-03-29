@@ -28,6 +28,7 @@ export async function requireEmailVerified(
   next: NextFunction
 ): Promise<void> {
   const userId = (req as any).user?.userId;
+  const tokenRole = (req as any).user?.role;
 
   if (!userId) {
     sendForbiddenError(res, 'Authentication required');
@@ -36,14 +37,27 @@ export async function requireEmailVerified(
 
   try {
     // Fetch user to check emailVerified status
-    const user = await User.findById(userId).select('auth.emailVerified auth.provider').lean();
+    const user = await User.findById(userId)
+      .select('auth.emailVerified auth.provider role')
+      .lean();
 
     if (!user) {
       sendForbiddenError(res, 'User not found');
       return;
     }
 
-    // Social auth users (Google, LinkedIn) are considered verified
+    const normalizedRole =
+      (typeof user.role === 'string' ? user.role : undefined) ||
+      (typeof tokenRole === 'string' ? tokenRole : undefined);
+
+    // Admin portal actions should never be blocked by email verification state.
+    if (typeof normalizedRole === 'string' && normalizedRole.toLowerCase().trim() === 'admin') {
+      next();
+      return;
+    }
+
+    // Social auth users (Google, LinkedIn) are considered verified.
+    // Only enforce emailVerified for email/password users.
     if (user.auth.provider !== 'email') {
       next();
       return;

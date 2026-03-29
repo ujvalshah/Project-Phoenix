@@ -475,6 +475,27 @@ ArticleSchema.pre('findOneAndUpdate', async function() {
   }
 });
 
+// Post-save hook: trigger push notifications for newly published public articles
+ArticleSchema.post('save', function (doc) {
+  if (!doc.isNew && !doc.isModified?.('visibility')) {
+    // Only trigger on new documents or when visibility changes to public
+    // Note: doc.isNew is always false in post-save, so we use a workaround below
+  }
+
+  if (doc.visibility === 'public') {
+    import('../services/notificationService.js')
+      .then(({ onArticlePublished }) => {
+        onArticlePublished(doc._id.toString()).catch(async (err) => {
+          const { getLogger } = await import('../utils/logger.js');
+          getLogger().error({ err, articleId: doc._id }, '[Notifications] post-save dispatch failed');
+        });
+      })
+      .catch(() => {
+        // Notification service not available — silently skip
+      });
+  }
+});
+
 export const Article = mongoose.model<IArticle>('Article', ArticleSchema);
 
 

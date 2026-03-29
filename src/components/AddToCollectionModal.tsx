@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Check, Folder, Search, Lock, Globe, Loader2 } from 'lucide-react';
+import { X, Plus, Check, Folder, Search, Globe, Loader2 } from 'lucide-react';
 import { storageService } from '@/services/storageService';
 import { Collection } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,159 +11,196 @@ interface AddToCollectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   articleIds: string[];
-  mode?: 'public';
+  title?: string;
+  /** When true, clicking a collection that already contains all items is a no-op (no toggle-off). Use for move/copy flows. */
+  addOnly?: boolean;
+  onComplete?: (targetCollectionId: string, targetCollectionName: string) => void;
+  /** When set, enables YouTube-style multi-select: current collection pinned at top, no auto-close, "Done" button. */
+  currentCollectionId?: string;
 }
 
-export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({ 
-  isOpen, 
-  onClose, 
+export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
+  isOpen,
+  onClose,
   articleIds,
-  mode = 'public' 
+  title,
+  addOnly = false,
+  onComplete,
+  currentCollectionId,
 }) => {
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const isMultiSelectMode = Boolean(currentCollectionId);
+  // Full unfiltered list fetched once on open
+  const [allCollections, setAllCollections] = useState<Collection[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [newCollectionName, setNewCollectionName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const { currentUserId, isAuthenticated } = useAuth();
   const toast = useToast();
   const { withAuth } = useRequireAuth();
+  const searchRef = useRef<HTMLInputElement>(null);
 
+  // Single effect: fetch all collections once when modal opens, reset on close
   useEffect(() => {
     if (isOpen) {
-      loadCollections();
+      fetchCollections();
+      // Focus search input after mount
+      requestAnimationFrame(() => searchRef.current?.focus());
     } else {
-      // Reset state when modal closes
+      setSearchQuery('');
       setIsCreating(false);
       setNewCollectionName('');
       setProcessingId(null);
     }
   }, [isOpen]);
 
-  const loadCollections = async () => {
+  const fetchCollections = async () => {
     setIsLoading(true);
     try {
-      const cols = await storageService.getCollections();
-      // For public collections, show all public collections (user can add to any)
-      setCollections(cols.filter(c => c.type === 'public'));
-    } catch (error) {
-      console.error('Failed to load collections:', error);
+      // Fetch public collections (limit=100 covers typical admin scale) + featured in parallel
+      const [publicResult, featuredResult] = await Promise.all([
+        storageService.getCollections({
+          type: 'public',
+          includeCount: true,
+          sortField: 'name',
+          sortDirection: 'asc',
+          limit: 100,
+        }),
+        storageService.getFeaturedCollections().catch(() => []),
+      ]);
+
+      // Normalize results — RestAdapter may return array or { data, count }
+      const publicCollections = normalizeResult(publicResult);
+      const featuredCollections = featuredResult ?? [];
+
+      // Merge: featured FIRST, then public OVERWRITES — this preserves `entries` data
+      // (the featured endpoint omits entries for performance; the public endpoint includes them)
+      const merged = new Map<string, Collection>();
+      for (const c of featuredCollections) merged.set(c.id, c);
+      for (const c of publicCollections) merged.set(c.id, c);
+
+      const sorted = Array.from(merged.values())
+        .filter((c) => c.type === 'public')
+        .sort((a, b) => getName(a).localeCompare(getName(b)));
+
+      setAllCollections(sorted);
+    } catch {
       toast.error('Failed to load collections');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // --- Helpers ---
+
+  const normalizeResult = (result: unknown): Collection[] => {
+    if (Array.isArray(result)) return result;
+    if (result && typeof result === 'object' && 'data' in result) {
+      const r = result as { data: unknown };
+      if (Array.isArray(r.data)) return r.data as Collection[];
+    }
+    return [];
+  };
+
+  const getName = (c: Collection): string => c.name || '';
+
+  // Client-side search — instant, no API calls
+  // In multi-select mode, pin current collection at top
+  const filteredCollections = allCollections
+    .filter((c) => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      // Always show current collection even when searching
+      if (isMultiSelectMode && c.id === currentCollectionId) return true;
+      return getName(c).toLowerCase().includes(q) || (c.description || '').toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      if (isMultiSelectMode) {
+        if (a.id === currentCollectionId) return -1;
+        if (b.id === currentCollectionId) return 1;
+      }
+      return getName(a).localeCompare(getName(b));
+    });
+
+  const isAllInCollection = (collection: Collection) => {
+    const ids = new Set(collection.entries?.map((e) => e.articleId) ?? []);
+    return articleIds.every((id) => ids.has(id));
+  };
+
+  // --- Actions ---
 
   const toggleCollection = async (collectionId: string, isInCollection: boolean, colName: string) => {
-    // Auth guard: require login for collection operations
-    if (!isAuthenticated) {
-      withAuth(() => {})(); // Opens login modal
+    if (!isAuthenticated) { withAuth(() => {})(); return; }
+
+    // In addOnly mode (non-multi-select), skip if all items already in target
+    if (addOnly && !isMultiSelectMode && isInCollection) {
+      toast.info(`Already in "${colName}"`);
       return;
     }
 
     setProcessingId(collectionId);
 
-    // Handle public collections
-      // Optimistic update for all articles
-      setCollections(prev => prev.map(c => {
-        if (c.id === collectionId) {
-          if (isInCollection) {
-            // Remove all articleIds from this collection
-            return { 
-              ...c, 
-              entries: c.entries.filter(e => !articleIds.includes(e.articleId))
-            };
-          } else {
-            // Add all articleIds to this collection
-            const existingIds = new Set(c.entries.map(e => e.articleId));
-            const newEntries = articleIds
-              .filter(id => !existingIds.has(id))
-              .map(id => ({
-                articleId: id,
-                addedByUserId: currentUserId,
-                addedAt: new Date().toISOString(),
-                flaggedBy: [] as string[]
-              }));
-            return { 
-              ...c, 
-              entries: [...c.entries, ...newEntries]
-            };
-          }
-        }
-        return c;
-      }));
-
-      try {
+    // Optimistic update
+    setAllCollections((prev) =>
+      prev.map((c) => {
+        if (c.id !== collectionId) return c;
         if (isInCollection) {
-          // Remove all articles from collection
-          for (const articleId of articleIds) {
-            await storageService.removeArticleFromCollection(collectionId, articleId, currentUserId);
-          }
-          toast.info(`Removed from "${colName}"`);
-        } else {
-          // Add all articles to collection
-          for (const articleId of articleIds) {
-            await storageService.addArticleToCollection(collectionId, articleId, currentUserId);
-          }
-          toast.success(`Added to "${colName}"`);
+          return { ...c, entries: c.entries.filter((e) => !articleIds.includes(e.articleId)) };
         }
-      } catch (e) {
-        toast.error("Failed to update");
-        loadCollections(); // Revert on error
-      } finally {
-        setProcessingId(null);
+        const existing = new Set(c.entries.map((e) => e.articleId));
+        const newEntries = articleIds
+          .filter((id) => !existing.has(id))
+          .map((id) => ({ articleId: id, addedByUserId: currentUserId, addedAt: new Date().toISOString(), flaggedBy: [] as string[] }));
+        return { ...c, entries: [...c.entries, ...newEntries] };
+      })
+    );
+
+    try {
+      if (isInCollection) {
+        for (const id of articleIds) await storageService.removeArticleFromCollection(collectionId, id, currentUserId);
+        toast.info(`Removed from "${colName}"`);
+      } else {
+        for (const id of articleIds) await storageService.addArticleToCollection(collectionId, id, currentUserId);
+        toast.success(`Added to "${colName}"`);
+        // In multi-select mode, don't auto-close — user clicks "Done" when finished
+        if (!isMultiSelectMode) {
+          onComplete?.(collectionId, colName);
+        }
       }
+    } catch {
+      toast.error('Failed to update');
+      fetchCollections(); // revert
+    } finally {
+      setProcessingId(null);
+    }
   };
 
   const createCollection = async () => {
-    // Auth guard: require login for collection operations
-    if (!isAuthenticated) {
-      withAuth(() => {})(); // Opens login modal
-      return;
-    }
-
-    if (!newCollectionName.trim() || isCreating) return; // Prevent double-clicks
+    if (!isAuthenticated) { withAuth(() => {})(); return; }
+    if (!newCollectionName.trim() || isCreating) return;
     setIsCreating(true);
     const folderName = newCollectionName.trim();
-    setNewCollectionName(''); // Clear input immediately
-    
+    setNewCollectionName('');
+
     try {
-      // Create public collection
-      const newCol = await storageService.createCollection(
-        folderName, 
-        '', 
-        currentUserId, 
-        'public'
-      );
-      // Add all articles to new collection immediately
-      for (const id of articleIds) {
-        await storageService.addArticleToCollection(newCol.id, id, currentUserId);
-      }
-      await loadCollections();
+      const newCol = await storageService.createCollection(folderName, '', currentUserId, 'public');
+      for (const id of articleIds) await storageService.addArticleToCollection(newCol.id, id, currentUserId);
+      await fetchCollections();
       toast.success('Created Community Collection and added nuggets');
-    } catch (e: any) {
-      console.error('Failed to create:', e);
-      toast.error(e.message || "Failed to create");
+      if (!isMultiSelectMode) {
+        onComplete?.(newCol.id, folderName);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to create';
+      toast.error(msg);
     } finally {
-      // Always reset creating state, even on error
       setIsCreating(false);
     }
   };
 
   if (!isOpen) return null;
-
-  const filteredCollections = collections.filter(c =>
-    c.name && typeof c.name === 'string' && c.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  
-  // Check if all articles are in a collection
-  const isAllInCollection = (collection: Collection) => {
-    const collectionArticleIds = new Set(collection.entries.map(e => e.articleId));
-    return articleIds.every(id => collectionArticleIds.has(id));
-  };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" onClick={(e) => e.stopPropagation()}>
@@ -173,24 +210,21 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
         <div className="flex items-center justify-between mb-4 shrink-0">
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Add to Community Collection</h3>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">{title || 'Add to Community Collection'}</h3>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-            aria-label="Close"
-          >
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors" aria-label="Close">
             <X size={20} className="text-slate-500 dark:text-slate-400" />
           </button>
         </div>
 
-        {/* Search */}
-        <div className="mb-4 shrink-0">
+        {/* Search — client-side only, instant filtering */}
+        <div className="mb-3 shrink-0">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
+              ref={searchRef}
               type="text"
-              placeholder="Search community collections..."
+              placeholder="Search collections..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-white placeholder-slate-400"
@@ -208,125 +242,109 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
             <div className="text-center py-8">
               <Folder className="w-12 h-12 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                {searchQuery ? 'No community collections found' : 'No community collections yet'}
+                {searchQuery ? 'No collections match your search' : 'No community collections yet'}
               </p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {filteredCollections.map((col) => {
-                  const isInCollection = isAllInCollection(col);
-                  const isProcessing = processingId === col.id;
-                  
-                  return (
-                    <button
-                      key={col.id}
-                      onClick={() => !isProcessing && toggleCollection(col.id, isInCollection, col.name)}
-                      disabled={isProcessing}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                        isInCollection 
-                          ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800' 
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'
-                      } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
-                        isInCollection 
-                          ? 'bg-primary-500 text-white' 
-                          : 'bg-slate-200 dark:bg-slate-700 text-slate-400'
-                      }`}>
-                        {isProcessing ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : isInCollection ? (
-                          <Check size={14} strokeWidth={3} />
-                        ) : (
-                          <Folder size={14} />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${
-                          isInCollection 
-                            ? 'text-primary-700 dark:text-primary-400' 
-                            : 'text-slate-700 dark:text-slate-300'
-                        }`}>
-                          {col.name}
-                        </p>
-                        {col.description && (
-                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                            {col.description}
-                          </p>
-                        )}
-                      </div>
-                      {(col.validEntriesCount ?? col.entries?.length ?? 0) > 0 && (
-                        <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">
-                          {col.validEntriesCount ?? col.entries?.length ?? 0}
-                        </span>
+                const inCollection = isAllInCollection(col);
+                const isProcessing = processingId === col.id;
+                const count = col.validEntriesCount ?? col.entries?.length ?? 0;
+                const isCurrent = isMultiSelectMode && col.id === currentCollectionId;
+
+                return (
+                  <button
+                    key={col.id}
+                    onClick={() => !isProcessing && toggleCollection(col.id, inCollection, getName(col))}
+                    disabled={isProcessing}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                      inCollection
+                        ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'
+                    } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
+                      inCollection
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-400'
+                    }`}>
+                      {isProcessing ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : inCollection ? (
+                        <Check size={14} strokeWidth={3} />
+                      ) : (
+                        <Folder size={14} />
                       )}
-                    </button>
-                  );
-                })}
+                    </div>
+                    <span className={`text-sm font-medium truncate flex-1 ${
+                      inCollection ? 'text-primary-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-300'
+                    }`}>
+                      {getName(col)}
+                      {isCurrent && (
+                        <span className="ml-1.5 text-xs font-normal text-slate-400 dark:text-slate-500">(current)</span>
+                      )}
+                    </span>
+                    {count > 0 && (
+                      <span className="text-xs tabular-nums text-slate-400 dark:text-slate-500 shrink-0">{count}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Create New */}
-        {(
-          <div className="border-t border-slate-200 dark:border-slate-800 pt-4 shrink-0">
-            {isCreating ? (
-              <div className="flex items-center gap-2">
-                <input 
-                  autoFocus
-                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-white placeholder-slate-400"
-                  placeholder="Collection name..."
-                  value={newCollectionName}
-                  onChange={(e) => setNewCollectionName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      createCollection();
-                    } else if (e.key === 'Escape') {
-                      setIsCreating(false);
-                      setNewCollectionName('');
-                    }
-                  }}
-                  disabled={isCreating}
-                />
-                <button 
-                  onClick={createCollection}
-                  disabled={isCreating}
-                  className="px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                >
-                  {isCreating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <Check size={16} />
-                      Create
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsCreating(false);
-                    setNewCollectionName('');
-                  }}
-                  className="p-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  aria-label="Cancel"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ) : (
-              <button 
-                onClick={() => setIsCreating(true)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 transition-colors"
+        {/* Create New + Done */}
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-3 shrink-0 space-y-2">
+          {isCreating ? (
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-white placeholder-slate-400"
+                placeholder="Collection name..."
+                value={newCollectionName}
+                onChange={(e) => setNewCollectionName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') createCollection();
+                  else if (e.key === 'Escape') { setIsCreating(false); setNewCollectionName(''); }
+                }}
+              />
+              <button
+                onClick={createCollection}
+                disabled={isCreating && !newCollectionName.trim()}
+                className="px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors flex items-center gap-2"
               >
-                <Plus size={16} /> 
-                <span>Create New Collection</span>
+                <Check size={16} /> Create
               </button>
-            )}
-          </div>
-        )}
+              <button
+                onClick={() => { setIsCreating(false); setNewCollectionName(''); }}
+                className="p-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Cancel"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsCreating(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 transition-colors"
+            >
+              <Plus size={16} />
+              <span>Create New Collection</span>
+            </button>
+          )}
+
+          {/* Done button — only in multi-select (YouTube-style) mode */}
+          {isMultiSelectMode && (
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-2.5 bg-primary-500 text-white rounded-lg text-sm font-bold hover:bg-primary-600 transition-colors"
+            >
+              Done
+            </button>
+          )}
+        </div>
       </div>
     </div>,
     document.body

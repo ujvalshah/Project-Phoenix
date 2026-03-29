@@ -7,8 +7,13 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/queryClient';
 import { initSentry } from './utils/sentry';
 
+import { registerServiceWorker } from './utils/serviceWorkerRegistration';
+
 // Initialize Sentry early
 initSentry();
+
+// Register service worker for push notifications
+registerServiceWorker();
 
 const renderApp = () => {
   const container = document.getElementById('root');

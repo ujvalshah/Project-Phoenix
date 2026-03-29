@@ -314,7 +314,15 @@ export class LocalAdapter implements IAdapter {
     }
   }
 
-  async getCollections(params?: { type?: 'public' | 'private'; includeCount?: boolean }): Promise<Collection[] | { data: Collection[]; count: number }> {
+  async getCollections(params?: {
+    type?: 'public' | 'private';
+    includeCount?: boolean;
+    searchQuery?: string;
+    sortField?: 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
+    sortDirection?: 'asc' | 'desc';
+    page?: number;
+    limit?: number;
+  }): Promise<Collection[] | { data: Collection[]; count: number }> {
     this.initStorage();
     try {
       const data = localStorage.getItem(COLLECTIONS_KEY);
@@ -456,6 +464,18 @@ export class LocalAdapter implements IAdapter {
     } catch (e) {
       console.warn('Failed to remove article from collection in storage:', e);
       throw e;
+    }
+  }
+
+  async addBatchEntriesToCollection(collectionId: string, articleIds: string[], userId: string): Promise<void> {
+    for (const articleId of articleIds) {
+      await this.addArticleToCollection(collectionId, articleId, userId);
+    }
+  }
+
+  async removeBatchEntriesFromCollection(collectionId: string, articleIds: string[], userId: string): Promise<void> {
+    for (const articleId of articleIds) {
+      await this.removeArticleFromCollection(collectionId, articleId, userId);
     }
   }
 

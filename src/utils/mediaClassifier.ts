@@ -170,15 +170,31 @@ export function classifyArticleMedia(article: Article): {
   primaryMedia: PrimaryMedia | null;
   supportingMedia: SupportingMediaItem[];
 } {
-  const hasExplicitMedia = article.primaryMedia !== undefined || article.supportingMedia !== undefined;
-  
-  // If article already has explicit primary/supporting media, use those
-  // NEVER re-infer once classified (deterministic guarantee)
+  const hasExplicitPrimary = article.primaryMedia !== undefined;
+  const hasExplicitSupporting = article.supportingMedia !== undefined;
+  const hasExplicitMedia = hasExplicitPrimary || hasExplicitSupporting;
+
+  // Treat explicit fields as authoritative only when they contain actual items,
+  // or when no legacy media exists to infer from.
+  // This fixes cases where API payloads include primaryMedia: null and
+  // supportingMedia: [] while legacy media fields still hold valid media.
   if (hasExplicitMedia) {
-    return {
-      primaryMedia: article.primaryMedia || null,
-      supportingMedia: article.supportingMedia || [],
-    };
+    const explicitPrimary = article.primaryMedia || null;
+    const explicitSupporting = article.supportingMedia || [];
+    const explicitHasData = !!explicitPrimary || explicitSupporting.length > 0;
+    const hasLegacyMediaData = !!(
+      article.media ||
+      (article.images && article.images.length > 0) ||
+      article.video ||
+      (article.documents && article.documents.length > 0)
+    );
+
+    if (explicitHasData || !hasLegacyMediaData) {
+      return {
+        primaryMedia: explicitPrimary,
+        supportingMedia: explicitSupporting,
+      };
+    }
   }
   
   // Collect all media items from legacy fields
@@ -459,6 +475,13 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
   // Check if article has classified media
   const hasClassifiedMedia = article.primaryMedia !== undefined || article.supportingMedia !== undefined;
 
+  // Canonical image ordering source:
+  // 1) Explicit images[] array (preserves user drag/drop order)
+  // 2) Classified media extras not present in images[]
+  if (article.images && Array.isArray(article.images)) {
+    article.images.forEach(url => addImageUrl(url, 'images-array'));
+  }
+
   // DEBUG: Log supportingMedia types to diagnose ordering issue
   if (import.meta.env.DEV && article.supportingMedia && article.supportingMedia.length > 0) {
     console.log('[getAllImageUrls] supportingMedia analysis:', {
@@ -473,29 +496,58 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
   }
 
   if (hasClassifiedMedia) {
-    // Add primary media if it's an image
+    // Build ordered classified image candidates.
+    // If supporting items carry explicit order metadata, respect it.
+    const classifiedImageCandidates: Array<{
+      url: string;
+      source: string;
+      order?: number;
+      sequence: number;
+    }> = [];
+
     if (
       article.primaryMedia?.type === 'image' &&
       article.primaryMedia.url &&
       (!gridOnly || isVisibleInGrid(article.primaryMedia))
     ) {
-      addImageUrl(article.primaryMedia.url, 'primaryMedia');
+      classifiedImageCandidates.push({
+        url: article.primaryMedia.url,
+        source: 'primaryMedia',
+        sequence: 0,
+      });
     }
 
-    // Add supporting images (preserve supportingMedia array order)
-    // CRITICAL: Include type 'link' when URL is an image (e.g. Twitter pbs.twimg.com).
-    // Those are stored as 'link' but must appear in grid in supportingMedia order.
     if (article.supportingMedia) {
-      article.supportingMedia.forEach(media => {
+      article.supportingMedia.forEach((media, idx) => {
         if (
           media.url &&
           (media.type === 'image' || isImageUrl(media.url)) &&
           (!gridOnly || isVisibleInGrid(media))
         ) {
-          addImageUrl(media.url, 'supportingMedia');
+          classifiedImageCandidates.push({
+            url: media.url,
+            source: 'supportingMedia',
+            order: media.order,
+            sequence: idx + 1,
+          });
         }
       });
     }
+
+    const hasExplicitOrder = classifiedImageCandidates.some(
+      (item) => typeof item.order === 'number' && Number.isFinite(item.order)
+    );
+
+    const orderedCandidates = hasExplicitOrder
+      ? [...classifiedImageCandidates].sort((a, b) => {
+          const aOrder = typeof a.order === 'number' && Number.isFinite(a.order) ? a.order : Number.MAX_SAFE_INTEGER;
+          const bOrder = typeof b.order === 'number' && Number.isFinite(b.order) ? b.order : Number.MAX_SAFE_INTEGER;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return a.sequence - b.sequence;
+        })
+      : classifiedImageCandidates;
+
+    orderedCandidates.forEach((item) => addImageUrl(item.url, item.source));
   } else {
     // Fall back to classifying media on the fly
     const classified = classifyArticleMedia(article);
@@ -519,12 +571,6 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
         addImageUrl(media.url, 'classified-supporting');
       }
     });
-  }
-
-  // CRITICAL: Also include legacy images array (for backward compatibility)
-  // This ensures images stored in the images array are always included
-  if (article.images && Array.isArray(article.images)) {
-    article.images.forEach(url => addImageUrl(url, 'images-array'));
   }
 
   // Also check media field if it's an image type

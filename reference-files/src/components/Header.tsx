@@ -1,7 +1,7 @@
 // NOTE: Do not add multiple React imports in this file.
 // Consolidate all hooks into the single import below.
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, Globe, FileText, Lock, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, MoreHorizontal, Clock } from 'lucide-react';
+import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, MoreHorizontal, Clock } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom'; // Still needed for NavigationDrawer
 import { Avatar } from './shared/Avatar';
@@ -600,51 +600,6 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Legal & Info */}
-        <div className="border-t border-gray-100 py-1">
-          <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Legal & Info</p>
-          <Link
-            to="/about"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <Globe size={14} />
-            About Us
-          </Link>
-          <Link
-            to="/terms"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <FileText size={14} />
-            Terms of Service
-          </Link>
-          <Link
-            to="/privacy"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <Lock size={14} />
-            Privacy Policy
-          </Link>
-          <Link
-            to="/guidelines"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <BookOpen size={14} />
-            Guidelines
-          </Link>
-          <Link
-            to="/contact"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <MessageSquare size={14} />
-            Contact
-          </Link>
-        </div>
-
         {/* Logout */}
         <div className="border-t border-gray-100 py-1">
           <button
@@ -1085,29 +1040,6 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
            
            {/* Feedback Widget */}
            <DrawerFeedbackForm isAuthenticated={isAuthenticated} currentUser={currentUser} />
-
-           <div className="my-4 h-px bg-gray-100 mx-4" />
-           
-           <div className="px-4 pb-2">
-             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Legal & Info</p>
-             <div className="flex flex-col gap-1">
-               <Link to="/about" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <Globe size={16} /> About Us
-               </Link>
-               <Link to="/terms" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <FileText size={16} /> Terms of Service
-               </Link>
-               <Link to="/privacy" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <Lock size={16} /> Privacy Policy
-               </Link>
-               <Link to="/guidelines" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <BookOpen size={16} /> Guidelines
-               </Link>
-               <Link to="/contact" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <MessageSquare size={16} /> Contact
-               </Link>
-             </div>
-           </div>
         </div>
 
         <div className="p-4 border-t border-gray-100 bg-gray-50/50">

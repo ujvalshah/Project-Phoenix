@@ -44,13 +44,35 @@ export class RestAdapter implements IAdapter {
   }
 
   // Paginated articles method - returns full pagination metadata
-  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string; collectionId?: string }): Promise<PaginatedArticlesResponse> {
+  getArticlesPaginated(params: {
+    q?: string;
+    page: number;
+    limit: number;
+    category?: string;
+    categories?: string[];
+    tag?: string;
+    sort?: string;
+    collectionId?: string;
+    favorites?: boolean;
+    unread?: boolean;
+    formats?: string[];
+    timeRange?: string;
+  }): Promise<PaginatedArticlesResponse> {
     const queryParams = new URLSearchParams();
     if (params.q) queryParams.set('q', params.q);
     if (params.category) queryParams.set('category', params.category);
+    if (params.categories && params.categories.length > 0) {
+      params.categories.forEach(c => queryParams.append('categories', c));
+    }
     if (params.tag) queryParams.set('tag', params.tag);
     if (params.sort) queryParams.set('sort', params.sort);
     if (params.collectionId) queryParams.set('collectionId', params.collectionId);
+    if (params.favorites) queryParams.set('favorites', '1');
+    if (params.unread) queryParams.set('unread', '1');
+    if (params.formats && params.formats.length > 0) {
+      params.formats.forEach(f => queryParams.append('formats', f));
+    }
+    if (params.timeRange && params.timeRange !== 'all') queryParams.set('timeRange', params.timeRange);
     queryParams.set('page', params.page.toString());
     queryParams.set('limit', params.limit.toString());
 
@@ -334,8 +356,10 @@ export class RestAdapter implements IAdapter {
     sortDirection?: 'asc' | 'desc';
     page?: number;
     limit?: number;
-  }): Promise<Collection[]> {
-    // Add cancelKey to prevent duplicate simultaneous requests
+  }): Promise<Collection[] | { data: Collection[]; count: number }> {
+    // Use endpoint-specific cancel behavior (default in apiClient).
+    // Do NOT use a single shared cancelKey here; different collection queries/pages
+    // must be allowed to run concurrently (e.g., paginated aggregation in pickers).
     const queryParams = new URLSearchParams();
     if (params?.type) queryParams.set('type', params.type);
     if (params?.includeCount) queryParams.set('includeCount', 'true');
@@ -347,17 +371,26 @@ export class RestAdapter implements IAdapter {
     if (params?.limit) queryParams.set('limit', params.limit.toString());
     
     const endpoint = queryParams.toString() ? `/collections?${queryParams}` : '/collections';
-    return apiClient.get<any>(endpoint, undefined, 'restAdapter.getCollections')
+    return apiClient.get<any>(endpoint)
       .then(response => {
         // Handle paginated response: { data: Collection[], total, page, limit, hasMore }
         if (response && typeof response === 'object' && 'data' in response && Array.isArray(response.data)) {
+          if (params?.includeCount) {
+            return {
+              data: response.data,
+              count: typeof response.total === 'number' ? response.total : response.data.length,
+            };
+          }
           return response.data;
         }
         // Handle legacy array response
         if (Array.isArray(response)) {
+          if (params?.includeCount) {
+            return { data: response, count: response.length };
+          }
           return response;
         }
-        return [];
+        return params?.includeCount ? { data: [], count: 0 } : [];
       });
   }
 
@@ -396,6 +429,14 @@ export class RestAdapter implements IAdapter {
 
   async removeArticleFromCollection(collectionId: string, articleId: string, userId: string): Promise<void> {
     await apiClient.delete(`/collections/${collectionId}/entries/${articleId}`);
+  }
+
+  async addBatchEntriesToCollection(collectionId: string, articleIds: string[], userId: string): Promise<void> {
+    await apiClient.post(`/collections/${collectionId}/entries/batch`, { articleIds, userId });
+  }
+
+  async removeBatchEntriesFromCollection(collectionId: string, articleIds: string[], userId: string): Promise<void> {
+    await apiClient.post(`/collections/${collectionId}/entries/batch/remove`, { articleIds, userId });
   }
 
   async flagEntryAsIrrelevant(collectionId: string, articleId: string, userId: string): Promise<void> {

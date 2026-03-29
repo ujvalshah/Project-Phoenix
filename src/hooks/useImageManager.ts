@@ -416,10 +416,8 @@ export function useImageManager(
         normalizedUrl,
         source,
         storageLocation: source === 'upload' ? 'upload' : 'images',
-        // Create flow: all images default to masonry-visible unless caller overrides; non-images default off unless primary
-        showInMasonry:
-          options?.showInMasonry ??
-          (source === 'primary' || detectMediaType(url) === 'image'),
+        // Create flow: all media defaults to masonry-visible unless caller explicitly overrides
+        showInMasonry: options?.showInMasonry ?? true,
         showInGrid: options?.showInGrid ?? true,
         masonryTitle: options?.masonryTitle,
         status: 'active',

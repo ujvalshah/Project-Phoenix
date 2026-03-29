@@ -5,6 +5,7 @@ import { AdminSummaryBar } from '../components/AdminSummaryBar';
 import { AdminCollection } from '../types/admin';
 import { adminCollectionsService } from '../services/adminCollectionsService';
 import { Eye, Trash2, Lock, Globe, EyeOff, Folder, Layers, Pencil, Check, X, Star } from 'lucide-react';
+import { sortBy, filterByDate, type SortConfig } from '@/utils/sortAndFilter';
 import { useToast } from '@/hooks/useToast';
 import { AdminDrawer } from '../components/AdminDrawer';
 import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
@@ -12,6 +13,7 @@ import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { FeaturedSortableList } from '../components/FeaturedSortableList';
 
 export const AdminCollectionsPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
@@ -22,6 +24,8 @@ export const AdminCollectionsPage: React.FC = () => {
   const [selectedCollection, setSelectedCollection] = useState<AdminCollection | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeleteIds, setBulkDeleteIds] = useState<string[]>([]);
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false);
@@ -84,47 +88,29 @@ export const AdminCollectionsPage: React.FC = () => {
     setSearchParams(params, { replace: true });
   }, [searchQuery, dateFilter, setSearchParams]);
 
-  // Derived state
-  const processedCollections = useMemo(() => {
-    let result = [...collections];
-    
-    // Date Filter
-    if (dateFilter) {
-      const filterDate = new Date(dateFilter).toDateString();
-      result = result.filter(c => new Date(c.createdAt).toDateString() === filterDate);
+  // Value extractor for AdminCollection sort keys
+  const adminCollectionValue = (c: AdminCollection, key: string): unknown => {
+    switch (key) {
+      case 'creator': return c.creator?.name?.toLowerCase() ?? '';
+      case 'createdAt': return new Date(c.createdAt).getTime();
+      default: return c[key as keyof AdminCollection] ?? '';
     }
+  };
 
-    result.sort((a, b) => {
-      let valA: any = a[sortKey as keyof AdminCollection] || '';
-      let valB: any = b[sortKey as keyof AdminCollection] || '';
-
-      if (sortKey === 'creator') {
-        valA = (a.creator?.name || '').toLowerCase();
-        valB = (b.creator?.name || '').toLowerCase();
-      } else if (sortKey === 'createdAt') {
-        valA = new Date(a.createdAt).getTime();
-        valB = new Date(b.createdAt).getTime();
-      }
-
-      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return result;
+  // Derived state — uses shared sort/filter utilities
+  const processedCollections = useMemo(() => {
+    const dateFiltered = filterByDate(collections, dateFilter, (c) => c.createdAt);
+    const sorts: SortConfig[] = [{ key: sortKey, direction: sortDirection }];
+    return sortBy(dateFiltered, sorts, adminCollectionValue);
   }, [collections, dateFilter, sortKey, sortDirection]);
 
   const handleDelete = async () => {
-    console.log('[AdminCollectionsPage] handleDelete called', { selectedCollection, isDeleting });
-    
     if (!selectedCollection || isDeleting) {
-      console.log('[AdminCollectionsPage] Early return - missing collection or already deleting');
       return;
     }
     
     const col = selectedCollection;
     const colId = col.id;
-    console.log('[AdminCollectionsPage] Starting delete for collection:', colId);
     
     setIsDeleting(true);
     setShowDeleteConfirm(false);
@@ -135,24 +121,13 @@ export const AdminCollectionsPage: React.FC = () => {
     setSelectedCollection(null);
     
     try {
-      console.log('[AdminCollectionsPage] Calling deleteCollection API for:', colId);
       await adminCollectionsService.deleteCollection(colId);
-      console.log('[AdminCollectionsPage] Delete successful for:', colId);
       
       // Refresh stats after successful delete
       const newStats = await adminCollectionsService.getStats();
       setStats(newStats);
       toast.success("Collection deleted successfully");
     } catch (e: any) {
-      console.error('[AdminCollectionsPage] Delete failed:', {
-        error: e,
-        message: e?.message,
-        status: e?.status,
-        response: e?.response,
-        requestId: e?.requestId,
-        collectionId: colId
-      });
-      
       // Revert optimistic update on error
       setCollections(prev => {
         // Only add back if not already present
@@ -166,7 +141,8 @@ export const AdminCollectionsPage: React.FC = () => {
       // Provide more detailed error message
       let errorMessage = "Delete failed. Please try again.";
       if (e?.status === 403) {
-        errorMessage = "You do not have permission to delete this collection.";
+        // Preserve backend 403 details (e.g. EMAIL_NOT_VERIFIED) instead of always showing permission denied
+        errorMessage = e?.message || "You do not have permission to delete this collection.";
       } else if (e?.status === 404) {
         errorMessage = "Collection not found. It may have already been deleted.";
       } else if (e?.status === 401) {
@@ -216,41 +192,103 @@ export const AdminCollectionsPage: React.FC = () => {
     }
   };
 
-  // Locally update the order number instantly (no API call)
-  const handleOrderInputChange = (col: AdminCollection, newOrder: number) => {
-    setCollections(prev => prev.map(c => c.id === col.id ? { ...c, featuredOrder: newOrder } : c));
-    if (selectedCollection?.id === col.id) {
-      setSelectedCollection(prev => prev ? { ...prev, featuredOrder: newOrder } : null);
+  // Drag-and-drop reorder for featured collections
+  const handleReorderFeatured = async (orderedIds: string[]) => {
+    // Optimistic update: reorder locally
+    const orderMap = new Map(orderedIds.map((id, i) => [id, i]));
+    setCollections(prev => prev.map(c =>
+      orderMap.has(c.id) ? { ...c, featuredOrder: orderMap.get(c.id)! } : c
+    ));
+
+    try {
+      await adminCollectionsService.reorderFeatured(orderedIds);
+      queryClient.invalidateQueries({ queryKey: ['collections', 'featured'] });
+    } catch (_e) {
+      // Revert by reloading
+      const fresh = await adminCollectionsService.listCollections();
+      setCollections(fresh);
+      toast.error('Failed to reorder featured collections');
     }
   };
 
-  // Commit the order to the backend on blur — includes optimistic shift of siblings
-  const handleOrderCommit = async (col: AdminCollection) => {
-    const newOrder = col.featuredOrder;
-    // Optimistic shift: bump siblings at or above newOrder up by 1
-    setCollections(prev => prev.map(c => {
-      if (c.id !== col.id && c.isFeatured && c.featuredOrder >= newOrder) {
-        return { ...c, featuredOrder: c.featuredOrder + 1 };
-      }
-      return c;
-    }));
-    try {
-      await adminCollectionsService.setFeatured(col.id, col.isFeatured, newOrder);
-      queryClient.invalidateQueries({ queryKey: ['collections', 'featured'] });
-      // Reload to get the authoritative order from backend
-      const fresh = await adminCollectionsService.listCollections();
-      setCollections(fresh);
-    } catch (_e) {
-      // Reload to revert to backend state
-      const fresh = await adminCollectionsService.listCollections();
-      setCollections(fresh);
-      toast.error('Failed to update position');
-    }
-  };
+  // Derived: featured collections sorted by order for the drag-and-drop list
+  const featuredCollections = useMemo(
+    () => collections
+      .filter(c => c.isFeatured)
+      .sort((a, b) => a.featuredOrder - b.featuredOrder),
+    [collections]
+  );
 
   const handleBulkAction = (action: string) => {
-      toast.info(`${action} ${selectedIds.length} items (Not implemented)`);
-      setSelectedIds([]);
+    if (action === 'delete') {
+      if (!can('admin.collections.edit')) {
+        toast.error('You do not have permission to delete collections.');
+        return;
+      }
+
+      if (selectedIds.length === 0) return;
+
+      // Capture ids at click-time so we don't lose them while the modal is open
+      setBulkDeleteIds([...selectedIds]);
+      setShowBulkDeleteConfirm(true);
+      return;
+    }
+
+    toast.info(`${action} ${selectedIds.length} items (Not implemented)`);
+    setSelectedIds([]);
+  };
+
+  const handleBulkDelete = async () => {
+    if (bulkDeleteIds.length === 0 || isDeleting) return;
+
+    setIsDeleting(true);
+    setShowBulkDeleteConfirm(false);
+
+    const idsToDelete = new Set(bulkDeleteIds);
+    const toRestoreById = new Map(
+      collections.filter((c) => idsToDelete.has(c.id)).map((c) => [c.id, c])
+    );
+
+    // Optimistic remove from UI
+    setCollections((prev) => prev.filter((c) => !idsToDelete.has(c.id)));
+    if (selectedCollection && idsToDelete.has(selectedCollection.id)) {
+      setSelectedCollection(null);
+    }
+    setSelectedIds([]);
+
+    try {
+      const failures: Array<{ id: string; error: unknown }> = [];
+      for (const id of bulkDeleteIds) {
+        try {
+          await adminCollectionsService.deleteCollection(id);
+        } catch (error) {
+          failures.push({ id, error });
+        }
+      }
+
+      if (failures.length > 0) {
+        // Re-add only collections that failed deletion
+        const failedIds = new Set(failures.map((f) => f.id));
+        setCollections((prev) => [
+          ...prev,
+          ...Array.from(failedIds)
+            .map((id) => toRestoreById.get(id))
+            .filter((c): c is AdminCollection => Boolean(c)),
+        ]);
+
+        const firstErr: any = failures[0]?.error;
+        toast.error(firstErr?.message || 'Bulk delete failed.');
+        return;
+      }
+
+      // Refresh stats after successful delete(s)
+      const newStats = await adminCollectionsService.getStats();
+      setStats(newStats);
+      toast.success(`Deleted ${bulkDeleteIds.length} collections`);
+    } finally {
+      setIsDeleting(false);
+      setBulkDeleteIds([]);
+    }
   };
 
   const handleStartEdit = (col: AdminCollection) => {
@@ -346,7 +384,7 @@ export const AdminCollectionsPage: React.FC = () => {
       sortable: true,
       align: 'center',
       render: (c) => (
-        <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-center gap-1.5">
+        <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-center">
           <button
             onClick={() => handleToggleFeatured(c)}
             disabled={c.type === 'private'}
@@ -359,21 +397,6 @@ export const AdminCollectionsPage: React.FC = () => {
           >
             <Star size={14} fill={c.isFeatured ? 'currentColor' : 'none'} />
           </button>
-          {c.isFeatured && (
-            <input
-              type="number"
-              min={0}
-              value={c.featuredOrder}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val) && val >= 0) handleOrderInputChange(c, val);
-              }}
-              onBlur={() => handleOrderCommit(c)}
-              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              title="Position in toolbar (lower = further left)"
-              className="w-10 h-7 text-center text-xs font-bold rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-          )}
         </div>
       )
     },
@@ -446,7 +469,14 @@ export const AdminCollectionsPage: React.FC = () => {
       <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 duration-200">
           <span className="text-xs font-bold text-slate-500">{selectedIds.length} selected</span>
           <button onClick={() => handleBulkAction('hide')} className="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-[10px] font-bold transition-colors">Hide</button>
-          <button onClick={() => handleBulkAction('delete')} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-[10px] font-bold transition-colors">Delete</button>
+          {can('admin.collections.edit') && (
+            <button
+              onClick={() => handleBulkAction('delete')}
+              className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-[10px] font-bold transition-colors"
+            >
+              Delete
+            </button>
+          )}
       </div>
   ) : null;
 
@@ -472,8 +502,23 @@ export const AdminCollectionsPage: React.FC = () => {
         isLoading={isLoading}
       />
 
-      <AdminTable 
-        columns={columns} 
+      {featuredCollections.length > 0 && (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+            <Star size={16} className="text-amber-500" />
+            Category Toolbar Order
+            <span className="text-xs font-normal text-slate-400">Drag to reorder</span>
+          </h3>
+          <FeaturedSortableList
+            collections={featuredCollections}
+            onReorder={handleReorderFeatured}
+            onRemoveFeatured={handleToggleFeatured}
+          />
+        </div>
+      )}
+
+      <AdminTable
+        columns={columns}
         data={processedCollections} 
         isLoading={isLoading} 
         actions={BulkActions}
@@ -557,7 +602,6 @@ export const AdminCollectionsPage: React.FC = () => {
                                 </button>
                                 <button
                                     onClick={() => {
-                                      console.log('[AdminCollectionsPage] Delete button clicked', { selectedCollection });
                                       setShowDeleteConfirm(true);
                                     }}
                                     className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg text-sm font-bold transition-colors"
@@ -645,23 +689,6 @@ export const AdminCollectionsPage: React.FC = () => {
                                         <Star size={16} fill={selectedCollection.isFeatured ? 'currentColor' : 'none'} />
                                         {selectedCollection.isFeatured ? 'Featured in toolbar' : 'Add to toolbar'}
                                     </button>
-                                    {selectedCollection.isFeatured && (
-                                        <div className="flex items-center gap-1.5">
-                                            <label className="text-xs text-slate-500 dark:text-slate-400">Position:</label>
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                value={selectedCollection.featuredOrder}
-                                                onChange={(e) => {
-                                                    const val = parseInt(e.target.value, 10);
-                                                    if (!isNaN(val) && val >= 0) handleOrderInputChange(selectedCollection, val);
-                                                }}
-                                                onBlur={() => handleOrderCommit(selectedCollection)}
-                                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                                className="w-14 h-8 text-center text-sm font-bold rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                            />
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         )}
@@ -674,23 +701,33 @@ export const AdminCollectionsPage: React.FC = () => {
       <ConfirmActionModal 
         isOpen={showDeleteConfirm}
         onClose={() => {
-          console.log('[AdminCollectionsPage] Modal onClose called', { isDeleting });
           if (!isDeleting) {
             setShowDeleteConfirm(false);
           }
         }}
         onConfirm={async () => {
-          console.log('[AdminCollectionsPage] Modal onConfirm called - about to call handleDelete');
           try {
             await handleDelete();
-            console.log('[AdminCollectionsPage] handleDelete completed successfully');
           } catch (error) {
-            console.error('[AdminCollectionsPage] handleDelete threw error:', error);
             throw error;
           }
         }}
         title="Delete Collection?"
         description="This will permanently delete the collection. The nuggets inside will not be deleted."
+        actionLabel="Delete"
+        isDestructive
+      />
+
+      <ConfirmActionModal
+        isOpen={showBulkDeleteConfirm}
+        onClose={() => {
+          if (!isDeleting) setShowBulkDeleteConfirm(false);
+        }}
+        onConfirm={async () => {
+          await handleBulkDelete();
+        }}
+        title={`Delete ${bulkDeleteIds.length} Collection${bulkDeleteIds.length === 1 ? '' : 's'}?`}
+        description="This will permanently delete the selected collections. The nuggets inside will not be deleted."
         actionLabel="Delete"
         isDestructive
       />

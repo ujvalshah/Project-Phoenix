@@ -25,8 +25,8 @@
  * ============================================================================
  */
 
-import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { Article, SortOrder } from '@/types';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { Article, SortOrder, TimeRange } from '@/types';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
 import { useFeaturedCollections } from '@/hooks/useFeaturedCollections';
 import { Loader2 } from 'lucide-react';
@@ -35,6 +35,8 @@ import { ArticleGrid } from '@/components/ArticleGrid';
 import { PageStack } from '@/components/layouts/PageStack';
 import { CategoryToolbar } from '@/components/CategoryToolbar';
 import { useAuth } from '@/hooks/useAuth';
+import { useSearchParams } from 'react-router-dom';
+import { articleService } from '@/services/articleService';
 
 interface HomePageProps {
   searchQuery: string;
@@ -48,6 +50,10 @@ interface HomePageProps {
   /** Active community collection ID from useFilterState (URL-persisted) */
   collectionId: string | null;
   setCollectionId: (id: string | null) => void;
+  favorites?: boolean;
+  unread?: boolean;
+  formats?: string[];
+  timeRange?: TimeRange;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -60,14 +66,32 @@ export const HomePage: React.FC<HomePageProps> = ({
   sortOrder,
   collectionId,
   setCollectionId,
+  favorites = false,
+  unread = false,
+  formats = [],
+  timeRange = 'all',
 }) => {
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [pullY, setPullY] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { currentUserId } = useAuth();
+
+  // Handle ?openArticle=<id> query param (from push notifications / shared links)
+  useEffect(() => {
+    const articleId = searchParams.get('openArticle');
+    if (!articleId) return;
+    // Clear the param immediately to avoid re-triggering
+    searchParams.delete('openArticle');
+    setSearchParams(searchParams, { replace: true });
+    // Fetch and open the article in the modal
+    articleService.getArticleById(articleId).then((article) => {
+      if (article) setSelectedArticle(article);
+    });
+  }, [searchParams, setSearchParams]);
 
   // Fetch featured collections for the category toolbar
   const {
@@ -88,6 +112,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const {
     articles = [],
     isLoading: isLoadingArticles,
+    isFilterRefetching,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
@@ -96,10 +121,15 @@ export const HomePage: React.FC<HomePageProps> = ({
   } = useInfiniteArticles({
     searchQuery,
     activeCategory,
+    selectedCategories,
     sortOrder,
     limit: 25,
     tag: selectedTag,
     collectionId,
+    favorites,
+    unread,
+    formats,
+    timeRange,
   });
 
   const handleRefreshFeed = async () => {
@@ -177,6 +207,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 articles={articles}
                 viewMode={viewMode}
                 isLoading={isLoadingArticles}
+                isFilterRefetching={isFilterRefetching}
                 onArticleClick={setSelectedArticle}
                 onTagClick={(t) => setSelectedTag(t)}
                 onCategoryClick={(c) => toggleTag(c)}

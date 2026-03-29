@@ -17,7 +17,20 @@ export interface ArticleCountsResponse {
 export interface IAdapter {
   // Articles
   getAllArticles(params?: { q?: string; page?: number; limit?: number }): Promise<Article[]>;
-  getArticlesPaginated(params: { q?: string; page: number; limit: number; category?: string; tag?: string; sort?: string; collectionId?: string }): Promise<PaginatedArticlesResponse>;
+  getArticlesPaginated(params: {
+    q?: string;
+    page: number;
+    limit: number;
+    category?: string;
+    categories?: string[];
+    tag?: string;
+    sort?: string;
+    collectionId?: string;
+    favorites?: boolean;
+    unread?: boolean;
+    formats?: string[];
+    timeRange?: string;
+  }): Promise<PaginatedArticlesResponse>;
   getArticleById(id: string): Promise<Article | undefined>;
   getArticlesByAuthor(authorId: string): Promise<Article[]>;
   getMyArticleCounts(): Promise<ArticleCountsResponse>;
@@ -43,7 +56,15 @@ export interface IAdapter {
   deleteCategory(category: string): Promise<void>;
 
   // Collections
-  getCollections(params?: { type?: 'public' | 'private'; includeCount?: boolean }): Promise<Collection[] | { data: Collection[]; count: number }>;
+  getCollections(params?: {
+    type?: 'public' | 'private';
+    includeCount?: boolean;
+    searchQuery?: string;
+    sortField?: 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
+    sortDirection?: 'asc' | 'desc';
+    page?: number;
+    limit?: number;
+  }): Promise<Collection[] | { data: Collection[]; count: number }>;
   getFeaturedCollections(): Promise<Collection[]>;
   getCollectionArticles(collectionId: string, params: { q?: string; page: number; limit: number; sort?: string }): Promise<PaginatedArticlesResponse>;
   getCollectionById(id: string): Promise<Collection | undefined>;
@@ -52,6 +73,8 @@ export interface IAdapter {
   updateCollection(id: string, updates: Partial<Collection>): Promise<Collection | null>;
   addArticleToCollection(collectionId: string, articleId: string, userId: string): Promise<void>;
   removeArticleFromCollection(collectionId: string, articleId: string, userId: string): Promise<void>;
+  addBatchEntriesToCollection(collectionId: string, articleIds: string[], userId: string): Promise<void>;
+  removeBatchEntriesFromCollection(collectionId: string, articleIds: string[], userId: string): Promise<void>;
   flagEntryAsIrrelevant(collectionId: string, articleId: string, userId: string): Promise<void>;
   followCollection(collectionId: string): Promise<void>;
   unfollowCollection(collectionId: string): Promise<void>;

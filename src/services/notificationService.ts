@@ -1,0 +1,172 @@
+import { apiClient } from './apiClient';
+import { getServiceWorkerRegistration } from '@/utils/serviceWorkerRegistration';
+import type { NotificationFrequency } from '@/types/user';
+
+// ── Types ──
+
+export interface NotificationPreferences {
+  pushEnabled: boolean;
+  frequency: NotificationFrequency;
+  categoryFilter: string[];
+  quietHoursStart?: string | null;
+  quietHoursEnd?: string | null;
+}
+
+export interface InAppNotification {
+  _id: string;
+  userId: string;
+  type: 'new_nugget' | 'digest' | 'system';
+  title: string;
+  body: string;
+  data: { articleId?: string; batchIds?: string[]; url: string };
+  read: boolean;
+  deliveredVia: string[];
+  createdAt: string;
+}
+
+interface PaginatedNotifications {
+  data: InAppNotification[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+// ── Helpers ──
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+  if (!buffer) return '';
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// ── VAPID Key ──
+
+let cachedVapidKey: string | null = null;
+
+export async function getVapidKey(): Promise<string | null> {
+  if (cachedVapidKey) return cachedVapidKey;
+
+  try {
+    const response = await apiClient.get<{ configured: boolean; publicKey: string | null }>(
+      '/notifications/vapid-key'
+    );
+    cachedVapidKey = response.publicKey;
+    return cachedVapidKey;
+  } catch {
+    return null;
+  }
+}
+
+// ── Push Subscription ──
+
+export async function subscribeToPush(): Promise<boolean> {
+  const vapidKey = await getVapidKey();
+  if (!vapidKey) return false;
+
+  const registration = await navigator.serviceWorker.ready;
+
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(vapidKey),
+  });
+
+  await apiClient.post('/notifications/subscribe', {
+    platform: 'web',
+    endpoint: subscription.endpoint,
+    keys: {
+      p256dh: arrayBufferToBase64(subscription.getKey('p256dh')),
+      auth: arrayBufferToBase64(subscription.getKey('auth')),
+    },
+  });
+
+  return true;
+}
+
+export async function unsubscribeFromPush(): Promise<void> {
+  const registration = getServiceWorkerRegistration();
+  if (!registration) return;
+
+  const subscription = await registration.pushManager.getSubscription();
+  if (!subscription) return;
+
+  const endpoint = subscription.endpoint;
+  await subscription.unsubscribe();
+
+  await apiClient.post('/notifications/unsubscribe', { endpoint });
+}
+
+export function getPermissionStatus(): NotificationPermission | 'unsupported' {
+  if (!('Notification' in window)) return 'unsupported';
+  return Notification.permission;
+}
+
+export async function isPushSubscribed(): Promise<boolean> {
+  const registration = getServiceWorkerRegistration();
+  if (!registration) return false;
+
+  const subscription = await registration.pushManager.getSubscription();
+  return subscription !== null;
+}
+
+// ── Preferences ──
+
+export async function getPreferences(): Promise<NotificationPreferences> {
+  return apiClient.get<NotificationPreferences>('/notifications/preferences');
+}
+
+export async function updatePreferences(
+  prefs: Partial<NotificationPreferences>
+): Promise<NotificationPreferences> {
+  return apiClient.put<NotificationPreferences>('/notifications/preferences', prefs);
+}
+
+// ── In-App Notifications ──
+
+export async function getNotifications(
+  page = 1,
+  limit = 20
+): Promise<PaginatedNotifications> {
+  return apiClient.get<PaginatedNotifications>(
+    `/notifications?page=${page}&limit=${limit}`
+  );
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const result = await apiClient.get<{ count: number }>('/notifications/unread-count');
+  return result.count;
+}
+
+export async function markAsRead(id: string): Promise<void> {
+  await apiClient.patch(`/notifications/${id}/read`, {});
+}
+
+export async function markAllAsRead(): Promise<void> {
+  await apiClient.post('/notifications/read-all', {});
+}
+
+// ── Admin ──
+
+export async function getNotificationSystemStatus(): Promise<boolean> {
+  const result = await apiClient.get<{ enabled: boolean }>('/notifications/admin/status');
+  return result.enabled;
+}
+
+export async function toggleNotificationSystem(enabled: boolean): Promise<void> {
+  await apiClient.put('/notifications/admin/toggle', { enabled });
+}

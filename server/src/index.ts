@@ -53,7 +53,6 @@ import articlesRouter from './routes/articles';
 import usersRouter from './routes/users';
 import collectionsRouter from './routes/collections';
 import tagsRouter from './routes/tags';
-import legalRouter from './routes/legal';
 import feedbackRouter from './routes/feedback.js';
 import moderationRouter from './routes/moderation.js';
 import adminRouter from './routes/admin.js';
@@ -62,6 +61,10 @@ import mediaRouter from './routes/media.js';
 import diagnosticsRouter from './routes/diagnostics.js';
 import bookmarksRouter from './routes/bookmarks.js';
 import bookmarkCollectionsRouter from './routes/bookmarkCollections.js';
+import notificationsRouter from './routes/notifications.js';
+import legalRouter from './routes/legal.js';
+import adminLegalRouter from './routes/adminLegal.js';
+import contactRouter from './routes/contact.js';
 import { ogMiddleware } from './middleware/ogMiddleware.js';
 
 const app = express();
@@ -209,7 +212,9 @@ app.use('/api/users', usersRouter);
 app.use('/api/collections', collectionsRouter);
 app.use('/api/categories', tagsRouter); // Legacy endpoint - kept for backward compatibility
 app.use('/api/tags', tagsRouter); // New endpoint
+// Legal pages — config from DB, content from public/legal/*.md
 app.use('/api/legal', legalRouter);
+app.use('/api/admin/legal', adminLegalRouter);
 // AI routes removed - legacy AI creation system has been fully removed
 // Safeguard: Return 410 Gone for any attempts to access removed AI endpoints
 // Express 5 requires regex pattern instead of wildcard syntax
@@ -227,6 +232,7 @@ app.all(/^\/api\/ai\/.+/, (req, res) => {
   });
 });
 app.use('/api/feedback', feedbackRouter);
+app.use('/api/contact', contactRouter);
 app.use('/api/moderation', moderationRouter);
 // Audit Phase-1 Fix: Apply longOperationTimeout to unfurl routes (60s for metadata fetching)
 app.use('/api/unfurl', longOperationTimeout, unfurlRouter);
@@ -235,6 +241,7 @@ app.use('/api/media', mediaRouter);
 app.use('/api/diagnostics', diagnosticsRouter);
 app.use('/api/bookmarks', bookmarksRouter);
 app.use('/api/bookmark-collections', bookmarkCollectionsRouter);
+app.use('/api/notifications', notificationsRouter);
 
 // Health Check - Enhanced to verify DB connectivity
 app.get('/api/health', async (req, res) => {
@@ -481,6 +488,14 @@ async function startServer() {
     // Provides: token blacklisting, refresh tokens, account lockout
     await initTokenService();
     
+    // Initialize Notification Service (BullMQ queue + worker for push notifications)
+    const { initNotificationService } = await import('./services/notificationService.js');
+    await initNotificationService();
+    
+    // Seed legal pages if collection is empty (always runs, even in production)
+    const { seedLegalPages } = await import('./utils/seedLegalPages.js');
+    await seedLegalPages();
+
     // Seed database if empty
     // TEMPORARILY DISABLED: Seeding is disabled. Re-enable by uncommenting the line below when needed.
     // await seedDatabase();
@@ -556,6 +571,15 @@ async function gracefulShutdown(signal: string) {
     logger.info({ msg: 'Token service closed' });
   } catch (error: any) {
     logger.warn({ msg: 'Error closing token service connection', error: error.message });
+  }
+
+  // Close notification service (BullMQ queue + worker)
+  try {
+    const { closeNotificationService } = await import('./services/notificationService.js');
+    await closeNotificationService();
+    logger.info({ msg: 'Notification service closed' });
+  } catch (error: any) {
+    logger.warn({ msg: 'Error closing notification service', error: error.message });
   }
   
   // Flush Sentry events before exit

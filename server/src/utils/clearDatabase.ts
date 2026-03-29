@@ -2,9 +2,10 @@ import { Article } from '../models/Article.js';
 import { Collection } from '../models/Collection.js';
 import { User } from '../models/User.js';
 import { Tag } from '../models/Tag.js';
-import { LegalPage } from '../models/LegalPage.js';
 import { Feedback } from '../models/Feedback.js';
 import { Report } from '../models/Report.js';
+import { LegalPage } from '../models/LegalPage.js';
+import { ContactMessage } from '../models/ContactMessage.js';
 import { isMongoConnected } from './db.js';
 
 /**
@@ -25,12 +26,13 @@ export async function clearDatabase(): Promise<void> {
     const userResult = await User.deleteMany({});
     const collectionResult = await Collection.deleteMany({});
     const tagResult = await Tag.deleteMany({});
-    const legalPageResult = await LegalPage.deleteMany({});
     const feedbackResult = await Feedback.deleteMany({});
     const reportResult = await Report.deleteMany({});
-    
+    const legalResult = await LegalPage.deleteMany({});
+    const contactResult = await ContactMessage.deleteMany({});
+
     console.log('[ClearDB] ✓ Database cleared successfully');
-    console.log(`[ClearDB] Deleted: ${articleResult.deletedCount} articles, ${userResult.deletedCount} users, ${collectionResult.deletedCount} collections, ${tagResult.deletedCount} tags, ${legalPageResult.deletedCount} legal pages, ${feedbackResult.deletedCount} feedback entries, ${reportResult.deletedCount} reports`);
+    console.log(`[ClearDB] Deleted: ${articleResult.deletedCount} articles, ${userResult.deletedCount} users, ${collectionResult.deletedCount} collections, ${tagResult.deletedCount} tags, ${feedbackResult.deletedCount} feedback entries, ${reportResult.deletedCount} reports, ${legalResult.deletedCount} legal pages, ${contactResult.deletedCount} contact messages`);
   } catch (error: any) {
     console.error('[ClearDB] Error clearing database:', error);
     throw error;

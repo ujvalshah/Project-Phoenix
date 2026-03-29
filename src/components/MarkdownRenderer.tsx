@@ -2,14 +2,34 @@ import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
+import { twMerge } from 'tailwind-merge';
 import { isYouTubeTimestampLink, extractYouTubeVideoIdAndTimestamp } from '@/utils/youtubeUtils';
+
+/** Tailwind Typography stack for `prose` mode (long-form docs). */
+const DOCUMENT_MARKDOWN_PROSE_CLASSES = [
+  'prose prose-slate dark:prose-invert prose-lg max-w-none',
+  'prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-slate-900 dark:prose-headings:text-slate-50',
+  'prose-h1:text-3xl sm:prose-h1:text-[2rem] prose-h1:mt-0 prose-h1:mb-4',
+  'prose-h2:mt-10 prose-h2:mb-4 prose-h2:text-2xl sm:prose-h2:text-[1.65rem]',
+  'prose-h3:mt-8 prose-h3:mb-3 prose-h3:text-xl',
+  'prose-h4:mt-6 prose-h4:mb-2',
+  'prose-p:leading-[1.75] prose-p:text-slate-600 dark:prose-p:text-slate-400',
+  'prose-li:my-1.5 prose-li:marker:text-slate-400 dark:prose-li:marker:text-slate-500',
+  'prose-ul:my-5 prose-ol:my-5',
+  'prose-blockquote:border-l-primary-500 dark:prose-blockquote:border-l-primary-500',
+  'prose-strong:text-slate-900 dark:prose-strong:text-slate-100',
+  'prose-hr:border-slate-200 dark:prose-hr:border-slate-700 prose-hr:my-10',
+  'prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-a:font-medium prose-a:no-underline hover:prose-a:underline',
+  'prose-code:text-pink-700 dark:prose-code:text-pink-400 prose-code:bg-slate-100 dark:prose-code:bg-slate-800/80 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.9em] prose-code:font-normal before:prose-code:content-none after:prose-code:content-none',
+  'prose-pre:bg-slate-100 dark:prose-pre:bg-slate-800/80 prose-pre:text-slate-800 dark:prose-pre:text-slate-200',
+].join(' ');
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
   /** Called when a hashtag is clicked */
   onTagClick?: (tag: string) => void;
-  /** Whether to apply prose styling (for drawer/full view) */
+  /** Document typography via @tailwindcss/typography (`prose` / `prose-*` modifiers) */
   prose?: boolean;
   /** Called when a YouTube timestamp link is clicked (videoId, timestamp in seconds) */
   onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
@@ -31,9 +51,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   prose = false,
   onYouTubeTimestampClick,
 }) => {
-  // Memoize components to avoid recreating on each render
-  const components: Components = useMemo(() => ({
-    // Table wrapper for horizontal scrolling
+  // Compact components for card/feed views (prose=false)
+  const compactComponents: Components = useMemo(() => ({
     table: ({ children }) => (
       <div className="markdown-table-wrapper overflow-x-auto -mx-1 px-1">
         <table className="markdown-table w-full border-collapse my-3 text-xs sm:text-sm">
@@ -42,9 +61,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
       </div>
     ),
     thead: ({ children }) => (
-      <thead className="bg-slate-50 dark:bg-slate-800/50">
-        {children}
-      </thead>
+      <thead className="bg-slate-50 dark:bg-slate-800/50">{children}</thead>
     ),
     th: ({ children }) => (
       <th className="text-left font-bold px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 whitespace-nowrap text-xs sm:text-sm">
@@ -56,68 +73,34 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         {children}
       </td>
     ),
-    tbody: ({ children }) => (
-      <tbody>
-        {children}
-      </tbody>
-    ),
-    tr: ({ children }) => (
-      <tr>
-        {children}
-      </tr>
-    ),
-    // Headers - PHASE 1: All headings use same size as body (text-xs = 12px), bold for emphasis, compact spacing
+    tbody: ({ children }) => <tbody>{children}</tbody>,
+    tr: ({ children }) => <tr>{children}</tr>,
     h1: ({ children }) => (
-      <h1 className="text-xs font-bold mt-1.5 mb-1 text-slate-900 dark:text-white leading-tight">
-        {children}
-      </h1>
+      <h1 className="text-xs font-bold mt-1.5 mb-1 text-slate-900 dark:text-white leading-tight">{children}</h1>
     ),
     h2: ({ children }) => (
-      <h2 className="text-xs font-bold mt-1.5 mb-1 text-slate-900 dark:text-white leading-tight">
-        {children}
-      </h2>
+      <h2 className="text-xs font-bold mt-1.5 mb-1 text-slate-900 dark:text-white leading-tight">{children}</h2>
     ),
     h3: ({ children }) => (
-      <h3 className="text-xs font-bold mt-1.5 mb-1 text-slate-900 dark:text-white leading-tight">
-        {children}
-      </h3>
+      <h3 className="text-xs font-bold mt-1.5 mb-1 text-slate-900 dark:text-white leading-tight">{children}</h3>
     ),
     h4: ({ children }) => (
-      <h4 className="text-xs font-bold mt-1.5 mb-1 text-slate-900 dark:text-white leading-tight">
-        {children}
-      </h4>
+      <h4 className="text-xs font-bold mt-1.5 mb-1 text-slate-900 dark:text-white leading-tight">{children}</h4>
     ),
-    // Paragraphs - Inherit line-height from parent (CardContent applies leading-relaxed for Hybrid cards)
-    p: ({ children }) => (
-      <p className="mb-1.5">
-        {children}
-      </p>
-    ),
-    // Lists - Improved spacing for better mobile readability
+    p: ({ children }) => <p className="mb-1.5">{children}</p>,
     ul: ({ children }) => (
-      <ul className="list-disc list-outside ml-4 mb-2 space-y-1">
-        {children}
-      </ul>
+      <ul className="list-disc list-outside ml-4 mb-2 space-y-1">{children}</ul>
     ),
     ol: ({ children }) => (
-      <ol className="list-decimal list-outside ml-4 mb-2 space-y-1">
-        {children}
-      </ol>
+      <ol className="list-decimal list-outside ml-4 mb-2 space-y-1">{children}</ol>
     ),
-    li: ({ children }) => (
-      <li className="pl-0.5">
-        {children}
-      </li>
-    ),
-    // Blockquote
+    li: ({ children }) => <li className="pl-0.5">{children}</li>,
     blockquote: ({ children }) => (
       <blockquote className="border-l-4 border-slate-300 dark:border-slate-600 pl-4 italic my-4 text-slate-600 dark:text-slate-400">
         {children}
       </blockquote>
     ),
-    // Inline code
     code: ({ children, className }) => {
-      // Check if this is a code block (has language class) or inline code
       const isCodeBlock = className?.includes('language-');
       if (isCodeBlock) {
         return (
@@ -132,41 +115,48 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         </code>
       );
     },
-    // Code blocks
     pre: ({ children }) => (
-      <pre className="bg-slate-100 dark:bg-slate-800 rounded-lg overflow-x-auto my-3">
-        {children}
-      </pre>
+      <pre className="bg-slate-100 dark:bg-slate-800 rounded-lg overflow-x-auto my-3">{children}</pre>
     ),
-    // Links
     a: ({ href, children }) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => e.stopPropagation()}
-        className="text-primary-600 dark:text-primary-400 hover:underline"
-      >
+      <a href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary-600 dark:text-primary-400 hover:underline">
         {children}
       </a>
     ),
-    // Strong/Bold
     strong: ({ children }) => (
-      <strong className="font-bold text-slate-900 dark:text-slate-100">
-        {children}
-      </strong>
+      <strong className="font-bold text-slate-900 dark:text-slate-100">{children}</strong>
     ),
-    // Emphasis/Italic
-    em: ({ children }) => (
-      <em className="italic">
-        {children}
-      </em>
-    ),
-    // Horizontal rule
-    hr: () => (
-      <hr className="my-6 border-slate-200 dark:border-slate-700" />
-    ),
+    em: ({ children }) => <em className="italic">{children}</em>,
+    hr: () => <hr className="my-6 border-slate-200 dark:border-slate-700" />,
   }), []);
+
+  // Document mode: typography from @tailwindcss/typography on the root; only
+  // override tables so wide GFM tables scroll instead of blowing the layout.
+  const documentTableComponents: Components = useMemo(
+    () => ({
+      table: ({ children }) => (
+        <div className="not-prose my-8 w-full overflow-x-auto">
+          <table className="w-full border-collapse text-left text-sm">{children}</table>
+        </div>
+      ),
+      thead: ({ children }) => (
+        <thead className="bg-slate-50 dark:bg-slate-800/50">{children}</thead>
+      ),
+      th: ({ children }) => (
+        <th className="font-semibold px-4 py-2.5 border-b-2 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200">
+          {children}
+        </th>
+      ),
+      td: ({ children }) => (
+        <td className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 align-top">
+          {children}
+        </td>
+      ),
+    }),
+    []
+  );
+
+  const components = prose ? documentTableComponents : compactComponents;
 
   // Process hashtags and YouTube timestamps in content before rendering
   const processedContent = useMemo(() => {
@@ -361,9 +351,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
 
   if (!content) return null;
 
+  const rootClassName = twMerge('markdown-content', prose && DOCUMENT_MARKDOWN_PROSE_CLASSES, className);
+
   return (
-    <div 
-      className={`markdown-content ${prose ? 'prose prose-slate dark:prose-invert max-w-none' : ''} ${className}`}
+    <div
+      className={rootClassName}
       onClick={handleLinkClick ? (e) => {
         const target = e.target as HTMLElement;
         if (target.tagName === 'A') {

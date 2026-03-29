@@ -5,7 +5,7 @@
 import { User } from '@/types/user';
 import { Article } from '@/types';
 import { Collection } from '@/types';
-import { AdminUser, AdminNugget, AdminCollection, AdminTag, AdminReport, AdminFeedback } from '../types/admin';
+import { AdminUser, AdminNugget, AdminCollection, AdminTag, AdminReport, AdminFeedback, AdminContactMessage } from '../types/admin';
 
 /**
  * Map backend User (modular) to AdminUser
@@ -218,6 +218,28 @@ export function mapFeedbackToAdminFeedback(feedback: RawFeedback): AdminFeedback
     content: feedback.content,
     status: feedback.status,
     createdAt: feedback.createdAt
+  };
+}
+
+export interface RawContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: 'new' | 'read' | 'replied' | 'archived';
+  createdAt: string;
+}
+
+export function mapContactToAdminContact(contact: RawContactMessage): AdminContactMessage {
+  return {
+    id: contact.id,
+    name: contact.name,
+    email: contact.email,
+    subject: contact.subject,
+    message: contact.message,
+    status: contact.status,
+    createdAt: contact.createdAt
   };
 }
 

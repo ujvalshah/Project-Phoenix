@@ -608,11 +608,15 @@ export const useNewsCard = ({
     setShowMenu(false);
   };
 
-  const handleAddToCollection = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // Get the button's bounding rect for popover positioning
-    const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setCollectionAnchor(buttonRect);
+  const handleAddToCollection = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    // Prefer the clicked button position; fallback to the menu anchor.
+    const buttonRect = e?.currentTarget
+      ? (e.currentTarget as HTMLElement).getBoundingClientRect()
+      : menuRef.current?.getBoundingClientRect() || null;
+    if (buttonRect) {
+      setCollectionAnchor(buttonRect);
+    }
     setCollectionMode('public');
     setShowCollection(true);
   };

@@ -240,6 +240,10 @@ export const setFeaturedSchema = z.object({
   featuredOrder: z.number().int().min(0).optional(),
 }).strict();
 
+export const reorderFeaturedSchema = z.object({
+  orderedIds: z.array(z.string().min(1)).min(1, 'At least one ID is required'),
+}).strict();
+
 export const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
@@ -282,6 +286,11 @@ export const updateUserSchema = z.object({
 export const addEntrySchema = z.object({
   articleId: z.string().min(1, 'Article ID is required'),
   // userId is optional - backend uses authenticated user ID (security: prevents spoofing)
+  userId: z.string().optional()
+}).strict();
+
+export const batchEntriesSchema = z.object({
+  articleIds: z.array(z.string().min(1)).min(1, 'At least one article ID is required').max(100, 'Maximum 100 articles per batch'),
   userId: z.string().optional()
 }).strict();
 
@@ -329,6 +338,22 @@ export function preprocessArticleRequest(
   }
   return body;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// LEGAL PAGES
+// ════════════════════════════════════════════════════════════════════════════
+
+export const updateLegalPageSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().optional(),
+  enabled: z.boolean().optional(),
+  noindex: z.boolean().optional(),
+  lastUpdated: z.string().min(1).optional(),
+  effectiveDate: z.string().min(1).optional(),
+  showInFooter: z.boolean().optional(),
+  description: z.string().max(500).optional(),
+  order: z.number().int().min(0).max(100).optional(),
+}).strict();
 
 /**
  * Validation middleware factory

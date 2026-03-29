@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, Mail, ClipboardType, Eye, EyeOff, HardDrive } from 'lucide-react';
+import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, Mail, ClipboardType, Eye, EyeOff, HardDrive, Bell } from 'lucide-react';
+import { getNotificationSystemStatus, toggleNotificationSystem } from '@/services/notificationService';
 import { useToast } from '@/hooks/useToast';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
@@ -28,6 +29,10 @@ export const AdminConfigPage: React.FC = () => {
     expiresAt: ''
   });
 
+  // --- Notification System State ---
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean | null>(null);
+  const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
+
   // --- Config State ---
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
   const [flags, setFlags] = useState<FeatureFlags | null>(null);
@@ -44,15 +49,17 @@ export const AdminConfigPage: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const [permData, flagsData, signupData, limitsData] = await Promise.all([
+      const [permData, flagsData, signupData, limitsData, notifStatus] = await Promise.all([
         adminConfigService.getRolePermissions(),
         adminConfigService.getFeatureFlags(),
         adminConfigService.getSignupConfig(),
-        adminSettingsService.getMediaLimits().catch(() => null)
+        adminSettingsService.getMediaLimits().catch(() => null),
+        getNotificationSystemStatus().catch(() => true),
       ]);
       setPermissions(permData);
       setFlags(flagsData);
       setSignupConfig(signupData);
+      setNotificationsEnabled(notifStatus);
       if (limitsData) {
         setMediaLimits(limitsData);
         setMediaLimitsDraft(limitsData);
@@ -137,6 +144,22 @@ export const AdminConfigPage: React.FC = () => {
       toast.error("Failed to update media limits");
     } finally {
       setIsSavingMediaLimits(false);
+    }
+  };
+
+  const handleToggleNotifications = async () => {
+    if (notificationsEnabled === null) return;
+    const newValue = !notificationsEnabled;
+    setIsTogglingNotifications(true);
+    setNotificationsEnabled(newValue); // Optimistic
+    try {
+      await toggleNotificationSystem(newValue);
+      toast.success(`Notifications ${newValue ? 'enabled' : 'disabled'}`);
+    } catch {
+      setNotificationsEnabled(!newValue); // Revert
+      toast.error('Failed to toggle notifications');
+    } finally {
+      setIsTogglingNotifications(false);
     }
   };
 
@@ -226,7 +249,42 @@ export const AdminConfigPage: React.FC = () => {
             )}
         </section>
 
-        {/* 2. SIGNUP FORM CUSTOMIZATION */}
+        {/* 2. NOTIFICATION SYSTEM */}
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400 rounded-lg">
+              <Bell size={20} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Notification System</h3>
+              <p className="text-xs text-slate-500">Master kill switch for all push notifications.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+            <div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">Push Notifications</div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                {notificationsEnabled
+                  ? 'Notifications are being sent to subscribers when you publish nuggets.'
+                  : 'All push notifications are paused. User subscriptions are preserved.'}
+              </div>
+            </div>
+            {notificationsEnabled !== null ? (
+              <button
+                onClick={handleToggleNotifications}
+                disabled={isTogglingNotifications}
+                className={`transition-colors ${notificationsEnabled ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'} disabled:opacity-50`}
+              >
+                {notificationsEnabled ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
+              </button>
+            ) : (
+              <span className="text-xs text-slate-400">Loading...</span>
+            )}
+          </div>
+        </section>
+
+        {/* 3. SIGNUP FORM CUSTOMIZATION */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">

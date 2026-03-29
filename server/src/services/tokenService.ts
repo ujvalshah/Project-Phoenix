@@ -41,7 +41,7 @@ const PREFIX = {
 // Configuration
 const CONFIG = {
   // Access token blacklist TTL (should match access token expiry)
-  ACCESS_TOKEN_TTL: 15 * 60, // 15 minutes
+  ACCESS_TOKEN_TTL: 60 * 60, // 1 hour
 
   // Refresh token TTL
   REFRESH_TOKEN_TTL: 7 * 24 * 60 * 60, // 7 days
@@ -75,10 +75,11 @@ export async function initTokenService(): Promise<void> {
 }
 
 /**
- * Check if Redis is available
+ * Check if token service is available (Redis or in-memory fallback)
+ * Returns true even when Redis limit is exceeded, since in-memory fallback handles token ops.
  */
 export function isTokenServiceAvailable(): boolean {
-  return isRedisAvailable();
+  return true;
 }
 
 // ============================================================================
@@ -173,12 +174,8 @@ export async function storeRefreshToken(
   deviceInfo?: string,
   ipAddress?: string
 ): Promise<boolean> {
-  const connected = await ensureRedisConnection();
-  if (!connected) {
-    const logger = getLogger();
-    logger.error({ msg: '[TokenService] Redis unavailable - cannot store refresh token', userId });
-    return false;
-  }
+  // Try real Redis first, fall back to in-memory store
+  await ensureRedisConnection();
 
   const logger = getLogger();
   try {
@@ -310,15 +307,8 @@ export async function validateRefreshToken(
 ): Promise<RefreshTokenData | null> {
   const logger = getLogger();
 
-  // Try to ensure Redis connection, throw if unavailable
-  const connected = await ensureRedisConnection();
-  if (!connected) {
-    logger.error({
-      msg: '[TokenService] Redis unavailable for token validation',
-      userId
-    });
-    throw new RedisUnavailableError('Redis unavailable for token validation');
-  }
+  // Try real Redis first, fall back to in-memory store
+  await ensureRedisConnection();
 
   try {
     const client = getClient();
@@ -408,11 +398,8 @@ export async function rotateRefreshToken(
 ): Promise<string | null> {
   const logger = getLogger();
 
-  const connected = await ensureRedisConnection();
-  if (!connected) {
-    logger.error({ msg: '[TokenService] Redis unavailable - cannot rotate refresh token', userId });
-    return null;
-  }
+  // Try real Redis first, fall back to in-memory store
+  await ensureRedisConnection();
 
   try {
     const client = getClient();

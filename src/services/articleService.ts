@@ -35,9 +35,14 @@ export const articleService = {
       return await storageService.getArticlesPaginated({
         q: trimmedQuery || undefined,
         category: category,
+        categories: filters.categories && filters.categories.length > 1 ? filters.categories : undefined,
         tag: filters.tag || undefined,
         sort: sort,
         collectionId: filters.collectionId || undefined,
+        favorites: filters.favorites || undefined,
+        unread: filters.unread || undefined,
+        formats: filters.formats && filters.formats.length > 0 ? filters.formats : undefined,
+        timeRange: filters.timeRange && filters.timeRange !== 'all' ? filters.timeRange : undefined,
         page,
         limit
       });

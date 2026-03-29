@@ -17,6 +17,8 @@ interface ArticleGridProps {
   articles: Article[];
   viewMode: 'grid' | 'feed' | 'masonry' | 'utility';
   isLoading: boolean;
+  /** True when refetching due to filter/sort change — shows subtle overlay instead of full skeleton */
+  isFilterRefetching?: boolean;
   onArticleClick: (article: Article) => void;
   onCategoryClick: (category: string) => void;
   emptyTitle?: string;
@@ -94,6 +96,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   articles,
   viewMode,
   isLoading,
+  isFilterRefetching = false,
   onArticleClick,
   onCategoryClick,
   emptyTitle = "No nuggets found",
@@ -434,10 +437,21 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   // - Mobile (1 col): auto-rows-auto - cards size to their content naturally
   // - Tablet+ (2+ cols): auto-rows-fr - equal height rows for visual consistency
   return (
+    <div className="relative">
+      {/* Filter-change overlay: shows subtle fade + spinner over existing content
+          instead of replacing everything with skeletons. Only visible during filter/sort changes. */}
+      {isFilterRefetching && (
+        <div className="absolute inset-0 bg-white/60 dark:bg-slate-950/60 z-10 flex items-start justify-center pt-24 backdrop-blur-[1px] transition-opacity duration-200">
+          <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-full shadow-lg border border-slate-200 dark:border-slate-700">
+            <Loader2 size={16} className="animate-spin text-primary-500" />
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Updating…</span>
+          </div>
+        </div>
+      )}
     <div
       className={`
         transition-opacity duration-300 motion-reduce:transition-none
-        ${shouldAnimate ? 'opacity-100' : 'opacity-100'}
+        ${isFilterRefetching ? 'opacity-40 pointer-events-none' : 'opacity-100'}
         ${viewMode === 'feed'
           ? "max-w-2xl mx-auto flex flex-col gap-8"
           : viewMode === 'utility'
@@ -485,6 +499,9 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
                 onClick={handleCardClick}
                 currentUserId={currentUserId}
                 onTagClick={onTagClick}
+                selectionMode={selectionMode}
+                isSelected={selectedIds.includes(sanitized.id)}
+                onSelect={onSelect ? () => onSelect(sanitized.id) : undefined}
                 // Disable inline expansion for desktop multi-column grid
                 disableInlineExpansion={isMultiColumnGrid}
               />
@@ -514,6 +531,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
           onYouTubeTimestampClick={handleYouTubeTimestampClick}
         />
       )}
+    </div>
     </div>
   );
 };

@@ -154,9 +154,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
         if (target.closest('[data-no-card-click]') || target.closest('button') || target.closest('a')) {
           return;
         }
-        if (!selectionMode && handlers.onClick) {
-          handlers.onClick();
-        }
+        handleCardClick(e);
       }}
       className={`
         group relative flex flex-col h-full overflow-hidden
@@ -168,8 +166,8 @@ export const GridVariant: React.FC<GridVariantProps> = ({
         focus:ring-offset-white dark:focus:ring-offset-slate-900
         ${selectionMode
           ? isSelected
-            ? 'border-primary-500 ring-1 ring-primary-500'
-            : 'border-slate-200 dark:border-slate-700'
+            ? 'border-primary-500 ring-1 ring-primary-500 cursor-pointer'
+            : 'border-slate-200 dark:border-slate-700 cursor-pointer'
           : 'border-slate-200 dark:border-slate-700 cursor-pointer'
         }
       `}
@@ -177,7 +175,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
       {/* Selection Checkbox Overlay */}
       {selectionMode && (
         <div
-          className="absolute top-3 right-3 z-20"
+          className="absolute top-3 left-3 z-20"
           onClick={(e) => e.stopPropagation()}
         >
           <label className="cursor-pointer">
@@ -300,7 +298,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 className="aspect-video rounded-lg"
               />
               {/* Source Badge Overlay */}
-              {!data.isTextNugget && data.sourceType === 'link' && (
+              {!selectionMode && !data.isTextNugget && data.sourceType === 'link' && (
                 <CardBadge
                   isTextNugget={data.isTextNugget}
                   sourceType={data.sourceType}

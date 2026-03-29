@@ -1275,8 +1275,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     // CREATE MODE DEFAULT BEHAVIOR:
     // - Primary media defaults to showInMasonry: true (selected by default)
     // - Primary media is NOT locked - user can unselect it
-    // - All supporting images default to showInMasonry: true; user can unselect per image
-    // - Supporting non-image URLs stay opt-in (false)
+    // - All supporting media (images AND non-images) default to showInMasonry: true
+    // - User can opt-out by unselecting any media item
     
     // 1. Add primary media
     if (primaryUrl) {
@@ -1306,7 +1306,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       
       const urlType = detectProviderFromUrl(url);
       imageManager.addImage(url, 'url-input', {
-        showInMasonry: false, // Default to false, user can opt-in
+        showInMasonry: true, // Default to true in Create mode; user can opt-out
         type: urlType as MediaType,
       });
     });
@@ -1341,6 +1341,90 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       });
     }
   }, [mode, urls, attachments]); // Removed imageManager from dependencies - methods are stable via useCallback
+
+  /**
+   * Build submit-safe masonry items from the latest form state.
+   *
+   * Why this exists:
+   * Pasted screenshots are uploaded async and can land in `attachments` a tick before
+   * `imageManager.masonryItems` finishes syncing via effect. If user submits in that
+   * window, those images are saved only in `images[]` (without masonry flags), so they
+   * reopen as unselected in Edit mode.
+   *
+   * Fix:
+   * Reconcile missing URLs from current `urls` + uploaded `attachments` at submit time.
+   * Any missing media is injected as masonry-selected by default.
+   */
+  const getMasonryItemsForSubmit = (): MasonryMediaItem[] => {
+    const currentItems = imageManager.masonryItems;
+    const byUrl = new Map(
+      currentItems
+        .filter(item => typeof item.url === 'string' && item.url.trim().length > 0)
+        .map(item => [item.url.toLowerCase().trim(), item])
+    );
+
+    const attachmentUrls = attachments
+      .filter(att => att.type === 'image' && !!att.secureUrl)
+      .map(att => att.secureUrl as string);
+
+    const primaryUrlFromUrls = getPrimaryUrl(urls);
+    const fallbackPrimaryUrl = primaryUrlFromUrls || attachmentUrls[0] || null;
+
+    const nextItems: MasonryMediaItem[] = [...currentItems];
+
+    const addIfMissing = (
+      url: string,
+      source: MasonryMediaItem['source'],
+      forceImageType = false
+    ) => {
+      const key = url.toLowerCase().trim();
+      if (!key || byUrl.has(key)) return;
+
+      const detectedType = forceImageType
+        ? 'image'
+        : (detectProviderFromUrl(url) as MediaType);
+
+      nextItems.push({
+        id: `submit-${Date.now()}-${nextItems.length}`,
+        type: detectedType,
+        url,
+        thumbnail: url,
+        source,
+        showInMasonry: true,
+        showInGrid: true,
+        isLocked: false,
+      });
+      byUrl.set(key, nextItems[nextItems.length - 1]);
+    };
+
+    // Ensure primary exists when we can infer one from current form state.
+    if (fallbackPrimaryUrl) {
+      const primaryKey = fallbackPrimaryUrl.toLowerCase().trim();
+      const hasPrimaryItem = nextItems.some(item => item.source === 'primary');
+      if (!hasPrimaryItem && !byUrl.has(primaryKey)) {
+        const isAttachmentPrimary = attachmentUrls.some(
+          u => u.toLowerCase().trim() === primaryKey
+        );
+        addIfMissing(fallbackPrimaryUrl, 'primary', isAttachmentPrimary);
+      }
+    }
+
+    // Reconcile URL media that may not have synced yet.
+    for (const url of urls) {
+      if (!url) continue;
+      const isPrimary = fallbackPrimaryUrl && url.toLowerCase().trim() === fallbackPrimaryUrl.toLowerCase().trim();
+      addIfMissing(url, isPrimary ? 'primary' : 'supporting');
+    }
+
+    // Reconcile uploaded screenshot/image attachments that may still be missing.
+    for (const url of attachmentUrls) {
+      if (!url) continue;
+      const isPrimary = fallbackPrimaryUrl && url.toLowerCase().trim() === fallbackPrimaryUrl.toLowerCase().trim();
+      addIfMissing(url, isPrimary ? 'primary' : 'supporting', true);
+    }
+
+    return nextItems;
+  };
 
   // AI summarize handler removed - AI creation system has been fully removed
 
@@ -1439,7 +1523,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             
             // Build payload using shared normalizeArticleInput
             // FIX: Read masonryMediaItems fresh from imageManager to ensure current toggle state
-            const currentMasonryItems = imageManager.masonryItems;
+            const currentMasonryItems = getMasonryItemsForSubmit();
             
             // Debug logging to verify masonry state
             if (process.env.NODE_ENV === 'development') {
@@ -1771,7 +1855,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         }
 
         // FIX: Read masonryMediaItems fresh from imageManager to ensure current toggle state
-        const currentMasonryItems = imageManager.masonryItems;
+        const currentMasonryItems = getMasonryItemsForSubmit();
         
         // Debug logging to verify masonry state
         if (process.env.NODE_ENV === 'development') {

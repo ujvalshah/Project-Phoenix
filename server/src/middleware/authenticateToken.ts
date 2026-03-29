@@ -26,9 +26,6 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
   const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
-  // #region agent log
-  fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H4',location:'server/src/middleware/authenticateToken.ts:authenticateToken',message:'Auth middleware received request',data:{method:req.method,path:req.path,hasAuthHeader:!!authHeader,hasBearerToken:!!token},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   if (!token) {
     requestLogger.warn({
@@ -37,9 +34,6 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       hasAuthorizationHeader: !!authHeader,
       authHeaderPrefix: typeof authHeader === 'string' ? authHeader.slice(0, 20) : null,
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H4',location:'server/src/middleware/authenticateToken.ts:authenticateToken',message:'Rejecting request due to missing token',data:{authHeaderValue:typeof authHeader==='string'?authHeader.slice(0,20):null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return res.status(401).json({
       error: true,
       message: 'Access token required',
@@ -50,9 +44,6 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
   try {
     // Check if token is blacklisted (user logged out)
     const blacklisted = await isTokenBlacklisted(token);
-    // #region agent log
-    fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H5',location:'server/src/middleware/authenticateToken.ts:authenticateToken',message:'Blacklist check completed',data:{isBlacklisted:blacklisted},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (blacklisted) {
       requestLogger.warn({
         msg: '[AuthDebug] Rejecting request: token is blacklisted',
@@ -76,9 +67,6 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       errorName: error?.name,
       errorMessage: error?.message,
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H5',location:'server/src/middleware/authenticateToken.ts:authenticateToken',message:'Token verification failed',data:{errorName:error?.name||null,errorMessage:error?.message||null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (error.name === 'TokenExpiredError') {
       const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
       requestLogger.warn({

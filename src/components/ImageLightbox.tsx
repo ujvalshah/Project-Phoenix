@@ -583,20 +583,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
             className="w-full md:w-[400px] h-[50vh] md:h-full shrink-0 bg-white dark:bg-slate-900 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 overflow-y-auto custom-scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative h-full">
-              <div className="sticky top-0 right-0 p-2 z-20 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex justify-end">
-                <button 
-                  onClick={handleClose} 
-                  className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-                  aria-label="Close viewer"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="p-4">
-                {sidebarContent}
-              </div>
-            </div>
+            {sidebarContent}
           </div>
         </div>
       ) : (

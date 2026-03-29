@@ -13,7 +13,7 @@ interface CardActionsProps {
   isOwner: boolean;
   isAdmin: boolean;
   visibility?: 'public' | 'private';
-  onAddToCollection?: () => void;
+  onAddToCollection?: (e: React.MouseEvent) => void;
   onReport?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -145,7 +145,7 @@ interface MenuDropdownProps {
   isOwner: boolean;
   isAdmin: boolean;
   visibility?: 'public' | 'private';
-  onAddToCollection?: () => void;
+  onAddToCollection?: (e: React.MouseEvent) => void;
   onEdit?: () => void;
   onToggleVisibility?: () => void;
   onReport?: () => void;
@@ -227,7 +227,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
     id: string;
     label: string;
     icon: React.ReactNode;
-    onClick: () => void;
+    onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
     className?: string;
     visible: boolean;
   }> = [];
@@ -238,7 +238,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
         id: 'edit',
         label: 'Edit',
         icon: <Edit2 size={12} aria-hidden="true" />,
-        onClick: onEdit,
+        onClick: () => onEdit(),
         visible: true,
       });
     }
@@ -253,7 +253,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
       ) : (
         <Lock size={12} className="text-amber-500" aria-hidden="true" />
       ),
-      onClick: onToggleVisibility,
+      onClick: () => onToggleVisibility(),
       visible: true,
     });
   }
@@ -263,7 +263,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
       id: 'add-to-collection',
       label: 'Add to collection',
       icon: <FolderPlus size={12} aria-hidden="true" />,
-      onClick: onAddToCollection,
+      onClick: (e) => onAddToCollection(e),
       visible: true,
     });
   }
@@ -273,7 +273,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
       id: 'report',
       label: 'Report',
       icon: <Flag size={12} aria-hidden="true" />,
-      onClick: onReport,
+      onClick: () => onReport(),
       visible: true,
     });
   }
@@ -283,7 +283,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
       id: 'delete',
       label: 'Delete',
       icon: <Trash2 size={12} aria-hidden="true" />,
-      onClick: onDelete,
+      onClick: () => onDelete(),
       className: 'text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20',
       visible: true,
     });
@@ -313,7 +313,8 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
         case ' ':
           if (focusedIndex >= 0 && focusedIndex < visibleItems.length) {
             e.preventDefault();
-            visibleItems[focusedIndex].onClick();
+            const syntheticEvent = new MouseEvent('click', { bubbles: true }) as unknown as React.MouseEvent<HTMLButtonElement>;
+            visibleItems[focusedIndex].onClick(syntheticEvent);
             onClose();
           }
           break;
@@ -373,7 +374,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
           tabIndex={index === focusedIndex ? 0 : -1}
           onClick={(e) => {
             e.stopPropagation();
-            item.onClick();
+            item.onClick(e);
             onClose(e);
           }}
           className={twMerge(

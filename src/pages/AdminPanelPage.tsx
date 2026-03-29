@@ -11,7 +11,8 @@ import { AdminConfigPage } from '../admin/pages/AdminConfigPage';
 import { AdminModerationPage } from '../admin/pages/AdminModerationPage';
 import { AdminFeedbackPage } from '../admin/pages/AdminFeedbackPage';
 import { AdminDownloadsPage } from '../admin/pages/AdminDownloadsPage';
-import { AdminLegalPages } from '../admin/pages/AdminLegalPages';
+import { AdminLegalPagesPage } from '../admin/pages/AdminLegalPagesPage';
+import { AdminContactPage } from '../admin/pages/AdminContactPage';
 import { RequireAdmin } from '../admin/components/RequireAdmin';
 import { ErrorBoundary } from '../components/UI/ErrorBoundary';
 
@@ -31,7 +32,8 @@ export const AdminPanelPage: React.FC = () => {
             <Route path="config" element={<AdminConfigPage />} />
             <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="downloads" element={<AdminDownloadsPage />} />
-            <Route path="legal" element={<AdminLegalPages />} />
+            <Route path="legal" element={<AdminLegalPagesPage />} />
+            <Route path="contact" element={<AdminContactPage />} />
           </Route>
         </Routes>
       </ErrorBoundary>

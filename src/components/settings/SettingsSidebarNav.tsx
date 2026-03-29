@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { User, Shield, AlertTriangle, CreditCard } from 'lucide-react';
+import { User, Shield, AlertTriangle, CreditCard, Bell, Scale } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -11,7 +11,9 @@ interface NavItem {
 const ITEMS: NavItem[] = [
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
   { id: 'account', label: 'Account Info', icon: <CreditCard size={18} /> },
+  { id: 'notifications', label: 'Notifications', icon: <Bell size={18} /> },
   { id: 'security', label: 'Security', icon: <Shield size={18} /> },
+  { id: 'legal', label: 'Legal', icon: <Scale size={18} /> },
   { id: 'danger', label: 'Danger Zone', icon: <AlertTriangle size={18} /> },
 ];
 

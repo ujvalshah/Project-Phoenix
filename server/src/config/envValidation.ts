@@ -45,6 +45,11 @@ const envSchema = z.object({
   REDIS_URL: z.string().url('REDIS_URL must be a valid URL').optional(),
   USE_LOCAL_REDIS: z.string().transform((val) => val === 'true').optional(),
   REDIS_LOCAL_URL: z.string().url('REDIS_LOCAL_URL must be a valid URL').optional(),
+
+  // Web Push / VAPID (optional – notifications disabled if not set)
+  VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  VAPID_SUBJECT: z.string().min(1).optional(),
 });
 
 /**

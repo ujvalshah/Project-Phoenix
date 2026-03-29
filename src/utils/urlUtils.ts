@@ -48,6 +48,16 @@ export const isImageUrl = (url: string): boolean => {
     return true;
   }
 
+  // Cloudflare Images / Image Resizing:
+  // Example: https://<host>/cdn-cgi/imagedelivery/<id>/<uuid>/w=1350
+  // These URLs often have no file extension, so we need a path-based check.
+  if (/\/cdn-cgi\/imagedelivery\//i.test(url)) {
+    // Cloudflare always includes at least one of w/h/f parameters to control resizing.
+    if (/(^|[/?&])(?:w|h)=\d+/i.test(url) || /\/(?:w|h)=\d+/i.test(url)) {
+      return true;
+    }
+  }
+
   // Check for known CDN image hosts
   try {
     const urlObj = new URL(url);

@@ -10,7 +10,9 @@ import { ConfirmActionModal } from '../components/settings/ConfirmActionModal';
 import { Input } from '../components/UI/Input';
 import { TextArea } from '../components/UI/TextArea';
 import { getInitials } from '../utils/formatters';
-import { User, Mail, Shield, Check, Loader2, Camera, Eye, EyeOff, LayoutTemplate, AlertTriangle, ChevronDown } from 'lucide-react';
+import { User, Mail, Shield, Check, Loader2, Camera, Eye, EyeOff, LayoutTemplate, AlertTriangle, ChevronDown, Bell, BellOff, Scale, ExternalLink, Clock, Tag } from 'lucide-react';
+import { useNotifications } from '@/hooks/useNotifications';
+import type { NotificationFrequency } from '@/types/user';
 import { ProfileFormData, AVATAR_COLORS } from '../types/settings';
 import { userToProfileForm } from '../models/userFormMappers';
 import { Avatar } from '../components/shared/Avatar';
@@ -18,12 +20,235 @@ import { adminConfigService } from '../admin/services/adminConfigService';
 import { HeaderSpacer } from '../components/layouts/HeaderSpacer';
 import { LAYOUT_CLASSES } from '../constants/layout';
 import { Z_INDEX } from '../constants/zIndex';
+import { Link } from 'react-router-dom';
+import { useLegalPages } from '@/hooks/useLegalPages';
+import { storageService } from '../services/storageService';
 
 const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5 ml-1">
     {children}
   </label>
 );
+
+const FREQUENCY_OPTIONS: { value: NotificationFrequency; label: string; description: string }[] = [
+  { value: 'instant', label: 'Instant', description: 'Get notified as nuggets are published' },
+  { value: 'daily', label: 'Daily Digest', description: 'One summary push per day at 8 AM' },
+  { value: 'weekly', label: 'Weekly Digest', description: 'One summary push per week on Sunday' },
+  { value: 'none', label: 'None', description: 'No push notifications' },
+];
+
+const NotificationPreferencesSection: React.FC = () => {
+  const {
+    preferences,
+    updatePreferences,
+    isUpdatingPreferences,
+    subscribe,
+    unsubscribe,
+    isSubscribed,
+    permissionStatus,
+    isPushSupported,
+  } = useNotifications();
+
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    storageService.getCategories().then(setAvailableCategories).catch(() => {});
+  }, []);
+
+  const pushEnabled = preferences?.pushEnabled ?? false;
+  const frequency = preferences?.frequency ?? 'instant';
+  const categoryFilter = preferences?.categoryFilter ?? [];
+  const quietHoursStart = preferences?.quietHoursStart ?? '';
+  const quietHoursEnd = preferences?.quietHoursEnd ?? '';
+
+  const handleTogglePush = async () => {
+    if (!pushEnabled) {
+      const success = await subscribe();
+      if (success) {
+        updatePreferences({ pushEnabled: true });
+      }
+    } else {
+      await unsubscribe();
+      updatePreferences({ pushEnabled: false });
+    }
+  };
+
+  const handleFrequencyChange = (value: NotificationFrequency) => {
+    updatePreferences({ frequency: value });
+  };
+
+  const handleCategoryToggle = (category: string) => {
+    const updated = categoryFilter.includes(category)
+      ? categoryFilter.filter((c) => c !== category)
+      : [...categoryFilter, category];
+    updatePreferences({ categoryFilter: updated });
+  };
+
+  const handleToggleAllCategories = () => {
+    if (categoryFilter.length === availableCategories.length) {
+      updatePreferences({ categoryFilter: [] });
+    } else {
+      updatePreferences({ categoryFilter: [...availableCategories] });
+    }
+  };
+
+  const allCategoriesSelected =
+    availableCategories.length > 0 &&
+    categoryFilter.length === availableCategories.length;
+
+  return (
+    <SettingsSectionCard
+      id="notifications"
+      title="Notifications"
+      description="Control how and when you receive push notifications."
+      icon={<Bell size={20} />}
+    >
+      <div className="space-y-6">
+        {/* Push support check */}
+        {!isPushSupported && (
+          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-700 dark:text-amber-400 font-medium">
+            Push notifications are not supported in this browser.
+          </div>
+        )}
+
+        {permissionStatus === 'denied' && (
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-400 font-medium">
+            Notifications are blocked by your browser. Please enable them in your browser settings and refresh.
+          </div>
+        )}
+
+        {/* Master toggle */}
+        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-black/20 rounded-xl border border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${pushEnabled ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+              {pushEnabled ? <Bell size={18} /> : <BellOff size={18} />}
+            </div>
+            <div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">Push Notifications</div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                {pushEnabled ? 'You will receive push notifications' : 'Push notifications are off'}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleTogglePush}
+            disabled={!isPushSupported || permissionStatus === 'denied' || isUpdatingPreferences}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              pushEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                pushEnabled ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        {pushEnabled && (
+          <div className="space-y-6">
+            {/* Frequency selector */}
+            <div className="space-y-2">
+              <Label>Notification Frequency</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {FREQUENCY_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => handleFrequencyChange(option.value)}
+                    disabled={isUpdatingPreferences}
+                    className={`text-left p-3 rounded-xl border transition-all ${
+                      frequency === option.value
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-500'
+                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <div className={`text-sm font-bold ${frequency === option.value ? 'text-blue-700 dark:text-blue-400' : 'text-slate-900 dark:text-white'}`}>
+                      {option.label}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">{option.description}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Category filter */}
+            {availableCategories.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Content Categories</Label>
+                  <button
+                    onClick={handleToggleAllCategories}
+                    disabled={isUpdatingPreferences}
+                    className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 uppercase tracking-wide disabled:opacity-50"
+                  >
+                    {allCategoriesSelected ? 'Deselect all' : 'Select all'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400 dark:text-slate-500 -mt-1">
+                  Only get notified for content in these categories.
+                  {categoryFilter.length === 0 && ' No filter applied — you will receive all notifications.'}
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {availableCategories.map((category) => {
+                    const isSelected = categoryFilter.includes(category);
+                    return (
+                      <button
+                        key={category}
+                        onClick={() => handleCategoryToggle(category)}
+                        disabled={isUpdatingPreferences}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all disabled:opacity-50 ${
+                          isSelected
+                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
+                        }`}
+                      >
+                        {isSelected && <Check size={12} />}
+                        <Tag size={10} className="opacity-50" />
+                        {category}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Quiet hours */}
+            <div className="space-y-2">
+              <Label>Quiet Hours</Label>
+              <p className="text-xs text-slate-400 dark:text-slate-500 -mt-1">
+                Pause push notifications during these hours. In-app notifications are unaffected.
+              </p>
+              <div className="flex items-center gap-3 pt-1">
+                <div className="flex items-center gap-2">
+                  <Clock size={14} className="text-slate-400 shrink-0" />
+                  <input
+                    type="time"
+                    value={quietHoursStart}
+                    onChange={(e) => updatePreferences({ quietHoursStart: e.target.value || null })}
+                    disabled={isUpdatingPreferences}
+                    className="px-3 py-1.5 text-xs font-medium bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                    placeholder="22:00"
+                  />
+                </div>
+                <span className="text-xs text-slate-400 font-medium">to</span>
+                <div>
+                  <input
+                    type="time"
+                    value={quietHoursEnd}
+                    onChange={(e) => updatePreferences({ quietHoursEnd: e.target.value || null })}
+                    disabled={isUpdatingPreferences}
+                    className="px-3 py-1.5 text-xs font-medium bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                    placeholder="08:00"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </SettingsSectionCard>
+  );
+};
 
 
 export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) => {
@@ -36,6 +261,9 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
   const [isSavingSecurity, setIsSavingSecurity] = useState(false);
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
   
+  // Legal pages
+  const { enabledPages: legalPages } = useLegalPages();
+
   // Config State
   const [enableAvatarUpload, setEnableAvatarUpload] = useState(false);
   
@@ -273,7 +501,10 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
               </div>
             </SettingsSectionCard>
 
-            {/* 3. SECURITY */}
+            {/* 3. NOTIFICATIONS */}
+            <NotificationPreferencesSection />
+
+            {/* 4. SECURITY */}
             <SettingsSectionCard 
               id="security" 
               title="Security" 
@@ -334,7 +565,31 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
             </SettingsSectionCard>
 
 
-            {/* 5. DANGER ZONE */}
+            {/* 5. LEGAL */}
+            <SettingsSectionCard
+              id="legal"
+              title="Legal"
+              description="Review our policies, terms, and guidelines."
+              icon={<Scale size={20} />}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {legalPages.map((page) => (
+                  <Link
+                    key={page.slug}
+                    to={`/legal/${page.slug}`}
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-slate-900 dark:text-white">{page.title}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">{page.description}</p>
+                    </div>
+                    <ExternalLink size={14} className="text-slate-400 group-hover:text-primary-500 shrink-0 ml-2 transition-colors" />
+                  </Link>
+                ))}
+              </div>
+            </SettingsSectionCard>
+
+            {/* 6. DANGER ZONE */}
             <div id="danger" className="border border-red-200 dark:border-red-900/30 rounded-2xl overflow-hidden bg-red-50/30 dark:bg-red-900/10">
               <button
                 onClick={() => setIsDangerZoneOpen(!isDangerZoneOpen)}

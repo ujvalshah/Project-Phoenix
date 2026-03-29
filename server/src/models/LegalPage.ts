@@ -1,43 +1,35 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Document, Schema } from 'mongoose';
 
 export interface ILegalPage extends Document {
-  id: string; // Custom ID field (slug-based)
-  title: string;
   slug: string;
-  isEnabled: boolean;
+  title: string;
   content: string;
+  enabled: boolean;
+  noindex: boolean;
   lastUpdated: string;
+  effectiveDate: string;
+  showInFooter: boolean;
+  description: string;
+  order: number;
 }
 
-const LegalPageSchema = new Schema<ILegalPage>({
-  id: { type: String, required: true, unique: true },
-  title: { type: String, required: true },
-  slug: { type: String, required: true, unique: true },
-  isEnabled: { type: Boolean, default: true },
-  content: { type: String, required: true },
-  lastUpdated: { type: String, required: true }
-}, {
-  timestamps: false
-});
+const LegalPageSchema = new Schema<ILegalPage>(
+  {
+    slug: { type: String, required: true, unique: true, trim: true },
+    title: { type: String, required: true, trim: true },
+    content: { type: String, default: '' },
+    enabled: { type: Boolean, default: true },
+    noindex: { type: Boolean, default: false },
+    lastUpdated: { type: String, required: true },
+    effectiveDate: { type: String, required: true },
+    showInFooter: { type: Boolean, default: true },
+    description: { type: String, default: '', trim: true },
+    order: { type: Number, default: 0 },
+  },
+  { timestamps: false }
+);
 
-// Explicit indexes for performance
-LegalPageSchema.index({ slug: 1 }); // Already unique, but explicit for clarity
-LegalPageSchema.index({ id: 1 }); // Already unique, but explicit for clarity
-LegalPageSchema.index({ isEnabled: 1 }); // For filtering enabled pages
+LegalPageSchema.index({ order: 1 });
+LegalPageSchema.index({ enabled: 1, showInFooter: 1 });
 
 export const LegalPage = mongoose.model<ILegalPage>('LegalPage', LegalPageSchema);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -11,7 +11,7 @@ const BASE_URL = getNormalizedApiBase();
 const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
 
 // Token refresh configuration
-const REFRESH_BUFFER_SECONDS = 60; // Refresh 1 minute before expiry
+const REFRESH_BUFFER_SECONDS = 300; // Refresh 5 minutes before expiry
 
 // Helper to extract error message and details from response
 async function extractError(response: Response): Promise<{ message: string; errors?: any[]; code?: string }> {
@@ -79,8 +79,13 @@ function clearStoredAuth(): void {
  * Check if access token is about to expire
  */
 function isTokenExpiringSoon(authData: StoredAuthData): boolean {
-  if (!authData.expiresIn || !authData.refreshedAt) {
+  if (!authData.expiresIn) {
     return false; // No expiry info, can't determine
+  }
+
+  // If refreshedAt is missing, assume token needs refresh to be safe
+  if (!authData.refreshedAt) {
+    return true;
   }
 
   const now = Date.now() / 1000; // Current time in seconds
@@ -179,34 +184,41 @@ class ApiClient {
         body: JSON.stringify({ refreshToken: authData.refreshToken }),
       });
 
-      // 503 = Redis/token service temporarily unavailable - retry after delay
+      // 503 = Redis/token service temporarily unavailable - retry with backoff
       // CRITICAL: Do NOT treat this as "invalid token". The token may still be valid
       // once the service recovers. Retry instead of failing.
       if (response.status === 503) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const retryResponse = await fetch(`${BASE_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authData.token}`,
-          },
-          body: JSON.stringify({ refreshToken: authData.refreshToken }),
-        });
+        const delays = [1000, 2000, 4000]; // Exponential backoff: 1s, 2s, 4s
+        for (const delay of delays) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          const retryResponse = await fetch(`${BASE_URL}/auth/refresh`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authData.token}`,
+            },
+            body: JSON.stringify({ refreshToken: authData.refreshToken }),
+          });
 
-        if (!retryResponse.ok) {
-          return false;
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json();
+            setStoredAuth({
+              ...authData,
+              token: retryData.accessToken || retryData.token,
+              accessToken: retryData.accessToken,
+              refreshToken: retryData.refreshToken || authData.refreshToken,
+              expiresIn: retryData.expiresIn,
+              refreshedAt: Date.now(),
+            });
+            return true;
+          }
+
+          // If not 503 anymore, stop retrying
+          if (retryResponse.status !== 503) {
+            return false;
+          }
         }
-
-        const retryData = await retryResponse.json();
-        setStoredAuth({
-          ...authData,
-          token: retryData.accessToken || retryData.token,
-          accessToken: retryData.accessToken,
-          refreshToken: retryData.refreshToken || authData.refreshToken,
-          expiresIn: retryData.expiresIn,
-          refreshedAt: Date.now(),
-        });
-        return true;
+        return false;
       }
 
       if (!response.ok) {

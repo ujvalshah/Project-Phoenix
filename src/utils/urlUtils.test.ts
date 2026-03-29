@@ -8,6 +8,9 @@ import {
 const SUBSTACK_IMGPROXY =
   'https://substackcdn.com/image/fetch/$s_!NJBe!,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F00bf09f1-e9b6-474a-b63f-6b638428d8e9_1776x1184.png';
 
+const OUR_WORLD_IN_DATA_IMAGEDL =
+  'https://ourworldindata.org/cdn-cgi/imagedelivery/qLq-8BTgXU8yG0N6HnOy8g/7c1b6c37-775b-4326-3bed-48a44e647f00/w=1350';
+
 describe('splitPastedUrlCandidates', () => {
   it('keeps a single Substack imgproxy URL intact (commas in path)', () => {
     expect(splitPastedUrlCandidates(SUBSTACK_IMGPROXY)).toEqual([SUBSTACK_IMGPROXY]);
@@ -41,5 +44,9 @@ describe('looksLikeMultipleUrls', () => {
 describe('isImageUrl', () => {
   it('classifies Substack imgproxy PNG URLs as images', () => {
     expect(isImageUrl(SUBSTACK_IMGPROXY)).toBe(true);
+  });
+
+  it('classifies Cloudflare imagedelivery URLs as images', () => {
+    expect(isImageUrl(OUR_WORLD_IN_DATA_IMAGEDL)).toBe(true);
   });
 });

@@ -115,6 +115,10 @@ class AdminCollectionsService {
     await apiClient.patch(`/collections/${id}/featured`, body, undefined, 'adminCollectionsService.setFeatured');
   }
 
+  async reorderFeatured(orderedIds: string[]): Promise<void> {
+    await apiClient.patch('/collections/featured/reorder', { orderedIds }, undefined, 'adminCollectionsService.reorderFeatured');
+  }
+
   async deleteCollection(id: string): Promise<void> {
     try {
       await apiClient.delete(`/collections/${id}`, undefined, 'adminCollectionsService.deleteCollection');

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { BackToTopButton } from '@/components/UI/BackToTopButton';
 import { ToastContainer } from '@/components/UI/Toast';
@@ -15,9 +15,10 @@ import { CreateNuggetModal } from '@/components/CreateNuggetModal';
 import { useAuth } from '@/hooks/useAuth';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import { LegalPageRenderer } from '@/pages/LegalPageRenderer';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
 import { PersistentVideoPlayer } from '@/components/PersistentVideoPlayer';
+import { NotificationPrompt } from '@/components/NotificationPrompt';
+import { LegalFooter } from '@/components/legal/LegalFooter';
 
 // Legacy hash URL redirect handler
 // Redirects old /#/path URLs to clean /path URLs for backwards compatibility
@@ -32,6 +33,12 @@ const HashRedirect: React.FC = () => {
   }, [navigate]);
   
   return null;
+};
+
+// Redirect /article/:id → /?openArticle=:id (opens modal on homepage)
+const ArticleRedirect: React.FC = () => {
+  const { articleId } = useParams<{ articleId: string }>();
+  return <Navigate to={`/?openArticle=${articleId}`} replace />;
 };
 
 // Lazy Load Pages
@@ -67,7 +74,10 @@ const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then(module
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage').then(module => ({ default: module.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage').then(module => ({ default: module.ResetPasswordPage })));
 const SavedPage = lazy(() => import('@/pages/SavedPage').then(module => ({ default: module.SavedPage })));
-const ArticleDetailPage = lazy(() => import('@/pages/ArticleDetail').then(module => ({ default: module.ArticleDetailPage })));
+
+const LegalPage = lazy(() => import('@/pages/LegalPage').then(module => ({ default: module.LegalPage })));
+const ContactPage = lazy(() => import('@/pages/ContactPage').then(module => ({ default: module.ContactPage })));
+const NotificationsPage = lazy(() => import('@/pages/NotificationsPage').then(module => ({ default: module.NotificationsPage })));
 
 const AppContent: React.FC = () => {
   const [isDark, setIsDark] = useState(false);
@@ -148,7 +158,7 @@ const AppContent: React.FC = () => {
           {/* Feed/Content Areas - Wrapped in Error Boundaries */}
           <Route path="/" element={
             <ErrorBoundary>
-              <HomePage searchQuery={filters.searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={filters.selectedCategories} setSelectedCategories={filters.setSelectedCategories} selectedTag={filters.selectedTag} setSelectedTag={filters.setSelectedTag} sortOrder={filters.sortOrder} collectionId={filters.collectionId} setCollectionId={filters.setCollectionId} />
+              <HomePage searchQuery={filters.searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={filters.selectedCategories} setSelectedCategories={filters.setSelectedCategories} selectedTag={filters.selectedTag} setSelectedTag={filters.setSelectedTag} sortOrder={filters.sortOrder} collectionId={filters.collectionId} setCollectionId={filters.setCollectionId} favorites={filters.favorites} unread={filters.unread} formats={filters.formats} timeRange={filters.timeRange} />
             </ErrorBoundary>
           } />
           
@@ -203,15 +213,6 @@ const AppContent: React.FC = () => {
           {/* Redirect old YT Analysis route to home */}
           <Route path="/youtube-analysis" element={<Navigate to="/" replace />} />
 
-          {/* Legal Pages - Dynamic Routing */}
-          <Route path="/about" element={<LegalPageRenderer />} />
-          <Route path="/terms" element={<LegalPageRenderer />} />
-          <Route path="/privacy" element={<LegalPageRenderer />} />
-          <Route path="/contact" element={<LegalPageRenderer />} />
-          <Route path="/guidelines" element={<LegalPageRenderer />} />
-          <Route path="/disclaimer" element={<LegalPageRenderer />} />
-          <Route path="/cookie-policy" element={<LegalPageRenderer />} />
-
           {/* Auth Routes - Wrapped in Error Boundary */}
           <Route path="/verify-email" element={
             <ErrorBoundary>
@@ -229,10 +230,29 @@ const AppContent: React.FC = () => {
             </ErrorBoundary>
           } />
 
-          {/* Article detail page — canonical share URL target */}
-          <Route path="/article/:articleId" element={
+          {/* Notifications page — full notification history */}
+          <Route path="/notifications" element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <NotificationsPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          } />
+
+          {/* Article detail — redirect to home with modal overlay */}
+          <Route path="/article/:articleId" element={<ArticleRedirect />} />
+
+          {/* Legal pages — /legal/privacy, /legal/terms, etc. */}
+          <Route path="/legal/:slug" element={
             <ErrorBoundary>
-              <ArticleDetailPage />
+              <LegalPage />
+            </ErrorBoundary>
+          } />
+
+          {/* Contact page */}
+          <Route path="/contact" element={
+            <ErrorBoundary>
+              <ContactPage />
             </ErrorBoundary>
           } />
 
@@ -243,10 +263,12 @@ const AppContent: React.FC = () => {
         <BackToTopButton />
         <ToastContainer />
         <PersistentVideoPlayer />
+        <NotificationPrompt />
         
         <CreateNuggetModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
         <AuthModal />
       </MainLayout>
+      <LegalFooter />
     </>
   );
 };

@@ -38,13 +38,20 @@ export interface IUserSecurity {
   mfaEnabled: boolean;
 }
 
+export type NotificationFrequency = 'instant' | 'daily' | 'weekly' | 'none';
+
 export interface IUserPreferences {
   theme: 'light' | 'dark' | 'system';
-  interestedCategories: string[]; // TODO: legacy-name-only-if-used-by-frontend - user preference field (not article field)
+  interestedCategories: string[];
   notifications: {
     emailDigest: boolean;
     productUpdates: boolean;
     newFollowers: boolean;
+    pushEnabled: boolean;
+    frequency: NotificationFrequency;
+    categoryFilter: string[];
+    quietHoursStart?: string;
+    quietHoursEnd?: string;
   };
 }
 
@@ -115,7 +122,12 @@ const UserPreferencesSchema = new Schema<IUserPreferences>({
   notifications: {
     emailDigest: { type: Boolean, default: true },
     productUpdates: { type: Boolean, default: false },
-    newFollowers: { type: Boolean, default: true }
+    newFollowers: { type: Boolean, default: true },
+    pushEnabled: { type: Boolean, default: false },
+    frequency: { type: String, enum: ['instant', 'daily', 'weekly', 'none'], default: 'instant' },
+    categoryFilter: { type: [String], default: [] },
+    quietHoursStart: { type: String, required: false },
+    quietHoursEnd: { type: String, required: false },
   }
 }, { _id: false });
 

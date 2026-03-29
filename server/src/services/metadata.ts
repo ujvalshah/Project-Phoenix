@@ -141,6 +141,15 @@ function isImageUrl(urlString: string): boolean {
       return true;
     }
 
+    // Cloudflare Images / Image Resizing:
+    // Example: https://<host>/cdn-cgi/imagedelivery/<id>/<uuid>/w=1350
+    // These URLs often have no file extension, so we need a path-based check.
+    if (pathname.includes('/cdn-cgi/imagedelivery/')) {
+      if (/\/(?:w|h)=\d+/.test(pathname)) {
+        return true;
+      }
+    }
+
     // CloudFront (AWS) - DocSend and similar: path contains _images, /images/, or /image/
     if (
       hostname.includes('cloudfront.net') &&

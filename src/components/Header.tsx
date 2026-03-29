@@ -1,7 +1,8 @@
 // NOTE: Do not add multiple React imports in this file.
 // Consolidate all hooks into the single import below.
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, Globe, FileText, Lock, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, MoreHorizontal, Clock } from 'lucide-react';
+import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, MoreHorizontal, Clock, Mail } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
 import { Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom'; // Still needed for NavigationDrawer
 import { Avatar } from './shared/Avatar';
@@ -16,7 +17,7 @@ import { LAYOUT_CLASSES } from '@/constants/layout';
 import { DropdownPortal } from './UI/DropdownPortal';
 import type { SortOrder } from '@/types';
 import type { UseFilterStateReturn } from '@/hooks/useFilterState';
-
+import { useLegalPages } from '@/hooks/useLegalPages';
 interface HeaderProps {
   isDark: boolean;
   toggleTheme: () => void;
@@ -37,6 +38,28 @@ interface HeaderProps {
   filters?: UseFilterStateReturn;
 }
 
+/** Small legal links section for the user menu dropdown */
+const UserMenuLegalLinks: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { enabledPages } = useLegalPages();
+  if (enabledPages.length === 0) return null;
+  return (
+    <div className="border-t border-gray-100 px-4 py-2">
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+        {enabledPages.map((page) => (
+          <Link
+            key={page.slug}
+            to={`/legal/${page.slug}`}
+            onClick={onClose}
+            className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            {page.title}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export const Header: React.FC<HeaderProps> = ({
   searchQuery,
   setSearchQuery,
@@ -45,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
   setSidebarOpen,
   viewMode,
   setViewMode,
-  selectedCategories,
+  selectedCategories: _selectedCategories,
   sortOrder,
   setSortOrder,
   isDark,
@@ -59,13 +82,35 @@ export const Header: React.FC<HeaderProps> = ({
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   
-  // Filter state
-  const [filterState, setFilterState] = useState<FilterState>({
-    favorites: false,
-    unread: false,
-    formats: [],
-    timeRange: 'all',
-  });
+  // Derive filter popover state from the global filter hook (single source of truth).
+  // Previously this was a disconnected local useState, so toggling "Videos" etc.
+  // never propagated to useInfiniteArticles.
+  const filterState: FilterState = {
+    favorites: filters?.favorites ?? false,
+    unread: filters?.unread ?? false,
+    formats: filters?.formats ?? [],
+    timeRange: filters?.timeRange ?? 'all',
+  };
+
+  const handleFilterChange = (newFilters: FilterState) => {
+    if (!filters) return;
+    if (newFilters.favorites !== filters.favorites) filters.setFavorites(newFilters.favorites);
+    if (newFilters.unread !== filters.unread) filters.setUnread(newFilters.unread);
+    if (newFilters.timeRange !== filters.timeRange) filters.setTimeRange(newFilters.timeRange);
+    // Formats: find the toggled format and call toggleFormat
+    const added = newFilters.formats.filter(f => !filters.formats.includes(f));
+    const removed = filters.formats.filter(f => !newFilters.formats.includes(f));
+    for (const fmt of added) filters.toggleFormat(fmt);
+    for (const fmt of removed) filters.toggleFormat(fmt);
+  };
+
+  const handleFilterClear = () => {
+    if (!filters) return;
+    filters.clearFavorites();
+    filters.clearUnread();
+    filters.clearFormats();
+    filters.clearTimeRange();
+  };
   
   // Recent searches state
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
@@ -81,6 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
   const mobileAvatarButtonRef = useRef<HTMLButtonElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileFilterButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
@@ -187,12 +233,9 @@ export const Header: React.FC<HeaderProps> = ({
     }
   }, [isMobileSearchOpen]);
 
-  // Check if filters or sort are active
-  const hasActiveFilters = selectedCategories.length > 0 || 
-    filterState.favorites || 
-    filterState.unread || 
-    filterState.formats.length > 0 || 
-    filterState.timeRange !== 'all';
+  // Use global filter hook as single source of truth for active filter state
+  const hasActiveFilters = filters?.hasActiveFilters ?? false;
+  const activeFilterCount = filters?.activeFilterCount ?? 0;
 
   // Track window size for tablet detection
   const [isTablet, setIsTablet] = useState(false);
@@ -351,11 +394,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <Filter size={16} fill={isFilterPopoverOpen || hasActiveFilters ? "currentColor" : "none"} />
                   {hasActiveFilters && (
                     <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-gray-400 text-white text-[9px] rounded-full flex items-center justify-center font-medium">
-                      {selectedCategories.length + 
-                        (filterState.favorites ? 1 : 0) + 
-                        (filterState.unread ? 1 : 0) + 
-                        filterState.formats.length + 
-                        (filterState.timeRange !== 'all' ? 1 : 0)}
+                      {activeFilterCount}
                     </span>
                   )}
                 </button>
@@ -437,6 +476,9 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Maximize size={16} />
             </button>
+
+            {/* Notification Bell */}
+            <NotificationBell />
 
             {/* Theme toggle */}
             <button
@@ -531,6 +573,29 @@ export const Header: React.FC<HeaderProps> = ({
               <Search size={18} />
             </button>
 
+            {/* Filter button - Mobile & Tablet - with badge */}
+            <button
+              ref={mobileFilterButtonRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFilterPopoverOpen(!isFilterPopoverOpen);
+              }}
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded transition-all relative ${
+                isFilterPopoverOpen || hasActiveFilters
+                  ? 'text-yellow-500'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              aria-label={`Filter${hasActiveFilters ? ` (${filters?.activeFilterCount ?? 0} active)` : ''}`}
+              title="Filter"
+            >
+              <Filter size={18} fill={isFilterPopoverOpen || hasActiveFilters ? "currentColor" : "none"} />
+              {hasActiveFilters && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-yellow-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
             {/* Create button - Compact styling */}
             <button
               onClick={withAuth(onCreateNugget)}
@@ -539,6 +604,9 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Sparkles size={18} strokeWidth={2} className="text-yellow-500" fill="currentColor" />
             </button>
+
+            {/* Notification Bell - Mobile/Tablet */}
+            <NotificationBell />
 
             {/* Theme toggle - Compact styling */}
             <button
@@ -654,6 +722,14 @@ export const Header: React.FC<HeaderProps> = ({
             <Settings size={16} />
             Settings
           </Link>
+          <Link
+            to="/contact"
+            onClick={() => setIsUserMenuOpen(false)}
+            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <Mail size={16} />
+            Contact Us
+          </Link>
           {isAdmin && (
             <>
               <div className="h-px bg-gray-100 my-1" />
@@ -667,51 +743,6 @@ export const Header: React.FC<HeaderProps> = ({
               </Link>
             </>
           )}
-        </div>
-
-        {/* Legal & Info */}
-        <div className="border-t border-gray-100 py-1">
-          <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Legal & Info</p>
-          <Link
-            to="/about"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <Globe size={14} />
-            About Us
-          </Link>
-          <Link
-            to="/terms"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <FileText size={14} />
-            Terms of Service
-          </Link>
-          <Link
-            to="/privacy"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <Lock size={14} />
-            Privacy Policy
-          </Link>
-          <Link
-            to="/guidelines"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <BookOpen size={14} />
-            Guidelines
-          </Link>
-          <Link
-            to="/contact"
-            onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <MessageSquare size={14} />
-            Contact
-          </Link>
         </div>
 
         {/* Logout */}
@@ -734,26 +765,22 @@ export const Header: React.FC<HeaderProps> = ({
             Log Out
           </button>
         </div>
+
+        {/* Legal Links */}
+        <UserMenuLegalLinks onClose={() => setIsUserMenuOpen(false)} />
       </DropdownPortal>
 
       {/* Filter Popover - Desktop (lg+) - uses DropdownPortal */}
       <DropdownPortal
-        isOpen={isFilterPopoverOpen && !isTablet}
+        isOpen={isFilterPopoverOpen && !isTablet && !isMobile}
         anchorRef={filterButtonRef}
         onClickOutside={() => setIsFilterPopoverOpen(false)}
         className="bg-white rounded-xl shadow-xl border border-gray-100"
       >
         <FilterPopover
           filters={filterState}
-          onChange={setFilterState}
-          onClear={() => {
-            setFilterState({
-              favorites: false,
-              unread: false,
-              formats: [],
-              timeRange: 'all',
-            });
-          }}
+          onChange={handleFilterChange}
+          onClear={handleFilterClear}
         />
       </DropdownPortal>
 
@@ -822,10 +849,10 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </DropdownPortal>
 
-      {/* Tablet Filter+Sort Popover - uses DropdownPortal */}
+      {/* Tablet/Mobile Filter+Sort Popover - uses DropdownPortal */}
       <DropdownPortal
-        isOpen={isFilterPopoverOpen && isTablet}
-        anchorRef={filterButtonRef}
+        isOpen={isFilterPopoverOpen && (isTablet || isMobile)}
+        anchorRef={isMobile ? mobileFilterButtonRef : filterButtonRef}
         onClickOutside={() => setIsFilterPopoverOpen(false)}
         className="bg-white rounded-xl shadow-xl border border-gray-100 max-w-sm"
       >
@@ -835,15 +862,8 @@ export const Header: React.FC<HeaderProps> = ({
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Filters</h3>
             <FilterPopover
               filters={filterState}
-              onChange={setFilterState}
-              onClear={() => {
-                setFilterState({
-                  favorites: false,
-                  unread: false,
-                  formats: [],
-                  timeRange: 'all',
-                });
-              }}
+              onChange={handleFilterChange}
+              onClear={handleFilterClear}
             />
           </div>
           
@@ -1121,7 +1141,10 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
            <Link to="/collections" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
               <Layers size={18} /> Collections
            </Link>
-           
+           <Link to="/contact" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
+              <Mail size={18} /> Contact Us
+           </Link>
+
            {isAuthenticated && (
              <>
                <div className="my-2 h-px bg-gray-100 mx-4" />
@@ -1152,29 +1175,6 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
            
            {/* Feedback Widget */}
            <DrawerFeedbackForm isAuthenticated={isAuthenticated} currentUser={currentUser} />
-
-           <div className="my-4 h-px bg-gray-100 mx-4" />
-           
-           <div className="px-4 pb-2">
-             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Legal & Info</p>
-             <div className="flex flex-col gap-1">
-               <Link to="/about" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <Globe size={16} /> About Us
-               </Link>
-               <Link to="/terms" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <FileText size={16} /> Terms of Service
-               </Link>
-               <Link to="/privacy" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <Lock size={16} /> Privacy Policy
-               </Link>
-               <Link to="/guidelines" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <BookOpen size={16} /> Guidelines
-               </Link>
-               <Link to="/contact" onClick={onClose} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <MessageSquare size={16} /> Contact
-               </Link>
-             </div>
-           </div>
         </div>
 
         <div className="p-4 border-t border-gray-100 bg-gray-50/50">

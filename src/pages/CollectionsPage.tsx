@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Collection } from '@/types';
 import { storageService } from '@/services/storageService';
 import { Search, LayoutGrid, List, ArrowUp, ArrowDown, ChevronDown, Plus, X, Folder, CheckSquare } from 'lucide-react';
@@ -54,14 +54,15 @@ export const CollectionsPage: React.FC = () => {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0); // Backend-provided count
   const [isLoading, setIsLoading] = useState(true);
+  const [searchInputValue, setSearchInputValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [sortField, setSortField] = useState<SortField>('created');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showInstruction, setShowInstruction] = useState(false);
-  // PHASE 5: Preserve pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageLimit] = useState(25);
+  // NOTE: This page currently has no visible pagination controls,
+  // so we fetch all matching collections across pages.
+  const pageLimit = 100;
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState(false);
@@ -72,10 +73,21 @@ export const CollectionsPage: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
 
-  // PHASE 5: Reload collections when search/sort changes (backend handles filtering/sorting)
+  // Debounce search input (300ms) to avoid API call on every keystroke
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSearchInput = useCallback((value: string) => {
+    setSearchInputValue(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearchQuery(value.trim());
+    }, 300);
+  }, []);
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
+
+  // Reload collections when debounced search/sort changes (backend handles filtering/sorting)
   useEffect(() => {
     loadCollections();
-  }, [searchQuery, sortField, sortDirection, currentPage]);
+  }, [searchQuery, sortField, sortDirection]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -91,35 +103,57 @@ export const CollectionsPage: React.FC = () => {
   const loadCollections = async () => {
     setIsLoading(true);
     try {
-      // PHASE 5: Request collections with backend search/sort/pagination
-      // Backend handles filtering, sorting, and pagination
-      const [collectionsResponse, allUsersResponse] = await Promise.all([
-          storageService.getCollections({ 
-            type: 'public', 
-            includeCount: true,
-            searchQuery: searchQuery || undefined, // Only send if not empty
-            sortField: sortField,
-            sortDirection: sortDirection,
-            page: currentPage,
-            limit: pageLimit
-          }),
-          storageService.getUsers()
-      ]);
+      const fetchCollectionsPage = (page: number) =>
+        storageService.getCollections({
+          type: 'public',
+          includeCount: true,
+          searchQuery: searchQuery || undefined,
+          sortField,
+          sortDirection,
+          page,
+          limit: pageLimit,
+        });
+
+      // First page gives us total count; fetch remaining pages if needed.
+      const firstPageResponse = await fetchCollectionsPage(1);
+      const firstPageData = Array.isArray(firstPageResponse)
+        ? firstPageResponse
+        : (firstPageResponse?.data || []);
+      const total = Array.isArray(firstPageResponse)
+        ? firstPageData.length
+        : (typeof firstPageResponse?.count === 'number' ? firstPageResponse.count : firstPageData.length);
+
+      let collectionsData: Collection[] = [...firstPageData];
+      if (total > firstPageData.length) {
+        const totalPages = Math.ceil(total / pageLimit);
+        const remainingPagePromises: Array<Promise<Collection[] | { data: Collection[]; count: number }>> = [];
+        for (let page = 2; page <= totalPages; page++) {
+          remainingPagePromises.push(
+            storageService.getCollections({
+              type: 'public',
+              searchQuery: searchQuery || undefined,
+              sortField,
+              sortDirection,
+              page,
+              limit: pageLimit,
+            })
+          );
+        }
+
+        const remainingPageResponses = await Promise.all(remainingPagePromises);
+        remainingPageResponses.forEach((response) => {
+          if (Array.isArray(response)) {
+            collectionsData.push(...response);
+          } else if (response?.data && Array.isArray(response.data)) {
+            collectionsData.push(...response.data);
+          }
+        });
+      }
+
+      const allUsersResponse = await storageService.getUsers();
 
       // Ensure allUsers is an array
       const allUsers = Array.isArray(allUsersResponse) ? allUsersResponse : [];
-
-      // Handle response: could be array (legacy) or object with data and count
-      let collectionsData: Collection[] = [];
-      let count = 0;
-      
-      if (Array.isArray(collectionsResponse)) {
-        collectionsData = collectionsResponse;
-        count = collectionsData.length; // Fallback to array length if count not provided
-      } else if (collectionsResponse && typeof collectionsResponse === 'object' && 'data' in collectionsResponse) {
-        collectionsData = collectionsResponse.data || [];
-        count = collectionsResponse.count || collectionsData.length;
-      }
 
       const hydrated = collectionsData.map(col => ({
           ...col,
@@ -127,7 +161,7 @@ export const CollectionsPage: React.FC = () => {
       }));
 
       setCollections(hydrated);
-      setTotalCount(count); // Store backend-provided count
+      setTotalCount(total);
     } catch (error: any) {
       // Handle cancelled requests gracefully
       if (error?.message !== 'Request cancelled') {
@@ -325,7 +359,7 @@ export const CollectionsPage: React.FC = () => {
                 <div className={`flex flex-col md:flex-row gap-4 items-center justify-between w-full transition-opacity duration-300 ${selectionMode ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                     <div className="relative w-full md:max-w-2xl">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input type="text" placeholder="Search collections..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 focus:border-yellow-400 dark:focus:border-yellow-500 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all shadow-sm" />
+                        <input type="text" placeholder="Search collections..." value={searchInputValue} onChange={(e) => handleSearchInput(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 focus:border-yellow-400 dark:focus:border-yellow-500 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all shadow-sm" />
                     </div>
                     <div className="flex items-center gap-3 w-full md:w-auto justify-end">
                         <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-0.5 shadow-sm">
@@ -355,7 +389,7 @@ export const CollectionsPage: React.FC = () => {
 
       <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {processedCollections.length === 0 ? (
-            <EmptyState icon={<Search />} title="No collections found" description={searchQuery ? `We couldn't find anything matching "${searchQuery}".` : "Be the first to create a community collection!"} />
+            <EmptyState icon={<Search />} title="No collections found" description={searchInputValue ? `We couldn't find anything matching "${searchInputValue}".` : "Be the first to create a community collection!"} />
         ) : (
             <div className={`animate-in fade-in slide-in-from-bottom-2 duration-500`}>
                 {viewMode === 'grid' ? (

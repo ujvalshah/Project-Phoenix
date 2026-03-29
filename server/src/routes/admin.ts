@@ -7,7 +7,6 @@ import {
   getMediaLimits,
   updateMediaLimits
 } from '../controllers/adminController.js';
-
 const router = Router();
 
 // GET /api/admin/stats

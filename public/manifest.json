@@ -1,0 +1,17 @@
+{
+  "name": "Nugget News",
+  "short_name": "Nuggets",
+  "description": "Curated insights, sharp takes, and knowledge nuggets.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -811,13 +811,12 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
         isDestructive
       />
 
-      <AddToCollectionModal 
+      <AddToCollectionModal
         isOpen={showAddToCollection}
         onClose={() => {
           setShowAddToCollection(false);
         }}
         articleIds={selectedIds}
-        mode="public" 
       />
     </div>
   );

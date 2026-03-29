@@ -2,7 +2,6 @@ import { Article } from '../models/Article.js';
 import { Collection } from '../models/Collection.js';
 import { User } from '../models/User.js';
 import { Tag } from '../models/Tag.js';
-import { LegalPage } from '../models/LegalPage.js';
 import { Feedback } from '../models/Feedback.js';
 import { Report } from '../models/Report.js';
 import { isMongoConnected } from './db.js';
@@ -33,13 +32,12 @@ export async function seedDatabase(): Promise<void> {
     const userCount = await User.countDocuments();
     const collectionCount = await Collection.countDocuments();
     const tagCount = await Tag.countDocuments();
-    const legalPageCount = await LegalPage.countDocuments();
     const feedbackCount = await Feedback.countDocuments();
     const reportCount = await Report.countDocuments();
 
-    if (articleCount > 0 || userCount > 0 || collectionCount > 0 || tagCount > 0 || legalPageCount > 0 || feedbackCount > 0 || reportCount > 0) {
+    if (articleCount > 0 || userCount > 0 || collectionCount > 0 || tagCount > 0 || feedbackCount > 0 || reportCount > 0) {
       console.log('[Seed] Skipped - Database already populated');
-      console.log(`[Seed] Current counts: Articles: ${articleCount}, Users: ${userCount}, Collections: ${collectionCount}, Tags: ${tagCount}, Legal Pages: ${legalPageCount}, Feedback: ${feedbackCount}, Reports: ${reportCount}`);
+      console.log(`[Seed] Current counts: Articles: ${articleCount}, Users: ${userCount}, Collections: ${collectionCount}, Tags: ${tagCount}, Feedback: ${feedbackCount}, Reports: ${reportCount}`);
       return;
     }
 
@@ -306,36 +304,6 @@ export async function seedDatabase(): Promise<void> {
     ];
     await Collection.insertMany(collections);
     console.log(`[Seed] ✓ Created ${collections.length} collections`);
-
-    // Seed Legal Pages
-    const legalPages = [
-      { 
-        id: 'about', 
-        title: 'About Us', 
-        slug: 'about', 
-        isEnabled: true, 
-        content: '# About Us\nWe are Nuggets.', 
-        lastUpdated: new Date().toISOString() 
-      },
-      { 
-        id: 'terms', 
-        title: 'Terms', 
-        slug: 'terms', 
-        isEnabled: true, 
-        content: '# Terms\nBe nice.', 
-        lastUpdated: new Date().toISOString() 
-      },
-      { 
-        id: 'privacy', 
-        title: 'Privacy', 
-        slug: 'privacy', 
-        isEnabled: true, 
-        content: '# Privacy\nWe respect it.', 
-        lastUpdated: new Date().toISOString() 
-      }
-    ];
-    await LegalPage.insertMany(legalPages);
-    console.log(`[Seed] ✓ Created ${legalPages.length} legal pages`);
 
     // Seed Feedback
     const feedbacks = [

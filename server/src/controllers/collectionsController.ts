@@ -3,7 +3,7 @@ import { Collection } from '../models/Collection.js';
 import { Article } from '../models/Article.js';
 import { User } from '../models/User.js';
 import { normalizeDoc, normalizeDocs } from '../utils/db.js';
-import { createCollectionSchema, updateCollectionSchema, addEntrySchema, flagEntrySchema, setFeaturedSchema } from '../utils/validation.js';
+import { createCollectionSchema, updateCollectionSchema, addEntrySchema, batchEntriesSchema, flagEntrySchema, setFeaturedSchema, reorderFeaturedSchema } from '../utils/validation.js';
 import { getCommunityCollections, getCommunityCollectionsCount, CollectionQueryFilters } from '../utils/collectionQueryHelpers.js';
 import { createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { createRequestLogger } from '../utils/logger.js';
@@ -13,40 +13,53 @@ import { captureException } from '../utils/sentry.js';
  * PHASE 1: Helper function to check if user has permission to modify a collection
  * Returns true if user is the creator OR user is an admin
  */
-function canModifyCollection(collection: { creatorId: string; type: string }, userId: string | undefined, userRole: string | undefined): boolean {
+function canModifyCollection(
+  collection: { creatorId: unknown; type: string },
+  userId: string | undefined,
+  userRole: string | undefined
+): boolean {
   if (!userId) return false;
+  const normalizedRole = userRole?.toLowerCase();
   // Admin can modify any collection
-  if (userRole === 'admin') return true;
+  if (normalizedRole === 'admin') return true;
   // Creator can modify their own collection
-  return collection.creatorId === userId;
+  return String(collection.creatorId) === String(userId);
 }
 
 /**
  * PHASE 1: Helper function to check if user has permission to view a collection
  * Returns true if collection is public OR user is creator OR user is admin
  */
-function canViewCollection(collection: { creatorId: string; type: string }, userId: string | undefined, userRole: string | undefined): boolean {
+function canViewCollection(
+  collection: { creatorId: unknown; type: string },
+  userId: string | undefined,
+  userRole: string | undefined
+): boolean {
   // Public collections are viewable by anyone
   if (collection.type === 'public') return true;
   if (!userId) return false;
   // Admin can view any collection
-  if (userRole === 'admin') return true;
+  if (userRole?.toLowerCase() === 'admin') return true;
   // Creator can view their own private collection
-  return collection.creatorId === userId;
+  return String(collection.creatorId) === String(userId);
 }
 
 /**
  * PHASE 1: Helper function to check if user can add/remove entries from a collection
  * Returns true if collection is public OR user is creator OR user is admin
  */
-function canModifyCollectionEntries(collection: { creatorId: string; type: string }, userId: string | undefined, userRole: string | undefined): boolean {
+function canModifyCollectionEntries(
+  collection: { creatorId: unknown; type: string },
+  userId: string | undefined,
+  userRole: string | undefined
+): boolean {
   if (!userId) return false;
   // Admin can modify entries in any collection
-  if (userRole === 'admin') return true;
+  if (userRole?.toLowerCase() === 'admin') return true;
   // Public collections allow anyone to add/remove entries
   if (collection.type === 'public') return true;
   // Private collections: only creator can modify entries
-  return collection.creatorId === userId;
+  return String(collection.creatorId) === String(userId);
 }
 
 export const getCollections = async (req: Request, res: Response) => {
@@ -61,7 +74,7 @@ export const getCollections = async (req: Request, res: Response) => {
     // PHASE 1: Filter private collections - require authentication
     // Admins can see all private collections, regular users only see their own
     const userRole = (req as any).user?.role;
-    const isAdmin = userRole === 'admin';
+    const isAdmin = typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
     
     if (type === 'private' && !userId) {
       return res.status(401).json({ message: 'Authentication required to view private collections' });
@@ -779,6 +792,179 @@ export const removeEntry = async (req: Request, res: Response) => {
   }
 };
 
+export const addBatchEntries = async (req: Request, res: Response) => {
+  try {
+    // Validate input
+    const validationResult = batchEntriesSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: validationResult.error.errors
+      });
+    }
+
+    const { articleIds } = validationResult.data;
+
+    // PHASE 1: Check collection access with admin override
+    const collection = await Collection.findById(req.params.id);
+    if (!collection) return res.status(404).json({ message: 'Collection not found' });
+
+    // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
+    const currentUserId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    if (!canModifyCollectionEntries(collection, currentUserId, userRole)) {
+      return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
+    }
+
+    // Validate all articles exist in one batch query
+    const existingArticles = await Article.find({ _id: { $in: articleIds } }).select('_id').lean();
+    const validArticleIds = existingArticles.map((a) => String(a._id));
+
+    if (validArticleIds.length === 0) {
+      return res.status(400).json({ message: 'None of the provided article IDs exist' });
+    }
+
+    // Build entries array for $addToSet with $each
+    const newEntries = validArticleIds.map((articleId) => ({
+      articleId,
+      addedByUserId: currentUserId,
+      addedAt: new Date().toISOString(),
+      flaggedBy: []
+    }));
+
+    // Use findOneAndUpdate with $addToSet + $each to add all entries atomically
+    const updatedCollection = await Collection.findOneAndUpdate(
+      { _id: req.params.id },
+      {
+        $addToSet: {
+          entries: { $each: newEntries }
+        },
+        $set: {
+          updatedAt: new Date().toISOString()
+        }
+      },
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+
+    if (!updatedCollection) {
+      return res.status(404).json({ message: 'Collection not found' });
+    }
+
+    // PHASE 3: Ensure validEntriesCount matches entries length
+    if (updatedCollection.validEntriesCount === undefined ||
+        updatedCollection.validEntriesCount === null ||
+        updatedCollection.validEntriesCount < 0 ||
+        updatedCollection.validEntriesCount !== updatedCollection.entries.length) {
+
+      await Collection.findOneAndUpdate(
+        { _id: req.params.id },
+        {
+          $set: {
+            validEntriesCount: Math.max(0, updatedCollection.entries.length),
+            updatedAt: new Date().toISOString()
+          }
+        }
+      );
+
+      updatedCollection.validEntriesCount = Math.max(0, updatedCollection.entries.length);
+    }
+
+    res.json(normalizeDoc(updatedCollection));
+  } catch (error: any) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Collections] Add batch entries error',
+      error: {
+        message: error.message,
+        stack: error.stack,
+      },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const removeBatchEntries = async (req: Request, res: Response) => {
+  try {
+    // Validate input
+    const validationResult = batchEntriesSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: validationResult.error.errors
+      });
+    }
+
+    const { articleIds } = validationResult.data;
+
+    // PHASE 1: Check collection access with admin override
+    const collection = await Collection.findById(req.params.id);
+    if (!collection) return res.status(404).json({ message: 'Collection not found' });
+
+    const currentUserId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    if (!canModifyCollectionEntries(collection, currentUserId, userRole)) {
+      return res.status(403).json({ message: 'You do not have permission to remove entries from this collection' });
+    }
+
+    // Use findOneAndUpdate with $pull to atomically remove all matching entries
+    const updatedCollection = await Collection.findOneAndUpdate(
+      { _id: req.params.id },
+      {
+        $pull: {
+          entries: { articleId: { $in: articleIds } }
+        },
+        $set: {
+          updatedAt: new Date().toISOString()
+        }
+      },
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+
+    if (!updatedCollection) {
+      return res.status(404).json({ message: 'Collection not found' });
+    }
+
+    // PHASE 3: Ensure validEntriesCount matches entries length
+    if (updatedCollection.validEntriesCount === undefined ||
+        updatedCollection.validEntriesCount === null ||
+        updatedCollection.validEntriesCount < 0 ||
+        updatedCollection.validEntriesCount !== updatedCollection.entries.length) {
+
+      await Collection.findOneAndUpdate(
+        { _id: req.params.id },
+        {
+          $set: {
+            validEntriesCount: Math.max(0, updatedCollection.entries.length),
+            updatedAt: new Date().toISOString()
+          }
+        }
+      );
+
+      updatedCollection.validEntriesCount = Math.max(0, updatedCollection.entries.length);
+    }
+
+    res.json(normalizeDoc(updatedCollection));
+  } catch (error: any) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Collections] Remove batch entries error',
+      error: {
+        message: error.message,
+        stack: error.stack,
+      },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const flagEntry = async (req: Request, res: Response) => {
   try {
     // Validate input (userId is optional - we use authenticated user)
@@ -972,7 +1158,7 @@ export const getFeaturedCollections = async (req: Request, res: Response) => {
 export const setFeatured = async (req: Request, res: Response) => {
   try {
     const userRole = (req as any).user?.role;
-    if (userRole !== 'admin') {
+    if (typeof userRole !== 'string' || userRole.toLowerCase().trim() !== 'admin') {
       return res.status(403).json({ message: 'Admin access required' });
     }
 
@@ -1025,6 +1211,55 @@ export const setFeatured = async (req: Request, res: Response) => {
 };
 
 /**
+ * PATCH /api/collections/featured/reorder
+ * Admin-only: Bulk-reorder featured collections by providing an ordered array of IDs.
+ * Body: { orderedIds: string[] }
+ * Position is derived from array index (0-based).
+ */
+export const reorderFeatured = async (req: Request, res: Response) => {
+  try {
+    const userRole = (req as unknown as { user?: { role?: string; userId?: string } }).user?.role;
+    if (typeof userRole !== 'string' || userRole.toLowerCase().trim() !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const parsed = reorderFeaturedSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten().fieldErrors });
+    }
+
+    const { orderedIds } = parsed.data;
+    const now = new Date().toISOString();
+
+    // Bulk update: set featuredOrder = array index for each ID
+    const bulkOps = orderedIds.map((id, index) => ({
+      updateOne: {
+        filter: { _id: id, isFeatured: true },
+        update: { $set: { featuredOrder: index, updatedAt: now } },
+      },
+    }));
+
+    await Collection.bulkWrite(bulkOps);
+
+    // Return the updated featured list
+    const collections = await Collection.find({ isFeatured: true, type: 'public' })
+      .sort({ featuredOrder: 1, rawName: 1 })
+      .select('rawName canonicalName description isFeatured featuredOrder validEntriesCount')
+      .lean();
+
+    res.json(normalizeDocs(collections));
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as unknown as { user?: { userId?: string } })?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Collections] Reorder featured error',
+      error: { message: error instanceof Error ? error.message : String(error) },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
  * GET /api/collections/:id/articles
  * Returns paginated articles belonging to a collection.
  * Supports q, sort, page, limit params.
@@ -1059,7 +1294,8 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     };
 
     // Privacy: non-admins only see public articles
-    if (!userId || userRole !== 'admin') {
+    const isAdmin = typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
+    if (!userId || !isAdmin) {
       articleQuery.$or = [
         { visibility: 'public' },
         { visibility: { $exists: false } },

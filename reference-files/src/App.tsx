@@ -14,7 +14,6 @@ import { CreateNuggetModal } from '@/components/CreateNuggetModal';
 import { useAuth } from '@/hooks/useAuth';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import { LegalPageRenderer } from '@/pages/LegalPageRenderer';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
 
 // Legacy hash URL redirect handler
@@ -190,15 +189,6 @@ const AppContent: React.FC = () => {
 
           {/* Redirect old YT Analysis route to home */}
           <Route path="/youtube-analysis" element={<Navigate to="/" replace />} />
-
-          {/* Legal Pages - Dynamic Routing */}
-          <Route path="/about" element={<LegalPageRenderer />} />
-          <Route path="/terms" element={<LegalPageRenderer />} />
-          <Route path="/privacy" element={<LegalPageRenderer />} />
-          <Route path="/contact" element={<LegalPageRenderer />} />
-          <Route path="/guidelines" element={<LegalPageRenderer />} />
-          <Route path="/disclaimer" element={<LegalPageRenderer />} />
-          <Route path="/cookie-policy" element={<LegalPageRenderer />} />
 
           {/* Auth Routes - Wrapped in Error Boundary */}
           <Route path="/verify-email" element={

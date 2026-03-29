@@ -145,20 +145,19 @@ export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) 
           className={`w-full h-full ${objectFit} transition-transform duration-500 hover:scale-105 cursor-pointer`}
         />
         
-        {/* YouTube logo and title overlay - always show for YouTube videos */}
+        {/* YouTube logo and title overlay - compact for cleaner UI */}
         {isYouTube && (
-          <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-            <div className="flex items-center gap-2">
+          <div className="absolute bottom-0 left-0 right-0 px-2.5 py-1.5 bg-gradient-to-t from-black/70 to-transparent">
+            <div className="flex items-center gap-1.5">
               <img 
                 src="https://www.youtube.com/favicon.ico" 
                 alt="YouTube" 
-                className="w-4 h-4 flex-shrink-0"
+                className="w-3 h-3 flex-shrink-0 opacity-80"
                 onError={(e) => {
-                  // Fallback if favicon fails to load
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
               />
-              <span className="text-xs font-medium text-white truncate">
+              <span className="text-[10px] font-medium text-white/90 truncate">
                 {videoTitle}
               </span>
             </div>

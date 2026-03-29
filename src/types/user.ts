@@ -42,18 +42,20 @@ export interface UserSecurity {
   mfaEnabled: boolean;
 }
 
+export type NotificationFrequency = 'instant' | 'daily' | 'weekly' | 'none';
+
 export interface UserPreferences {
-  // General
   theme: ThemePreference;
-  
-  // Feed & Content
   interestedCategories: string[];
-  
-  // Notifications
   notifications: {
     emailDigest: boolean;
     productUpdates: boolean;
     newFollowers: boolean;
+    pushEnabled: boolean;
+    frequency: NotificationFrequency;
+    categoryFilter: string[];
+    quietHoursStart?: string;
+    quietHoursEnd?: string;
   };
 }
 

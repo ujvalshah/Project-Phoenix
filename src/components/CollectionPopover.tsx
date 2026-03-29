@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Check, Folder, Lock, Globe, X } from 'lucide-react';
+import { Plus, Check, Folder, Lock, Globe, X, Search } from 'lucide-react';
 import { storageService } from '@/services/storageService';
 import { Collection } from '@/types';
 import { useToast } from '@/hooks/useToast';
@@ -15,121 +15,175 @@ interface CollectionPopoverProps {
   anchorRect?: DOMRect | null;
 }
 
-export const CollectionPopover: React.FC<CollectionPopoverProps> = ({ 
-  isOpen, 
-  onClose, 
+export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
+  isOpen,
+  onClose,
   articleId,
   mode,
   anchorRect
 }) => {
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [newCollectionName, setNewCollectionName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const { currentUserId, isAuthenticated } = useAuth();
   const { withAuth } = useRequireAuth();
 
+  // Fetch collections once when popover opens
   useEffect(() => {
     if (isOpen) {
       loadCollections();
+      setSearchQuery('');
+      requestAnimationFrame(() => searchRef.current?.focus());
     }
   }, [isOpen, mode]);
 
-  const handleCloseInternal = async () => {
-      // Fallback: If in private mode (collections), ensure the nugget is at least in a "General" collection
-      // if it's not in any other private collection. This ensures users don't lose their saved items.
-      if (mode === 'private' && collections.length > 0) {
-          const inAny = collections.some(c => c.entries.some(e => e.articleId === articleId));
-          if (!inAny) {
-              const general = collections.find(c => c.name === 'General' || c.name === 'General Bookmarks');
-              if (general) {
-                  try {
-                      await storageService.addArticleToCollection(general.id, articleId, currentUserId);
-                      toast.success(`Saved to ${general.name}`);
-                  } catch (e) {
-                      console.error("Auto-save failed", e);
-                  }
-              }
-          }
-      }
-      onClose();
-  };
-
-  // Handle clicking outside & scroll
-  // PERFORMANCE FIX: Throttle scroll handler to prevent performance violations
-  // Closing on scroll is intentional UX, but we throttle it to avoid blocking scroll
+  // Dismiss on outside click or Escape
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-        if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-            handleCloseInternal();
-        }
+    if (!isOpen) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+        void handleCloseInternal();
+      }
     };
-    
-    if (isOpen) {
-        let rafId: number | null = null;
-        let isScheduled = false;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); void handleCloseInternal(); }
+    };
 
-        // Throttled scroll handler - batches close action to next paint cycle
-        const handleScrollThrottled = () => {
-          if (isScheduled) return;
-          
-          isScheduled = true;
-          rafId = requestAnimationFrame(() => {
-            handleCloseInternal();
-            isScheduled = false;
-            rafId = null;
-          });
-        };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, mode, collections, articleId, currentUserId, onClose]);
 
-        // slight delay to prevent immediate close if the click that opened it bubbles
-        setTimeout(() => {
-            window.addEventListener('mousedown', handleClickOutside);
-            // Mark as passive for better scroll performance
-            window.addEventListener('scroll', handleScrollThrottled, { passive: true, capture: true });
-            window.addEventListener('resize', handleCloseInternal);
-        }, 100);
-        
-        return () => {
-            window.removeEventListener('mousedown', handleClickOutside);
-            window.removeEventListener('scroll', handleScrollThrottled, true);
-            window.removeEventListener('resize', handleCloseInternal);
-            if (rafId !== null) {
-              cancelAnimationFrame(rafId);
-            }
-        };
+  // Reposition on scroll/resize
+  const [viewportTick, setViewportTick] = useState(0);
+  useEffect(() => {
+    if (!isOpen) return;
+    const update = () => setViewportTick((t) => t + 1);
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [isOpen]);
+
+  const style = useMemo<React.CSSProperties>(() => {
+    if (!anchorRect) return {};
+    const width = 260;
+    const margin = 12;
+    const estimatedHeight = 340;
+
+    let left = anchorRect.left - width / 2 + anchorRect.width / 2;
+    if (left < margin) left = margin;
+    if (left + width > window.innerWidth - margin) left = window.innerWidth - width - margin;
+
+    const spaceBelow = window.innerHeight - anchorRect.bottom;
+    const computed: React.CSSProperties = { left, width };
+    if (spaceBelow < estimatedHeight && anchorRect.top > spaceBelow) {
+      computed.top = anchorRect.top - margin;
+      computed.transform = 'translateY(-100%)';
+      computed.transformOrigin = 'bottom center';
+    } else {
+      computed.top = anchorRect.bottom + margin;
+      computed.transformOrigin = 'top center';
     }
-  }, [isOpen, onClose, collections]); 
+    return computed;
+  }, [anchorRect, viewportTick]);
+
+  // --- Data ---
 
   const loadCollections = async () => {
-    const cols = await storageService.getCollections();
-    // For public collections, show all public collections (user can add to any)
-    // For private collections, show only user's own collections
-    if (mode === 'public') {
-      setCollections(cols.filter(c => c.type === 'public'));
-    } else {
-      setCollections(cols.filter(c => c.creatorId === currentUserId && c.type === mode));
+    try {
+      if (mode === 'public') {
+        const [publicResult, featuredResult] = await Promise.all([
+          storageService.getCollections({ type: 'public', includeCount: true, sortField: 'name', sortDirection: 'asc', limit: 100 }),
+          storageService.getFeaturedCollections().catch(() => []),
+        ]);
+
+        const publicCols = normalizeResult(publicResult);
+        const featuredCols = featuredResult ?? [];
+
+        // Merge: featured FIRST, public OVERWRITES — preserves entries data
+        const merged = new Map<string, Collection>();
+        for (const c of featuredCols) merged.set(c.id, c);
+        for (const c of publicCols) merged.set(c.id, c);
+
+        setCollections(
+          Array.from(merged.values())
+            .filter((c) => c.type === 'public')
+            .sort((a, b) => getName(a).localeCompare(getName(b)))
+        );
+      } else {
+        const result = await storageService.getCollections({ type: 'private', includeCount: true, sortField: 'name', sortDirection: 'asc', limit: 100 });
+        const cols = normalizeResult(result);
+        setCollections(cols.filter((c) => c.creatorId === currentUserId && c.type === mode));
+      }
+    } catch {
+      setCollections([]);
+      toast.error('Failed to load collections');
     }
   };
 
-  const toggleCollection = async (collectionId: string, isInCollection: boolean, colName: string) => {
-    // Auth guard: require login for collection operations
-    if (!isAuthenticated) {
-      withAuth(() => {})(); // Opens login modal
-      return;
+  const normalizeResult = (result: unknown): Collection[] => {
+    if (Array.isArray(result)) return result;
+    if (result && typeof result === 'object' && 'data' in result) {
+      const r = result as { data: unknown };
+      if (Array.isArray(r.data)) return r.data as Collection[];
     }
+    return [];
+  };
 
-    // Optimistic update
-    setCollections(prev => prev.map(c => {
-      if (c.id === collectionId) {
-        if (isInCollection) {
-          return { ...c, entries: c.entries.filter(e => e.articleId !== articleId) };
-        } else {
-          return { ...c, entries: [...c.entries, { articleId, addedByUserId: currentUserId, addedAt: new Date().toISOString(), flaggedBy: [] }] };
+  const getName = (c: Collection): string => c.name || '';
+
+  // Client-side search filter
+  const filteredCollections = collections.filter((c) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return getName(c).toLowerCase().includes(q);
+  });
+
+  const handleCloseInternal = async () => {
+    onClose();
+
+    // Fallback: ensure private-mode nugget is in General collection
+    if (mode === 'private' && collections.length > 0) {
+      const inAny = collections.some((c) => c.entries?.some((e) => e.articleId === articleId));
+      if (!inAny) {
+        const general = collections.find((c) => c.name === 'General' || c.name === 'General Bookmarks');
+        if (general) {
+          try {
+            await storageService.addArticleToCollection(general.id, articleId, currentUserId);
+            toast.success(`Saved to ${general.name}`);
+          } catch {
+            // silent fallback failure
+          }
         }
       }
-      return c;
-    }));
+    }
+  };
+
+  // --- Actions ---
+
+  const toggleCollection = async (collectionId: string, isInCollection: boolean, colName: string) => {
+    if (!isAuthenticated) { withAuth(() => {})(); return; }
+
+    setCollections((prev) =>
+      prev.map((c) => {
+        if (c.id !== collectionId) return c;
+        if (isInCollection) {
+          return { ...c, entries: c.entries.filter((e) => e.articleId !== articleId) };
+        }
+        return { ...c, entries: [...c.entries, { articleId, addedByUserId: currentUserId, addedAt: new Date().toISOString(), flaggedBy: [] as string[] }] };
+      })
+    );
 
     try {
       if (isInCollection) {
@@ -139,21 +193,15 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
         await storageService.addArticleToCollection(collectionId, articleId, currentUserId);
         toast.success(`Added to "${colName}"`);
       }
-    } catch (e: any) {
-      console.error('Failed to update collection:', e);
-      const errorMessage = e?.response?.data?.message || e?.message || "Failed to update collection";
-      toast.error(errorMessage);
-      loadCollections(); // Revert on error
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to update collection';
+      toast.error(msg);
+      loadCollections();
     }
   };
 
   const createCollection = async () => {
-    // Auth guard: require login for collection operations
-    if (!isAuthenticated) {
-      withAuth(() => {})(); // Opens login modal
-      return;
-    }
-
+    if (!isAuthenticated) { withAuth(() => {})(); return; }
     if (!newCollectionName.trim()) return;
     try {
       const newCol = await storageService.createCollection(newCollectionName, '', currentUserId, mode);
@@ -162,121 +210,123 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
       setNewCollectionName('');
       setIsCreating(false);
       loadCollections();
-    } catch (e) {
-      toast.error("Failed to create");
+    } catch {
+      toast.error('Failed to create');
     }
   };
 
   if (!isOpen || !anchorRect) return null;
 
-  // Positioning logic
-  const width = 240;
-  const margin = 12; 
-  
-  let left = anchorRect.left + window.scrollX - (width / 2) + (anchorRect.width / 2);
-  if (left < 10) left = 10;
-  if (left + width > window.innerWidth - 10) left = window.innerWidth - width - 10;
-
-  const spaceBelow = window.innerHeight - anchorRect.bottom;
-  const spaceAbove = anchorRect.top;
-  const estimatedHeight = 280; 
-
-  let style: React.CSSProperties = { left };
-  
-  if (spaceBelow < estimatedHeight && spaceAbove > spaceBelow) {
-      style.top = anchorRect.top + window.scrollY - margin;
-      style.transform = 'translateY(-100%)'; 
-      style.transformOrigin = 'bottom center';
-  } else {
-      style.top = anchorRect.bottom + window.scrollY + margin;
-      style.transformOrigin = 'top center';
-  }
-
-  // Dynamic naming based on mode
   const headerText = mode === 'private' ? 'Save to Collection' : 'Add to Collection';
-  const entityName = 'collection';
 
   return createPortal(
-    <div 
+    <div
       ref={modalRef}
-      className={`absolute z-[60] bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-in zoom-in-95 fade-in duration-200 w-[240px]`}
+      role="dialog"
+      aria-label={headerText}
+      className="fixed z-[80] bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-in zoom-in-95 fade-in duration-200"
       style={style}
+      onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-        {/* Minimal Header */}
-        <div className="px-3 py-2 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                {mode === 'private' ? <Lock size={10} /> : <Globe size={10} />}
-                {headerText}
-            </span>
-            <button 
-                onClick={(e) => { e.stopPropagation(); handleCloseInternal(); }}
-                className="p-1 -mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                aria-label="Close"
-            >
-                <X size={14} />
+      {/* Header */}
+      <div className="px-3 py-2 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+          {mode === 'private' ? <Lock size={10} /> : <Globe size={10} />}
+          {headerText}
+        </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); handleCloseInternal(); }}
+          className="p-1 -mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          aria-label="Close"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Search — client-side, instant */}
+      {collections.length > 6 && (
+        <div className="px-2 pt-2 pb-1 shrink-0">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-7 pr-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500 dark:text-white placeholder-slate-400"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* List */}
+      <div className="max-h-72 overflow-y-auto custom-scrollbar p-1">
+        {filteredCollections.length === 0 ? (
+          <div className="text-center py-4 px-2">
+            <p className="text-xs text-slate-400">
+              {searchQuery ? 'No matches' : 'No collections yet.'}
+            </p>
+          </div>
+        ) : (
+          filteredCollections.map((col) => {
+            const isIn = col.entries?.some((e) => e.articleId === articleId) ?? false;
+            const count = col.validEntriesCount ?? col.entries?.length ?? 0;
+            return (
+              <button
+                key={col.id}
+                onClick={() => toggleCollection(col.id, isIn, getName(col))}
+                className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors group ${
+                  isIn ? 'bg-primary-50 dark:bg-primary-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                  isIn ? 'text-primary-600 dark:text-primary-400' : 'text-slate-300 dark:text-slate-600 group-hover:text-slate-400'
+                }`}>
+                  {isIn ? <Check size={13} strokeWidth={3} /> : <Folder size={13} />}
+                </div>
+                <span className={`text-xs font-medium truncate flex-1 ${
+                  isIn ? 'text-primary-700 dark:text-primary-400' : 'text-slate-600 dark:text-slate-300'
+                }`}>
+                  {getName(col)}
+                </span>
+                {count > 0 && (
+                  <span className="text-[10px] tabular-nums text-slate-400 dark:text-slate-500 shrink-0">{count}</span>
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Inline Create */}
+      <div className="p-1 border-t border-slate-100 dark:border-slate-800 shrink-0">
+        {isCreating ? (
+          <div className="flex items-center gap-1 px-1 py-1">
+            <input
+              autoFocus
+              className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary-500 dark:text-white placeholder-slate-400"
+              placeholder="Name..."
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && createCollection()}
+            />
+            <button onClick={createCollection} className="p-1 bg-primary-500 text-slate-900 rounded-md hover:bg-primary-400 transition-colors">
+              <Check size={12} />
             </button>
-        </div>
-
-        {/* List */}
-        <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
-            {collections.length === 0 ? (
-                <div className="text-center py-4 px-2">
-                    <p className="text-xs text-slate-400">No {entityName}s yet.</p>
-                </div>
-            ) : (
-                collections.map(col => {
-                    const isInCollection = col.entries.some(e => e.articleId === articleId);
-                    return (
-                        <button
-                            key={col.id}
-                            onClick={() => toggleCollection(col.id, isInCollection, col.name)}
-                            className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors group ${isInCollection ? 'bg-primary-50 dark:bg-primary-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                        >
-                            <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${isInCollection ? 'text-primary-600 dark:text-primary-400' : 'text-slate-300 dark:text-slate-600 group-hover:text-slate-400'}`}>
-                                {isInCollection ? <Check size={14} strokeWidth={3} /> : <Folder size={14} />}
-                            </div>
-                            <span className={`text-xs font-medium truncate flex-1 ${isInCollection ? 'text-primary-700 dark:text-primary-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                                {col.name}
-                            </span>
-                        </button>
-                    );
-                })
-            )}
-        </div>
-
-        {/* Inline Create */}
-        <div className="p-1 border-t border-slate-100 dark:border-slate-800 shrink-0">
-            {isCreating ? (
-                <div className="flex items-center gap-1 px-1 py-1">
-                    <input 
-                        autoFocus
-                        className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary-500 dark:text-white placeholder-slate-400"
-                        placeholder="Name..."
-                        value={newCollectionName}
-                        onChange={(e) => setNewCollectionName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && createCollection()}
-                    />
-                    <button 
-                        onClick={createCollection} 
-                        className="p-1 bg-primary-500 text-slate-900 rounded-md hover:bg-primary-400 transition-colors"
-                    >
-                        <Check size={12} />
-                    </button>
-                </div>
-            ) : (
-                <button 
-                    onClick={() => setIsCreating(true)}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                >
-                    <Plus size={14} /> 
-                    <span>New {entityName}</span>
-                </button>
-            )}
-        </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsCreating(true)}
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <Plus size={14} />
+            <span>New {mode === 'private' ? 'collection' : 'collection'}</span>
+          </button>
+        )}
+      </div>
     </div>,
     document.body
   );
 };
-
-

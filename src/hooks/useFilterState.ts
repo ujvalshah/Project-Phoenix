@@ -138,6 +138,10 @@ export interface UseFilterStateReturn {
   clearTag: () => void;
   clearSort: () => void;
   clearCollection: () => void;
+  clearFavorites: () => void;
+  clearUnread: () => void;
+  clearFormats: () => void;
+  clearTimeRange: () => void;
 }
 
 export function useFilterState(): UseFilterStateReturn {
@@ -298,6 +302,10 @@ export function useFilterState(): UseFilterStateReturn {
   const clearTag = useCallback(() => setTag(null), []);
   const clearSort = useCallback(() => setSort('latest'), []);
   const clearCollection = useCallback(() => setCollectionId(null), []);
+  const clearFavorites = useCallback(() => setFavorites(false), []);
+  const clearUnread = useCallback(() => setUnread(false), []);
+  const clearFormats = useCallback(() => setFormats([]), []);
+  const clearTimeRange = useCallback(() => setTimeRange('all'), []);
 
   return {
     searchQuery: debouncedQuery,
@@ -329,5 +337,9 @@ export function useFilterState(): UseFilterStateReturn {
     clearTag,
     clearSort,
     clearCollection,
+    clearFavorites,
+    clearUnread,
+    clearFormats,
+    clearTimeRange,
   };
 }

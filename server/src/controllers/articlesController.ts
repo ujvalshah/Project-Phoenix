@@ -79,7 +79,7 @@ async function resolveCategoryIds(categoryNames: string[]): Promise<string[]> {
 
 export const getArticles = async (req: Request, res: Response) => {
   try {
-    const { authorId, q, category, categories, tag, sort, collectionId } = req.query;
+    const { authorId, q, category, categories, tag, sort, collectionId, favorites, unread, formats, timeRange } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
     const skip = (page - 1) * limit;
@@ -217,6 +217,46 @@ export const getArticles = async (req: Request, res: Response) => {
     // Separate from category filter — allows filtering by a specific tag within a category
     if (tag && typeof tag === 'string' && tag.trim().length > 0) {
       query.tags = { $in: [createExactMatchRegex(tag.trim())] };
+    }
+
+    // Format filter (source_type field: 'link' | 'twitter' | 'video' | 'document')
+    if (formats) {
+      const fmtArray = Array.isArray(formats) ? formats : [formats];
+      const validFormats = fmtArray.filter((f): f is string => typeof f === 'string' && f.trim().length > 0);
+      if (validFormats.length > 0) {
+        query.source_type = { $in: validFormats };
+      }
+    }
+
+    // Time range filter (relative date window)
+    if (timeRange && typeof timeRange === 'string' && timeRange !== 'all') {
+      const now = new Date();
+      let rangeStart: Date | null = null;
+
+      if (timeRange === '24h') {
+        rangeStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      } else if (timeRange === '7d') {
+        rangeStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      }
+
+      if (rangeStart) {
+        // Layer on top of any existing publishedAt constraint (e.g. "Today" category)
+        query.publishedAt = {
+          ...(query.publishedAt || {}),
+          $gte: rangeStart.toISOString(),
+        };
+      }
+    }
+
+    // Favorites filter — requires authenticated user
+    // Articles are "favorited" via a user-specific flag; skip if no currentUserId
+    if (favorites === '1' && currentUserId) {
+      query[`favorites.${currentUserId}`] = true;
+    }
+
+    // Unread filter — requires authenticated user
+    if (unread === '1' && currentUserId) {
+      query[`readBy.${currentUserId}`] = { $ne: true };
     }
 
     // Sort parameter (map frontend values to MongoDB sort)

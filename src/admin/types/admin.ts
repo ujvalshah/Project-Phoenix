@@ -190,3 +190,13 @@ export interface AdminStat {
   trendUp?: boolean;
   icon?: React.ReactNode;
 }
+
+export interface AdminContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: 'new' | 'read' | 'replied' | 'archived';
+  createdAt: string;
+}

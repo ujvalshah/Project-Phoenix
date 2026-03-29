@@ -14,9 +14,8 @@ interface MasonryMediaToggleProps {
  * MasonryMediaToggle: Toggle controls for selecting which media items appear in Masonry layout
  * 
  * CREATE MODE DEFAULT BEHAVIOR:
- * - Primary media: Selected by default (showInMasonry: true), but NOT locked (can be unselected)
- * - Supporting images: Selected by default (showInMasonry: true); user can unselect any image
- * - Supporting non-image embeds: Opt-in (showInMasonry: false)
+ * - All media (primary, supporting, images, non-images): Selected by default (showInMasonry: true)
+ * - User can unselect any media item to exclude from Masonry
  * - If no media remains selected for masonry, the nugget won't appear in Masonry (no fallback)
  * 
  * EDIT MODE BEHAVIOR:

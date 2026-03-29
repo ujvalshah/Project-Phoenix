@@ -10,8 +10,9 @@
  * 
  * MASONRY PARTICIPATION IS NOW USER-CONTROLLED:
  * - Primary media is NO LONGER auto-included or locked
- * - All media items default to showInMasonry: false (opt-in)
- * - Users must explicitly select which media appears in Masonry view
+ * - In Create mode, all media items default to showInMasonry: true (opt-out)
+ * - In Edit mode, existing DB values are preserved
+ * - Users can toggle any media item on/off for Masonry view
  * - Zero media selections are allowed (nugget won't appear in Masonry)
  * 
  * BACKWARD COMPATIBILITY:

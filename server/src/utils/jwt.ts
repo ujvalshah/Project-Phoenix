@@ -20,9 +20,9 @@ export interface JWTPayload {
  * Refresh tokens: longer-lived for convenience
  */
 export const TOKEN_CONFIG = {
-  ACCESS_TOKEN_EXPIRY: '15m',    // 15 minutes
+  ACCESS_TOKEN_EXPIRY: '1h',     // 1 hour
   REFRESH_TOKEN_EXPIRY: '7d',    // 7 days
-  ACCESS_TOKEN_SECONDS: 15 * 60, // For Redis TTL
+  ACCESS_TOKEN_SECONDS: 60 * 60, // For Redis TTL
   REFRESH_TOKEN_SECONDS: 7 * 24 * 60 * 60,
 } as const;
 
@@ -36,7 +36,7 @@ function getJwtSecret(): string {
 }
 
 /**
- * Generate short-lived access token (15 minutes)
+ * Generate short-lived access token (1 hour)
  * Used for API authentication
  *
  * @param userId - User ID

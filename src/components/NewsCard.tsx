@@ -247,6 +247,8 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
               <ArticleDetail
                 article={originalArticle}
                 isModal={false}
+                showHeader={true}
+                onClose={() => modals.setShowLightbox(false)}
                 onYouTubeTimestampClick={hookResult.logic.handlers.onYouTubeTimestampClick}
               />
             ) : undefined
