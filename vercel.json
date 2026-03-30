@@ -3,8 +3,31 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/article/:id", "destination": "/api/og-proxy" },
-    { "source": "/collections/:id", "destination": "/api/og-proxy" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/article/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i)whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|slack-imgproxy|discordbot|telegrambot|googlebot|bingbot|yandexbot|rogerbot|embedly|quora link preview|showyoubot|outbrain|pinterest|applebot"
+        }
+      ],
+      "destination": "/api/og-proxy"
+    },
+    {
+      "source": "/collections/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i)whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|slack-imgproxy|discordbot|telegrambot|googlebot|bingbot|yandexbot|rogerbot|embedly|quora link preview|showyoubot|outbrain|pinterest|applebot"
+        }
+      ],
+      "destination": "/api/og-proxy"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
