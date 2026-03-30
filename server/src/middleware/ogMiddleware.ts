@@ -46,6 +46,19 @@ interface OgMeta {
   url: string;
   type: 'article' | 'website';
   siteName: string;
+  publishedTime?: string;
+}
+
+/** Detect image MIME type from URL extension. Returns null if unknown. */
+function detectImageMime(url: string): string | null {
+  const extMatch = url.split('?')[0].match(/\.(jpe?g|png|webp|gif)$/i);
+  if (!extMatch) return null;
+  const ext = extMatch[1].toLowerCase();
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'gif') return 'image/gif';
+  return null;
 }
 
 /** Build a minimal HTML document containing only OG + Twitter Card meta tags. */
@@ -55,6 +68,15 @@ function renderOgHtml(meta: OgMeta): string {
   const i = escapeAttr(meta.image);
   const u = escapeAttr(meta.url);
   const s = escapeAttr(meta.siteName);
+
+  const imageMime = detectImageMime(meta.image);
+  const imageTypeLine = imageMime
+    ? `\n<meta property="og:image:type" content="${imageMime}" />`
+    : '';
+
+  const publishedTimeLine = meta.publishedTime
+    ? `\n<meta property="article:published_time" content="${escapeAttr(meta.publishedTime)}" />`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -66,11 +88,11 @@ function renderOgHtml(meta: OgMeta): string {
 <meta property="og:site_name" content="${s}" />
 <meta property="og:title" content="${t}" />
 <meta property="og:description" content="${d}" />
-<meta property="og:image" content="${i}" />
+<meta property="og:image" content="${i}" />${imageTypeLine}
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta property="og:url" content="${u}" />
-<meta property="og:locale" content="en_IN" />
+<meta property="og:locale" content="en_IN" />${publishedTimeLine}
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${t}" />
 <meta name="twitter:description" content="${d}" />
@@ -118,20 +140,30 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
           return;
         }
 
-        const title = truncate(article.title || 'Untitled', 50);
+        const title = truncate(article.title || 'Untitled', 70);
         const description = truncate(
           article.excerpt || article.content || '',
           155,
         );
 
-        // Pick best available image
-        const image =
+        // Pick best available image, ensuring absolute URL
+        let image =
           (article.media as any)?.previewMetadata?.imageUrl ||
           (article.media as any)?.thumbnail_url ||
           (article.images && article.images.length > 0
             ? article.images[0]
             : null) ||
           defaultImage;
+
+        if (image && !image.startsWith('http')) {
+          image = `${baseUrl}${image.startsWith('/') ? '' : '/'}${image}`;
+        }
+
+        // Extract published date for article:published_time
+        const publishedTime =
+          (article as any).publishedAt ||
+          (article as any).customCreatedAt ||
+          (article as any).created_at;
 
         const html = renderOgHtml({
           title,
@@ -140,6 +172,7 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
           url: `${baseUrl}/article/${articleId}`,
           type: 'article',
           siteName: 'Nuggets',
+          publishedTime: publishedTime || undefined,
         });
 
         logger.info({
@@ -148,6 +181,7 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
           crawler: ua.slice(0, 80),
         });
 
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.status(200).type('html').send(html);
       })
       .catch((err: Error) => {
@@ -200,6 +234,7 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
           crawler: ua.slice(0, 80),
         });
 
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.status(200).type('html').send(html);
       })
       .catch((err: Error) => {

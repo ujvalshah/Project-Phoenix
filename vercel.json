@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/article/:id", "destination": "/api/og-proxy" },
+    { "source": "/collections/:id", "destination": "/api/og-proxy" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

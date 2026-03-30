@@ -17,8 +17,9 @@ interface ShareMenuProps {
 }
 
 /**
- * Build a pre-filled share message with title, author, excerpt, and URL.
- * This becomes the `text` body in the native share sheet (WhatsApp, etc.).
+ * Build a pre-filled share message with title, author, and excerpt.
+ * The URL is NOT included here — it goes in navigator.share({ url }) to
+ * prevent WhatsApp (and other apps) from duplicating it.
  */
 function buildShareText(
   data: ShareItemData,
@@ -26,7 +27,6 @@ function buildShareText(
 ): string {
   const parts: string[] = [];
 
-  // Title line — bold-ish for WhatsApp (*title*)
   if (data.title) {
     const titleLine = meta?.author
       ? `${data.title} — by ${meta.author}`
@@ -34,17 +34,12 @@ function buildShareText(
     parts.push(titleLine);
   }
 
-  // Excerpt / description (truncated to keep message compact)
   if (meta?.text) {
     const excerpt =
       meta.text.length > 120 ? meta.text.slice(0, 117) + '…' : meta.text;
     parts.push('');
     parts.push(excerpt);
   }
-
-  // Canonical URL always last — WhatsApp auto-unfurls the last URL
-  parts.push('');
-  parts.push(data.shareUrl);
 
   return parts.join('\n');
 }
@@ -74,7 +69,7 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
       }
     } else {
       try {
-        await navigator.clipboard.writeText(shareText);
+        await navigator.clipboard.writeText(`${shareText}\n\n${data.shareUrl}`);
         toast.success('Link copied!');
       } catch {
         // Clipboard write failed — silent fallback
