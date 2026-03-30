@@ -141,16 +141,6 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
     return null;
   }, [article]);
 
-  // Extract domain name for display
-  const sourceDomain = useMemo(() => {
-    if (!sourceUrl) return null;
-    try {
-      return new URL(sourceUrl).hostname.replace(/^www\./, '');
-    } catch {
-      return null;
-    }
-  }, [sourceUrl]);
-
   // Classify media into primary and supporting (safe with null checks)
   const { primaryMedia, supportingMedia } = classifyArticleMedia(article);
   const drawerMediaItems = useMemo(() => {
@@ -370,12 +360,10 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                       href={sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors group w-fit"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-200 transition-colors w-fit"
                   >
-                      <ExternalLink size={13} className="text-slate-400 group-hover:text-primary-500 transition-colors flex-shrink-0" />
-                      <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors truncate">
-                          {sourceDomain || 'View Original Source'}
-                      </span>
+                      <ExternalLink size={12} className="flex-shrink-0" />
+                      <span className="text-[11px] font-semibold">Source</span>
                   </a>
               )}
 
