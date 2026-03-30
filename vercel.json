@@ -1,4 +1,7 @@
 {
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
     { "source": "/article/:id", "destination": "/api/og-proxy" },
     { "source": "/collections/:id", "destination": "/api/og-proxy" },
