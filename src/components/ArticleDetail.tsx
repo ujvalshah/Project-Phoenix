@@ -130,6 +130,27 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const authorId = article?.author?.id ?? "";
   const isOwner = currentUser?.id === authorId;
   
+  // Resolve source URL for "View Original Source" button
+  // Priority: externalLinks (primary) > previewMetadata.url > media.url (link-type)
+  const sourceUrl = useMemo(() => {
+    const primaryExternalLink = article?.externalLinks?.find(l => l.isPrimary);
+    if (primaryExternalLink?.url) return primaryExternalLink.url;
+    if (article?.primaryMedia?.previewMetadata?.url) return article.primaryMedia.previewMetadata.url;
+    if (article?.media?.previewMetadata?.url) return article.media.previewMetadata.url;
+    if (article?.media?.url && article.source_type === 'link') return article.media.url;
+    return null;
+  }, [article]);
+
+  // Extract domain name for display
+  const sourceDomain = useMemo(() => {
+    if (!sourceUrl) return null;
+    try {
+      return new URL(sourceUrl).hostname.replace(/^www\./, '');
+    } catch {
+      return null;
+    }
+  }, [sourceUrl]);
+
   // Classify media into primary and supporting (safe with null checks)
   const { primaryMedia, supportingMedia } = classifyArticleMedia(article);
   const drawerMediaItems = useMemo(() => {
@@ -343,6 +364,21 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                    </div>
                </div>
 
+              {/* Source Attribution Button */}
+              {sourceUrl && (
+                  <a
+                      href={sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors group w-fit"
+                  >
+                      <ExternalLink size={13} className="text-slate-400 group-hover:text-primary-500 transition-colors flex-shrink-0" />
+                      <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors truncate">
+                          {sourceDomain || 'View Original Source'}
+                      </span>
+                  </a>
+              )}
+
               {/* Unified drawer media carousel (primary + supporting, no duplicates).
                   YouTube items swap from thumbnail → live iframe when a timestamp is clicked. */}
               {isModal && currentDrawerMedia && (
@@ -489,18 +525,6 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                )}
 
                {/* Supporting Media */}
-               {/* Link Source */}
-               {article?.source_type === 'link' && !primaryMedia && (article?.media?.url || (article as any)?.url) && (
-                   <a 
-                       href={article?.media?.url || (article as any)?.url || '#'} 
-                       target="_blank" 
-                       rel="noopener noreferrer"
-                       className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group"
-                   >
-                       <ExternalLink size={14} className="group-hover:text-primary-500 transition-colors" />
-                       <span className="text-xs font-semibold truncate flex-1">Read original source</span>
-                   </a>
-               )}
            </div>
        </div>
 
