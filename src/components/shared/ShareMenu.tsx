@@ -11,7 +11,7 @@ interface ShareItemData {
 
 interface ShareMenuProps {
   data: ShareItemData;
-  meta?: { text?: string; author?: string };
+  meta?: { text?: string };
   className?: string;
   iconSize?: number;
 }
@@ -23,15 +23,12 @@ interface ShareMenuProps {
  */
 function buildShareText(
   data: ShareItemData,
-  meta?: { text?: string; author?: string },
+  meta?: { text?: string },
 ): string {
   const parts: string[] = [];
 
   if (data.title) {
-    const titleLine = meta?.author
-      ? `${data.title} — by ${meta.author}`
-      : data.title;
-    parts.push(titleLine);
+    parts.push(data.title);
   }
 
   if (meta?.text) {
