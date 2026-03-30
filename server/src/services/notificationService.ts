@@ -334,13 +334,19 @@ export async function initNotificationService(): Promise<void> {
 
   // BullMQ needs the raw ioredis-compatible connection.
   // Respect USE_LOCAL_REDIS flag — same priority as redisClient.ts
-  let redisUrl: string;
+  let redisUrl: string | null;
   if (process.env.USE_LOCAL_REDIS === 'true') {
     redisUrl = process.env.REDIS_LOCAL_URL || 'redis://localhost:6379';
   } else if (process.env.NODE_ENV === 'development' && !process.env.REDIS_URL) {
     redisUrl = 'redis://localhost:6379';
   } else {
-    redisUrl = process.env.REDIS_URL || process.env.REDIS_LOCAL_URL || 'redis://localhost:6379';
+    redisUrl = process.env.REDIS_URL || process.env.REDIS_LOCAL_URL || null;
+  }
+
+  // Skip BullMQ initialization if no Redis is available
+  if (!redisUrl) {
+    logger.warn({ msg: '[Notifications] No Redis URL configured — queue-based notifications disabled' });
+    return;
   }
 
   let connectionConfig: { host: string; port: number; password?: string; tls?: object };
