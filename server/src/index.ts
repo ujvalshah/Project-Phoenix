@@ -395,7 +395,7 @@ if (env.NODE_ENV === 'production') {
   app.use(express.static(distPath));
   // SPA catch-all: serve index.html for all non-API routes
   // so React Router can handle client-side routing (e.g. /article/:id)
-  app.get('*', (req, res) => {
+  app.get(/^\/.*/, (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
