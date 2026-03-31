@@ -15,12 +15,20 @@ class AdminCollectionsService {
   // In-flight request guard to prevent duplicate concurrent stats requests
   private inFlightStatsRequest: Promise<{ totalCommunity: number; totalNuggetsInCommunity: number }> | null = null;
 
-  async listCollections(query?: string): Promise<AdminCollection[]> {
+  async listCollections(options?: string | { query?: string; parentId?: string; rootOnly?: boolean }): Promise<AdminCollection[]> {
     try {
+      const query = typeof options === 'string' ? options : options?.query;
+      const parentId = typeof options === 'string' ? undefined : options?.parentId;
+      const rootOnly = typeof options === 'string' ? undefined : options?.rootOnly;
+
       // Request high limit (100) to get all collections for admin panel
-      const endpoint = query 
-        ? `/collections?q=${encodeURIComponent(query)}&limit=100` 
-        : '/collections?limit=100';
+      const params = new URLSearchParams();
+      params.set('limit', '100');
+      if (query) params.set('q', query);
+      if (parentId) params.set('parentId', parentId);
+      if (rootOnly) params.set('rootOnly', 'true');
+
+      const endpoint = `/collections?${params.toString()}`;
       const response = await apiClient.get<PaginatedResponse<Collection>>(endpoint, undefined, 'adminCollectionsService.listCollections');
       
       // Backend always returns paginated response format { data: [...], total, ... }
@@ -99,8 +107,30 @@ class AdminCollectionsService {
     if (updates.type !== undefined) {
       payload.type = updates.type;
     }
+    if (updates.parentId !== undefined) {
+      payload.parentId = updates.parentId;
+    }
     
     await apiClient.put(`/collections/${id}`, payload, 'adminCollectionsService.updateCollection');
+  }
+
+  async createCollection(input: {
+    name: string;
+    description?: string;
+    type?: 'public' | 'private';
+    parentId?: string | null;
+  }): Promise<AdminCollection> {
+    const response = await apiClient.post<Collection>('/collections', {
+      name: input.name,
+      description: input.description || '',
+      type: input.type || 'public',
+      parentId: input.parentId ?? null,
+    });
+    return mapCollectionToAdminCollection(response);
+  }
+
+  async addNuggetsToCollection(collectionId: string, articleIds: string[]): Promise<void> {
+    await apiClient.post(`/collections/${collectionId}/entries/batch`, { articleIds }, undefined, 'adminCollectionsService.addNuggetsToCollection');
   }
 
   async updateCollectionStatus(_id: string, _status: 'active' | 'hidden'): Promise<void> {

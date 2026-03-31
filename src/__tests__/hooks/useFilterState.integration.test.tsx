@@ -178,7 +178,7 @@ describe('sort management', () => {
       wrapper: createWrapper(),
     });
 
-    for (const sort of ['oldest', 'title', 'title-desc', 'latest'] as const) {
+    for (const sort of ['oldest', 'latest'] as const) {
       act(() => {
         result.current.setSortOrder(sort);
       });
@@ -351,14 +351,14 @@ describe('localStorage persistence', () => {
     expect(JSON.parse(stored!).sort).toBe('oldest');
   });
 
-  it('restores sort preference from localStorage on mount', () => {
+  it('migrates legacy title sort from localStorage to latest', () => {
     localStorage.setItem('phoenix_filters', JSON.stringify({ sort: 'title' }));
 
     const { result } = renderHook(() => useFilterState(), {
       wrapper: createWrapper(),
     });
 
-    expect(result.current.sortOrder).toBe('title');
+    expect(result.current.sortOrder).toBe('latest');
   });
 
   it('does NOT persist search query (ephemeral)', () => {

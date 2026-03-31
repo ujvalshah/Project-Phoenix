@@ -30,6 +30,8 @@ export interface IAdapter {
     unread?: boolean;
     formats?: string[];
     timeRange?: string;
+    youtubeOnly?: boolean;
+    nonYoutubeOnly?: boolean;
   }): Promise<PaginatedArticlesResponse>;
   getArticleById(id: string): Promise<Article | undefined>;
   getArticlesByAuthor(authorId: string): Promise<Article[]>;
@@ -64,11 +66,13 @@ export interface IAdapter {
     sortDirection?: 'asc' | 'desc';
     page?: number;
     limit?: number;
+    parentId?: string;
+    rootOnly?: boolean;
   }): Promise<Collection[] | { data: Collection[]; count: number }>;
   getFeaturedCollections(): Promise<Collection[]>;
   getCollectionArticles(collectionId: string, params: { q?: string; page: number; limit: number; sort?: string }): Promise<PaginatedArticlesResponse>;
   getCollectionById(id: string): Promise<Collection | undefined>;
-  createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private'): Promise<Collection>;
+  createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private', parentId?: string | null): Promise<Collection>;
   deleteCollection(id: string): Promise<void>;
   updateCollection(id: string, updates: Partial<Collection>): Promise<Collection | null>;
   addArticleToCollection(collectionId: string, articleId: string, userId: string): Promise<void>;

@@ -74,7 +74,7 @@ describe('useInfiniteArticles Hook', () => {
       expect(articleService.articleService.getArticles).toHaveBeenCalledTimes(1);
       expect(articleService.articleService.getArticles).toHaveBeenCalledWith(
         expect.objectContaining({
-          query: undefined,
+          query: '',
           categories: [],
           sort: 'latest',
           limit: 25,

@@ -46,6 +46,8 @@ export interface FeatureFlags {
   // Guest Capabilities
   guestBookmarks: boolean;
   guestReports: boolean;
+  // Display Settings
+  showAuthorName: boolean;
 }
 
 // --- Signup Configuration Types ---
@@ -107,6 +109,10 @@ export interface AdminNugget {
   createdAt: string;
   reports: number;
   tags: string[];
+  sourceType?: string;
+  isYoutube?: boolean;
+  thumbnailUrl?: string;
+  sourceUrl?: string;
 }
 
 export interface AdminCollection {
@@ -127,6 +133,8 @@ export interface AdminCollection {
   isFeatured: boolean;
   /** Display order in the category toolbar (lower = earlier) */
   featuredOrder: number;
+  /** Parent collection ID for one-level sub-community hierarchy */
+  parentId?: string | null;
 }
 
 export interface AdminTag {

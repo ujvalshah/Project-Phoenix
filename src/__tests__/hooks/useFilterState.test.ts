@@ -29,8 +29,8 @@ describe('filtersToParams', () => {
   });
 
   it('includes non-default sort', () => {
-    const result = filtersToParams({ sort: 'title' });
-    expect(result.get('sort')).toBe('title');
+    const result = filtersToParams({ sort: 'oldest' });
+    expect(result.get('sort')).toBe('oldest');
   });
 
   it('serialises boolean flags as "1"', () => {
@@ -91,8 +91,12 @@ describe('paramsToFilters', () => {
 
   it('parses valid sort values', () => {
     expect(paramsToFilters(new URLSearchParams('sort=oldest')).sort).toBe('oldest');
-    expect(paramsToFilters(new URLSearchParams('sort=title')).sort).toBe('title');
-    expect(paramsToFilters(new URLSearchParams('sort=title-desc')).sort).toBe('title-desc');
+    expect(paramsToFilters(new URLSearchParams('sort=latest')).sort).toBe('latest');
+  });
+
+  it('maps legacy title sorts to latest', () => {
+    expect(paramsToFilters(new URLSearchParams('sort=title')).sort).toBe('latest');
+    expect(paramsToFilters(new URLSearchParams('sort=title-desc')).sort).toBe('latest');
   });
 
   it('ignores invalid sort values', () => {

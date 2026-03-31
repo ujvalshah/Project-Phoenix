@@ -1,6 +1,6 @@
 import { storageService } from './storageService';
 import { PaginatedArticlesResponse } from './adapters/IAdapter';
-import { Article, FilterState } from '@/types';
+import { Article, FilterState, SortOrder } from '@/types';
 
 export type { PaginatedArticlesResponse };
 
@@ -20,12 +20,11 @@ export const articleService = {
       : undefined;
     
     // Map sort order (frontend → backend)
-    const sortMap: Record<string, string> = {
-      'latest': 'latest',
-      'oldest': 'oldest',
-      'title': 'title'
+    const sortMap: Record<SortOrder, string> = {
+      latest: 'latest',
+      oldest: 'oldest',
     };
-    const sort = sortMap[filters.sort || 'latest'] || 'latest';
+    const sort = sortMap[filters.sort ?? 'latest'] ?? 'latest';
     
     // Use type-safe interface method - no casting required
     // If adapter doesn't support pagination, it will throw a clear error

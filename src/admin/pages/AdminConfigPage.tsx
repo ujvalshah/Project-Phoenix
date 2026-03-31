@@ -236,11 +236,25 @@ export const AdminConfigPage: React.FC = () => {
                             <div className="text-sm font-bold text-slate-900 dark:text-white">Maintenance Mode</div>
                             <div className="text-xs text-slate-500 mt-0.5">Restrict access to admins only.</div>
                         </div>
-                        <button 
+                        <button
                             onClick={() => handleToggleFlag('maintenanceMode')}
                             className={`transition-colors ${flags.maintenanceMode ? 'text-amber-600' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
                         >
                             {flags.maintenanceMode ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
+                        </button>
+                    </div>
+
+                    {/* SHOW AUTHOR NAME */}
+                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                        <div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white">Show Author Name</div>
+                            <div className="text-xs text-slate-500 mt-0.5">Display author name on nugget headers.</div>
+                        </div>
+                        <button
+                            onClick={() => handleToggleFlag('showAuthorName')}
+                            className={`transition-colors ${flags.showAuthorName ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
+                        >
+                            {flags.showAuthorName ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
                         </button>
                     </div>
                 </div>

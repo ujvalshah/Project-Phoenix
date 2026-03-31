@@ -104,6 +104,11 @@ export const AdminCollectionsPage: React.FC = () => {
     return sortBy(dateFiltered, sorts, adminCollectionValue);
   }, [collections, dateFilter, sortKey, sortDirection]);
 
+  const collectionNameById = useMemo(
+    () => new Map(collections.map((collection) => [collection.id, collection.name])),
+    [collections]
+  );
+
   const handleDelete = async () => {
     if (!selectedCollection || isDeleting) {
       return;
@@ -362,6 +367,19 @@ export const AdminCollectionsPage: React.FC = () => {
       sortable: true,
       sortKey: 'creator',
       render: (c) => <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{c.creator.name}</span>
+    },
+    {
+      key: 'parentCollection',
+      header: 'Parent Collection',
+      width: 'w-44',
+      minWidth: '180px',
+      render: (c) => {
+        if (!c.parentId) {
+          return <span className="text-xs text-slate-400">Root</span>;
+        }
+        const parentName = collectionNameById.get(c.parentId) || `Parent (${c.parentId.slice(0, 6)}...)`;
+        return <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{parentName}</span>;
+      }
     },
     {
       key: 'type',
@@ -661,6 +679,14 @@ export const AdminCollectionsPage: React.FC = () => {
                         <div>
                             <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Visibility</label>
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-300 capitalize">{selectedCollection.type}</span>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Parent Collection</label>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                              {selectedCollection.parentId
+                                ? (collectionNameById.get(selectedCollection.parentId) || `Parent (${selectedCollection.parentId.slice(0, 6)}...)`)
+                                : 'Root'}
+                            </span>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nuggets</label>

@@ -143,6 +143,18 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
 
   const getName = (c: Collection): string => c.name || '';
 
+  const collectionNameById = useMemo(
+    () => new Map(collections.map((collection) => [collection.id, getName(collection)])),
+    [collections]
+  );
+
+  const getDisplayName = (collection: Collection): string => {
+    const name = getName(collection);
+    if (!collection.parentId) return name;
+    const parentName = collectionNameById.get(collection.parentId) || `Parent ${collection.parentId.slice(0, 6)}`;
+    return `${name} (${parentName})`;
+  };
+
   // Client-side search filter
   const filteredCollections = collections.filter((c) => {
     const q = searchQuery.trim().toLowerCase();
@@ -174,14 +186,21 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
 
   const toggleCollection = async (collectionId: string, isInCollection: boolean, colName: string) => {
     if (!isAuthenticated) { withAuth(() => {})(); return; }
+    const targetCollection = collections.find((collection) => collection.id === collectionId);
+    const parentId = targetCollection?.parentId ?? null;
 
     setCollections((prev) =>
       prev.map((c) => {
-        if (c.id !== collectionId) return c;
-        if (isInCollection) {
-          return { ...c, entries: c.entries.filter((e) => e.articleId !== articleId) };
+        const shouldUpdateTarget = c.id === collectionId;
+        const shouldUpdateParent = !isInCollection && Boolean(parentId) && c.id === parentId;
+        if (!shouldUpdateTarget && !shouldUpdateParent) return c;
+        if (isInCollection && shouldUpdateTarget) {
+          return { ...c, entries: (c.entries ?? []).filter((e) => e.articleId !== articleId) };
         }
-        return { ...c, entries: [...c.entries, { articleId, addedByUserId: currentUserId, addedAt: new Date().toISOString(), flaggedBy: [] as string[] }] };
+        return {
+          ...c,
+          entries: [...(c.entries ?? []), { articleId, addedByUserId: currentUserId, addedAt: new Date().toISOString(), flaggedBy: [] as string[] }]
+        };
       })
     );
 
@@ -276,7 +295,7 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
             return (
               <button
                 key={col.id}
-                onClick={() => toggleCollection(col.id, isIn, getName(col))}
+                onClick={() => toggleCollection(col.id, isIn, getDisplayName(col))}
                 className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors group ${
                   isIn ? 'bg-primary-50 dark:bg-primary-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
@@ -289,7 +308,7 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
                 <span className={`text-xs font-medium truncate flex-1 ${
                   isIn ? 'text-primary-700 dark:text-primary-400' : 'text-slate-600 dark:text-slate-300'
                 }`}>
-                  {getName(col)}
+                  {getDisplayName(col)}
                 </span>
                 {count > 0 && (
                   <span className="text-[10px] tabular-nums text-slate-400 dark:text-slate-500 shrink-0">{count}</span>

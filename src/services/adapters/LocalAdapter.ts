@@ -322,6 +322,8 @@ export class LocalAdapter implements IAdapter {
     sortDirection?: 'asc' | 'desc';
     page?: number;
     limit?: number;
+    parentId?: string;
+    rootOnly?: boolean;
   }): Promise<Collection[] | { data: Collection[]; count: number }> {
     this.initStorage();
     try {
@@ -337,6 +339,11 @@ export class LocalAdapter implements IAdapter {
       // Apply type filter if specified
       if (params?.type) {
         collections = collections.filter(c => c.type === params.type);
+      }
+      if (params?.parentId) {
+        collections = collections.filter(c => c.parentId === params.parentId);
+      } else if (params?.rootOnly) {
+        collections = collections.filter(c => !c.parentId);
       }
       
       // Return with count if requested
@@ -382,7 +389,13 @@ export class LocalAdapter implements IAdapter {
     return all.find(c => c.id === id);
   }
 
-  async createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private' = 'public'): Promise<Collection> {
+  async createCollection(
+    name: string,
+    description: string,
+    creatorId: string,
+    type: 'public' | 'private' = 'public',
+    parentId?: string | null
+  ): Promise<Collection> {
     const collections = await this.getCollections();
     const now = new Date().toISOString();
     const newCollection: Collection = {
@@ -390,6 +403,7 @@ export class LocalAdapter implements IAdapter {
       name,
       description,
       creatorId,
+      parentId: parentId ?? null,
       createdAt: now,
       updatedAt: now,
       followersCount: 0,

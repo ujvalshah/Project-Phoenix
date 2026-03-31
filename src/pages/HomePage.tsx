@@ -33,7 +33,7 @@ import { Loader2 } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { PageStack } from '@/components/layouts/PageStack';
-import { CategoryToolbar } from '@/components/CategoryToolbar';
+import { CategoryToolbar, ActiveFilterChip } from '@/components/CategoryToolbar';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'react-router-dom';
 import { articleService } from '@/services/articleService';
@@ -178,6 +178,17 @@ export const HomePage: React.FC<HomePageProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [setCollectionId]);
 
+  // Build inline filter chips for the CategoryToolbar
+  // Collection filter is already shown via the highlighted toolbar pill.
+  // Only non-toolbar filters (tag) get explicit chips here.
+  const activeFilters = useMemo(() => {
+    const chips: ActiveFilterChip[] = [];
+    if (selectedTag) {
+      chips.push({ key: 'tag', label: `Tag: ${selectedTag}`, onRemove: () => setSelectedTag(null) });
+    }
+    return chips;
+  }, [selectedTag, setSelectedTag]);
+
   // Only show toolbar if there are featured collections (or still loading)
   const showToolbar = isLoadingCollections || featuredCollections.length > 0;
 
@@ -199,6 +210,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               isLoading={isLoadingCollections}
               selectedCollectionId={collectionId}
               onSelect={handleCategorySelect}
+              activeFilters={activeFilters}
             />
           ) : undefined}
           mainContent={

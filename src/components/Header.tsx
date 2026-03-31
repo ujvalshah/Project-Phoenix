@@ -7,7 +7,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom'; // Still needed for NavigationDrawer
 import { Avatar } from './shared/Avatar';
 import { FilterPopover, FilterState } from './header/FilterPopover';
-import { FilterChips } from './header/FilterChips';
 import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useToast } from '@/hooks/useToast';
@@ -83,33 +82,18 @@ export const Header: React.FC<HeaderProps> = ({
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   
   // Derive filter popover state from the global filter hook (single source of truth).
-  // Previously this was a disconnected local useState, so toggling "Videos" etc.
-  // never propagated to useInfiniteArticles.
   const filterState: FilterState = {
-    favorites: filters?.favorites ?? false,
-    unread: filters?.unread ?? false,
-    formats: filters?.formats ?? [],
-    timeRange: filters?.timeRange ?? 'all',
+    collectionId: filters?.collectionId ?? null,
   };
 
   const handleFilterChange = (newFilters: FilterState) => {
     if (!filters) return;
-    if (newFilters.favorites !== filters.favorites) filters.setFavorites(newFilters.favorites);
-    if (newFilters.unread !== filters.unread) filters.setUnread(newFilters.unread);
-    if (newFilters.timeRange !== filters.timeRange) filters.setTimeRange(newFilters.timeRange);
-    // Formats: find the toggled format and call toggleFormat
-    const added = newFilters.formats.filter(f => !filters.formats.includes(f));
-    const removed = filters.formats.filter(f => !newFilters.formats.includes(f));
-    for (const fmt of added) filters.toggleFormat(fmt);
-    for (const fmt of removed) filters.toggleFormat(fmt);
+    filters.setCollectionId(newFilters.collectionId);
   };
 
   const handleFilterClear = () => {
     if (!filters) return;
-    filters.clearFavorites();
-    filters.clearUnread();
-    filters.clearFormats();
-    filters.clearTimeRange();
+    filters.setCollectionId(null);
   };
   
   // Recent searches state
@@ -652,30 +636,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </header>
 
-      {/* Active filter chips bar — shown below header when filters are active */}
-      {filters?.hasActiveFilters && (
-        <div className="fixed left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-100 dark:border-slate-800" style={{ top: '56px', zIndex: Z_INDEX.HEADER - 1 }}>
-          <FilterChips
-            searchQuery={filters.searchQuery}
-            selectedCategories={filters.selectedCategories}
-            selectedTag={filters.selectedTag}
-            sortOrder={filters.sortOrder}
-            favorites={filters.favorites}
-            unread={filters.unread}
-            formats={filters.formats}
-            timeRange={filters.timeRange}
-            onClearSearch={filters.clearSearch}
-            onRemoveCategory={(cat) => filters.toggleCategory(cat)}
-            onClearTag={filters.clearTag}
-            onClearSort={filters.clearSort}
-            onClearFavorites={() => filters.setFavorites(false)}
-            onClearUnread={() => filters.setUnread(false)}
-            onRemoveFormat={(fmt) => filters.toggleFormat(fmt)}
-            onClearTimeRange={() => filters.setTimeRange('all')}
-            onClearAll={filters.clearAll}
-          />
-        </div>
-      )}
+      {/* Filter chips are now rendered inline inside CategoryToolbar — no separate bar */}
 
       {/* Avatar Menu - uses DropdownPortal for positioning and click-outside */}
       <DropdownPortal
@@ -770,12 +731,12 @@ export const Header: React.FC<HeaderProps> = ({
         <UserMenuLegalLinks onClose={() => setIsUserMenuOpen(false)} />
       </DropdownPortal>
 
-      {/* Filter Popover - Desktop (lg+) - uses DropdownPortal */}
+      {/* Filter Popover - Desktop (lg+) - mega dropdown */}
       <DropdownPortal
         isOpen={isFilterPopoverOpen && !isTablet && !isMobile}
         anchorRef={filterButtonRef}
         onClickOutside={() => setIsFilterPopoverOpen(false)}
-        className="bg-white rounded-xl shadow-xl border border-gray-100"
+        className=""
       >
         <FilterPopover
           filters={filterState}
@@ -794,8 +755,6 @@ export const Header: React.FC<HeaderProps> = ({
         {([
           { value: 'latest' as const, label: 'Latest' },
           { value: 'oldest' as const, label: 'Oldest' },
-          { value: 'title' as const, label: 'Title A–Z' },
-          { value: 'title-desc' as const, label: 'Title Z–A' },
         ]).map(opt => (
           <button
             key={opt.value}
@@ -864,6 +823,7 @@ export const Header: React.FC<HeaderProps> = ({
               filters={filterState}
               onChange={handleFilterChange}
               onClear={handleFilterClear}
+              variant="embedded"
             />
           </div>
           
@@ -874,8 +834,6 @@ export const Header: React.FC<HeaderProps> = ({
               {([
                 { value: 'latest' as const, label: 'Latest' },
                 { value: 'oldest' as const, label: 'Oldest' },
-                { value: 'title' as const, label: 'Title A–Z' },
-                { value: 'title-desc' as const, label: 'Title Z–A' },
               ]).map(opt => (
                 <button
                   key={opt.value}

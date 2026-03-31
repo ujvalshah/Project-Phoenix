@@ -45,6 +45,25 @@ function getOptionalUserId(req: Request): string | undefined {
   }
 }
 
+function appendAndQueryCondition(query: Record<string, any>, condition: Record<string, any>): void {
+  if (query.$and && Array.isArray(query.$and)) {
+    query.$and.push(condition);
+    return;
+  }
+
+  const keys = Object.keys(query);
+  if (keys.length === 0) {
+    Object.assign(query, condition);
+    return;
+  }
+
+  const currentQuery = { ...query };
+  Object.keys(query).forEach((key) => {
+    delete query[key];
+  });
+  query.$and = [currentQuery, condition];
+}
+
 /**
  * Phase 2: Resolve tag IDs from category names
  * Maps category names to Tag ObjectIds for stable references
@@ -79,7 +98,21 @@ async function resolveCategoryIds(categoryNames: string[]): Promise<string[]> {
 
 export const getArticles = async (req: Request, res: Response) => {
   try {
-    const { authorId, q, category, categories, tag, sort, collectionId, favorites, unread, formats, timeRange } = req.query;
+    const {
+      authorId,
+      q,
+      category,
+      categories,
+      tag,
+      sort,
+      collectionId,
+      favorites,
+      unread,
+      formats,
+      timeRange,
+      youtubeOnly,
+      nonYoutubeOnly
+    } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
     const skip = (page - 1) * limit;
@@ -226,6 +259,25 @@ export const getArticles = async (req: Request, res: Response) => {
       if (validFormats.length > 0) {
         query.source_type = { $in: validFormats };
       }
+    }
+
+    // Admin/workflow filter: explicit YouTube vs non-YouTube by media metadata
+    const isYoutubeOnly = youtubeOnly === '1' || youtubeOnly === 'true';
+    const isNonYoutubeOnly = nonYoutubeOnly === '1' || nonYoutubeOnly === 'true';
+    if (isYoutubeOnly && !isNonYoutubeOnly) {
+      appendAndQueryCondition(query, {
+        $or: [
+          { 'media.type': 'youtube' },
+          { 'primaryMedia.type': 'youtube' }
+        ]
+      });
+    } else if (isNonYoutubeOnly && !isYoutubeOnly) {
+      appendAndQueryCondition(query, {
+        $and: [
+          { 'media.type': { $ne: 'youtube' } },
+          { 'primaryMedia.type': { $ne: 'youtube' } }
+        ]
+      });
     }
 
     // Time range filter (relative date window)

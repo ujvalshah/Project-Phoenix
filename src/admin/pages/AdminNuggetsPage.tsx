@@ -2,9 +2,9 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
-import { AdminNugget } from '../types/admin';
+import { AdminCollection, AdminNugget } from '../types/admin';
 import { adminNuggetsService } from '../services/adminNuggetsService';
-import { AlertTriangle, Trash2, EyeOff, Globe, Lock, Video, Image as ImageIcon, Link as LinkIcon, StickyNote, CheckCircle2, FileText, PlusCircle, Edit2, Layout } from 'lucide-react';
+import { AlertTriangle, Trash2, EyeOff, Globe, Lock, Video, Image as ImageIcon, Link as LinkIcon, StickyNote, CheckCircle2, FileText, PlusCircle, Edit2, Layout, LayoutGrid, Rows3, Search } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { AdminDrawer } from '../components/AdminDrawer';
@@ -14,6 +14,18 @@ import { useSearchParams } from 'react-router-dom';
 import { CreateNuggetModal } from '@/components/CreateNuggetModal';
 import { storageService } from '@/services/storageService';
 import { Article } from '@/types';
+import { adminCollectionsService } from '../services/adminCollectionsService';
+
+const NUGGETS_VIEW_MODE_STORAGE_KEY = 'admin_nuggets_view_mode';
+
+function getYouTubeThumbnail(url?: string): string | undefined {
+  if (!url) return undefined;
+  const idMatch = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/
+  );
+  if (!idMatch?.[1]) return undefined;
+  return `https://img.youtube.com/vi/${idMatch[1]}/hqdefault.jpg`;
+}
 
 export const AdminNuggetsPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
@@ -26,6 +38,9 @@ export const AdminNuggetsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'hidden' | 'flagged'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [sourceTypeFilter, setSourceTypeFilter] = useState<'all' | 'link' | 'video' | 'document' | 'twitter'>('all');
+  const [youtubeFilter, setYoutubeFilter] = useState<'all' | 'youtube' | 'non-youtube'>('all');
 
   // Sorting
   const [sortKey, setSortKey] = useState<string>('createdAt');
@@ -33,10 +48,27 @@ export const AdminNuggetsPage: React.FC = () => {
 
   // Selection & UI
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50);
+  const [totalPages, setTotalPages] = useState(1);
+  const [filteredTotal, setFilteredTotal] = useState(0);
+  const [collectionOptions, setCollectionOptions] = useState<AdminCollection[]>([]);
+  const [targetCollectionId, setTargetCollectionId] = useState('');
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [newCollectionDescription, setNewCollectionDescription] = useState('');
+  const [newCollectionParentId, setNewCollectionParentId] = useState('');
+  const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'title', 'author', 'visibility', 'status', 'createdDate', 'createdTime', 'actions'
   ]);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const [failedPreviewById, setFailedPreviewById] = useState<Record<string, boolean>>({});
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+    if (typeof window === 'undefined') return 'table';
+    const saved = window.localStorage.getItem(NUGGETS_VIEW_MODE_STORAGE_KEY);
+    return saved === 'cards' ? 'cards' : 'table';
+  });
 
   // Actions
   const [selectedNugget, setSelectedNugget] = useState<AdminNugget | null>(null);
@@ -55,14 +87,30 @@ export const AdminNuggetsPage: React.FC = () => {
     setPageHeader("Content Management", "Review, moderate, and manage nuggets.");
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(NUGGETS_VIEW_MODE_STORAGE_KEY, viewMode);
+    }
+  }, [viewMode]);
+
   // Initialize filters from URL
   useEffect(() => {
     const q = searchParams.get('q');
     const status = searchParams.get('status');
     const date = searchParams.get('date');
+    const tag = searchParams.get('tag');
+    const source = searchParams.get('source');
+    const youtube = searchParams.get('youtube');
     if (q) setSearchQuery(q);
     if (status === 'active' || status === 'hidden' || status === 'flagged') setStatusFilter(status);
     if (date) setDateFilter(date);
+    if (tag) setTagFilter(tag);
+    if (source === 'all' || source === 'link' || source === 'video' || source === 'document' || source === 'twitter') {
+      setSourceTypeFilter(source);
+    }
+    if (youtube === 'all' || youtube === 'youtube' || youtube === 'non-youtube') {
+      setYoutubeFilter(youtube);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -72,8 +120,11 @@ export const AdminNuggetsPage: React.FC = () => {
     if (searchQuery) params.q = searchQuery;
     if (statusFilter !== 'all') params.status = statusFilter;
     if (dateFilter) params.date = dateFilter;
+    if (tagFilter) params.tag = tagFilter;
+    if (sourceTypeFilter !== 'all') params.source = sourceTypeFilter;
+    if (youtubeFilter !== 'all') params.youtube = youtubeFilter;
     setSearchParams(params, { replace: true });
-  }, [searchQuery, statusFilter, dateFilter, setSearchParams]);
+  }, [searchQuery, statusFilter, dateFilter, tagFilter, sourceTypeFilter, youtubeFilter, setSearchParams]);
 
   // Memoize loadData to prevent recreation on every render
   // This prevents infinite loops in useEffect dependencies
@@ -82,12 +133,20 @@ export const AdminNuggetsPage: React.FC = () => {
     setErrorMessage(null);
     try {
       const [nuggetsData, statsData] = await Promise.all([
-        adminNuggetsService.listNuggets(statusFilter === 'all' ? undefined : statusFilter as any),
+        adminNuggetsService.listNuggets({
+          status: statusFilter,
+          query: searchQuery,
+          tag: tagFilter,
+          sourceType: sourceTypeFilter,
+          youtubeMode: youtubeFilter,
+          page: currentPage,
+          limit: pageSize,
+        }),
         adminNuggetsService.getStats()
       ]);
       
       // Validate data before setting state
-      if (!Array.isArray(nuggetsData)) {
+      if (!Array.isArray(nuggetsData.data)) {
         if (process.env.NODE_ENV === 'development') {
           console.error('[AdminNuggetsPage] Invalid nuggets data:', nuggetsData);
         }
@@ -103,7 +162,9 @@ export const AdminNuggetsPage: React.FC = () => {
         return;
       }
       
-      setNuggets(nuggetsData);
+      setNuggets(nuggetsData.data);
+      setFilteredTotal(nuggetsData.total);
+      setTotalPages(Math.max(1, Math.ceil(nuggetsData.total / nuggetsData.limit)));
       setStats(statsData);
       setErrorMessage(null);
     } catch (e: any) {
@@ -116,7 +177,7 @@ export const AdminNuggetsPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter]); // Only recreate when statusFilter changes
+  }, [statusFilter, searchQuery, tagFilter, sourceTypeFilter, youtubeFilter, currentPage, pageSize]);
 
   // Load data when statusFilter changes, with debounce
   useEffect(() => {
@@ -124,18 +185,31 @@ export const AdminNuggetsPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [loadData]); // Now safe to include loadData since it's memoized
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, searchQuery, tagFilter, sourceTypeFilter, youtubeFilter]);
+
+  useEffect(() => {
+    const loadCollections = async () => {
+      try {
+        const data = await adminCollectionsService.listCollections();
+        setCollectionOptions(data);
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[AdminNuggetsPage] Failed to load collection options', error);
+        }
+      }
+    };
+    loadCollections();
+  }, []);
+
+  useEffect(() => {
+    setFailedPreviewById({});
+  }, [nuggets, currentPage, viewMode]);
+
   // Derived state
   const processedNuggets = useMemo(() => {
     let result = [...nuggets];
-
-    // Search
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(n =>
-        (n.title || '').toLowerCase().includes(q) ||
-        (n.author?.name || '').toLowerCase().includes(q)
-      );
-    }
 
     // Filter Date
     if (dateFilter) {
@@ -162,7 +236,20 @@ export const AdminNuggetsPage: React.FC = () => {
     });
 
     return result;
-  }, [nuggets, searchQuery, dateFilter, sortKey, sortDirection]);
+  }, [nuggets, dateFilter, sortKey, sortDirection]);
+
+  const collectionNameById = useMemo(
+    () => new Map(collectionOptions.map((collection) => [collection.id, collection.name])),
+    [collectionOptions]
+  );
+
+  const formatCollectionOptionLabel = useCallback((collection: AdminCollection) => {
+    if (!collection.parentId) {
+      return collection.name;
+    }
+    const parentName = collectionNameById.get(collection.parentId) || `Parent ${collection.parentId.slice(0, 6)}`;
+    return `${collection.name} (${parentName})`;
+  }, [collectionNameById]);
 
   // Fetch full article data when entering edit mode
   useEffect(() => {
@@ -237,11 +324,53 @@ export const AdminNuggetsPage: React.FC = () => {
     setPendingDelete({ nugget, timeoutId });
   };
 
-  // Memoize handleBulkAction to prevent recreation on every render
-  const handleBulkAction = useCallback((action: string) => {
-      toast.info(`${action} ${selectedIds.length} items (Not implemented)`);
+  const handleCreateCollection = useCallback(async () => {
+    const trimmedName = newCollectionName.trim();
+    if (!trimmedName) {
+      toast.error('Collection name is required');
+      return;
+    }
+    setIsCreatingCollection(true);
+    try {
+      const created = await adminCollectionsService.createCollection({
+        name: trimmedName,
+        description: newCollectionDescription.trim(),
+        type: 'public',
+        parentId: newCollectionParentId || null,
+      });
+      setCollectionOptions((prev) => [created, ...prev]);
+      setTargetCollectionId(created.id);
+      setNewCollectionName('');
+      setNewCollectionDescription('');
+      setNewCollectionParentId('');
+      toast.success('Collection created');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to create collection');
+    } finally {
+      setIsCreatingCollection(false);
+    }
+  }, [newCollectionName, newCollectionDescription, newCollectionParentId, toast]);
+
+  const handleBulkAction = useCallback(async () => {
+    if (!targetCollectionId) {
+      toast.error('Select a target collection first');
+      return;
+    }
+    if (selectedIds.length === 0) {
+      toast.error('Select at least one nugget');
+      return;
+    }
+    setIsAssigning(true);
+    try {
+      await adminCollectionsService.addNuggetsToCollection(targetCollectionId, selectedIds);
       setSelectedIds([]);
-  }, [selectedIds.length, toast]);
+      toast.success(`Added ${selectedIds.length} nugget(s) to collection`);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to add nuggets to collection');
+    } finally {
+      setIsAssigning(false);
+    }
+  }, [selectedIds, targetCollectionId, toast]);
 
   // Memoize getTypeIcon to prevent recreation on every render
   const getTypeIcon = useCallback((type: string) => {
@@ -256,6 +385,18 @@ export const AdminNuggetsPage: React.FC = () => {
   // Memoize columns array to prevent AdminTable re-renders
   // Columns are stable and don't depend on component state
   const allColumns: Column<AdminNugget>[] = useMemo(() => [
+    {
+      key: 'serial',
+      header: '#',
+      width: 'w-16',
+      minWidth: '64px',
+      align: 'center',
+      render: (_n, index) => (
+        <span className="text-[11px] font-semibold text-slate-500">
+          {(currentPage - 1) * pageSize + index + 1}
+        </span>
+      )
+    },
     {
       key: 'id',
       header: 'ID',
@@ -384,7 +525,7 @@ export const AdminNuggetsPage: React.FC = () => {
         </div>
       )
     }
-  ], [getTypeIcon, can]); // Memoize columns - only recreate if getTypeIcon or can changes
+  ], [getTypeIcon, can, currentPage, pageSize]); // Memoize columns - only recreate if dependencies change
 
   const activeColumns = useMemo(() => 
     allColumns.filter(c => visibleColumns.includes(c.key)), 
@@ -395,11 +536,66 @@ export const AdminNuggetsPage: React.FC = () => {
   const Filters = useMemo(() => (
     <div className="flex items-center gap-2">
       <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
+        <button
+          onClick={() => setViewMode('table')}
+          className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-colors ${
+            viewMode === 'table'
+              ? 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100'
+              : 'text-slate-500 dark:text-slate-300'
+          }`}
+          title="Table view"
+        >
+          <Rows3 size={12} />
+          Table
+        </button>
+        <button
+          onClick={() => setViewMode('cards')}
+          className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-colors ${
+            viewMode === 'cards'
+              ? 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100'
+              : 'text-slate-500 dark:text-slate-300'
+          }`}
+          title="Card view"
+        >
+          <LayoutGrid size={12} />
+          Cards
+        </button>
+      </div>
+
+      <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="hidden">Hidden</option>
             <option value="flagged">Flagged</option>
+        </select>
+      </div>
+
+      <div className="relative flex items-center">
+        <input
+            type="text"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            placeholder="Tag"
+            className="pl-3 pr-2 py-1 text-[10px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-500 w-28"
+        />
+      </div>
+
+      <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
+        <select value={sourceTypeFilter} onChange={(e) => setSourceTypeFilter(e.target.value as any)} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
+            <option value="all">All Sources</option>
+            <option value="link">Link</option>
+            <option value="video">Video</option>
+            <option value="document">Document</option>
+            <option value="twitter">Twitter</option>
+        </select>
+      </div>
+
+      <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
+        <select value={youtubeFilter} onChange={(e) => setYoutubeFilter(e.target.value as any)} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
+            <option value="all">All Media</option>
+            <option value="youtube">YouTube Only</option>
+            <option value="non-youtube">Non-YouTube</option>
         </select>
       </div>
 
@@ -412,6 +608,7 @@ export const AdminNuggetsPage: React.FC = () => {
         />
       </div>
 
+      {viewMode === 'table' && (
       <div className="relative">
         <button 
             onClick={() => setShowColumnMenu(!showColumnMenu)}
@@ -442,18 +639,55 @@ export const AdminNuggetsPage: React.FC = () => {
             </>
         )}
       </div>
+      )}
     </div>
-  ), [statusFilter, dateFilter, showColumnMenu, visibleColumns, allColumns]);
+  ), [statusFilter, dateFilter, tagFilter, sourceTypeFilter, youtubeFilter, showColumnMenu, visibleColumns, allColumns, viewMode]);
 
   // Memoize BulkActions to prevent re-renders
   const BulkActions = useMemo(() => selectedIds.length > 0 ? (
-      <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 duration-200">
-          <span className="text-xs font-bold text-slate-500">{selectedIds.length} selected</span>
-          <button onClick={() => handleBulkAction('approve')} className="px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-[10px] font-bold transition-colors">Approve</button>
-          <button onClick={() => handleBulkAction('hide')} className="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-[10px] font-bold transition-colors">Hide</button>
-          <button onClick={() => handleBulkAction('delete')} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-[10px] font-bold transition-colors">Delete</button>
+      <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 duration-200 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 px-2 py-1.5">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">{selectedIds.length} selected</span>
+          <select
+            value={targetCollectionId}
+            onChange={(e) => setTargetCollectionId(e.target.value)}
+            className="px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 min-w-44"
+          >
+            <option value="">Select collection</option>
+            {collectionOptions.map((collection) => (
+              <option key={collection.id} value={collection.id}>
+                {formatCollectionOptionLabel(collection)}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleBulkAction}
+            disabled={isAssigning || !targetCollectionId}
+            className="px-3 py-1.5 bg-primary-500 text-white hover:bg-primary-600 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {isAssigning ? 'Adding...' : 'Add to collection'}
+          </button>
       </div>
-  ) : null, [selectedIds.length, handleBulkAction]);
+  ) : null, [selectedIds.length, targetCollectionId, collectionOptions, formatCollectionOptionLabel, handleBulkAction, isAssigning]);
+
+  const CardToolbar = useMemo(() => (
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div className="flex-1 flex flex-wrap items-center gap-2">
+        <div className="relative w-full md:w-auto">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          <input
+            type="text"
+            aria-label="Search nuggets"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 pr-3 py-1.5 text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 w-full md:w-48 lg:w-64"
+          />
+        </div>
+        {Filters}
+      </div>
+      {BulkActions && <div className="flex items-center gap-2 shrink-0">{BulkActions}</div>}
+    </div>
+  ), [searchQuery, Filters, BulkActions]);
 
   return (
     <div className="space-y-4">
@@ -496,47 +730,259 @@ export const AdminNuggetsPage: React.FC = () => {
         ]}
         isLoading={isLoading}
       />
+      <div className="text-xs text-slate-500 px-1">
+        Showing <span className="font-semibold text-slate-700 dark:text-slate-300">{processedNuggets.length}</span> on page {currentPage} of {totalPages}
+        {' '}from <span className="font-semibold text-slate-700 dark:text-slate-300">{filteredTotal}</span> filtered nuggets.
+      </div>
 
-      <AdminTable 
-        columns={activeColumns} 
-        data={processedNuggets} 
-        isLoading={isLoading} 
-        filters={Filters} 
-        actions={BulkActions}
-        onSearch={setSearchQuery} 
-        virtualized
-        emptyState={
-          <div className="flex flex-col items-center justify-center text-slate-500 space-y-2">
-            <p className="text-sm font-semibold">No nuggets match the current filters.</p>
-            <p className="text-xs text-slate-400">Try clearing search, status, or date filters.</p>
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => { setSearchQuery(''); setStatusFilter('all'); setDateFilter(''); loadData(); }}
-                className="px-3 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
-              >
-                Clear filters
-              </button>
-              <button
-                onClick={loadData}
-                className="px-3 py-1 text-xs font-bold rounded-md bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
-              >
-                Retry
-              </button>
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+        <div className="text-xs font-bold text-slate-500 uppercase mb-2">Create Community Collection</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={newCollectionName}
+            onChange={(e) => setNewCollectionName(e.target.value)}
+            placeholder="Collection name"
+            className="px-3 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg min-w-52"
+          />
+          <input
+            type="text"
+            value={newCollectionDescription}
+            onChange={(e) => setNewCollectionDescription(e.target.value)}
+            placeholder="Description (optional)"
+            className="px-3 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg min-w-52"
+          />
+          <select
+            value={newCollectionParentId}
+            onChange={(e) => setNewCollectionParentId(e.target.value)}
+            className="px-3 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg min-w-44"
+          >
+            <option value="">Root collection</option>
+            {collectionOptions
+              .filter((collection) => !collection.parentId)
+              .map((collection) => (
+                <option key={collection.id} value={collection.id}>
+                  {collection.name}
+                </option>
+              ))}
+          </select>
+          <button
+            onClick={handleCreateCollection}
+            disabled={isCreatingCollection}
+            className="px-3 py-2 bg-primary-50 text-primary-700 hover:bg-primary-100 rounded-lg text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isCreatingCollection ? 'Creating...' : 'Create'}
+          </button>
+        </div>
+      </div>
+
+      {viewMode === 'table' ? (
+        <AdminTable
+          columns={activeColumns}
+          data={processedNuggets}
+          isLoading={isLoading}
+          filters={Filters}
+          actions={BulkActions}
+          onSearch={setSearchQuery}
+          virtualized
+          pagination={{
+            page: currentPage,
+            totalPages,
+            onPageChange: setCurrentPage,
+          }}
+          showTopPagination
+          emptyState={
+            <div className="flex flex-col items-center justify-center text-slate-500 space-y-2">
+              <p className="text-sm font-semibold">No nuggets match the current filters.</p>
+              <p className="text-xs text-slate-400">Try clearing search, status, or date filters.</p>
+              <p className="text-xs text-slate-400">Showing page {currentPage} of {totalPages}.</p>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStatusFilter('all');
+                    setDateFilter('');
+                    setTagFilter('');
+                    setSourceTypeFilter('all');
+                    setYoutubeFilter('all');
+                    loadData();
+                  }}
+                  className="px-3 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                >
+                  Clear filters
+                </button>
+                <button
+                  onClick={loadData}
+                  className="px-3 py-1 text-xs font-bold rounded-md bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
             </div>
-          </div>
-        }
-        
-        sortKey={sortKey}
-        sortDirection={sortDirection}
-        onSortChange={(k, d) => { setSortKey(k); setSortDirection(d); }}
-
-        onRowClick={(n) => { setEditMode(false); setSelectedNugget(n); }}
-        selection={{
+          }
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          onSortChange={(k, d) => { setSortKey(k); setSortDirection(d); }}
+          onRowClick={(n) => { setEditMode(false); setSelectedNugget(n); }}
+          selection={{
             enabled: true,
             selectedIds: selectedIds,
             onSelect: setSelectedIds
-        }}
-      />
+          }}
+        />
+      ) : (
+        <div className="space-y-3">
+          {CardToolbar}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+            {processedNuggets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-slate-500 space-y-2 py-12">
+                <p className="text-sm font-semibold">No nuggets match the current filters.</p>
+                <p className="text-xs text-slate-400">Try clearing search, status, or date filters.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {processedNuggets.map((nugget, index) => {
+                  const isSelected = selectedIds.includes(nugget.id);
+                  const serial = (currentPage - 1) * pageSize + index + 1;
+                  const mediaPreview = nugget.thumbnailUrl || (nugget.isYoutube ? getYouTubeThumbnail(nugget.sourceUrl) : undefined);
+                  const canShowPreview = Boolean(mediaPreview) && !failedPreviewById[nugget.id];
+                  return (
+                    <article
+                      key={nugget.id}
+                      onClick={() => { setEditMode(false); setSelectedNugget(nugget); }}
+                      className={`rounded-xl border p-3 cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'border-primary-300 bg-primary-50/40 dark:bg-primary-900/10'
+                          : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select nugget ${nugget.title || nugget.id}`}
+                            checked={isSelected}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedIds((prev) => [...prev, nugget.id]);
+                              else setSelectedIds((prev) => prev.filter((id) => id !== nugget.id));
+                            }}
+                            className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                          />
+                          <span className="text-[11px] font-semibold text-slate-500">#{serial}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">{new Date(nugget.createdAt).toLocaleDateString()}</div>
+                      </div>
+
+                      <div className="mt-2 relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 h-40">
+                        {canShowPreview ? (
+                          <img
+                            src={mediaPreview}
+                            alt={nugget.title || 'Nugget preview'}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                            onError={() => {
+                              setFailedPreviewById((prev) => ({ ...prev, [nugget.id]: true }));
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-400">
+                            {nugget.isYoutube ? <Video size={28} /> : nugget.type === 'image' ? <ImageIcon size={28} /> : <StickyNote size={28} />}
+                          </div>
+                        )}
+                        {nugget.sourceUrl && (
+                          <a
+                            href={nugget.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute top-2 right-2 px-2 py-1 text-[10px] font-bold bg-black/70 text-white rounded-md hover:bg-black/80"
+                          >
+                            Source
+                          </a>
+                        )}
+                      </div>
+
+                      <h3 className="mt-3 text-sm font-bold text-indigo-700 dark:text-indigo-300 line-clamp-2">
+                        {nugget.title || 'Untitled'}
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-500 line-clamp-3">{nugget.excerpt || 'No description'}</p>
+
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600">{nugget.author.name}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600">{nugget.visibility}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                          nugget.status === 'flagged' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                        }`}>{nugget.status}</span>
+                        {nugget.isYoutube && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">YouTube</span>}
+                      </div>
+
+                      {Array.isArray(nugget.tags) && nugget.tags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {nugget.tags.slice(0, 3).map((tag) => (
+                            <span key={`${nugget.id}-${tag}`} className="text-[10px] px-2 py-0.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => { setSelectedNugget(nugget); setEditMode(true); }}
+                          className="px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50"
+                        >
+                          Edit
+                        </button>
+                        {can('admin.nuggets.hide') && (
+                          <button
+                            onClick={() => handleStatusChange(nugget, nugget.status === 'active' ? 'hidden' : 'active')}
+                            className="px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50"
+                          >
+                            {nugget.status === 'active' ? 'Hide' : 'Approve'}
+                          </button>
+                        )}
+                        {can('admin.nuggets.delete') && (
+                          <button
+                            onClick={() => setItemToDelete(nugget)}
+                            className="px-2 py-1 text-[10px] font-bold bg-red-50 border border-red-100 rounded-md text-red-700 hover:bg-red-100"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            {totalPages > 1 && (
+              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-slate-500">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-2 py-1 rounded-md border border-slate-200 text-xs disabled:opacity-50"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-2 py-1 rounded-md border border-slate-200 text-xs disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       
       {/* View-only drawer - only show when NOT in edit mode */}
       <AdminDrawer 

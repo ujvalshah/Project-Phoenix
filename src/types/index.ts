@@ -316,6 +316,8 @@ export interface Collection {
   id: string;
   name: string;
   description: string;
+  /** Optional parent collection for one-level sub-community grouping */
+  parentId?: string | null;
   creatorId: string;
   createdAt: string;
   updatedAt?: string;
@@ -347,7 +349,7 @@ export interface CollectionEntry {
 // --- UI & State ---
 
 export type Theme = 'light' | 'dark';
-export type SortOrder = 'latest' | 'oldest' | 'title' | 'title-desc';
+export type SortOrder = 'latest' | 'oldest';
 
 export type TimeRange = 'all' | '24h' | '7d';
 

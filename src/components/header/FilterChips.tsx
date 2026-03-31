@@ -1,24 +1,18 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import type { SortOrder, TimeRange } from '@/types';
+import type { SortOrder } from '@/types';
 
 interface FilterChipsProps {
   searchQuery: string;
   selectedCategories: string[];
   selectedTag: string | null;
   sortOrder: SortOrder;
-  favorites: boolean;
-  unread: boolean;
-  formats: string[];
-  timeRange: TimeRange;
+  collectionName: string | null;
   onClearSearch: () => void;
   onRemoveCategory: (cat: string) => void;
   onClearTag: () => void;
   onClearSort: () => void;
-  onClearFavorites: () => void;
-  onClearUnread: () => void;
-  onRemoveFormat: (fmt: string) => void;
-  onClearTimeRange: () => void;
+  onClearCollection: () => void;
   onClearAll: () => void;
 }
 
@@ -41,14 +35,6 @@ const Chip: React.FC<{ label: string; onRemove: () => void }> = ({ label, onRemo
 const sortLabels: Record<SortOrder, string> = {
   latest: 'Latest',
   oldest: 'Oldest',
-  title: 'Title A–Z',
-  'title-desc': 'Title Z–A',
-};
-
-const timeLabels: Record<TimeRange, string> = {
-  all: 'Any time',
-  '24h': 'Past 24h',
-  '7d': 'Past week',
 };
 
 export const FilterChips: React.FC<FilterChipsProps> = ({
@@ -56,18 +42,12 @@ export const FilterChips: React.FC<FilterChipsProps> = ({
   selectedCategories,
   selectedTag,
   sortOrder,
-  favorites,
-  unread,
-  formats,
-  timeRange,
+  collectionName,
   onClearSearch,
   onRemoveCategory,
   onClearTag,
   onClearSort,
-  onClearFavorites,
-  onClearUnread,
-  onRemoveFormat,
-  onClearTimeRange,
+  onClearCollection,
   onClearAll,
 }) => {
   const chips: React.ReactNode[] = [];
@@ -84,17 +64,8 @@ export const FilterChips: React.FC<FilterChipsProps> = ({
   if (sortOrder !== 'latest') {
     chips.push(<Chip key="sort" label={`Sort: ${sortLabels[sortOrder]}`} onRemove={onClearSort} />);
   }
-  if (favorites) {
-    chips.push(<Chip key="fav" label="Favorites" onRemove={onClearFavorites} />);
-  }
-  if (unread) {
-    chips.push(<Chip key="unread" label="Unread" onRemove={onClearUnread} />);
-  }
-  for (const fmt of formats) {
-    chips.push(<Chip key={`fmt-${fmt}`} label={fmt} onRemove={() => onRemoveFormat(fmt)} />);
-  }
-  if (timeRange !== 'all') {
-    chips.push(<Chip key="time" label={timeLabels[timeRange]} onRemove={onClearTimeRange} />);
+  if (collectionName) {
+    chips.push(<Chip key="col" label={`Collection: ${collectionName}`} onRemove={onClearCollection} />);
   }
 
   if (chips.length === 0) return null;

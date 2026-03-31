@@ -43,9 +43,20 @@ export function filtersToParams(f: SerializableFilterState): URLSearchParams {
   return p;
 }
 
+/** Maps URL/localStorage sort values; legacy title sorts become latest. */
+function parseSortParam(raw: string | null): SortOrder | undefined {
+  if (raw === 'latest' || raw === 'oldest') return raw;
+  if (raw === 'title' || raw === 'title-desc') return 'latest';
+  return undefined;
+}
+
+function normalizePersistedSort(raw: unknown): SortOrder | undefined {
+  if (raw === 'latest' || raw === 'oldest') return raw;
+  if (raw === 'title' || raw === 'title-desc') return 'latest';
+  return undefined;
+}
+
 export function paramsToFilters(p: URLSearchParams): SerializableFilterState {
-  const sort = p.get('sort');
-  const validSorts: SortOrder[] = ['latest', 'oldest', 'title', 'title-desc'];
   const timeRange = p.get('time');
   const validTimeRanges: TimeRange[] = ['all', '24h', '7d'];
 
@@ -53,7 +64,7 @@ export function paramsToFilters(p: URLSearchParams): SerializableFilterState {
     q: p.get('q') || undefined,
     categories: p.getAll('cat').filter(Boolean),
     tag: p.get('tag') || undefined,
-    sort: validSorts.includes(sort as SortOrder) ? (sort as SortOrder) : undefined,
+    sort: parseSortParam(p.get('sort')),
     favorites: p.get('favorites') === '1' || undefined,
     unread: p.get('unread') === '1' || undefined,
     formats: p.getAll('fmt').filter(Boolean),
@@ -158,7 +169,7 @@ export function useFilterState(): UseFilterStateReturn {
       ? urlFilters.categories
       : DEFAULTS.categories,
     tag: urlFilters.tag || DEFAULTS.tag,
-    sort: urlFilters.sort || persisted.sort || DEFAULTS.sort,
+    sort: urlFilters.sort ?? normalizePersistedSort(persisted.sort) ?? DEFAULTS.sort,
     favorites: urlFilters.favorites ?? persisted.favorites ?? DEFAULTS.favorites,
     unread: urlFilters.unread ?? persisted.unread ?? DEFAULTS.unread,
     formats: urlFilters.formats && urlFilters.formats.length > 0
@@ -257,9 +268,9 @@ export function useFilterState(): UseFilterStateReturn {
     if (unread) count++;
     count += formats.length;
     if (timeRange !== 'all') count++;
-    // collectionId is intentionally NOT counted here — it has its own visual indicator (category toolbar)
+    if (collectionId) count++;
     return count;
-  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange]);
+  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId]);
 
   const hasActiveFilters = activeFilterCount > 0;
 

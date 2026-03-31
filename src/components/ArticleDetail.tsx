@@ -55,9 +55,13 @@ import { EmbeddedMedia } from './embeds/EmbeddedMedia';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useAuth } from '@/hooks/useAuth';
 import { ReportModal } from './ReportModal';
+import { CreateNuggetModal } from './CreateNuggetModal';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 import { useVideoPlayer } from '@/context/VideoPlayerContext';
+import { storageService } from '@/services/storageService';
+import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/useToast';
 
 interface ArticleDetailProps {
   article: Article;
@@ -107,14 +111,17 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
 
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [drawerMediaIndex, setDrawerMediaIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [inlineVideoStartTime, setInlineVideoStartTime] = useState<number | null>(null);
   const mediaCarouselRef = useRef<HTMLDivElement>(null);
-  
+
   const { withAuth } = useRequireAuth();
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, isAdmin, featureFlags } = useAuth();
   const { playVideo } = useVideoPlayer();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   
   const shouldShowHeader = showHeader ?? isModal;
 
@@ -129,7 +136,48 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
     || '';
   const authorId = article?.author?.id ?? "";
   const isOwner = currentUser?.id === authorId;
-  
+
+  // Built-in handlers for edit/delete/visibility when parent doesn't provide them
+  const handleEdit = useCallback(() => {
+    if (onEdit) {
+      onEdit();
+    } else {
+      setShowEditModal(true);
+    }
+  }, [onEdit]);
+
+  const handleDelete = useCallback(async () => {
+    if (onDelete) {
+      onDelete();
+      return;
+    }
+    if (window.confirm('Delete this nugget permanently?')) {
+      try {
+        await storageService.deleteArticle(article.id);
+        await queryClient.invalidateQueries({ queryKey: ['articles'] });
+        toast.success('Nugget deleted');
+        onClose?.();
+      } catch {
+        toast.error('Failed to delete nugget');
+      }
+    }
+  }, [onDelete, article.id, queryClient, toast, onClose]);
+
+  const handleToggleVisibility = useCallback(async () => {
+    if (onToggleVisibility) {
+      onToggleVisibility();
+      return;
+    }
+    try {
+      const newVisibility = article.visibility === 'private' ? 'public' : 'private';
+      await storageService.updateArticle(article.id, { visibility: newVisibility });
+      await queryClient.invalidateQueries({ queryKey: ['articles'] });
+      toast.success(`Made ${newVisibility}`);
+    } catch {
+      toast.error('Failed to update visibility');
+    }
+  }, [onToggleVisibility, article.id, article.visibility, queryClient, toast]);
+
   // Resolve source URL for "View Original Source" button
   // Priority: externalLinks (primary) > previewMetadata.url > media.url (link-type)
   const sourceUrl = useMemo(() => {
@@ -300,13 +348,14 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                authorName={authorName}
                article={article}
                onClose={onClose}
-               onEdit={onEdit}
-               onDelete={onDelete}
-               onToggleVisibility={onToggleVisibility}
+               onEdit={handleEdit}
+               onDelete={handleDelete}
+               onToggleVisibility={handleToggleVisibility}
                onAddToCollection={withAuth(handleAddToCollection)}
                onReport={() => setShowReportModal(true)}
                isOwner={isOwner}
                isAdmin={isAdmin}
+               showAuthorName={featureFlags?.showAuthorName ?? false}
            />
        )}
 
@@ -528,6 +577,14 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
           targetId={article?.id ?? ''}
           targetType="nugget"
       />
+      {showEditModal && (
+        <CreateNuggetModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          mode="edit"
+          initialData={article}
+        />
+      )}
     </div>
   );
 };

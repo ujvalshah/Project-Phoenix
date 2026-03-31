@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowUp } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 export const BackToTopButton: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
   const rafIdRef = useRef<number | null>(null);
   const lastVisibleRef = useRef(false);
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith('/admin');
 
   useEffect(() => {
     // CRITICAL PERFORMANCE FIX: Optimize scroll handler to be < 5ms
@@ -79,7 +82,9 @@ export const BackToTopButton: React.FC = () => {
   return (
     <button
       onClick={scrollToTop}
-      className={`fixed bottom-6 right-6 md:bottom-8 md:right-8 z-30 p-2.5 rounded-full bg-primary-500 text-slate-900 shadow-lg shadow-primary-500/30 hover:bg-primary-400 hover:scale-110 transition-all duration-300 transform flex items-center justify-center ${
+      className={`fixed right-6 md:right-8 z-30 p-2.5 rounded-full bg-primary-500 text-slate-900 shadow-lg shadow-primary-500/30 hover:bg-primary-400 hover:scale-110 transition-all duration-300 transform flex items-center justify-center ${
+        isAdminRoute ? 'bottom-20 md:bottom-24' : 'bottom-6 md:bottom-8'
+      } ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
       }`}
     >

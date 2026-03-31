@@ -11,16 +11,54 @@ interface PaginatedResponse<T> {
   hasMore: boolean;
 }
 
+export interface AdminNuggetListFilters {
+  status?: 'all' | 'flagged' | 'hidden' | 'active';
+  query?: string;
+  tag?: string;
+  sourceType?: string;
+  youtubeMode?: 'all' | 'youtube' | 'non-youtube';
+  page?: number;
+  limit?: number;
+}
+
+export interface AdminNuggetListResponse {
+  data: AdminNugget[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 class AdminNuggetsService {
   // In-flight request guard to prevent duplicate concurrent stats requests
   private inFlightStatsRequest: Promise<{ total: number; flagged: number; createdToday: number; public: number; private: number }> | null = null;
 
-  async listNuggets(filter?: 'all' | 'flagged' | 'hidden'): Promise<AdminNugget[]> {
+  async listNuggets(filters?: AdminNuggetListFilters): Promise<AdminNuggetListResponse> {
     try {
+      const params = new URLSearchParams();
+      const page = Math.max(filters?.page || 1, 1);
+      const limit = Math.min(Math.max(filters?.limit || 50, 1), 100);
+      params.set('page', String(page));
+      params.set('limit', String(limit));
+      if (filters?.query?.trim()) {
+        params.set('q', filters.query.trim());
+      }
+      if (filters?.tag?.trim()) {
+        params.set('tag', filters.tag.trim());
+      }
+      if (filters?.sourceType && filters.sourceType !== 'all') {
+        params.append('formats', filters.sourceType);
+      }
+      if (filters?.youtubeMode === 'youtube') {
+        params.set('youtubeOnly', '1');
+      } else if (filters?.youtubeMode === 'non-youtube') {
+        params.set('nonYoutubeOnly', '1');
+      }
+
       // Fetch articles and reports in parallel for better performance
       // Request high limit (100) to get all items for admin panel
       const [articlesResponse, reportsResponse] = await Promise.all([
-        apiClient.get<PaginatedResponse<Article>>('/articles?limit=100'),
+        apiClient.get<PaginatedResponse<Article>>(`/articles?${params.toString()}`),
         apiClient.get<PaginatedResponse<RawReport>>('/moderation/reports')
       ]);
       
@@ -28,11 +66,11 @@ class AdminNuggetsService {
       // Handle case where response might be null/undefined or missing data property
       if (!articlesResponse) {
         console.error('[AdminNuggetsService.listNuggets] Articles response is null/undefined');
-        return [];
+        return { data: [], total: 0, page, limit, hasMore: false };
       }
       if (!reportsResponse) {
         console.error('[AdminNuggetsService.listNuggets] Reports response is null/undefined');
-        return [];
+        return { data: [], total: 0, page, limit, hasMore: false };
       }
       
       // Handle paginated response format { data: [...], total, ... }
@@ -47,11 +85,11 @@ class AdminNuggetsService {
       // Ensure we have arrays
       if (!Array.isArray(articles)) {
         console.error('[AdminNuggetsService.listNuggets] Expected articles array but got:', typeof articles);
-        return [];
+        return { data: [], total: 0, page, limit, hasMore: false };
       }
       if (!Array.isArray(reports)) {
         console.error('[AdminNuggetsService.listNuggets] Expected reports array but got:', typeof reports);
-        return [];
+        return { data: [], total: 0, page, limit, hasMore: false };
       }
       
       // Filter out null/undefined/invalid articles before processing
@@ -89,14 +127,34 @@ class AdminNuggetsService {
         .filter((nugget): nugget is AdminNugget => nugget != null); // Remove any null results from failed mappings
       
       // Apply filter
-      if (filter === 'flagged') {
-        return nuggets.filter(n => n.status === 'flagged');
+      if (filters?.status === 'flagged') {
+        const flagged = nuggets.filter(n => n.status === 'flagged');
+        return {
+          data: flagged,
+          total: typeof articlesResponse.total === 'number' ? articlesResponse.total : flagged.length,
+          page: typeof articlesResponse.page === 'number' ? articlesResponse.page : page,
+          limit: typeof articlesResponse.limit === 'number' ? articlesResponse.limit : limit,
+          hasMore: Boolean(articlesResponse.hasMore),
+        };
       }
-      if (filter === 'hidden') {
-        return nuggets.filter(n => n.status === 'hidden');
+      if (filters?.status === 'hidden') {
+        const hidden = nuggets.filter(n => n.status === 'hidden');
+        return {
+          data: hidden,
+          total: typeof articlesResponse.total === 'number' ? articlesResponse.total : hidden.length,
+          page: typeof articlesResponse.page === 'number' ? articlesResponse.page : page,
+          limit: typeof articlesResponse.limit === 'number' ? articlesResponse.limit : limit,
+          hasMore: Boolean(articlesResponse.hasMore),
+        };
       }
       
-      return nuggets;
+      return {
+        data: nuggets,
+        total: typeof articlesResponse.total === 'number' ? articlesResponse.total : nuggets.length,
+        page: typeof articlesResponse.page === 'number' ? articlesResponse.page : page,
+        limit: typeof articlesResponse.limit === 'number' ? articlesResponse.limit : limit,
+        hasMore: Boolean(articlesResponse.hasMore),
+      };
     } catch (error: any) {
       console.error('[AdminNuggetsService.listNuggets] Error fetching nuggets:', error);
       throw error;

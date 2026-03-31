@@ -89,6 +89,25 @@ export function mapArticleToAdminNugget(article: Article, reportsCount: number =
   }
   if (article.media?.type === 'image') type = 'image';
   if (article.media?.type === 'video' || article.video) type = 'video';
+  const isYoutube = article.media?.type === 'youtube' || article.primaryMedia?.type === 'youtube';
+  const sourceUrl =
+    article.primaryMedia?.url ||
+    article.media?.url ||
+    article.video ||
+    article.externalLinks?.find((link) => link.isPrimary)?.url ||
+    article.externalLinks?.[0]?.url ||
+    article.media?.previewMetadata?.url ||
+    article.media?.previewMetadata?.finalUrl;
+  const thumbnailUrl =
+    article.primaryMedia?.thumbnail ||
+    article.primaryMedia?.previewMetadata?.imageUrl ||
+    article.primaryMedia?.url ||
+    article.media?.thumbnail_url ||
+    article.media?.previewMetadata?.imageUrl ||
+    article.media?.url ||
+    article.images?.[0] ||
+    article.supportingMedia?.[0]?.thumbnail ||
+    article.supportingMedia?.[0]?.url;
 
   return {
     id: article.id,
@@ -101,12 +120,16 @@ export function mapArticleToAdminNugget(article: Article, reportsCount: number =
       avatar: authorAvatar
     },
     type,
-    url: article.media?.url || article.media?.previewMetadata?.url,
+    url: sourceUrl,
     visibility: article.visibility || 'public',
     status: reportsCount > 0 ? 'flagged' : 'active', // Simplified: flagged if has reports
     createdAt: article.publishedAt || new Date().toISOString(),
     reports: reportsCount,
-    tags: article.tags || []
+    tags: article.tags || [],
+    sourceType: article.source_type,
+    isYoutube,
+    sourceUrl,
+    thumbnailUrl,
   };
 }
 
@@ -130,6 +153,7 @@ export function mapCollectionToAdminCollection(collection: Collection): AdminCol
     updatedAt: collection.updatedAt || collection.createdAt,
     isFeatured: collection.isFeatured ?? false,
     featuredOrder: collection.featuredOrder ?? 0,
+    parentId: collection.parentId ?? null,
   };
 }
 

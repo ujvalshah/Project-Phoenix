@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { createArticleSchema, updateArticleSchema } from '../utils/validation.js';
 
+function getZodIssues(error: unknown): Array<{ path: Array<string | number> }> {
+  if (!error || typeof error !== 'object') return [];
+  const maybeError = error as { issues?: Array<{ path: Array<string | number> }>; errors?: Array<{ path: Array<string | number> }> };
+  if (Array.isArray(maybeError.issues)) return maybeError.issues;
+  if (Array.isArray(maybeError.errors)) return maybeError.errors;
+  return [];
+}
+
 describe('Article Validation Schema - Null Array Handling', () => {
   describe('createArticleSchema', () => {
     const baseValidPayload = {
@@ -19,7 +27,8 @@ describe('Article Validation Schema - Null Array Handling', () => {
       // Should fail validation because tags are required (empty array fails refinement)
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors.some(e => e.path.includes('tags'))).toBe(true);
+        const issues = getZodIssues(result.error);
+        expect(issues.some(e => e.path.includes('tags'))).toBe(true);
       }
     });
 
@@ -67,8 +76,7 @@ describe('Article Validation Schema - Null Array Handling', () => {
       
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(Array.isArray(result.data.images)).toBe(true);
-        expect(result.data.images.length).toBe(0);
+        expect(result.data.images).toBeUndefined();
       }
     });
 

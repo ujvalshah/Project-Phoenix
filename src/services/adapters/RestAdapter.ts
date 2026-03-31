@@ -57,6 +57,8 @@ export class RestAdapter implements IAdapter {
     unread?: boolean;
     formats?: string[];
     timeRange?: string;
+    youtubeOnly?: boolean;
+    nonYoutubeOnly?: boolean;
   }): Promise<PaginatedArticlesResponse> {
     const queryParams = new URLSearchParams();
     if (params.q) queryParams.set('q', params.q);
@@ -73,6 +75,8 @@ export class RestAdapter implements IAdapter {
       params.formats.forEach(f => queryParams.append('formats', f));
     }
     if (params.timeRange && params.timeRange !== 'all') queryParams.set('timeRange', params.timeRange);
+    if (params.youtubeOnly) queryParams.set('youtubeOnly', '1');
+    if (params.nonYoutubeOnly) queryParams.set('nonYoutubeOnly', '1');
     queryParams.set('page', params.page.toString());
     queryParams.set('limit', params.limit.toString());
 
@@ -356,6 +360,8 @@ export class RestAdapter implements IAdapter {
     sortDirection?: 'asc' | 'desc';
     page?: number;
     limit?: number;
+    parentId?: string;
+    rootOnly?: boolean;
   }): Promise<Collection[] | { data: Collection[]; count: number }> {
     // Use endpoint-specific cancel behavior (default in apiClient).
     // Do NOT use a single shared cancelKey here; different collection queries/pages
@@ -369,6 +375,8 @@ export class RestAdapter implements IAdapter {
     if (params?.sortDirection) queryParams.set('sortDirection', params.sortDirection);
     if (params?.page) queryParams.set('page', params.page.toString());
     if (params?.limit) queryParams.set('limit', params.limit.toString());
+    if (params?.parentId) queryParams.set('parentId', params.parentId);
+    if (params?.rootOnly) queryParams.set('rootOnly', 'true');
     
     const endpoint = queryParams.toString() ? `/collections?${queryParams}` : '/collections';
     return apiClient.get<any>(endpoint)
@@ -411,8 +419,8 @@ export class RestAdapter implements IAdapter {
     return apiClient.get<Collection>(`/collections/${id}`).catch(() => undefined);
   }
 
-  createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private'): Promise<Collection> {
-    return apiClient.post('/collections', { name, description, creatorId, type });
+  createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private', parentId?: string | null): Promise<Collection> {
+    return apiClient.post('/collections', { name, description, creatorId, type, parentId });
   }
 
   async deleteCollection(id: string): Promise<void> {

@@ -7,7 +7,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { FilterChips } from '@/components/header/FilterChips';
-import type { SortOrder, TimeRange } from '@/types';
+import type { SortOrder } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -19,18 +19,12 @@ function defaultProps(overrides: Partial<Parameters<typeof FilterChips>[0]> = {}
     selectedCategories: [] as string[],
     selectedTag: null as string | null,
     sortOrder: 'latest' as SortOrder,
-    favorites: false,
-    unread: false,
-    formats: [] as string[],
-    timeRange: 'all' as TimeRange,
+    collectionName: null as string | null,
     onClearSearch: vi.fn(),
     onRemoveCategory: vi.fn(),
     onClearTag: vi.fn(),
     onClearSort: vi.fn(),
-    onClearFavorites: vi.fn(),
-    onClearUnread: vi.fn(),
-    onRemoveFormat: vi.fn(),
-    onClearTimeRange: vi.fn(),
+    onClearCollection: vi.fn(),
     onClearAll: vi.fn(),
     ...overrides,
   };
@@ -72,33 +66,18 @@ describe('FilterChips rendering', () => {
     expect(screen.queryByText(/Sort:/)).toBeNull();
   });
 
-  it('renders chips for title sort variants', () => {
-    const { rerender } = render(<FilterChips {...defaultProps({ sortOrder: 'title' })} />);
-    expect(screen.getByText('Sort: Title A–Z')).toBeTruthy();
-
-    rerender(<FilterChips {...defaultProps({ sortOrder: 'title-desc' })} />);
-    expect(screen.getByText('Sort: Title Z–A')).toBeTruthy();
+  it('renders a chip for collection name', () => {
+    render(<FilterChips {...defaultProps({ collectionName: 'India' })} />);
+    expect(screen.getByText('Collection: India')).toBeTruthy();
   });
 
-  it('renders chips for boolean filters', () => {
-    render(<FilterChips {...defaultProps({ favorites: true, unread: true })} />);
-    expect(screen.getByText('Favorites')).toBeTruthy();
-    expect(screen.getByText('Unread')).toBeTruthy();
-  });
-
-  it('renders chips for each format', () => {
-    render(<FilterChips {...defaultProps({ formats: ['video', 'link'] })} />);
-    expect(screen.getByText('video')).toBeTruthy();
-    expect(screen.getByText('link')).toBeTruthy();
-  });
-
-  it('renders a chip for non-default timeRange', () => {
-    render(<FilterChips {...defaultProps({ timeRange: '24h' })} />);
-    expect(screen.getByText('Past 24h')).toBeTruthy();
+  it('does NOT render collection chip when collectionName is null', () => {
+    render(<FilterChips {...defaultProps({ collectionName: null })} />);
+    expect(screen.queryByText(/Collection:/)).toBeNull();
   });
 
   it('renders "Clear all" button when multiple chips exist', () => {
-    render(<FilterChips {...defaultProps({ searchQuery: 'x', favorites: true })} />);
+    render(<FilterChips {...defaultProps({ searchQuery: 'x', collectionName: 'India' })} />);
     expect(screen.getByText('Clear all')).toBeTruthy();
   });
 
@@ -149,36 +128,18 @@ describe('FilterChips dismiss callbacks', () => {
     expect(onClearSort).toHaveBeenCalledOnce();
   });
 
-  it('calls onClearFavorites when favorites chip is dismissed', () => {
-    const onClearFavorites = vi.fn();
-    render(<FilterChips {...defaultProps({ favorites: true, onClearFavorites })} />);
+  it('calls onClearCollection when collection chip is dismissed', () => {
+    const onClearCollection = vi.fn();
+    render(<FilterChips {...defaultProps({ collectionName: 'India', onClearCollection })} />);
 
-    const removeBtn = screen.getByLabelText('Remove Favorites filter');
+    const removeBtn = screen.getByLabelText('Remove Collection: India filter');
     fireEvent.click(removeBtn);
-    expect(onClearFavorites).toHaveBeenCalledOnce();
-  });
-
-  it('calls onRemoveFormat with format name', () => {
-    const onRemoveFormat = vi.fn();
-    render(<FilterChips {...defaultProps({ formats: ['video'], onRemoveFormat })} />);
-
-    const removeBtn = screen.getByLabelText('Remove video filter');
-    fireEvent.click(removeBtn);
-    expect(onRemoveFormat).toHaveBeenCalledWith('video');
-  });
-
-  it('calls onClearTimeRange when time chip is dismissed', () => {
-    const onClearTimeRange = vi.fn();
-    render(<FilterChips {...defaultProps({ timeRange: '7d', onClearTimeRange })} />);
-
-    const removeBtn = screen.getByLabelText('Remove Past week filter');
-    fireEvent.click(removeBtn);
-    expect(onClearTimeRange).toHaveBeenCalledOnce();
+    expect(onClearCollection).toHaveBeenCalledOnce();
   });
 
   it('calls onClearAll when "Clear all" is clicked', () => {
     const onClearAll = vi.fn();
-    render(<FilterChips {...defaultProps({ searchQuery: 'x', favorites: true, onClearAll })} />);
+    render(<FilterChips {...defaultProps({ searchQuery: 'x', collectionName: 'India', onClearAll })} />);
 
     fireEvent.click(screen.getByText('Clear all'));
     expect(onClearAll).toHaveBeenCalledOnce();
@@ -215,7 +176,7 @@ describe('FilterChips accessibility', () => {
   });
 
   it('"Clear all" button has aria-label', () => {
-    render(<FilterChips {...defaultProps({ searchQuery: 'x', favorites: true })} />);
+    render(<FilterChips {...defaultProps({ searchQuery: 'x', collectionName: 'India' })} />);
     expect(screen.getByLabelText('Clear all filters')).toBeTruthy();
   });
 });

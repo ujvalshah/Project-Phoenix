@@ -26,6 +26,7 @@ interface AdminTableProps<T> {
     totalPages: number;
     onPageChange: (page: number) => void;
   };
+  showTopPagination?: boolean;
   onSearch?: (query: string) => void;
   placeholder?: string;
 
@@ -59,6 +60,7 @@ function AdminTableComponent<T extends { id: string }>({
   filters,
   actions,
   pagination,
+  showTopPagination = false,
   onSearch,
   placeholder = "Search...",
   sortKey,
@@ -114,6 +116,89 @@ function AdminTableComponent<T extends { id: string }>({
   const alignClass = (a?: string) =>
     a === 'center' ? 'text-center' : a === 'right' ? 'text-right' : 'text-left';
 
+  const getPaginationItems = (page: number, totalPages: number): Array<number | '...'> => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, idx) => idx + 1);
+    }
+
+    const items: Array<number | '...'> = [1];
+
+    let start = Math.max(2, page - 1);
+    let end = Math.min(totalPages - 1, page + 1);
+
+    if (page <= 3) {
+      start = 2;
+      end = 4;
+    } else if (page >= totalPages - 2) {
+      start = totalPages - 3;
+      end = totalPages - 1;
+    }
+
+    if (start > 2) {
+      items.push('...');
+    }
+
+    for (let p = start; p <= end; p++) {
+      items.push(p);
+    }
+
+    if (end < totalPages - 1) {
+      items.push('...');
+    }
+
+    items.push(totalPages);
+    return items;
+  };
+
+  const renderPagination = () => {
+    if (!pagination || pagination.totalPages <= 1) return null;
+
+    const items = getPaginationItems(pagination.page, pagination.totalPages);
+
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium text-slate-500">
+          Page {pagination.page} of {pagination.totalPages}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => pagination.onPageChange(Math.max(1, pagination.page - 1))}
+            disabled={pagination.page === 1}
+            className="px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-[11px] font-medium hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          {items.map((item, idx) =>
+            item === '...' ? (
+              <span key={`ellipsis-${idx}`} className="px-2 text-[11px] text-slate-400">
+                ...
+              </span>
+            ) : (
+              <button
+                key={`page-${item}`}
+                onClick={() => pagination.onPageChange(item)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
+                  item === pagination.page
+                    ? 'bg-primary-500 text-white border-primary-500'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                }`}
+              >
+                {item}
+              </button>
+            )
+          )}
+          <button
+            onClick={() => pagination.onPageChange(Math.min(pagination.totalPages, pagination.page + 1))}
+            disabled={pagination.page === pagination.totalPages}
+            className="px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-[11px] font-medium hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}
@@ -144,6 +229,12 @@ function AdminTableComponent<T extends { id: string }>({
         {isLoading && (
           <div className="absolute inset-0 bg-white/60 dark:bg-slate-900/60 z-30 flex items-center justify-center rounded-xl">
             <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
+          </div>
+        )}
+
+        {showTopPagination && pagination && pagination.totalPages > 1 && (
+          <div className="border-b border-slate-100 dark:border-slate-800 px-4 py-2 bg-slate-50/50 dark:bg-slate-900">
+            {renderPagination()}
           </div>
         )}
 
@@ -294,25 +385,7 @@ function AdminTableComponent<T extends { id: string }>({
         {/* Pagination */}
         {pagination && pagination.totalPages > 1 && (
           <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-2 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900">
-            <span className="text-[11px] font-medium text-slate-500">
-              Page {pagination.page} of {pagination.totalPages}
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => pagination.onPageChange(Math.max(1, pagination.page - 1))}
-                disabled={pagination.page === 1}
-                className="p-1 rounded-md hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 disabled:opacity-50"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <button
-                onClick={() => pagination.onPageChange(Math.min(pagination.totalPages, pagination.page + 1))}
-                disabled={pagination.page === pagination.totalPages}
-                className="p-1 rounded-md hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 disabled:opacity-50"
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
+            {renderPagination()}
           </div>
         )}
       </div>

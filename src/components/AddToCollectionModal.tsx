@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Check, Folder, Search, Globe, Loader2 } from 'lucide-react';
 import { storageService } from '@/services/storageService';
@@ -106,6 +106,18 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
 
   const getName = (c: Collection): string => c.name || '';
 
+  const collectionNameById = useMemo(
+    () => new Map(allCollections.map((collection) => [collection.id, getName(collection)])),
+    [allCollections]
+  );
+
+  const getDisplayName = (collection: Collection): string => {
+    const name = getName(collection);
+    if (!collection.parentId) return name;
+    const parentName = collectionNameById.get(collection.parentId) || `Parent ${collection.parentId.slice(0, 6)}`;
+    return `${name} (${parentName})`;
+  };
+
   // Client-side search — instant, no API calls
   // In multi-select mode, pin current collection at top
   const filteredCollections = allCollections
@@ -141,19 +153,25 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
     }
 
     setProcessingId(collectionId);
+    const targetCollection = allCollections.find((collection) => collection.id === collectionId);
+    const parentId = targetCollection?.parentId ?? null;
 
     // Optimistic update
     setAllCollections((prev) =>
       prev.map((c) => {
-        if (c.id !== collectionId) return c;
-        if (isInCollection) {
-          return { ...c, entries: c.entries.filter((e) => !articleIds.includes(e.articleId)) };
+        const shouldUpdateTarget = c.id === collectionId;
+        const shouldUpdateParent = !isInCollection && Boolean(parentId) && c.id === parentId;
+        if (!shouldUpdateTarget && !shouldUpdateParent) {
+          return c;
         }
-        const existing = new Set(c.entries.map((e) => e.articleId));
+        if (isInCollection && shouldUpdateTarget) {
+          return { ...c, entries: (c.entries ?? []).filter((e) => !articleIds.includes(e.articleId)) };
+        }
+        const existing = new Set((c.entries ?? []).map((e) => e.articleId));
         const newEntries = articleIds
           .filter((id) => !existing.has(id))
           .map((id) => ({ articleId: id, addedByUserId: currentUserId, addedAt: new Date().toISOString(), flaggedBy: [] as string[] }));
-        return { ...c, entries: [...c.entries, ...newEntries] };
+        return { ...c, entries: [...(c.entries ?? []), ...newEntries] };
       })
     );
 
@@ -256,7 +274,7 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
                 return (
                   <button
                     key={col.id}
-                    onClick={() => !isProcessing && toggleCollection(col.id, inCollection, getName(col))}
+                    onClick={() => !isProcessing && toggleCollection(col.id, inCollection, getDisplayName(col))}
                     disabled={isProcessing}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                       inCollection
@@ -280,7 +298,7 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
                     <span className={`text-sm font-medium truncate flex-1 ${
                       inCollection ? 'text-primary-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-300'
                     }`}>
-                      {getName(col)}
+                      {getDisplayName(col)}
                       {isCurrent && (
                         <span className="ml-1.5 text-xs font-normal text-slate-400 dark:text-slate-500">(current)</span>
                       )}

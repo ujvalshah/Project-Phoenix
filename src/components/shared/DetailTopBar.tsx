@@ -16,6 +16,7 @@ interface DetailTopBarProps {
   onReport: () => void;
   isOwner: boolean;
   isAdmin: boolean;
+  showAuthorName?: boolean;
 }
 
 export const DetailTopBar: React.FC<DetailTopBarProps> = ({
@@ -29,6 +30,7 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
   onReport,
   isOwner,
   isAdmin,
+  showAuthorName = true,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -54,7 +56,9 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
         {authorName && (
           <>
             <Avatar name={authorName} size="sm" />
-            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">{authorName}</div>
+            {showAuthorName && (
+              <div className="text-sm font-bold text-slate-900 dark:text-white truncate">{authorName}</div>
+            )}
           </>
         )}
       </div>
@@ -75,13 +79,6 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
           size="md"
           className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
         />
-        <button
-          onClick={onAddToCollection}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-          title="Add to Collection"
-        >
-          <FolderPlus size={20} />
-        </button>
         <div className="relative" ref={menuRef}>
           <button
             onClick={handleToggleMenu}
@@ -124,6 +121,16 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
                   )}
                 </button>
               )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(false);
+                  onAddToCollection();
+                }}
+                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+              >
+                <FolderPlus size={12} /> Add to collection
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();

@@ -62,6 +62,42 @@ function canModifyCollectionEntries(
   return String(collection.creatorId) === String(userId);
 }
 
+function buildRootCollectionQuery() {
+  return { $or: [{ parentId: null }, { parentId: { $exists: false } }] };
+}
+
+async function addEntryIfMissing(
+  collectionId: string,
+  articleId: string,
+  addedByUserId: string,
+  addedAt: string
+) {
+  return Collection.findOneAndUpdate(
+    {
+      _id: collectionId,
+      'entries.articleId': { $ne: articleId },
+    },
+    {
+      $addToSet: {
+        entries: {
+          articleId,
+          addedByUserId,
+          addedAt,
+          flaggedBy: [],
+        },
+      },
+      $set: {
+        updatedAt: new Date().toISOString(),
+      },
+      $inc: { validEntriesCount: 1 },
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
+}
+
 export const getCollections = async (req: Request, res: Response) => {
   try {
     // Parse query parameters
@@ -70,6 +106,8 @@ export const getCollections = async (req: Request, res: Response) => {
     const creatorId = req.query.creatorId as string | undefined;
     const includeCount = req.query.includeCount === 'true';
     const userId = (req as any).user?.userId;
+    const parentId = req.query.parentId as string | undefined;
+    const rootOnly = req.query.rootOnly === 'true';
     
     // PHASE 1: Filter private collections - require authentication
     // Admins can see all private collections, regular users only see their own
@@ -121,6 +159,18 @@ export const getCollections = async (req: Request, res: Response) => {
         { rawName: searchRegex },
         { description: searchRegex }
       ];
+    }
+
+    if (parentId && parentId.trim().length > 0) {
+      query.parentId = parentId.trim();
+    } else if (rootOnly) {
+      const rootFilter = buildRootCollectionQuery();
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, rootFilter];
+        delete query.$or;
+      } else {
+        Object.assign(query, rootFilter);
+      }
     }
     
     // PHASE 5: Build sort object based on sortField and sortDirection
@@ -338,7 +388,7 @@ export const createCollection = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, description, type } = validationResult.data;
+    const { name, description, type, parentId } = validationResult.data;
     const creatorId = userId; // USE AUTHENTICATED USER, NOT CLIENT PROVIDED
     
     // PHASE 4: Validate creatorId existence (even though it's the authenticated user)
@@ -356,6 +406,22 @@ export const createCollection = async (req: Request, res: Response) => {
     
     const trimmedName = name.trim();
     const canonicalName = trimmedName.toLowerCase();
+    let normalizedParentId: string | null = null;
+    if (typeof parentId === 'string' && parentId.trim().length > 0) {
+      normalizedParentId = parentId.trim();
+      const parentCollection = await Collection.findById(normalizedParentId).select('parentId type').lean();
+      if (!parentCollection) {
+        return res.status(400).json({ message: 'Parent collection not found' });
+      }
+      // One-level hierarchy: parent collection itself cannot already be a child.
+      if (parentCollection.parentId) {
+        return res.status(400).json({ message: 'Only one level of sub-collections is supported' });
+      }
+      // Keep parent/child visibility consistent to avoid unexpected visibility rules.
+      if (parentCollection.type !== (type || 'public')) {
+        return res.status(400).json({ message: 'Sub-collection type must match parent collection type' });
+      }
+    }
 
     // PHASE 2: Check if collection already exists by canonicalName
     // For private collections: check per creator (same creator can't have duplicate canonicalName)
@@ -365,9 +431,13 @@ export const createCollection = async (req: Request, res: Response) => {
       query.creatorId = creatorId;
       query.type = 'private';
     } else {
-      // PHASE 2: Public collections require global uniqueness
+      // Public collections are unique within the same parent scope.
       query.type = 'public';
-      // No creatorId filter - public collections must be globally unique
+      if (normalizedParentId) {
+        query.parentId = normalizedParentId;
+      } else {
+        Object.assign(query, buildRootCollectionQuery());
+      }
     }
 
     const existingCollection = await Collection.findOne(query);
@@ -382,6 +452,7 @@ export const createCollection = async (req: Request, res: Response) => {
       description: description || '',
       creatorId,
       type: type || 'public',
+      parentId: normalizedParentId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       followersCount: 0,
@@ -408,14 +479,20 @@ export const createCollection = async (req: Request, res: Response) => {
       const trimmedName = (req.body.name || '').trim();
       const canonicalName = trimmedName.toLowerCase();
       const collectionType = req.body.type || 'public';
+      const requestedParentId = typeof req.body.parentId === 'string' && req.body.parentId.trim().length > 0
+        ? req.body.parentId.trim()
+        : null;
       const query: any = { canonicalName };
       if (collectionType === 'private') {
         query.creatorId = userId; // Use authenticated user ID
         query.type = 'private';
       } else {
-        // PHASE 2: Public collections require global uniqueness
         query.type = 'public';
-        // No creatorId filter for public collections
+        if (requestedParentId) {
+          query.parentId = requestedParentId;
+        } else {
+          Object.assign(query, buildRootCollectionQuery());
+        }
       }
       const existingCollection = await Collection.findOne(query);
       if (existingCollection) {
@@ -491,9 +568,16 @@ export const updateCollection = async (req: Request, res: Response) => {
         duplicateQuery.creatorId = collection.creatorId;
         duplicateQuery.type = 'private';
       } else {
-        // PHASE 2: Public collections require global uniqueness
         duplicateQuery.type = 'public';
-        // No creatorId filter - public collections must be globally unique
+        const targetParentId =
+          Object.prototype.hasOwnProperty.call(updateData, 'parentId') && updateData.parentId
+            ? updateData.parentId
+            : collection.parentId;
+        if (targetParentId) {
+          duplicateQuery.parentId = targetParentId;
+        } else {
+          Object.assign(duplicateQuery, buildRootCollectionQuery());
+        }
       }
       
       const existingCollection = await Collection.findOne(duplicateQuery);
@@ -504,6 +588,27 @@ export const updateCollection = async (req: Request, res: Response) => {
       updateData.rawName = trimmedName;
       updateData.canonicalName = canonicalName;
       delete updateData.name; // Remove legacy name field
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updateData, 'parentId')) {
+      const requestedParentId = updateData.parentId;
+      if (requestedParentId === '' || requestedParentId === undefined) {
+        updateData.parentId = null;
+      } else if (requestedParentId === req.params.id) {
+        return res.status(400).json({ message: 'Collection cannot be its own parent' });
+      } else if (typeof requestedParentId === 'string') {
+        const parentCollection = await Collection.findById(requestedParentId).select('parentId type').lean();
+        if (!parentCollection) {
+          return res.status(400).json({ message: 'Parent collection not found' });
+        }
+        if (parentCollection.parentId) {
+          return res.status(400).json({ message: 'Only one level of sub-collections is supported' });
+        }
+        const targetType = updateData.type || collection.type;
+        if (parentCollection.type !== targetType) {
+          return res.status(400).json({ message: 'Sub-collection type must match parent collection type' });
+        }
+      }
     }
 
     const updatedCollection = await Collection.findByIdAndUpdate(
@@ -541,6 +646,12 @@ export const updateCollection = async (req: Request, res: Response) => {
           duplicateQuery.type = 'private';
         } else {
           duplicateQuery.type = 'public';
+          const targetParentId = updateData.parentId || collection?.parentId;
+          if (targetParentId) {
+            duplicateQuery.parentId = targetParentId;
+          } else {
+            Object.assign(duplicateQuery, buildRootCollectionQuery());
+          }
         }
         
         const existingCollection = await Collection.findOne(duplicateQuery);
@@ -644,34 +755,10 @@ export const addEntry = async (req: Request, res: Response) => {
       });
     }
 
-    // Use findOneAndUpdate with $addToSet to atomically add entry if it doesn't exist
-    // $addToSet prevents duplicates based on the entire object match
-    const updatedCollection = await Collection.findOneAndUpdate(
-      {
-        _id: req.params.id,
-        'entries.articleId': { $ne: articleId } // Only update if articleId doesn't exist
-      },
-      {
-        $addToSet: {
-          entries: {
-            articleId,
-            addedByUserId: currentUserId, // SECURITY: Use authenticated user, not client-provided
-            addedAt: new Date().toISOString(),
-            flaggedBy: []
-          }
-        },
-        $set: {
-          updatedAt: new Date().toISOString()
-        },
-        // Update validEntriesCount: increment by 1
-        // $inc will create the field if it doesn't exist (initializing to 1)
-        $inc: { validEntriesCount: 1 }
-      },
-      { 
-        new: true, // Return updated document
-        runValidators: true 
-      }
-    );
+    const now = new Date().toISOString();
+    // Use findOneAndUpdate with $addToSet to atomically add entry if it doesn't exist.
+    // This call is reused for parent auto-linking as well.
+    const updatedCollection = await addEntryIfMissing(req.params.id, articleId, currentUserId, now);
     
     if (!updatedCollection) {
       // Check if collection exists but entry already exists
@@ -679,8 +766,23 @@ export const addEntry = async (req: Request, res: Response) => {
       if (!existingCollection) {
         return res.status(404).json({ message: 'Collection not found' });
       }
+      // Even when already present in sub-collection, ensure parent also has the entry.
+      if (collection.parentId) {
+        const parentCollection = await Collection.findById(collection.parentId).select('creatorId type').lean();
+        if (parentCollection && canModifyCollectionEntries(parentCollection, currentUserId, userRole)) {
+          await addEntryIfMissing(String(collection.parentId), articleId, currentUserId, now);
+        }
+      }
       // Entry already exists, return the collection as-is
       return res.json(normalizeDoc(existingCollection));
+    }
+
+    // Auto-add to parent collection when saving to a sub-collection.
+    if (collection.parentId) {
+      const parentCollection = await Collection.findById(collection.parentId).select('creatorId type').lean();
+      if (parentCollection && canModifyCollectionEntries(parentCollection, currentUserId, userRole)) {
+        await addEntryIfMissing(String(collection.parentId), articleId, currentUserId, now);
+      }
     }
 
     // PHASE 3: Ensure validEntriesCount doesn't go negative and matches entries length
@@ -824,30 +926,49 @@ export const addBatchEntries = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'None of the provided article IDs exist' });
     }
 
-    // Build entries array for $addToSet with $each
-    const newEntries = validArticleIds.map((articleId) => ({
-      articleId,
-      addedByUserId: currentUserId,
-      addedAt: new Date().toISOString(),
-      flaggedBy: []
-    }));
-
-    // Use findOneAndUpdate with $addToSet + $each to add all entries atomically
-    const updatedCollection = await Collection.findOneAndUpdate(
-      { _id: req.params.id },
-      {
-        $addToSet: {
-          entries: { $each: newEntries }
-        },
-        $set: {
-          updatedAt: new Date().toISOString()
+    // Duplicate-safe behavior:
+    // add entries only when that articleId is not already present.
+    // We use per-item atomic guards in bulkWrite so repeated adds are idempotent.
+    const now = new Date().toISOString();
+    const buildBulkOps = (collectionId: string) =>
+      validArticleIds.map((articleId) => ({
+        updateOne: {
+          filter: {
+            _id: collectionId,
+            'entries.articleId': { $ne: articleId },
+          },
+          update: {
+            $push: {
+              entries: {
+                articleId,
+                addedByUserId: currentUserId,
+                addedAt: now,
+                flaggedBy: [],
+              }
+            },
+            $set: { updatedAt: now }
+          }
         }
-      },
-      {
-        new: true,
-        runValidators: true
+      }));
+
+    const bulkOps = buildBulkOps(req.params.id);
+
+    if (bulkOps.length > 0) {
+      await Collection.bulkWrite(bulkOps);
+    }
+
+    // Auto-add all saved entries to the parent collection when target is a sub-collection.
+    if (collection.parentId) {
+      const parentCollection = await Collection.findById(collection.parentId).select('creatorId type').lean();
+      if (parentCollection && canModifyCollectionEntries(parentCollection, currentUserId, userRole)) {
+        const parentBulkOps = buildBulkOps(String(collection.parentId));
+        if (parentBulkOps.length > 0) {
+          await Collection.bulkWrite(parentBulkOps);
+        }
       }
-    );
+    }
+
+    const updatedCollection = await Collection.findById(req.params.id);
 
     if (!updatedCollection) {
       return res.status(404).json({ message: 'Collection not found' });
@@ -870,6 +991,27 @@ export const addBatchEntries = async (req: Request, res: Response) => {
       );
 
       updatedCollection.validEntriesCount = Math.max(0, updatedCollection.entries.length);
+    }
+
+    // Keep parent validEntriesCount aligned as well when we auto-linked batch entries.
+    if (collection.parentId) {
+      const parent = await Collection.findById(collection.parentId).select('entries validEntriesCount');
+      if (parent &&
+          (parent.validEntriesCount === undefined ||
+            parent.validEntriesCount === null ||
+            parent.validEntriesCount < 0 ||
+            parent.validEntriesCount !== parent.entries.length)
+      ) {
+        await Collection.findOneAndUpdate(
+          { _id: collection.parentId },
+          {
+            $set: {
+              validEntriesCount: Math.max(0, parent.entries.length),
+              updatedAt: new Date().toISOString()
+            }
+          }
+        );
+      }
     }
 
     res.json(normalizeDoc(updatedCollection));
@@ -1132,6 +1274,7 @@ export const getFeaturedCollections = async (req: Request, res: Response) => {
     const collections = await Collection.find({
       isFeatured: true,
       type: 'public',
+      ...buildRootCollectionQuery(),
     })
       .sort({ featuredOrder: 1, rawName: 1 })
       .select('rawName canonicalName description isFeatured featuredOrder validEntriesCount')
@@ -1188,11 +1331,15 @@ export const setFeatured = async (req: Request, res: Response) => {
       }
     }
 
-    const collection = await Collection.findByIdAndUpdate(
-      req.params.id,
-      update,
-      { new: true }
-    ).lean();
+    const existingCollection = await Collection.findById(req.params.id).select('parentId').lean();
+    if (!existingCollection) {
+      return res.status(404).json({ message: 'Collection not found' });
+    }
+    if (existingCollection.parentId) {
+      return res.status(400).json({ message: 'Sub-collections cannot be featured in the public category toolbar' });
+    }
+
+    const collection = await Collection.findByIdAndUpdate(req.params.id, update, { new: true }).lean();
 
     if (!collection) {
       return res.status(404).json({ message: 'Collection not found' });
@@ -1234,7 +1381,7 @@ export const reorderFeatured = async (req: Request, res: Response) => {
     // Bulk update: set featuredOrder = array index for each ID
     const bulkOps = orderedIds.map((id, index) => ({
       updateOne: {
-        filter: { _id: id, isFeatured: true },
+        filter: { _id: id, isFeatured: true, ...buildRootCollectionQuery() },
         update: { $set: { featuredOrder: index, updatedAt: now } },
       },
     }));
@@ -1242,7 +1389,7 @@ export const reorderFeatured = async (req: Request, res: Response) => {
     await Collection.bulkWrite(bulkOps);
 
     // Return the updated featured list
-    const collections = await Collection.find({ isFeatured: true, type: 'public' })
+    const collections = await Collection.find({ isFeatured: true, type: 'public', ...buildRootCollectionQuery() })
       .sort({ featuredOrder: 1, rawName: 1 })
       .select('rawName canonicalName description isFeatured featuredOrder validEntriesCount')
       .lean();

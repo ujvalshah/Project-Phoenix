@@ -227,7 +227,8 @@ export const createCollectionSchema = z.object({
   description: z.string().max(500, 'Description too long').optional(),
   // creatorId is optional - backend uses authenticated user ID (security: prevents spoofing)
   creatorId: z.string().optional(),
-  type: z.enum(['private', 'public']).default('public')
+  type: z.enum(['private', 'public']).default('public'),
+  parentId: z.string().min(1, 'parentId cannot be empty').nullable().optional(),
 }).strict();
 
 // FOLLOW-UP REFACTOR: Explicitly exclude creatorId from updates (P1-19)
