@@ -29,6 +29,7 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { Article, SortOrder, TimeRange } from '@/types';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
 import { useFeaturedCollections } from '@/hooks/useFeaturedCollections';
+import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 import { Loader2 } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
@@ -54,6 +55,12 @@ interface HomePageProps {
   unread?: boolean;
   formats?: string[];
   timeRange?: TimeRange;
+  formatTagIds?: string[];
+  domainTagIds?: string[];
+  subtopicTagIds?: string[];
+  onToggleFormatTag?: (tagId: string) => void;
+  onToggleDomainTag?: (tagId: string) => void;
+  onToggleSubtopicTag?: (tagId: string) => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -70,6 +77,12 @@ export const HomePage: React.FC<HomePageProps> = ({
   unread = false,
   formats = [],
   timeRange = 'all',
+  formatTagIds = [],
+  domainTagIds = [],
+  subtopicTagIds = [],
+  onToggleFormatTag,
+  onToggleDomainTag,
+  onToggleSubtopicTag,
 }) => {
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [pullY, setPullY] = useState(0);
@@ -98,6 +111,9 @@ export const HomePage: React.FC<HomePageProps> = ({
     data: featuredCollections = [],
     isLoading: isLoadingCollections,
   } = useFeaturedCollections();
+
+  // Fetch tag taxonomy for dimension filter chips
+  const { data: taxonomy } = useTagTaxonomy();
 
   // Determine active tag from selectedCategories (needed for useInfiniteArticles)
   const activeCategory = useMemo(() => {
@@ -130,6 +146,9 @@ export const HomePage: React.FC<HomePageProps> = ({
     unread,
     formats,
     timeRange,
+    formatTagIds,
+    domainTagIds,
+    subtopicTagIds,
   });
 
   const handleRefreshFeed = async () => {
@@ -180,14 +199,41 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   // Build inline filter chips for the CategoryToolbar
   // Collection filter is already shown via the highlighted toolbar pill.
-  // Only non-toolbar filters (tag) get explicit chips here.
+  // Non-toolbar filters (tag, dimension tags) get explicit chips here.
   const activeFilters = useMemo(() => {
     const chips: ActiveFilterChip[] = [];
     if (selectedTag) {
       chips.push({ key: 'tag', label: `Tag: ${selectedTag}`, onRemove: () => setSelectedTag(null) });
     }
+    // Dimension format tag chips
+    if (taxonomy && formatTagIds.length > 0) {
+      for (const fid of formatTagIds) {
+        const tag = taxonomy.formats.find(f => f.id === fid);
+        if (tag && onToggleFormatTag) {
+          chips.push({ key: `ft-${fid}`, label: tag.rawName, onRemove: () => onToggleFormatTag(fid) });
+        }
+      }
+    }
+    // Dimension domain tag chips
+    if (taxonomy && domainTagIds.length > 0) {
+      for (const did of domainTagIds) {
+        const tag = taxonomy.domains.find(t => t.id === did);
+        if (tag && onToggleDomainTag) {
+          chips.push({ key: `dt-${did}`, label: tag.rawName, onRemove: () => onToggleDomainTag(did) });
+        }
+      }
+    }
+    // Dimension subtopic tag chips
+    if (taxonomy && subtopicTagIds.length > 0) {
+      for (const sid of subtopicTagIds) {
+        const tag = taxonomy.subtopics.find(t => t.id === sid);
+        if (tag && onToggleSubtopicTag) {
+          chips.push({ key: `st-${sid}`, label: tag.rawName, onRemove: () => onToggleSubtopicTag(sid) });
+        }
+      }
+    }
     return chips;
-  }, [selectedTag, setSelectedTag]);
+  }, [selectedTag, setSelectedTag, formatTagIds, domainTagIds, subtopicTagIds, taxonomy, onToggleFormatTag, onToggleDomainTag, onToggleSubtopicTag]);
 
   // Only show toolbar if there are featured collections (or still loading)
   const showToolbar = isLoadingCollections || featuredCollections.length > 0;

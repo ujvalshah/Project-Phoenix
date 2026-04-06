@@ -76,6 +76,9 @@ export interface DisplayAuthor {
  * Tag interface for Phase 2 implementation
  * Tags have stable IDs that don't change when renamed
  */
+/** Tag dimension: which filtering axis this tag belongs to */
+export type TagDimension = 'format' | 'domain' | 'subtopic';
+
 export interface Tag {
   id: string; // MongoDB ObjectId
   rawName: string; // Display name (user-entered casing)
@@ -84,6 +87,10 @@ export interface Tag {
   type: 'category' | 'tag';
   status: 'active' | 'pending' | 'deprecated';
   isOfficial: boolean;
+  /** Which filtering dimension this tag belongs to (format, domain, or subtopic) */
+  dimension?: TagDimension;
+  /** Display order within its dimension group */
+  sortOrder?: number;
 }
 
 /**
@@ -236,6 +243,8 @@ export interface Article {
   // Media IDs array - explicit references to MongoDB Media documents
   // CRITICAL: Never parse media IDs from content text. Media references are explicit.
   mediaIds?: string[]; // Array of MongoDB Media document IDs (ObjectId as strings)
+  // Dimension tag IDs (format, domain, subtopic references to Tag collection)
+  tagIds?: string[];
   // Legacy fields
   images?: string[]; 
   video?: string; 
@@ -365,6 +374,12 @@ export interface FilterState {
   timeRange?: TimeRange;
   /** Filter by community collection ID (category toolbar) */
   collectionId?: string;
+  /** Format dimension tag IDs (OR within, AND across dimensions) */
+  formatTagIds?: string[];
+  /** Domain dimension tag IDs (OR within, AND across dimensions) */
+  domainTagIds?: string[];
+  /** Sub-topic dimension tag IDs (OR within, AND across dimensions) */
+  subtopicTagIds?: string[];
 }
 
 /** Serializable filter state for URL params and localStorage */
@@ -379,6 +394,28 @@ export interface SerializableFilterState {
   timeRange?: TimeRange;
   /** Community collection ID for category toolbar filtering */
   collectionId?: string;
+  /** Format dimension tag IDs */
+  formatTagIds?: string[];
+  /** Domain dimension tag IDs */
+  domainTagIds?: string[];
+  /** Sub-topic dimension tag IDs */
+  subtopicTagIds?: string[];
+}
+
+/** Taxonomy tag returned by GET /api/categories/taxonomy */
+export interface TaxonomyTag {
+  id: string;
+  rawName: string;
+  canonicalName: string;
+  dimension: TagDimension;
+  sortOrder: number;
+  usageCount: number;
+}
+
+export interface TagTaxonomy {
+  formats: TaxonomyTag[];
+  domains: TaxonomyTag[];
+  subtopics: TaxonomyTag[];
 }
 
 

@@ -111,7 +111,11 @@ export const getArticles = async (req: Request, res: Response) => {
       formats,
       timeRange,
       youtubeOnly,
-      nonYoutubeOnly
+      nonYoutubeOnly,
+      // Dimension-based tag filtering (Phase: three-axis taxonomy)
+      formatTagIds: rawFormatTagIds,
+      domainTagIds: rawDomainTagIds,
+      subtopicTagIds: rawSubtopicTagIds,
     } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
@@ -297,6 +301,31 @@ export const getArticles = async (req: Request, res: Response) => {
           ...(query.publishedAt || {}),
           $gte: rangeStart.toISOString(),
         };
+      }
+    }
+
+    // ── Dimension-based tag filtering (three-axis taxonomy) ─────────────────
+    // OR within each dimension, AND across dimensions
+    // e.g. (Podcast OR Report) AND (Technology OR Geopolitics) AND (AI OR India)
+    {
+      const parseIds = (raw: unknown) =>
+        raw
+          ? (Array.isArray(raw) ? raw : [raw])
+              .filter((id): id is string => typeof id === 'string' && id.length > 0)
+          : [];
+
+      const formatIds = parseIds(rawFormatTagIds);
+      const domainIds = parseIds(rawDomainTagIds);
+      const subtopicIds = parseIds(rawSubtopicTagIds);
+
+      if (formatIds.length > 0) {
+        appendAndQueryCondition(query, { tagIds: { $in: formatIds } });
+      }
+      if (domainIds.length > 0) {
+        appendAndQueryCondition(query, { tagIds: { $in: domainIds } });
+      }
+      if (subtopicIds.length > 0) {
+        appendAndQueryCondition(query, { tagIds: { $in: subtopicIds } });
       }
     }
 

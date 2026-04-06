@@ -1,5 +1,14 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+/**
+ * Tag dimension: determines which filtering axis this tag belongs to.
+ * - 'format':   Content format (Podcast, Report / Insights, Documentary, Knowledge Bytes)
+ * - 'domain':   Subject domain (Markets & Investments, Technology, Geopolitics, etc.)
+ * - 'subtopic': Cross-cutting sub-topic (AI, Gold & Silver, India, PE/VC, etc.)
+ * - null/undefined: Legacy tags without dimension assignment
+ */
+export type TagDimension = 'format' | 'domain' | 'subtopic';
+
 export interface ITag extends Document {
   rawName: string; // Exact user-entered text, preserved for display
   canonicalName: string; // Normalized lowercase version for uniqueness and lookup
@@ -8,6 +17,15 @@ export interface ITag extends Document {
   type: 'category' | 'tag'; // TODO: legacy-name-only-if-used-by-frontend - 'category' type kept for compatibility
   status: 'active' | 'pending' | 'deprecated';
   isOfficial: boolean;
+
+  // ── Two-axis taxonomy fields ──────────────────────────────────────────────
+  /** Which filtering dimension this tag belongs to (format or domain) */
+  dimension?: TagDimension;
+  /** Parent tag ID for sub-topics (one level: e.g. Finance → Gold) */
+  parentTagId?: mongoose.Types.ObjectId | null;
+  /** Display order within its dimension/parent group */
+  sortOrder?: number;
+
   // Legacy field - kept for backward compatibility, maps to rawName
   name?: string;
 }
@@ -25,19 +43,24 @@ const TagSchema = new Schema<ITag>({
   canonicalName: { type: String, required: true, unique: true, trim: true, lowercase: true },
   aliases: { type: [String], default: [] }, // Alternative names/variations
   usageCount: { type: Number, default: 0 },
-  type: { 
-    type: String, 
-    enum: ['category', 'tag'], 
+  type: {
+    type: String,
+    enum: ['category', 'tag'],
     default: 'tag',
     index: true
   },
-  status: { 
-    type: String, 
-    enum: ['active', 'pending', 'deprecated'], 
+  status: {
+    type: String,
+    enum: ['active', 'pending', 'deprecated'],
     default: 'active'
     // Note: index removed - using compound index below instead
   },
-  isOfficial: { type: Boolean, default: false, index: true }
+  isOfficial: { type: Boolean, default: false, index: true },
+
+  // ── Two-axis taxonomy fields ──────────────────────────────────────────────
+  dimension: { type: String, enum: ['format', 'domain', 'subtopic'], required: false, index: true },
+  parentTagId: { type: Schema.Types.ObjectId, ref: 'Tag', default: null, index: true },
+  sortOrder: { type: Number, default: 0 }
 }, {
   timestamps: true // Enable createdAt and updatedAt
 });
@@ -45,7 +68,9 @@ const TagSchema = new Schema<ITag>({
 // Compound indexes for efficient queries (more efficient than single-field indexes)
 TagSchema.index({ status: 1, type: 1 }); // Covers both status and type queries
 TagSchema.index({ status: 1, canonicalName: 1 }); // Compound index for active tag lookups
-// Note: unique index on canonicalName is already defined in schema field definition (line 25)
+// Note: unique index on canonicalName is already defined in schema field definition
+TagSchema.index({ dimension: 1, parentTagId: 1, sortOrder: 1 }); // Dimension taxonomy queries
+TagSchema.index({ dimension: 1, status: 1, sortOrder: 1 }); // Active tags by dimension
 
 /**
  * Static method: Find or create tag by name

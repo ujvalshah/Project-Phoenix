@@ -15,6 +15,9 @@ interface UseInfiniteArticlesOptions {
   unread?: boolean;
   formats?: string[];
   timeRange?: string;
+  formatTagIds?: string[];
+  domainTagIds?: string[];
+  subtopicTagIds?: string[];
 }
 
 /**
@@ -50,6 +53,9 @@ export const useInfiniteArticles = ({
   unread = false,
   formats = [],
   timeRange = 'all',
+  formatTagIds = [],
+  domainTagIds = [],
+  subtopicTagIds = [],
 }: UseInfiniteArticlesOptions): UseInfiniteArticlesResult => {
   // useInfiniteQuery automatically handles:
   // - Page accumulation
@@ -57,7 +63,7 @@ export const useInfiniteArticles = ({
   // - Caching
   // - Race condition protection
   const query = useInfiniteQuery<PaginatedArticlesResponse>({
-    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? '', collectionId ?? '', favorites, unread, formats.join(','), timeRange],
+    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? '', collectionId ?? '', favorites, unread, formats.join(','), timeRange, formatTagIds.join(','), domainTagIds.join(','), subtopicTagIds.join(',')],
     queryFn: async ({ pageParam = 1 }) => {
       // Build filters inside queryFn to avoid stale closures
       // Use full selectedCategories array when available, fall back to activeCategory
@@ -79,6 +85,9 @@ export const useInfiniteArticles = ({
         unread: unread || undefined,
         formats: formats.length > 0 ? formats : undefined,
         timeRange: timeRange !== 'all' ? (timeRange as FilterState['timeRange']) : undefined,
+        formatTagIds: formatTagIds.length > 0 ? formatTagIds : undefined,
+        domainTagIds: domainTagIds.length > 0 ? domainTagIds : undefined,
+        subtopicTagIds: subtopicTagIds.length > 0 ? subtopicTagIds : undefined,
       };
 
       return articleService.getArticles(filters, pageParam as number);

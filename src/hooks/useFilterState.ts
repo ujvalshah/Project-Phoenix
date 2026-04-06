@@ -19,6 +19,9 @@ const DEFAULTS: Required<SerializableFilterState> = {
   formats: [],
   timeRange: 'all' as TimeRange,
   collectionId: '',
+  formatTagIds: [],
+  domainTagIds: [],
+  subtopicTagIds: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -40,6 +43,15 @@ export function filtersToParams(f: SerializableFilterState): URLSearchParams {
   }
   if (f.timeRange && f.timeRange !== 'all') p.set('time', f.timeRange);
   if (f.collectionId) p.set('col', f.collectionId);
+  if (f.formatTagIds && f.formatTagIds.length > 0) {
+    f.formatTagIds.forEach(id => p.append('ft', id));
+  }
+  if (f.domainTagIds && f.domainTagIds.length > 0) {
+    f.domainTagIds.forEach(id => p.append('dt', id));
+  }
+  if (f.subtopicTagIds && f.subtopicTagIds.length > 0) {
+    f.subtopicTagIds.forEach(id => p.append('st', id));
+  }
   return p;
 }
 
@@ -70,6 +82,9 @@ export function paramsToFilters(p: URLSearchParams): SerializableFilterState {
     formats: p.getAll('fmt').filter(Boolean),
     timeRange: validTimeRanges.includes(timeRange as TimeRange) ? (timeRange as TimeRange) : undefined,
     collectionId: p.get('col') || undefined,
+    formatTagIds: p.getAll('ft').filter(Boolean),
+    domainTagIds: p.getAll('dt').filter(Boolean),
+    subtopicTagIds: p.getAll('st').filter(Boolean),
   };
 }
 
@@ -124,6 +139,12 @@ export interface UseFilterStateReturn {
   timeRange: TimeRange;
   /** Active community collection ID (category toolbar), null = "All" */
   collectionId: string | null;
+  /** Selected format dimension tag IDs */
+  formatTagIds: string[];
+  /** Selected domain dimension tag IDs */
+  domainTagIds: string[];
+  /** Selected sub-topic dimension tag IDs */
+  subtopicTagIds: string[];
 
   // Derived
   activeCategory: string;        // 'All', 'Today', or first category
@@ -141,6 +162,9 @@ export interface UseFilterStateReturn {
   toggleFormat: (fmt: string) => void;
   setTimeRange: (t: TimeRange) => void;
   setCollectionId: (id: string | null) => void;
+  toggleFormatTag: (tagId: string) => void;
+  toggleDomainTag: (tagId: string) => void;
+  toggleSubtopicTag: (tagId: string) => void;
 
   // Reset
   clearAll: () => void;
@@ -153,6 +177,9 @@ export interface UseFilterStateReturn {
   clearUnread: () => void;
   clearFormats: () => void;
   clearTimeRange: () => void;
+  clearFormatTags: () => void;
+  clearDomainTags: () => void;
+  clearSubtopicTags: () => void;
 }
 
 export function useFilterState(): UseFilterStateReturn {
@@ -177,6 +204,15 @@ export function useFilterState(): UseFilterStateReturn {
       : persisted.formats || DEFAULTS.formats,
     timeRange: urlFilters.timeRange || persisted.timeRange || DEFAULTS.timeRange,
     collectionId: urlFilters.collectionId || DEFAULTS.collectionId,
+    formatTagIds: urlFilters.formatTagIds && urlFilters.formatTagIds.length > 0
+      ? urlFilters.formatTagIds
+      : DEFAULTS.formatTagIds,
+    domainTagIds: urlFilters.domainTagIds && urlFilters.domainTagIds.length > 0
+      ? urlFilters.domainTagIds
+      : DEFAULTS.domainTagIds,
+    subtopicTagIds: urlFilters.subtopicTagIds && urlFilters.subtopicTagIds.length > 0
+      ? urlFilters.subtopicTagIds
+      : DEFAULTS.subtopicTagIds,
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- State ----
@@ -190,6 +226,9 @@ export function useFilterState(): UseFilterStateReturn {
   const [formats, setFormats] = useState<string[]>(initial.formats);
   const [timeRange, setTimeRange] = useState<TimeRange>(initial.timeRange);
   const [collectionId, setCollectionId] = useState<string | null>(initial.collectionId || null);
+  const [formatTagIds, setFormatTagIds] = useState<string[]>(initial.formatTagIds);
+  const [domainTagIds, setDomainTagIds] = useState<string[]>(initial.domainTagIds);
+  const [subtopicTagIds, setSubtopicTagIds] = useState<string[]>(initial.subtopicTagIds);
 
   // ---- Debounce search input ----
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -211,7 +250,7 @@ export function useFilterState(): UseFilterStateReturn {
   // ---- URL sync (write) ----
   // CRITICAL: Must preserve URL params that belong to other components (e.g. "expanded"
   // used by ArticleGrid's drawer). Only touch params that belong to the filter system.
-  const FILTER_PARAM_KEYS = new Set(['q', 'cat', 'tag', 'sort', 'favorites', 'unread', 'fmt', 'time', 'col']);
+  const FILTER_PARAM_KEYS = new Set(['q', 'cat', 'tag', 'sort', 'favorites', 'unread', 'fmt', 'time', 'col', 'ft', 'dt', 'st']);
 
   const syncRef = useRef(false);
   useEffect(() => {
@@ -230,6 +269,9 @@ export function useFilterState(): UseFilterStateReturn {
       formats: formats.length > 0 ? formats : undefined,
       timeRange: timeRange !== 'all' ? timeRange : undefined,
       collectionId: collectionId || undefined,
+      formatTagIds: formatTagIds.length > 0 ? formatTagIds : undefined,
+      domainTagIds: domainTagIds.length > 0 ? domainTagIds : undefined,
+      subtopicTagIds: subtopicTagIds.length > 0 ? subtopicTagIds : undefined,
     };
     const filterParams = filtersToParams(serializable);
 
@@ -249,7 +291,7 @@ export function useFilterState(): UseFilterStateReturn {
     }, { replace: true });
 
     persistFilters(serializable);
-  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, setSearchParams]);
+  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, formatTagIds, domainTagIds, subtopicTagIds, setSearchParams]);
 
   // ---- Derived ----
   const activeCategory = useMemo(() => {
@@ -269,8 +311,11 @@ export function useFilterState(): UseFilterStateReturn {
     count += formats.length;
     if (timeRange !== 'all') count++;
     if (collectionId) count++;
+    count += formatTagIds.length;
+    count += domainTagIds.length;
+    count += subtopicTagIds.length;
     return count;
-  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId]);
+  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, formatTagIds, domainTagIds, subtopicTagIds]);
 
   const hasActiveFilters = activeFilterCount > 0;
 
@@ -288,6 +333,25 @@ export function useFilterState(): UseFilterStateReturn {
     );
   }, []);
 
+  // ---- Dimension tag toggles ----
+  const toggleFormatTag = useCallback((tagId: string) => {
+    setFormatTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    );
+  }, []);
+
+  const toggleDomainTag = useCallback((tagId: string) => {
+    setDomainTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    );
+  }, []);
+
+  const toggleSubtopicTag = useCallback((tagId: string) => {
+    setSubtopicTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    );
+  }, []);
+
   // ---- Resets ----
   const clearAll = useCallback(() => {
     setSearchInputValueRaw('');
@@ -300,6 +364,9 @@ export function useFilterState(): UseFilterStateReturn {
     setFormats([]);
     setTimeRange('all');
     setCollectionId(null);
+    setFormatTagIds([]);
+    setDomainTagIds([]);
+    setSubtopicTagIds([]);
     clearTimeout(debounceRef.current);
   }, []);
 
@@ -317,6 +384,9 @@ export function useFilterState(): UseFilterStateReturn {
   const clearUnread = useCallback(() => setUnread(false), []);
   const clearFormats = useCallback(() => setFormats([]), []);
   const clearTimeRange = useCallback(() => setTimeRange('all'), []);
+  const clearFormatTags = useCallback(() => setFormatTagIds([]), []);
+  const clearDomainTags = useCallback(() => setDomainTagIds([]), []);
+  const clearSubtopicTags = useCallback(() => setSubtopicTagIds([]), []);
 
   return {
     searchQuery: debouncedQuery,
@@ -329,6 +399,9 @@ export function useFilterState(): UseFilterStateReturn {
     formats,
     timeRange,
     collectionId,
+    formatTagIds,
+    domainTagIds,
+    subtopicTagIds,
     activeCategory,
     hasActiveFilters,
     activeFilterCount,
@@ -342,6 +415,9 @@ export function useFilterState(): UseFilterStateReturn {
     toggleFormat,
     setTimeRange,
     setCollectionId,
+    toggleFormatTag,
+    toggleDomainTag,
+    toggleSubtopicTag,
     clearAll,
     clearSearch,
     clearCategories,
@@ -352,5 +428,8 @@ export function useFilterState(): UseFilterStateReturn {
     clearUnread,
     clearFormats,
     clearTimeRange,
+    clearFormatTags,
+    clearDomainTags,
+    clearSubtopicTags,
   };
 }

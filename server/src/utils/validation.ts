@@ -189,6 +189,13 @@ const baseArticleSchema = z.object({
 
   // Display image index (which media item shows as card thumbnail)
   displayImageIndex: z.number().int().min(0).optional(),
+
+  // Dimension tag IDs (format, domain, subtopic references to Tag collection)
+  // Sent from the DimensionTagPicker in Create/Edit modal
+  tagIds: z.preprocess(
+    (val) => Array.isArray(val) ? val : [],
+    z.array(z.string())
+  ).optional(),
 });
 
 // Create schema with refinement: at least one of content/media/images/documents must be present

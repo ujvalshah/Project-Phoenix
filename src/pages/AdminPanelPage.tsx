@@ -11,6 +11,7 @@ import { AdminConfigPage } from '../admin/pages/AdminConfigPage';
 import { AdminModerationPage } from '../admin/pages/AdminModerationPage';
 import { AdminFeedbackPage } from '../admin/pages/AdminFeedbackPage';
 import { AdminDownloadsPage } from '../admin/pages/AdminDownloadsPage';
+import { AdminTaggingPage } from '../admin/pages/AdminTaggingPage';
 import { AdminLegalPagesPage } from '../admin/pages/AdminLegalPagesPage';
 import { AdminContactPage } from '../admin/pages/AdminContactPage';
 import { RequireAdmin } from '../admin/components/RequireAdmin';
@@ -32,6 +33,7 @@ export const AdminPanelPage: React.FC = () => {
             <Route path="config" element={<AdminConfigPage />} />
             <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="downloads" element={<AdminDownloadsPage />} />
+            <Route path="tagging" element={<AdminTaggingPage />} />
             <Route path="legal" element={<AdminLegalPagesPage />} />
             <Route path="contact" element={<AdminContactPage />} />
           </Route>

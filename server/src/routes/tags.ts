@@ -5,6 +5,10 @@ import { authenticateToken } from '../middleware/authenticateToken.js';
 
 const router = Router();
 
+// GET /api/categories/taxonomy - Returns two-axis tag taxonomy (format + domain tree)
+// Must be registered BEFORE the /:id route to avoid being treated as an ID
+router.get('/taxonomy', tagsController.getTagTaxonomy);
+
 // GET /api/categories - Returns tag frequency counts (legacy endpoint name, uses tags)
 router.get('/', categoriesController.getCategories);
 

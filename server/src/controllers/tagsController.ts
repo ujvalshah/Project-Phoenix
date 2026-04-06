@@ -527,6 +527,62 @@ export const resolveTags = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * GET /api/categories/taxonomy
+ * Returns the three-axis tag taxonomy: formats + domains + subtopics.
+ * All three are flat arrays sorted by sortOrder.
+ * Cached-friendly: the taxonomy changes infrequently.
+ */
+export const getTagTaxonomy = async (req: Request, res: Response) => {
+  try {
+    // Fetch all active dimension tags in one query
+    const dimensionTags = await Tag.find({
+      dimension: { $exists: true, $ne: null },
+      status: 'active',
+    })
+      .sort({ sortOrder: 1, rawName: 1 })
+      .lean();
+
+    // Compute usage counts for all dimension tags in one aggregation
+    const tagIds = dimensionTags.map(t => t._id);
+    const usageAgg = await Article.aggregate([
+      { $match: { tagIds: { $in: tagIds } } },
+      { $unwind: '$tagIds' },
+      { $match: { tagIds: { $in: tagIds } } },
+      { $group: { _id: '$tagIds', count: { $sum: 1 } } },
+    ]);
+    const usageMap = new Map<string, number>();
+    for (const row of usageAgg) {
+      usageMap.set(row._id.toString(), row.count);
+    }
+
+    const normalize = (t: typeof dimensionTags[number]) => ({
+      id: t._id.toString(),
+      rawName: t.rawName,
+      canonicalName: t.canonicalName,
+      dimension: t.dimension,
+      sortOrder: t.sortOrder ?? 0,
+      usageCount: usageMap.get(t._id.toString()) || 0,
+    });
+
+    // Partition into three flat arrays
+    const formats = dimensionTags.filter(t => t.dimension === 'format').map(normalize);
+    const domains = dimensionTags.filter(t => t.dimension === 'domain').map(normalize);
+    const subtopics = dimensionTags.filter(t => t.dimension === 'subtopic').map(normalize);
+
+    res.json({ formats, domains, subtopics });
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const err = error instanceof Error ? error : new Error(String(error));
+    requestLogger.error({
+      msg: '[Tags] Get taxonomy error',
+      error: { message: err.message, stack: err.stack },
+    });
+    captureException(err, { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const syncArticleTags = async (req: Request, res: Response) => {
   try {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);

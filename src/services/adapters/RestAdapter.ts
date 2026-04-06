@@ -59,6 +59,9 @@ export class RestAdapter implements IAdapter {
     timeRange?: string;
     youtubeOnly?: boolean;
     nonYoutubeOnly?: boolean;
+    formatTagIds?: string[];
+    domainTagIds?: string[];
+    subtopicTagIds?: string[];
   }): Promise<PaginatedArticlesResponse> {
     const queryParams = new URLSearchParams();
     if (params.q) queryParams.set('q', params.q);
@@ -77,6 +80,16 @@ export class RestAdapter implements IAdapter {
     if (params.timeRange && params.timeRange !== 'all') queryParams.set('timeRange', params.timeRange);
     if (params.youtubeOnly) queryParams.set('youtubeOnly', '1');
     if (params.nonYoutubeOnly) queryParams.set('nonYoutubeOnly', '1');
+    // Dimension-based tag filtering
+    if (params.formatTagIds && params.formatTagIds.length > 0) {
+      params.formatTagIds.forEach(id => queryParams.append('formatTagIds', id));
+    }
+    if (params.domainTagIds && params.domainTagIds.length > 0) {
+      params.domainTagIds.forEach(id => queryParams.append('domainTagIds', id));
+    }
+    if (params.subtopicTagIds && params.subtopicTagIds.length > 0) {
+      params.subtopicTagIds.forEach(id => queryParams.append('subtopicTagIds', id));
+    }
     queryParams.set('page', params.page.toString());
     queryParams.set('limit', params.limit.toString());
 
@@ -160,6 +173,8 @@ export class RestAdapter implements IAdapter {
       ...((article as any).externalLinks && { externalLinks: (article as any).externalLinks }),
       // Layout visibility configuration
       ...((article as any).layoutVisibility && { layoutVisibility: (article as any).layoutVisibility }),
+      // Dimension tag IDs (format, domain, subtopic)
+      ...(article.tagIds && article.tagIds.length > 0 && { tagIds: article.tagIds }),
     };
     
     // TEMPORARY DEBUG: Stage 3 - Payload sent to API (RestAdapter)
@@ -228,6 +243,8 @@ export class RestAdapter implements IAdapter {
     if (updatesWithoutCategoryIds.externalLinks !== undefined) payload.externalLinks = updatesWithoutCategoryIds.externalLinks;
     // Layout visibility configuration
     if (updatesWithoutCategoryIds.layoutVisibility !== undefined) payload.layoutVisibility = updatesWithoutCategoryIds.layoutVisibility;
+    // Dimension tag IDs (format, domain, subtopic)
+    if (updatesWithoutCategoryIds.tagIds !== undefined) payload.tagIds = updatesWithoutCategoryIds.tagIds;
 
     // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
     // Frontend is canonical deduplication pass - backend will compute but not mutate
@@ -348,6 +365,11 @@ export class RestAdapter implements IAdapter {
 
   async deleteCategory(category: string): Promise<void> {
     await apiClient.delete(`/categories/${encodeURIComponent(category)}`);
+  }
+
+  // Tag Taxonomy (two-axis: format + domain)
+  async getTagTaxonomy(): Promise<import('@/types').TagTaxonomy> {
+    return apiClient.get<import('@/types').TagTaxonomy>('/categories/taxonomy');
   }
 
   // --- Collections ---

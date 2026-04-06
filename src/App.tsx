@@ -158,7 +158,7 @@ const AppContent: React.FC = () => {
           {/* Feed/Content Areas - Wrapped in Error Boundaries */}
           <Route path="/" element={
             <ErrorBoundary>
-              <HomePage searchQuery={filters.searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={filters.selectedCategories} setSelectedCategories={filters.setSelectedCategories} selectedTag={filters.selectedTag} setSelectedTag={filters.setSelectedTag} sortOrder={filters.sortOrder} collectionId={filters.collectionId} setCollectionId={filters.setCollectionId} favorites={filters.favorites} unread={filters.unread} formats={filters.formats} timeRange={filters.timeRange} />
+              <HomePage searchQuery={filters.searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={filters.selectedCategories} setSelectedCategories={filters.setSelectedCategories} selectedTag={filters.selectedTag} setSelectedTag={filters.setSelectedTag} sortOrder={filters.sortOrder} collectionId={filters.collectionId} setCollectionId={filters.setCollectionId} favorites={filters.favorites} unread={filters.unread} formats={filters.formats} timeRange={filters.timeRange} formatTagIds={filters.formatTagIds} domainTagIds={filters.domainTagIds} subtopicTagIds={filters.subtopicTagIds} onToggleFormatTag={filters.toggleFormatTag} onToggleDomainTag={filters.toggleDomainTag} onToggleSubtopicTag={filters.toggleSubtopicTag} />
             </ErrorBoundary>
           } />
           

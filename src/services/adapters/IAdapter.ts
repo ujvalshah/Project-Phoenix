@@ -1,4 +1,4 @@
-import { Article, User, Collection } from '@/types';
+import { Article, User, Collection, TagTaxonomy } from '@/types';
 
 export interface PaginatedArticlesResponse {
   data: Article[];
@@ -32,6 +32,9 @@ export interface IAdapter {
     timeRange?: string;
     youtubeOnly?: boolean;
     nonYoutubeOnly?: boolean;
+    formatTagIds?: string[];
+    domainTagIds?: string[];
+    subtopicTagIds?: string[];
   }): Promise<PaginatedArticlesResponse>;
   getArticleById(id: string): Promise<Article | undefined>;
   getArticlesByAuthor(authorId: string): Promise<Article[]>;
@@ -45,7 +48,7 @@ export interface IAdapter {
   getUserById(id: string): Promise<User | undefined>;
   updateUser(id: string, updates: Partial<User>): Promise<User | null>;
   deleteUser(id: string): Promise<void>;
-  
+
   // Personalization
   updateUserPreferences(userId: string, interestedCategories: string[]): Promise<void>;
   updateLastFeedVisit(userId: string): Promise<void>;
@@ -56,6 +59,9 @@ export interface IAdapter {
   getCategoriesWithIds?(): Promise<import('@/types').Tag[]>; // Phase 2: Returns full Tag objects with IDs
   addCategory(category: string): Promise<void>;
   deleteCategory(category: string): Promise<void>;
+
+  // Tag Taxonomy (three-axis: format + domain + subtopic)
+  getTagTaxonomy(): Promise<TagTaxonomy>;
 
   // Collections
   getCollections(params?: {

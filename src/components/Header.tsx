@@ -84,16 +84,34 @@ export const Header: React.FC<HeaderProps> = ({
   // Derive filter popover state from the global filter hook (single source of truth).
   const filterState: FilterState = {
     collectionId: filters?.collectionId ?? null,
+    formatTagIds: filters?.formatTagIds ?? [],
+    domainTagIds: filters?.domainTagIds ?? [],
+    subtopicTagIds: filters?.subtopicTagIds ?? [],
   };
 
   const handleFilterChange = (newFilters: FilterState) => {
     if (!filters) return;
     filters.setCollectionId(newFilters.collectionId);
+    // Sync dimension tags — compare and toggle as needed
+    const syncDimension = (prev: string[], next: string[], toggle: (id: string) => void) => {
+      for (const id of next) {
+        if (!prev.includes(id)) toggle(id);
+      }
+      for (const id of prev) {
+        if (!next.includes(id)) toggle(id);
+      }
+    };
+    syncDimension(filters.formatTagIds, newFilters.formatTagIds || [], filters.toggleFormatTag);
+    syncDimension(filters.domainTagIds, newFilters.domainTagIds || [], filters.toggleDomainTag);
+    syncDimension(filters.subtopicTagIds, newFilters.subtopicTagIds || [], filters.toggleSubtopicTag);
   };
 
   const handleFilterClear = () => {
     if (!filters) return;
     filters.setCollectionId(null);
+    filters.clearFormatTags();
+    filters.clearDomainTags();
+    filters.clearSubtopicTags();
   };
   
   // Recent searches state

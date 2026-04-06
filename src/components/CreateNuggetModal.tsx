@@ -20,6 +20,7 @@ import { useMediaUpload } from '@/hooks/useMediaUpload';
 import { SourceSelector } from './shared/SourceSelector';
 import { SourceBadge } from './shared/SourceBadge';
 import { TagSelector } from './CreateNuggetModal/TagSelector';
+import { DimensionTagPicker } from './CreateNuggetModal/DimensionTagPicker';
 import { CollectionSelector } from './CreateNuggetModal/CollectionSelector';
 import { TitleInput } from './CreateNuggetModal/TitleInput';
 import { ContentEditor } from './CreateNuggetModal/ContentEditor';
@@ -129,6 +130,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // Metadata State
   // CATEGORY PHASE-OUT: Removed categories state - using tags only
   const [tags, setTags] = useState<string[]>([]);
+  const [dimensionTagIds, setDimensionTagIds] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   
@@ -226,6 +228,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         setContent(initialData.content || '');
         // CATEGORY PHASE-OUT: Use tags instead of categories
         setTags(initialData.tags || []);
+        setDimensionTagIds(initialData.tagIds || []);
         // Initialize customCreatedAt if article has isCustomCreatedAt flag (admin only)
         if (isAdmin && (initialData as any).isCustomCreatedAt && initialData.publishedAt) {
           // Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
@@ -433,6 +436,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setLinkMetadata(null);
     setAttachments([]);
     setTags([]);
+    setDimensionTagIds([]);
     setVisibility('public');
     setSelectedCollections([]);
     // categoryInput and collectionInput are now managed by components
@@ -1648,6 +1652,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 readTime: normalizedInput.readTime,
                 excerpt: normalizedInput.excerpt,
                 tags: normalizedInput.tags, // Include normalized tags
+                tagIds: dimensionTagIds, // Dimension classification tags
             };
             
             // Add optional fields only if they exist (preserve EDIT mode partial update semantics)
@@ -1973,6 +1978,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             author: { id: currentUserId, name: authorName },
             displayAuthor: (postAs === 'alias' && finalAliasName.trim()) ? { name: finalAliasName.trim() } : undefined,
             tags: normalized.tags,
+            tagIds: dimensionTagIds.length > 0 ? dimensionTagIds : undefined,
             readTime: normalized.readTime,
             mediaIds: normalized.mediaIds,
             images: normalized.images,
@@ -2205,6 +2211,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         currentUserId={currentUserId}
                         comboboxRef={collectionsComboboxRef}
                         listboxRef={collectionsListboxRef}
+                    />
+                    <DimensionTagPicker
+                        selectedTagIds={dimensionTagIds}
+                        onSelectedChange={setDimensionTagIds}
+                        disabled={isSubmitting}
                     />
                 </div>
 

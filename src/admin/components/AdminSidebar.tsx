@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Layers, Hash, Settings, LogOut, Flag, MessageSquare, Download, Scale, Mail } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Layers, Hash, Settings, LogOut, Flag, MessageSquare, Download, Scale, Mail, Tags } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 interface AdminSidebarProps {
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { path: '/admin/moderation', label: 'Moderation', icon: Flag },
   { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
   { path: '/admin/contact', label: 'Contact Messages', icon: Mail },
+  { path: '/admin/tagging', label: 'Bulk Tagging', icon: Tags },
   { path: '/admin/downloads', label: 'Data Export', icon: Download },
   { path: '/admin/legal', label: 'Legal Pages', icon: Scale },
   { path: '/admin/config', label: 'Settings & Access', icon: Settings },

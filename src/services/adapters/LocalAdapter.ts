@@ -314,6 +314,11 @@ export class LocalAdapter implements IAdapter {
     }
   }
 
+  async getTagTaxonomy(): Promise<import('@/types').TagTaxonomy> {
+    // LocalAdapter stub — taxonomy requires backend dimension tags
+    return { formats: [], domains: [], subtopics: [] };
+  }
+
   async getCollections(params?: {
     type?: 'public' | 'private';
     includeCount?: boolean;
