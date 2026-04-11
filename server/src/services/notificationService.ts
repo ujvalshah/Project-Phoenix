@@ -6,6 +6,7 @@ import { PushSubscription, IPushSubscription } from '../models/PushSubscription.
 import { Notification } from '../models/Notification.js';
 import { User } from '../models/User.js';
 import { Article, IArticle } from '../models/Article.js';
+import { getTagNameMap } from '../utils/db.js';
 import { getEnv } from '../config/envValidation.js';
 
 const REDIS_KEY_NOTIFICATIONS_ENABLED = 'notifications:enabled';
@@ -167,13 +168,16 @@ async function processFanOut(job: Job): Promise<void> {
     return;
   }
 
-  // Filter by category preference
-  const articleTags = (article.tags || []).map(t => t.toLowerCase());
+  // Filter by category preference — resolve tagIds to names (P2-6)
+  const tagNameMap = await getTagNameMap();
+  const articleTagNames = (article.tagIds || [])
+    .map((tid) => tagNameMap.get(tid.toString())?.toLowerCase())
+    .filter(Boolean) as string[];
   const eligibleUserIds = instantUsers
     .filter(user => {
       const catFilter = user.preferences?.notifications?.categoryFilter || [];
       if (catFilter.length === 0) return true;
-      return catFilter.some(cat => articleTags.includes(cat.toLowerCase()));
+      return catFilter.some(cat => articleTagNames.includes(cat.toLowerCase()));
     })
     .map(user => user._id.toString());
 
@@ -400,14 +404,32 @@ export async function initNotificationService(): Promise<void> {
     });
   });
 
-  // Schedule repeatable digest jobs
-  await notificationQueue.add('daily-digest', {}, {
+  // Schedule repeatable digest jobs.
+  // Wrapped in try/catch with a timeout so a Redis outage cannot block server startup —
+  // if the queue can't be reached, we log and continue; HTTP must come up regardless.
+  const scheduleWithTimeout = async (name: string, opts: Parameters<typeof notificationQueue.add>[2]) => {
+    const addPromise = notificationQueue!.add(name, {}, opts);
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`BullMQ ${name} schedule timed out after 5s`)), 5000)
+    );
+    try {
+      await Promise.race([addPromise, timeout]);
+    } catch (err) {
+      logger.warn({
+        msg: '[Notifications] Failed to schedule repeatable job — continuing startup',
+        job: name,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  await scheduleWithTimeout('daily-digest', {
     repeat: { pattern: '0 8 * * *' },
     removeOnComplete: { count: 10 },
     removeOnFail: { count: 50 },
   });
 
-  await notificationQueue.add('weekly-digest', {}, {
+  await scheduleWithTimeout('weekly-digest', {
     repeat: { pattern: '0 8 * * 0' },
     removeOnComplete: { count: 10 },
     removeOnFail: { count: 50 },

@@ -40,6 +40,8 @@ export interface NewsCardData {
   video: string | undefined;
   cardType: 'hybrid' | 'media-only'; // Two-card architecture: Hybrid (default) or Media-Only
   externalLinks?: Article['externalLinks']; // External links for link button
+  showDisclaimer?: boolean; // Whether to show disclaimer
+  disclaimerText?: string | null; // Per-nugget disclaimer override (null = use default)
 }
 
 export interface NewsCardFlags {
@@ -485,6 +487,8 @@ export const useNewsCard = ({
     video: article.video,
     cardType, // Two-card architecture: 'hybrid' | 'media-only'
     externalLinks: article.externalLinks, // External links for link button
+    showDisclaimer: article.showDisclaimer,
+    disclaimerText: article.disclaimerText,
   };
 
   // ────────────────────────────────────────

@@ -58,6 +58,7 @@ import { ReportModal } from './ReportModal';
 import { CreateNuggetModal } from './CreateNuggetModal';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
+import { useDisclaimerConfig, resolveDisclaimer } from '@/hooks/useDisclaimerConfig';
 import { useVideoPlayer } from '@/context/VideoPlayerContext';
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
@@ -122,6 +123,11 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const { playVideo } = useVideoPlayer();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { data: disclaimerConfig } = useDisclaimerConfig();
+  const resolvedDisclaimer = useMemo(
+    () => resolveDisclaimer(article, disclaimerConfig),
+    [article.showDisclaimer, article.disclaimerText, disclaimerConfig]
+  );
   
   const shouldShowHeader = showHeader ?? isModal;
 
@@ -524,11 +530,18 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                   This ensures GitHub-style markdown (links, tables, inline formatting) renders
                   identically to the card preview. */}
               <div className="nugget-content text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  <MarkdownRenderer 
-                    content={article?.content ?? article?.excerpt ?? ''} 
+                  <MarkdownRenderer
+                    content={article?.content ?? article?.excerpt ?? ''}
                     onYouTubeTimestampClick={handleDrawerTimestampClick}
                   />
               </div>
+
+              {/* Disclaimer */}
+              {resolvedDisclaimer && (
+                <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] italic text-slate-400 dark:text-slate-500 leading-snug [&_a]:underline [&_a]:text-slate-500 dark:[&_a]:text-slate-400">
+                  <MarkdownRenderer content={resolvedDisclaimer} />
+                </div>
+              )}
 
                {/* Primary Media Embed */}
                {!isModal && primaryMedia && (

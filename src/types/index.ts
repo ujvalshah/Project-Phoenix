@@ -283,6 +283,12 @@ export interface Article {
   // If not set, uses first media item (backward compatible)
   displayImageIndex?: number;
 
+  // ============================================================================
+  // DISCLAIMER (optional footnote at end of card content)
+  // ============================================================================
+  showDisclaimer?: boolean;
+  disclaimerText?: string | null; // null/undefined = use site-wide default
+
   // Contextual
   addedBy?: Contributor; // When inside a collection
 }

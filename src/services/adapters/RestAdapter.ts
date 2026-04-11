@@ -117,25 +117,10 @@ export class RestAdapter implements IAdapter {
   async createArticle(article: Omit<Article, 'id' | 'publishedAt'>): Promise<Article> {
     // Transform frontend format to server API format
     
-    /**
-     * PHASE 4: Tag Data Contract Enforcement
-     * 
-     * Backend validation requires:
-     * - tags: string[] (non-empty, all elements must be non-empty strings)
-     * 
-     * This adapter normalizes and validates tags before sending to backend:
-     * 1. Ensures tags is always an array
-     * 2. Filters out invalid entries (null, undefined, empty strings)
-     * 3. Rejects early if no valid tags remain (prevents backend validation error)
-     */
-    const tags = Array.isArray(article.tags) 
-      ? article.tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
-      : [];
-    
-    // PHASE 5: Defensive validation - reject early if tags are empty
-    // This prevents sending invalid payloads to backend and provides clearer error messages
-    if (tags.length === 0) {
-      return Promise.reject(new Error('At least one tag is required to create a nugget'));
+    // At least one classification tag (tagId) must be present
+    const hasTagIds = Array.isArray(article.tagIds) && article.tagIds.length > 0;
+    if (!hasTagIds) {
+      return Promise.reject(new Error('At least one classification tag is required to create a nugget'));
     }
     
     // CATEGORY PHASE-OUT: categoryIds is never sent - silently ignored if present in article object
@@ -149,9 +134,7 @@ export class RestAdapter implements IAdapter {
       // CRITICAL: Include mediaIds if present (Cloudinary-uploaded media)
       mediaIds: article.mediaIds,
       authorName: article.author?.name || '',
-      // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
-      // Tags are now the only classification field
-      tags: tags, // Use validated tags array
+      // tagIds is the sole classification field — free-form tags removed
       readTime: article.readTime,
       visibility: article.visibility || 'public',
       publishedAt: new Date().toISOString(), // Generate timestamp for new articles
@@ -175,6 +158,9 @@ export class RestAdapter implements IAdapter {
       ...((article as any).layoutVisibility && { layoutVisibility: (article as any).layoutVisibility }),
       // Dimension tag IDs (format, domain, subtopic)
       ...(article.tagIds && article.tagIds.length > 0 && { tagIds: article.tagIds }),
+      // Disclaimer fields
+      ...((article as any).showDisclaimer !== undefined && { showDisclaimer: (article as any).showDisclaimer }),
+      ...((article as any).disclaimerText !== undefined && { disclaimerText: (article as any).disclaimerText }),
     };
     
     // TEMPORARY DEBUG: Stage 3 - Payload sent to API (RestAdapter)
@@ -213,7 +199,6 @@ export class RestAdapter implements IAdapter {
     // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
     // Tags are now the only classification field
     if (updatesWithoutCategoryIds.visibility !== undefined) payload.visibility = updatesWithoutCategoryIds.visibility;
-    if (updatesWithoutCategoryIds.tags !== undefined) payload.tags = updatesWithoutCategoryIds.tags;
     // CRITICAL: Preserve masonryTitle when updating media field
     // masonryTitle must flow through all layers to persist correctly
     if (updatesWithoutCategoryIds.media !== undefined) {
@@ -245,6 +230,9 @@ export class RestAdapter implements IAdapter {
     if (updatesWithoutCategoryIds.layoutVisibility !== undefined) payload.layoutVisibility = updatesWithoutCategoryIds.layoutVisibility;
     // Dimension tag IDs (format, domain, subtopic)
     if (updatesWithoutCategoryIds.tagIds !== undefined) payload.tagIds = updatesWithoutCategoryIds.tagIds;
+    // Disclaimer fields
+    if (updatesWithoutCategoryIds.showDisclaimer !== undefined) payload.showDisclaimer = updatesWithoutCategoryIds.showDisclaimer;
+    if (updatesWithoutCategoryIds.disclaimerText !== undefined) payload.disclaimerText = updatesWithoutCategoryIds.disclaimerText;
 
     // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
     // Frontend is canonical deduplication pass - backend will compute but not mutate

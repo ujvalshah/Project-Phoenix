@@ -243,6 +243,17 @@ app.use('/api/bookmarks', bookmarksRouter);
 app.use('/api/bookmark-collections', bookmarkCollectionsRouter);
 app.use('/api/notifications', notificationsRouter);
 
+// Public disclaimer config endpoint (no auth required — used by card rendering)
+import { getDisclaimerConfig } from './services/disclaimerConfigService.js';
+app.get('/api/config/disclaimer', async (_req, res) => {
+  try {
+    const config = await getDisclaimerConfig();
+    return res.json(config);
+  } catch {
+    return res.status(500).json({ message: 'Failed to get disclaimer config' });
+  }
+});
+
 // Health Check - Enhanced to verify DB connectivity
 app.get('/api/health', async (req, res) => {
   // Audit Phase-3 Fix: Add debug logging around health checks for observability

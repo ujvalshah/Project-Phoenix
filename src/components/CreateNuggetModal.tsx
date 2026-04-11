@@ -19,7 +19,6 @@ import { processNuggetUrl, detectUrlChanges, getPrimaryUrl } from '@/utils/proce
 import { useMediaUpload } from '@/hooks/useMediaUpload';
 import { SourceSelector } from './shared/SourceSelector';
 import { SourceBadge } from './shared/SourceBadge';
-import { TagSelector } from './CreateNuggetModal/TagSelector';
 import { DimensionTagPicker } from './CreateNuggetModal/DimensionTagPicker';
 import { CollectionSelector } from './CreateNuggetModal/CollectionSelector';
 import { TitleInput } from './CreateNuggetModal/TitleInput';
@@ -36,11 +35,11 @@ import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import type { Article, ExternalLink, LayoutVisibility } from '@/types';
 import { DEFAULT_LAYOUT_VISIBILITY } from '@/types';
 import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeArticleInput';
-import { normalizeTags } from '@/shared/articleNormalization/normalizeTags';
 import { useImageManager } from '@/hooks/useImageManager';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
-import { useTags, useAllCollections, nuggetFormKeys } from '@/hooks/useNuggetFormData';
+import { useAllCollections, nuggetFormKeys } from '@/hooks/useNuggetFormData';
+import { useDisclaimerConfig } from '@/hooks/useDisclaimerConfig';
 
 interface CreateNuggetModalProps {
   isOpen: boolean;
@@ -121,15 +120,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   
   // Refs for accessibility and focus management
   const modalRef = useRef<HTMLDivElement>(null);
-  const tagsComboboxRef = useRef<HTMLDivElement>(null);
-  const tagsListboxRef = useRef<HTMLDivElement>(null);
   const collectionsComboboxRef = useRef<HTMLDivElement>(null);
   const collectionsListboxRef = useRef<HTMLDivElement>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   // Metadata State
-  // CATEGORY PHASE-OUT: Removed categories state - using tags only
-  const [tags, setTags] = useState<string[]>([]);
   const [dimensionTagIds, setDimensionTagIds] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
@@ -159,31 +154,29 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     feed: true,
   });
 
+  // Disclaimer State — default reads from site-wide config via hook
+  const { data: disclaimerConfigData } = useDisclaimerConfig();
+  const [showDisclaimer, setShowDisclaimer] = useState<boolean>(true);
+  const [disclaimerText, setDisclaimerText] = useState<string>('');
+  // Sync default from config on first load (create mode only)
+  const disclaimerDefaultApplied = React.useRef(false);
+  React.useEffect(() => {
+    if (disclaimerConfigData && !disclaimerDefaultApplied.current && mode !== 'edit') {
+      setShowDisclaimer(disclaimerConfigData.enableByDefault);
+      disclaimerDefaultApplied.current = true;
+    }
+  }, [disclaimerConfigData, mode]);
+
   // Explicitly deleted images tracked by useImageManager hook (Phase 9: Legacy code removed)
   const explicitlyDeletedImages = imageManager.explicitlyDeletedUrls;
   
   // Data Source State - Now using React Query for caching and automatic refetch
-  // CATEGORY PHASE-OUT: Renamed availableCategories to availableTags
   // Note: queryClient is imported from @/queryClient (singleton instance)
-
-  const {
-    data: availableTags = [],
-    isLoading: _isLoadingTags, // eslint-disable-line @typescript-eslint/no-unused-vars -- Available for future loading state UI
-  } = useTags();
 
   const {
     data: allCollections = [],
     isLoading: _isLoadingCollections, // eslint-disable-line @typescript-eslint/no-unused-vars -- Available for future loading state UI
   } = useAllCollections();
-
-  /**
-   * Callback to optimistically update the tags cache when a new tag is created.
-   * This is called by TagSelector after it creates a new tag via storageService.
-   * The callback updates the React Query cache immediately for instant UI feedback.
-   */
-  const handleAvailableTagsChange = React.useCallback((newTags: string[]) => {
-    queryClient.setQueryData<string[]>(nuggetFormKeys.tags(), newTags);
-  }, []); // queryClient is a module-level singleton, no need in deps
 
   /**
    * Callback to optimistically update the collections cache when a new collection is created.
@@ -202,9 +195,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
   
   // Field-level validation states
-  const [tagsError, setTagsError] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
-  const [tagsTouched, setTagsTouched] = useState(false);
   const [contentTouched, setContentTouched] = useState(false);
 
   // Store previous active element for focus restoration
@@ -216,7 +207,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   useEffect(() => {
     if (isOpen) {
-      // Data loading is now handled by React Query hooks (useTags, useAllCollections)
+      // Data loading is now handled by React Query hooks (useAllCollections)
       // No need to call loadData() - React Query provides caching and automatic refetch
       document.body.style.overflow = 'hidden';
       
@@ -226,8 +217,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         setIsTitleUserEdited(!!initialData.title); // PHASE 6: Mark as edited if title exists
         setSuggestedTitle(null); // PHASE 3: Clear suggestion in edit mode
         setContent(initialData.content || '');
-        // CATEGORY PHASE-OUT: Use tags instead of categories
-        setTags(initialData.tags || []);
         setDimensionTagIds(initialData.tagIds || []);
         // Initialize customCreatedAt if article has isCustomCreatedAt flag (admin only)
         if (isAdmin && (initialData as any).isCustomCreatedAt && initialData.publishedAt) {
@@ -249,6 +238,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           utility: true,
           feed: true,
         });
+        // Initialize disclaimer from initialData
+        if (initialData.showDisclaimer !== undefined) {
+          setShowDisclaimer(initialData.showDisclaimer);
+        }
+        setDisclaimerText(initialData.disclaimerText || '');
 
         // V2: displayImageId will be initialized in a separate effect after masonryMediaItems loads
         // This ensures we use the actual item ID from imageManager (not a mismatched generated one)
@@ -413,7 +407,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     };
   }, [isOpen]);
 
-  // loadData function removed - now using React Query hooks (useTags, useAllCollections)
+  // loadData function removed - now using React Query hooks (useAllCollections)
   // which provide automatic caching, background refetch, and stale-while-revalidate pattern.
   // This eliminates the need for manual data fetching on every modal open.
 
@@ -435,7 +429,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setDetectedLink(null);
     setLinkMetadata(null);
     setAttachments([]);
-    setTags([]);
     setDimensionTagIds([]);
     setVisibility('public');
     setSelectedCollections([]);
@@ -447,9 +440,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setError(null);
     setIsLoading(false);
     // Reset field-level validation states
-    setTagsError(null);
     setContentError(null);
-    setTagsTouched(false);
     setContentTouched(false);
     // Reset initialization ref
     initializedFromDataRef.current = null;
@@ -463,6 +454,9 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       utility: true,
       feed: true,
     });
+    // Reset disclaimer
+    setShowDisclaimer(true);
+    setDisclaimerText('');
   };
 
   const handleClose = () => {
@@ -841,16 +835,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // addCategory and toggleCollection are now handled by TagSelector and CollectionSelector components
 
   // Field-level validation functions
-  // Use shared normalization to ensure consistency
-  const validateTags = (): string | null => {
-    // Use shared normalizeTags utility for consistency
-    const normalizedTags = normalizeTags(tags);
-    if (normalizedTags.length === 0) {
-      return "Please add at least one tag. Tags enable smarter news discovery.";
-    }
-    return null;
-  };
-
   const validateContent = (): string | null => {
     const hasContent = content.trim() || title.trim();
     const hasUrl = urls.length > 0;
@@ -861,14 +845,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     }
     return null;
   };
-
-  // Validate tags when tags change (if touched)
-  useEffect(() => {
-    if (tagsTouched) {
-      const error = validateTags();
-      setTagsError(error);
-    }
-  }, [tags, tagsTouched]);
 
   // Validate content when relevant fields change (if touched)
   useEffect(() => {
@@ -1435,21 +1411,20 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   const handleSubmit = async () => {
     // Mark all fields as touched to show validation errors
-    setTagsTouched(true);
     setContentTouched(true);
-    
+
     // Validate field-level errors first
-    const tagsErr = validateTags();
+    const tagsErr = dimensionTagIds.length === 0
+      ? "Please select at least one classification tag."
+      : null;
     const contentErr = validateContent();
-    
-    setTagsError(tagsErr);
+
     setContentError(contentErr);
-    
+
     // If field errors exist, stop submission
     if (tagsErr || contentErr) {
-      // Scroll to first error if needed
       if (tagsErr) {
-        tagsComboboxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        setError(tagsErr);
       } else if (contentErr) {
         document.getElementById('title-input')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
@@ -1546,7 +1521,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 {
                     title: finalTitle,
                     content,
-                    tags,
+                    tags: [], // Tags resolved from dimensionTagIds on backend
                     visibility,
                     urls,
                     detectedLink: detectedLink || null,
@@ -1581,16 +1556,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     classifyArticleMedia,
                 }
             );
-            
-            // PHASE 1: Validate tags are not empty (same rule as CREATE mode)
-            // If tags become empty after normalization, prevent submission
-            if (normalizedInput.hasEmptyTagsError) {
-                setTagsError("Please add at least one tag. Tags enable smarter news discovery.");
-                setIsSubmitting(false);
-                // Scroll to tags field
-                tagsComboboxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                return;
-            }
 
             // PHASE 4: Pre-save validation with warnings and error blocking
             if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
@@ -1599,7 +1564,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 {
                   title: normalizedInput.title,
                   content: normalizedInput.content,
-                  tags: normalizedInput.tags,
+                  tagIds: dimensionTagIds,
                   media: normalizedInput.media,
                   primaryMedia: null, // Edit mode doesn't use primaryMedia directly
                   supportingMedia: normalizedInput.supportingMedia,
@@ -1647,12 +1612,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             const updatePayload: Partial<Article> = {
                 title: normalizedInput.title,
                 content: normalizedInput.content,
-                // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
                 visibility: normalizedInput.visibility,
                 readTime: normalizedInput.readTime,
                 excerpt: normalizedInput.excerpt,
-                tags: normalizedInput.tags, // Include normalized tags
-                tagIds: dimensionTagIds, // Dimension classification tags
+                tagIds: dimensionTagIds, // Classification tags (sole source of truth)
             };
             
             // Add optional fields only if they exist (preserve EDIT mode partial update semantics)
@@ -1696,6 +1659,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
               updatePayload.externalLinks = externalLinks;
             }
             updatePayload.layoutVisibility = layoutVisibility;
+            updatePayload.showDisclaimer = showDisclaimer;
+            updatePayload.disclaimerText = disclaimerText.trim() || null;
 
             // V2: Add displayImageIndex if user selected a specific thumbnail
             if (isFeatureEnabled('NUGGET_EDITOR_V2') && displayImageId) {
@@ -1879,7 +1844,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             {
                 title: finalTitle,
                 content,
-                tags,
+                tags: [], // Tags resolved from dimensionTagIds on backend
                 visibility,
                 urls,
                 detectedLink,
@@ -1912,14 +1877,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             mediaUrl: normalized.media?.url,
         });
 
-        // PHASE 5: Regression safeguard - defensive assertion
-        // This should never trigger if validation works correctly, but prevents silent failures
-        if (normalized.hasEmptyTagsError) {
-            setTagsError("Please add at least one tag. Tags enable smarter news discovery.");
-            setIsSubmitting(false);
-            return;
-        }
-
         // PHASE 4: Pre-save validation with warnings and error blocking (Create mode)
         if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
           const validationResult = validateBeforeSave(
@@ -1927,7 +1884,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             {
               title: normalized.title,
               content: normalized.content,
-              tags: normalized.tags,
+              tagIds: dimensionTagIds,
               media: normalized.media,
               primaryMedia: null,
               supportingMedia: normalized.supportingMedia,
@@ -1977,8 +1934,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             excerpt: normalized.excerpt,
             author: { id: currentUserId, name: authorName },
             displayAuthor: (postAs === 'alias' && finalAliasName.trim()) ? { name: finalAliasName.trim() } : undefined,
-            tags: normalized.tags,
-            tagIds: dimensionTagIds.length > 0 ? dimensionTagIds : undefined,
+            tags: [] as string[], // Resolved from tagIds by backend at response time
+            tagIds: dimensionTagIds,
             readTime: normalized.readTime,
             mediaIds: normalized.mediaIds,
             images: normalized.images,
@@ -1990,6 +1947,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             source_type: normalized.source_type,
             externalLinks,
             layoutVisibility: layoutVisibility,
+            showDisclaimer,
+            disclaimerText: disclaimerText.trim() || null,
             // V2: Add displayImageIndex if user selected a specific thumbnail
             ...(isFeatureEnabled('NUGGET_EDITOR_V2') && displayImageId ? {
               displayImageIndex: currentMasonryItems.findIndex(m => m.id === displayImageId),
@@ -2036,21 +1995,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         console.error("Failed to create nugget", e);
         
         // Use unified error handling
-        logError('CreateNuggetModal', e, { title, attachmentsCount: attachments.length, urlsCount: urls.length, tagsCount: tags.length });
-        
+        logError('CreateNuggetModal', e, { title, attachmentsCount: attachments.length, urlsCount: urls.length, tagIdsCount: dimensionTagIds.length });
+
         const apiError = formatApiError(e);
         const baseErrorMessage = getUserFriendlyMessage(apiError);
-        
-        // PHASE 5: Handle tag-specific validation errors from backend
-        // If backend returns a tag validation error, set it on the tags field
-        if (e?.errors && Array.isArray(e.errors)) {
-            const tagError = e.errors.find((err: any) => err.path === 'tags' || err.path?.includes('tags'));
-            if (tagError) {
-                setTagsError("Tags required to post the nugget");
-                setTagsTouched(true);
-                tagsComboboxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-        }
         
         // Handle multiple validation errors
         let finalErrorMessage = baseErrorMessage;
@@ -2188,20 +2136,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     </div>
                 </div>
 
-                {/* Organization Rows - Tags and Collections/Bookmarks */}
+                {/* Organization Rows - Collections and Classification Tags */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
-                    <TagSelector
-                        selected={tags}
-                        availableCategories={availableTags}
-                        onSelectedChange={setTags}
-                        onAvailableCategoriesChange={handleAvailableTagsChange}
-                        error={tagsError}
-                        touched={tagsTouched}
-                        onTouchedChange={setTagsTouched}
-                        onErrorChange={setTagsError}
-                        comboboxRef={tagsComboboxRef}
-                        listboxRef={tagsListboxRef}
-                    />
                     <CollectionSelector
                         selected={selectedCollections}
                         availableCollections={allCollections}
@@ -2323,6 +2259,53 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     />
                   </div>
                 )}
+
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                {/* DISCLAIMER SECTION */}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                <div className="space-y-3" data-testid="disclaimer-section">
+                  <div className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                    <span>Disclaimer</span>
+                  </div>
+                  <label className={`
+                    flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all
+                    ${showDisclaimer
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'
+                    }
+                    ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary-400'}
+                  `}>
+                    <input
+                      type="checkbox"
+                      checked={showDisclaimer}
+                      onChange={() => setShowDisclaimer(!showDisclaimer)}
+                      disabled={isSubmitting}
+                      className="w-4 h-4 text-primary-500 border-slate-300 rounded focus:ring-primary-500"
+                    />
+                    <span className={`text-sm ${showDisclaimer ? 'text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
+                      Show disclaimer on this nugget
+                    </span>
+                  </label>
+                  {showDisclaimer && (
+                    <div className="space-y-1">
+                      <textarea
+                        value={disclaimerText}
+                        onChange={(e) => setDisclaimerText(e.target.value)}
+                        disabled={isSubmitting}
+                        placeholder="Leave blank to use site-wide default disclaimer..."
+                        maxLength={500}
+                        rows={2}
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 placeholder-slate-400 resize-none"
+                      />
+                      <p className="text-[10px] text-slate-400">
+                        {disclaimerText.length > 0
+                          ? `Custom disclaimer (${disclaimerText.length}/500). This overrides the site-wide default for this nugget only.`
+                          : 'Uses the site-wide default disclaimer. Enter text here to override for this nugget only.'
+                        }
+                      </p>
+                    </div>
+                  )}
+                </div>
 
                 {/* Editor Area with AI Trigger */}
                 <ContentEditor
@@ -2627,8 +2610,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             canSubmit={
-                // PHASE 5: Regression safeguard - disable submit if tags are empty
-                tags.length > 0 && 
+                // Require at least one classification tag to submit
+                dimensionTagIds.length > 0 &&
                 !!(content.trim() || title.trim() || urls.length > 0 || attachments.length > 0)
             }
         />

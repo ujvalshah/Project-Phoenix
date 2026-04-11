@@ -2,9 +2,12 @@ import { Request, Response } from 'express';
 import { Article } from '../models/Article.js';
 import { Collection } from '../models/Collection.js';
 import { Tag } from '../models/Tag.js';
-import { normalizeDoc, normalizeDocs } from '../utils/db.js';
+import { normalizeDoc, normalizeDocs, normalizeArticleDoc, normalizeArticleDocs } from '../utils/db.js';
 import { createArticleSchema, updateArticleSchema } from '../utils/validation.js';
+import { validateDimensionTagIds } from '../utils/validateDimensionTagIds.js';
 import { cleanupCollectionEntries } from '../utils/collectionHelpers.js';
+import { resolveTagNamesToIds } from '../utils/tagHelpers.js';
+import { createRequestLogger } from '../utils/logger.js';
 import { escapeRegExp, createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { verifyToken } from '../utils/jwt.js';
 import {
@@ -167,13 +170,21 @@ export const getArticles = async (req: Request, res: Response) => {
     // SECURITY: escapeRegExp prevents malicious regex patterns
     if (q && typeof q === 'string' && q.trim().length > 0) {
       const regex = createSearchRegex(q);
-      const searchConditions = [
+      const searchConditions: Record<string, unknown>[] = [
         { title: regex },
         { excerpt: regex },
         { content: regex },
-        { tags: regex }
       ];
-      
+
+      // P2-5: Resolve matching tag names to tagIds for search
+      const matchingTags = await Tag.find({
+        rawName: regex,
+        status: 'active',
+      }).select('_id').lean();
+      if (matchingTags.length > 0) {
+        searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
+      }
+
       // Combine search with existing query conditions
       // If we already have a privacy $or, we need to use $and to combine both
       if (query.$or) {
@@ -250,10 +261,19 @@ export const getArticles = async (req: Request, res: Response) => {
       }
     }
     
-    // Tag filter (case-insensitive exact match on tags array)
+    // Tag filter: resolve tag name to tagId and query via tagIds (Phase 2-4 migration)
     // Separate from category filter — allows filtering by a specific tag within a category
     if (tag && typeof tag === 'string' && tag.trim().length > 0) {
-      query.tags = { $in: [createExactMatchRegex(tag.trim())] };
+      const tagDoc = await Tag.findOne({
+        canonicalName: tag.trim().toLowerCase(),
+        status: 'active',
+      }).select('_id').lean();
+      if (tagDoc) {
+        appendAndQueryCondition(query, { tagIds: tagDoc._id });
+      } else {
+        // Tag name doesn't resolve to any active tag — return empty results
+        return res.json({ data: [], total: 0, page, limit, hasMore: false });
+      }
     }
 
     // Format filter (source_type field: 'link' | 'twitter' | 'video' | 'document')
@@ -360,7 +380,7 @@ export const getArticles = async (req: Request, res: Response) => {
     ]);
 
     res.json({
-      data: normalizeDocs(articles),
+      data: await normalizeArticleDocs(articles),
       total,
       page,
       limit,
@@ -392,7 +412,7 @@ export const getArticleById = async (req: Request, res: Response) => {
       return sendUnauthorizedError(res, 'Authentication required to view private articles');
     }
     
-    res.json(normalizeDoc(article));
+    res.json(await normalizeArticleDoc(article));
   } catch (error: any) {
     console.error('[Articles] Get article by ID error:', error);
     sendInternalError(res);
@@ -413,7 +433,7 @@ export const createArticle = async (req: Request, res: Response) => {
     }
 
     const data = validationResult.data;
-    
+
     // CRITICAL FIX: Deduplicate images array to prevent duplicates
     // Also log for debugging image creation flow
     if (data.images && Array.isArray(data.images)) {
@@ -435,7 +455,7 @@ export const createArticle = async (req: Request, res: Response) => {
       }
       data.images = deduplicated;
     }
-    
+
     // Log payload size for debugging (especially for images)
     const payloadSize = JSON.stringify(data).length;
     if (payloadSize > 1000000) { // > 1MB
@@ -445,10 +465,31 @@ export const createArticle = async (req: Request, res: Response) => {
         console.warn(`[Articles] Images total size: ${(imagesSize / 1024 / 1024).toFixed(2)}MB`);
       }
     }
-    
+
+    // Resolve free-form tag names to tagIds and merge with dimension picker IDs.
+    // tags[] is no longer persisted — tagIds is the sole storage field.
+    // IMPORTANT: This must run BEFORE validateDimensionTagIds so that tags
+    // submitted as names (from TagSelector) are included in the dimension check.
+    const resolvedFromNames = await resolveTagNamesToIds(data.tags || []);
+    const dimensionTagIds = (data.tagIds || []).filter(Boolean);
+    const mergedIdSet = new Set([
+      ...dimensionTagIds,
+      ...resolvedFromNames.map(id => id.toString()),
+    ]);
+    data.tagIds = Array.from(mergedIdSet);
+    delete data.tags; // Not persisted — prevent Mongoose strict-mode warning
+
+    // Dimension-tag guardrail: every new nugget must carry at least one
+    // `format` tag and one `domain` tag. Prevents coverage from drifting back
+    // below 100% as new content is added.
+    const dimensionCheck = await validateDimensionTagIds(data.tagIds);
+    if (!dimensionCheck.ok) {
+      return sendValidationError(res, 'Validation failed', dimensionCheck.errors);
+    }
+
     // Phase 2: Resolve categoryIds from category names
     const categoryIds = await resolveCategoryIds(data.categories || []);
-    
+
     // Admin-only: Handle custom creation date
     const currentUserId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
@@ -500,8 +541,8 @@ export const createArticle = async (req: Request, res: Response) => {
       publishedAt,
       isCustomCreatedAt
     });
-    
-    res.status(201).json(normalizeDoc(newArticle));
+
+    res.status(201).json(await normalizeArticleDoc(newArticle));
   } catch (error: any) {
     console.error('[Articles] Create article error:', error);
     console.error('[Articles] Error name:', error.name);
@@ -561,6 +602,9 @@ export const updateArticle = async (req: Request, res: Response) => {
       }));
       return sendValidationError(res, 'Validation failed', errors);
     }
+
+    // NOTE: Dimension-tag guardrail moved AFTER tag name → tagId resolution
+    // (see below) so that free-form tag names are included in the check.
 
     // CRITICAL FIX: Deduplicate images array to prevent duplicates
     // Also check against existing images to prevent re-adding duplicates
@@ -675,11 +719,37 @@ export const updateArticle = async (req: Request, res: Response) => {
       delete mongoUpdate.customCreatedAt;
     }
     
+    // Resolve tag names → tagIds and merge with dimension picker IDs.
+    // tags[] is no longer persisted — tagIds is the sole storage field.
+    if (updates.tags !== undefined || updates.tagIds !== undefined) {
+      const resolvedFromNames = updates.tags
+        ? await resolveTagNamesToIds(updates.tags)
+        : [];
+      const incomingTagIds = (updates.tagIds || []).filter(Boolean);
+      const existingTagIds = (existingArticle.tagIds || []).map((id: { toString(): string }) => id.toString());
+
+      const mergedIdSet = new Set([
+        ...(incomingTagIds.length > 0 || resolvedFromNames.length > 0
+          ? [...incomingTagIds, ...resolvedFromNames.map(id => id.toString())]
+          : existingTagIds),
+      ]);
+      mongoUpdate.tagIds = Array.from(mergedIdSet);
+
+      // Dimension-tag guardrail: the merged set must still contain at least one
+      // `format` tag and one `domain` tag — an edit cannot strip an article
+      // below dimension coverage. Runs AFTER tag name resolution so that
+      // free-form tags are included.
+      const dimensionCheck = await validateDimensionTagIds(mongoUpdate.tagIds);
+      if (!dimensionCheck.ok) {
+        return sendValidationError(res, 'Validation failed', dimensionCheck.errors);
+      }
+    }
+    delete mongoUpdate.tags; // Not persisted
+
     // Phase 2: Resolve categoryIds if categories are being updated
     if (updates.categories && Array.isArray(updates.categories)) {
       const categoryIds = await resolveCategoryIds(updates.categories);
       mongoUpdate.categoryIds = categoryIds;
-      console.log(`[Articles] Update: Resolved ${updates.categories.length} categories to ${categoryIds.length} IDs`);
     }
     
     if (updates.media && !updates.media.type && !updates.media.url && updates.media.previewMetadata) {
@@ -718,7 +788,8 @@ export const updateArticle = async (req: Request, res: Response) => {
     ).lean();
     
     if (!article) return sendNotFoundError(res, 'Article not found');
-    res.json(normalizeDoc(article));
+
+    res.json(await normalizeArticleDoc(article));
   } catch (error: any) {
     console.error('[Articles] Update article error:', error);
     sendInternalError(res);

@@ -190,6 +190,10 @@ const baseArticleSchema = z.object({
   // Display image index (which media item shows as card thumbnail)
   displayImageIndex: z.number().int().min(0).optional(),
 
+  // Disclaimer fields
+  showDisclaimer: z.boolean().optional(),
+  disclaimerText: z.string().max(500, 'Disclaimer text too long').nullable().optional(),
+
   // Dimension tag IDs (format, domain, subtopic references to Tag collection)
   // Sent from the DimensionTagPicker in Create/Edit modal
   tagIds: z.preprocess(
@@ -199,7 +203,9 @@ const baseArticleSchema = z.object({
 });
 
 // Create schema with refinement: at least one of content/media/images/documents must be present
-// AND at least one tag must be present (tags are mandatory)
+// AND tagIds must be a non-empty array (at least one tag is mandatory).
+// Dimension validity (must include format) is enforced post-Zod in the controller
+// via validateDimensionTagIds(), since it requires a DB lookup.
 // Use .strict() to reject unknown fields
 export const createArticleSchema = baseArticleSchema.strict().refine(
   (data) => {
@@ -208,22 +214,26 @@ export const createArticleSchema = baseArticleSchema.strict().refine(
     const hasMedia = data.media !== null && data.media !== undefined;
     const hasImages = data.images && data.images.length > 0;
     const hasDocuments = data.documents && data.documents.length > 0;
-    
+
     return hasContent || hasMedia || hasImages || hasDocuments;
   },
   {
     message: 'Please provide content, a URL, images, or documents',
-    path: ['content'], // Error will appear on content field
+    path: ['content'],
   }
 ).refine(
   (data) => {
-    // Tags are mandatory - at least one tag must be present
+    // At least one tag is mandatory (via tagIds — the sole persistence field).
+    // Free-form tag names sent in `tags` are resolved to tagIds by the controller
+    // before this check matters at the DB level, but on create the frontend must
+    // also supply dimension tagIds directly.
+    const tagIds = data.tagIds || [];
     const tags = data.tags || [];
-    return tags.length > 0 && tags.every(tag => typeof tag === 'string' && tag.trim().length > 0);
+    return tagIds.length > 0 || tags.length > 0;
   },
   {
     message: 'At least one tag is required',
-    path: ['tags'], // Error will appear on tags field
+    path: ['tagIds'],
   }
 );
 

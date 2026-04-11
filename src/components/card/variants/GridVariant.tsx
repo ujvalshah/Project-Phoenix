@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Check, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { NewsCardLogic } from '@/hooks/useNewsCard';
+import { useDisclaimerConfig, resolveDisclaimer } from '@/hooks/useDisclaimerConfig';
 import { CardMedia } from '../atoms/CardMedia';
 import { CardTitle } from '../atoms/CardTitle';
 import { CardMeta } from '../atoms/CardMeta';
@@ -41,6 +42,11 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   disableInlineExpansion = false,
 }) => {
   const { data, handlers } = logic;
+  const { data: disclaimerConfig } = useDisclaimerConfig();
+  const resolvedDisclaimer = useMemo(
+    () => resolveDisclaimer(data, disclaimerConfig),
+    [data.showDisclaimer, data.disclaimerText, disclaimerConfig]
+  );
   const contentExpandRef = useRef<(() => void) | null>(null);
   const contentCollapseRef = useRef<(() => void) | null>(null);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
@@ -410,6 +416,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               collapseRef={!disableInlineExpansion ? contentCollapseRef : undefined} // Expose collapse function for split button
               onExpansionChange={!disableInlineExpansion ? setIsContentExpanded : undefined} // Update expanded state for split button
               onOverflowChange={setHasContentOverflow} // Update overflow state for button visibility
+              disclaimerText={resolvedDisclaimer}
             />
           </div>
         </>

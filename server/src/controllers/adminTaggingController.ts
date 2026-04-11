@@ -4,6 +4,7 @@ import { Tag, canonicalize } from '../models/Tag.js';
 import { Collection } from '../models/Collection.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+import { getTagNameMap } from '../utils/db.js';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import * as XLSX from 'xlsx';
@@ -86,11 +87,14 @@ export const exportTagMapping = async (req: Request, res: Response) => {
 
     // 3. Load all articles (include media/link fields for source URL)
     const articles = await Article.find({})
-      .select('_id title tags tagIds publishedAt source_type primaryMedia media externalLinks')
+      .select('_id title tagIds publishedAt source_type primaryMedia media externalLinks')
       .sort({ publishedAt: -1 })
       .lean();
 
-    // 4. Build rows
+    // 4. Resolve all tag names from tagIds (P2-8)
+    const tagNameMap = await getTagNameMap();
+
+    // 5. Build rows
     const rows = articles.map(article => {
       const id = article._id.toString();
       const colNames = articleCollections.get(id) || [];
@@ -132,7 +136,10 @@ export const exportTagMapping = async (req: Request, res: Response) => {
         source_url: sourceUrl,
         source_type: article.source_type || '',
         published_at: article.publishedAt || '',
-        current_tags: (article.tags || []).join('; '),
+        current_tags: (article.tagIds || [])
+          .map((tid: { toString(): string }) => tagNameMap.get(tid.toString()))
+          .filter(Boolean)
+          .join('; '),
         current_collections: colNames.join('; '),
         existing_dimension_tags: existingDimTags.join('; '),
         suggested_format: Array.from(suggestedFormats).join('; '),

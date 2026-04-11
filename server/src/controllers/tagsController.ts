@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Tag } from '../models/Tag.js';
 import { Article } from '../models/Article.js';
-import { normalizeDoc, normalizeDocs } from '../utils/db.js';
+import { normalizeDoc, normalizeDocs, invalidateTagNameCache } from '../utils/db.js';
 import { z } from 'zod';
 import { createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { calculateTagUsageCounts } from '../utils/tagUsageHelpers.js';
@@ -11,17 +11,31 @@ import { captureException } from '../utils/sentry.js';
 import { createOrResolveTag, createOrResolveTags } from '../services/tagCreationService.js';
 
 // Validation schemas
+//
+// Dimension fields (`dimension`, `sortOrder`, `aliases`, `isOfficial`) are
+// optional on create/update so the same endpoints serve both:
+//   - free-form tags (no dimension), used by the legacy admin tag manager
+//   - dimension tags (format/domain/subtopic), used by the AdminTaggingPage
+//     inline editor.
+// The DB-level dimension validator (validateDimensionTagIds) protects article
+// writes; this controller just needs to persist whatever the admin sends.
 const createTagSchema = z.object({
   name: z.string().min(1, 'Tag name is required').max(50, 'Tag name too long'),
   status: z.enum(['active', 'pending', 'deprecated']).optional().default('active'),
-  // Legacy fields removed: type, categoryType, taxonomyMode
+  dimension: z.enum(['format', 'domain', 'subtopic']).optional(),
+  sortOrder: z.number().int().min(0).optional(),
+  aliases: z.array(z.string().trim().min(1)).optional(),
+  isOfficial: z.boolean().optional(),
 });
 
 const updateTagSchema = z.object({
   name: z.string().min(1, 'Tag name is required').max(50, 'Tag name too long').optional(),
   type: z.enum(['category', 'tag']).optional(), // Legacy field - ignored, all tags are treated as 'tag'
   status: z.enum(['active', 'pending', 'deprecated']).optional(),
-  isOfficial: z.boolean().optional()
+  isOfficial: z.boolean().optional(),
+  dimension: z.enum(['format', 'domain', 'subtopic']).nullable().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+  aliases: z.array(z.string().trim().min(1)).optional(),
 });
 
 export const getTags = async (req: Request, res: Response) => {
@@ -157,12 +171,29 @@ export const createTag = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, status = 'active' } = validationResult.data;
-    
-    // Use shared tag creation service
-    // This ensures consistent behavior with Nugget Create modal
-    // Never throws "tag exists" errors - always resolves to existing or creates new
+    const { name, status = 'active', dimension, sortOrder, aliases, isOfficial } = validationResult.data;
+
+    // Use shared tag creation service. This always resolves to an existing tag
+    // (by canonicalName) or creates a new one. We then patch dimension fields
+    // if provided — that way "create a Climate domain tag" via the admin UI
+    // either upgrades an existing free-form "Climate" tag or creates a fresh
+    // dimension tag, both producing a single Tag doc.
     const tag = await createOrResolveTag(name, { status });
+
+    if (dimension !== undefined || sortOrder !== undefined || aliases !== undefined || isOfficial !== undefined) {
+      const patch: Record<string, unknown> = {};
+      if (dimension !== undefined) patch.dimension = dimension;
+      if (sortOrder !== undefined) patch.sortOrder = sortOrder;
+      if (isOfficial !== undefined) patch.isOfficial = isOfficial;
+
+      const update: Record<string, unknown> = { $set: patch };
+      if (aliases !== undefined) {
+        // Replace alias list wholesale — the UI sends the canonical set.
+        (update as { $set: Record<string, unknown> }).$set.aliases = aliases;
+      }
+      await Tag.updateOne({ _id: tag.id }, update);
+      Object.assign(tag, patch, aliases !== undefined ? { aliases } : {});
+    }
 
     // Check if tag was newly created by querying if it exists with this exact canonicalName
     // If it existed before, it would have been returned; if it's new, we just created it
@@ -172,6 +203,7 @@ export const createTag = async (req: Request, res: Response) => {
     
     // For simplicity, always return 201 (created) since the service handles both cases
     // The frontend doesn't need to distinguish - it just needs the tag object
+    invalidateTagNameCache();
     res.status(201).json(tag);
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -283,6 +315,17 @@ export const updateTag = async (req: Request, res: Response) => {
     if (validationResult.data.isOfficial !== undefined) {
       updateData.isOfficial = validationResult.data.isOfficial;
     }
+    // Dimension taxonomy fields — let admins assign/clear a dimension and
+    // tweak ordering & aliases without going through the seed script.
+    if (validationResult.data.dimension !== undefined) {
+      updateData.dimension = validationResult.data.dimension; // null clears
+    }
+    if (validationResult.data.sortOrder !== undefined) {
+      updateData.sortOrder = validationResult.data.sortOrder;
+    }
+    if (validationResult.data.aliases !== undefined) {
+      updateData.aliases = validationResult.data.aliases;
+    }
 
     console.log('[Tags] Update data:', updateData);
 
@@ -305,138 +348,10 @@ export const updateTag = async (req: Request, res: Response) => {
       name: normalizedTag.name // Virtual field
     });
     
-    // If tag name was updated, update all articles that reference the old tag name
-    // This ensures the homepage category bar shows the new name immediately
-    if (oldName && newName && oldName !== newName) {
-      console.log('[Tags] Updating articles with old tag name:', { 
-        oldName, 
-        newName,
-        tagId: id 
-      });
-      
-      try {
-        // Import Article model dynamically to avoid circular dependencies
-        const { Article } = await import('../models/Article.js');
-        
-        // Find all articles that contain the old tag name
-        // Articles might have different casing (e.g., "Pe & Vc" vs "PE/VC"),
-        // so we use case-insensitive matching via aggregation pipeline
-        const oldNameLower = oldName.toLowerCase();
-        
-        // CATEGORY PHASE-OUT: Only search tags, not categories
-        // Use aggregation to find articles with case-insensitive matching
-        const articlesToUpdate = await Article.aggregate([
-          {
-            $match: {
-              tags: { $exists: true, $ne: [] }
-            }
-          },
-          {
-            $addFields: {
-              hasMatch: {
-                $anyElementTrue: {
-                  $map: {
-                    input: { $ifNull: ['$tags', []] },
-                    as: 'tag',
-                    in: { $eq: [{ $toLower: '$$tag' }, oldNameLower] }
-                  }
-                }
-              }
-            }
-          },
-          {
-            $match: { hasMatch: true }
-          }
-        ]);
-        
-        // Convert aggregation results back to Mongoose documents for updating
-        const articleIds = articlesToUpdate.map((a: any) => a._id);
-        const articlesToUpdateDocs = articleIds.length > 0 
-          ? await Article.find({ _id: { $in: articleIds } })
-          : [];
-        
-        console.log('[Tags] Found articles to update:', articlesToUpdateDocs.length);
-        
-        if (articlesToUpdateDocs.length === 0) {
-          console.log('[Tags] No articles found with old tag name - this is normal if no articles use this tag');
-        }
-        
-        // CATEGORY PHASE-OUT: Only update tags, not categories
-        let tagsUpdated = 0;
-        
-        // Update each article individually to ensure all occurrences are replaced
-        for (const article of articlesToUpdateDocs) {
-          let modified = false;
-          const updateFields: any = {};
-          
-          // Update tags array - replace all occurrences (case-insensitive) of oldName with newName
-          if (article.tags && Array.isArray(article.tags)) {
-            // Use case-insensitive comparison to find matches
-            const hasOldName = article.tags.some((tag: string) => 
-              tag.toLowerCase() === oldName.toLowerCase()
-            );
-            if (hasOldName) {
-              updateFields.tags = article.tags.map((tag: string) => 
-                tag.toLowerCase() === oldName.toLowerCase() ? newName : tag
-              );
-              tagsUpdated++;
-              modified = true;
-            }
-          }
-          
-          if (modified) {
-            try {
-              // Use updateOne for atomic updates
-              await Article.updateOne(
-                { _id: article._id },
-                { $set: updateFields }
-              );
-              console.log(`[Tags] Updated article ${article._id}:`, updateFields);
-            } catch (updateError: any) {
-              // Audit Phase-1 Fix: Use structured logging and Sentry capture
-              const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
-              requestLogger.error({
-                msg: '[Tags] Failed to update article',
-                articleId: article._id.toString(),
-                error: {
-                  message: updateError.message,
-                  stack: updateError.stack,
-                },
-              });
-              captureException(updateError instanceof Error ? updateError : new Error(String(updateError)), {
-                requestId: req.id,
-                route: req.path,
-                articleId: article._id.toString(),
-              });
-              // Continue with other articles even if one fails
-            }
-          }
-        }
-        
-        console.log('[Tags] Articles update summary:', {
-          totalArticlesFound: articlesToUpdateDocs.length,
-          tagsUpdated,
-          totalUpdated: tagsUpdated
-        });
-      } catch (articleUpdateError: any) {
-        // Log error but don't fail the tag rename - tag update succeeded
-        // Audit Phase-1 Fix: Use structured logging and Sentry capture
-        const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
-        requestLogger.error({
-          msg: '[Tags] Error updating articles with new tag name',
-          error: {
-            message: articleUpdateError.message,
-            stack: articleUpdateError.stack,
-          },
-        });
-        captureException(articleUpdateError instanceof Error ? articleUpdateError : new Error(String(articleUpdateError)), {
-          requestId: req.id,
-          route: req.path,
-        });
-        // Still return success for tag rename, but log the article update failure
-      }
-    }
-    
+    // Tag rename: no article-level propagation needed — articles reference
+    // tags by ObjectId (tagIds), which is stable across renames. The tag-name
+    // cache is invalidated so API responses reflect the new name immediately.
+    invalidateTagNameCache();
     res.json(normalizedTag);
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -478,7 +393,8 @@ export const deleteTag = async (req: Request, res: Response) => {
     if (!tag) {
       return res.status(404).json({ message: 'Tag not found' });
     }
-    
+
+    invalidateTagNameCache();
     res.status(204).send();
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -491,6 +407,99 @@ export const deleteTag = async (req: Request, res: Response) => {
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
+ * DELETE /api/categories/by-id/:id
+ *
+ * Soft-deletes a tag by setting status='deprecated'. We never hard-delete
+ * dimension tags because Articles reference them via tagIds — a hard delete
+ * would create dangling references and silently strip filters.
+ *
+ * Free-form tags (no dimension) also use soft delete here for consistency;
+ * the legacy DELETE /api/categories/:name endpoint above remains for the old
+ * admin tag manager UI but should not be called for dimension tags.
+ */
+export const softDeleteTagById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ message: 'Tag ID is required' });
+    }
+
+    const tag = await Tag.findById(id);
+    if (!tag) {
+      return res.status(404).json({ message: 'Tag not found' });
+    }
+
+    if (tag.status === 'deprecated') {
+      return res.json({ message: 'Tag was already deprecated', tag: normalizeDoc(tag) });
+    }
+
+    tag.status = 'deprecated';
+    await tag.save();
+    invalidateTagNameCache();
+
+    res.json({ message: 'Tag deprecated', tag: normalizeDoc(tag) });
+  } catch (error: any) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Tags] Soft-delete tag error',
+      error: { message: error.message, stack: error.stack },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
+ * GET /api/categories/taxonomy/coverage
+ *
+ * Returns dimension-tag coverage stats across all articles.
+ * Used by the AdminTaggingPage "Coverage" badge.
+ */
+export const getTaxonomyCoverage = async (req: Request, res: Response) => {
+  try {
+    const dimensionTags = await Tag.find({
+      dimension: { $exists: true, $ne: null },
+      status: 'active',
+    })
+      .select('_id dimension')
+      .lean();
+
+    const formatIds = dimensionTags.filter(t => t.dimension === 'format').map(t => t._id);
+    const domainIds = dimensionTags.filter(t => t.dimension === 'domain').map(t => t._id);
+    const subtopicIds = dimensionTags.filter(t => t.dimension === 'subtopic').map(t => t._id);
+    const allIds = [...formatIds, ...domainIds, ...subtopicIds];
+
+    const [total, withAny, withFormat, withDomain, withSubtopic] = await Promise.all([
+      Article.countDocuments({}),
+      Article.countDocuments({ tagIds: { $in: allIds } }),
+      Article.countDocuments({ tagIds: { $in: formatIds } }),
+      Article.countDocuments({ tagIds: { $in: domainIds } }),
+      Article.countDocuments({ tagIds: { $in: subtopicIds } }),
+    ]);
+
+    res.json({
+      total,
+      withAny,
+      withFormat,
+      withDomain,
+      withSubtopic,
+      missingAny: total - withAny,
+      missingFormat: total - withFormat,
+      missingDomain: total - withDomain,
+    });
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const err = error instanceof Error ? error : new Error(String(error));
+    requestLogger.error({
+      msg: '[Tags] Taxonomy coverage error',
+      error: { message: err.message, stack: err.stack },
+    });
+    captureException(err, { requestId: req.id, route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };

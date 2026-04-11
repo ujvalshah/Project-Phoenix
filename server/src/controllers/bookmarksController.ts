@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Bookmark, BookmarkItemType } from '../models/Bookmark.js';
 import { BookmarkCollectionLink } from '../models/BookmarkCollectionLink.js';
 import { Article } from '../models/Article.js';
-import { normalizeDoc, normalizeDocs } from '../utils/db.js';
+import { normalizeDoc, normalizeDocs, getTagNameMap } from '../utils/db.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import {
@@ -228,10 +228,20 @@ export const getBookmarks = async (req: Request, res: Response) => {
       Bookmark.countDocuments(bookmarkQuery)
     ]);
 
-    // Get article details for the bookmarks
+    // Get article details for the bookmarks (with tag resolution)
     const itemIds = bookmarks.map(b => b.itemId);
     const articles = await Article.find({ _id: { $in: itemIds } }).lean();
-    const articleMap = new Map(articles.map(a => [a._id.toString(), normalizeDoc(a)]));
+    const tagNameMap = await getTagNameMap();
+    const articleMap = new Map(articles.map(a => {
+      const normalized = normalizeDoc(a);
+      if (normalized && normalized.tagIds && normalized.tagIds.length > 0) {
+        const resolved = normalized.tagIds
+          .map((id: string) => tagNameMap.get(id.toString()))
+          .filter(Boolean);
+        if (resolved.length > 0) normalized.tags = resolved;
+      }
+      return [a._id.toString(), normalized];
+    }));
 
     // Search filter (if q provided, filter by article title/content)
     let filteredBookmarks = bookmarks;

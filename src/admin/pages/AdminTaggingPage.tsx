@@ -1,9 +1,27 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Tags, ArrowRight, Lightbulb } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Tags, ArrowRight, Lightbulb, Pencil, Trash2, Plus, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 import { getNormalizedApiBase } from '@/utils/urlUtils';
+import type { TaxonomyTag } from '@/types';
+
+type Dimension = 'format' | 'domain' | 'subtopic';
+
+interface TagFormState {
+  name: string;
+  sortOrder: number;
+  aliases: string; // comma-separated in the form, parsed on submit
+}
+
+interface EditorState {
+  mode: 'create' | 'edit';
+  dimension: Dimension;
+  /** Present in edit mode only */
+  tagId?: string;
+  initial: TagFormState;
+}
 
 const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
 
@@ -30,6 +48,7 @@ interface ImportResult {
 export const AdminTaggingPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: taxonomy, isLoading: isTaxonomyLoading } = useTagTaxonomy();
 
@@ -37,6 +56,150 @@ export const AdminTaggingPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // Inline dimension-tag editor state
+  const [editorState, setEditorState] = useState<EditorState | null>(null);
+  const [isSavingTag, setIsSavingTag] = useState(false);
+
+  // Coverage stats
+  const [coverage, setCoverage] = useState<{
+    total: number; withAny: number; withFormat: number; withDomain: number; withSubtopic: number;
+    missingAny: number; missingFormat: number; missingDomain: number;
+  } | null>(null);
+  const [isCoverageLoading, setIsCoverageLoading] = useState(false);
+
+  const fetchCoverage = async () => {
+    setIsCoverageLoading(true);
+    try {
+      const token = getAuthToken();
+      const BASE_URL = getNormalizedApiBase();
+      const response = await fetch(`${BASE_URL}/categories/taxonomy/coverage`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error(`${response.status}`);
+      setCoverage(await response.json());
+    } catch {
+      toast.error('Failed to load coverage stats');
+    } finally {
+      setIsCoverageLoading(false);
+    }
+  };
+
+  // Fetch coverage on mount
+  useEffect(() => { fetchCoverage(); }, []);
+
+  const refreshTaxonomy = () => {
+    queryClient.invalidateQueries({ queryKey: ['tagTaxonomy'] });
+    fetchCoverage();
+  };
+
+  const openCreate = (dimension: Dimension) => {
+    const list =
+      dimension === 'format' ? taxonomy?.formats :
+      dimension === 'domain' ? taxonomy?.domains :
+      taxonomy?.subtopics;
+    const nextSortOrder = (list && list.length > 0)
+      ? Math.max(...list.map(t => t.sortOrder ?? 0)) + 1
+      : 1;
+    setEditorState({
+      mode: 'create',
+      dimension,
+      initial: { name: '', sortOrder: nextSortOrder, aliases: '' },
+    });
+  };
+
+  const openEdit = (dimension: Dimension, tag: TaxonomyTag) => {
+    setEditorState({
+      mode: 'edit',
+      dimension,
+      tagId: tag.id,
+      initial: {
+        name: tag.rawName,
+        sortOrder: tag.sortOrder ?? 0,
+        aliases: '', // Loaded lazily — see below
+      },
+    });
+  };
+
+  const closeEditor = () => setEditorState(null);
+
+  const saveTag = async (form: TagFormState) => {
+    if (!editorState) return;
+    setIsSavingTag(true);
+    try {
+      const token = getAuthToken();
+      const BASE_URL = getNormalizedApiBase();
+      const aliases = form.aliases
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const body = {
+        name: form.name.trim(),
+        dimension: editorState.dimension,
+        sortOrder: form.sortOrder,
+        aliases,
+        isOfficial: true,
+        status: 'active' as const,
+      };
+
+      const url = editorState.mode === 'create'
+        ? `${BASE_URL}/categories`
+        : `${BASE_URL}/categories/${editorState.tagId}`;
+      const method = editorState.mode === 'create' ? 'POST' : 'PUT';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || `Save failed (${response.status})`);
+      }
+
+      toast.success(editorState.mode === 'create' ? 'Tag created' : 'Tag updated');
+      closeEditor();
+      refreshTaxonomy();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      toast.error(msg);
+    } finally {
+      setIsSavingTag(false);
+    }
+  };
+
+  const deprecateTag = async (dimension: Dimension, tag: TaxonomyTag) => {
+    const confirmed = window.confirm(
+      `Deprecate "${tag.rawName}"?\n\n` +
+      `This hides the tag from filters and the picker, but ${tag.usageCount} existing nugget(s) ` +
+      `that already reference it will keep showing it. The tag is NOT permanently deleted.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const token = getAuthToken();
+      const BASE_URL = getNormalizedApiBase();
+      const response = await fetch(`${BASE_URL}/categories/by-id/${tag.id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || `Delete failed (${response.status})`);
+      }
+      toast.success(`"${tag.rawName}" deprecated`);
+      refreshTaxonomy();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Delete failed';
+      toast.error(msg);
+    }
+    void dimension; // dimension reserved for future per-axis logic
+  };
 
   useEffect(() => {
     setPageHeader(
@@ -149,6 +312,40 @@ export const AdminTaggingPage: React.FC = () => {
           color="amber"
         />
       </div>
+
+      {/* Coverage Badge */}
+      {coverage && (
+        <div className={`rounded-xl border p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+          coverage.missingAny === 0 && coverage.missingFormat === 0
+            ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
+            : 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800'
+        }`}>
+          <div className="flex items-center gap-3">
+            {coverage.missingAny === 0 && coverage.missingFormat === 0 ? (
+              <CheckCircle2 size={20} className="text-emerald-500 shrink-0" />
+            ) : (
+              <AlertCircle size={20} className="text-amber-500 shrink-0" />
+            )}
+            <div>
+              <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Dimension Coverage: {coverage.total > 0 ? ((coverage.withAny / coverage.total) * 100).toFixed(1) : 0}%
+              </div>
+              <div className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 flex flex-wrap gap-x-4">
+                <span>Format: {coverage.withFormat}/{coverage.total}{coverage.missingFormat > 0 && <span className="text-amber-600 dark:text-amber-400"> ({coverage.missingFormat} missing)</span>}</span>
+                <span>Domain: {coverage.withDomain}/{coverage.total} <span className="text-slate-400">(optional)</span></span>
+                <span>Subtopic: {coverage.withSubtopic}/{coverage.total} <span className="text-slate-400">(optional)</span></span>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={fetchCoverage}
+            disabled={isCoverageLoading}
+            className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors disabled:opacity-50 shrink-0"
+          >
+            {isCoverageLoading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+      )}
 
       {/* Workflow Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -313,47 +510,213 @@ export const AdminTaggingPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Current Taxonomy Reference */}
+      {/* Editable Taxonomy */}
       {taxonomy && !isTaxonomyLoading && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
-          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">Current Tag Taxonomy</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Manage Tag Taxonomy</h3>
+            <span className="text-xs text-slate-400">Add, rename, reorder, or deprecate dimension tags</span>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div>
-              <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-2">Formats</h4>
-              <div className="space-y-1">
-                {taxonomy.formats.map(f => (
-                  <div key={f.id} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-700 dark:text-slate-300">{f.rawName}</span>
-                    <span className="text-xs tabular-nums text-slate-400">{f.usageCount}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">Domains</h4>
-              <div className="space-y-1">
-                {taxonomy.domains.map(d => (
-                  <div key={d.id} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-700 dark:text-slate-300">{d.rawName}</span>
-                    <span className="text-xs tabular-nums text-slate-400">{d.usageCount}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Sub-Topics</h4>
-              <div className="space-y-1">
-                {taxonomy.subtopics.map(s => (
-                  <div key={s.id} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-700 dark:text-slate-300">{s.rawName}</span>
-                    <span className="text-xs tabular-nums text-slate-400">{s.usageCount}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <DimensionColumn
+              title="Formats"
+              colorClass="text-blue-600 dark:text-blue-400"
+              tags={taxonomy.formats}
+              onAdd={() => openCreate('format')}
+              onEdit={(t) => openEdit('format', t)}
+              onDelete={(t) => deprecateTag('format', t)}
+            />
+            <DimensionColumn
+              title="Domains"
+              colorClass="text-emerald-600 dark:text-emerald-400"
+              tags={taxonomy.domains}
+              onAdd={() => openCreate('domain')}
+              onEdit={(t) => openEdit('domain', t)}
+              onDelete={(t) => deprecateTag('domain', t)}
+            />
+            <DimensionColumn
+              title="Sub-Topics"
+              colorClass="text-amber-600 dark:text-amber-400"
+              tags={taxonomy.subtopics}
+              onAdd={() => openCreate('subtopic')}
+              onEdit={(t) => openEdit('subtopic', t)}
+              onDelete={(t) => deprecateTag('subtopic', t)}
+            />
           </div>
         </div>
       )}
+
+      {editorState && (
+        <TagEditorModal
+          state={editorState}
+          isSaving={isSavingTag}
+          onClose={closeEditor}
+          onSubmit={saveTag}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── Dimension column with edit/delete affordances ────────────────────────
+
+const DimensionColumn: React.FC<{
+  title: string;
+  colorClass: string;
+  tags: TaxonomyTag[];
+  onAdd: () => void;
+  onEdit: (tag: TaxonomyTag) => void;
+  onDelete: (tag: TaxonomyTag) => void;
+}> = ({ title, colorClass, tags, onAdd, onEdit, onDelete }) => (
+  <div>
+    <div className="flex items-center justify-between mb-2">
+      <h4 className={`text-xs font-bold ${colorClass} uppercase tracking-wider`}>{title}</h4>
+      <button
+        onClick={onAdd}
+        className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+        title={`Add ${title.toLowerCase().replace(/s$/, '')}`}
+      >
+        <Plus size={12} /> Add
+      </button>
+    </div>
+    <div className="space-y-1">
+      {tags.length === 0 && (
+        <div className="text-xs text-slate-400 italic">No tags yet</div>
+      )}
+      {tags.map(t => (
+        <div
+          key={t.id}
+          className="group flex items-center justify-between gap-2 text-sm py-1 px-2 -mx-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800/50"
+        >
+          <span className="text-slate-700 dark:text-slate-300 truncate">{t.rawName}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs tabular-nums text-slate-400">{t.usageCount}</span>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={() => onEdit(t)}
+                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+                title="Edit"
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                onClick={() => onDelete(t)}
+                className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-500 hover:text-red-600 dark:hover:text-red-400"
+                title="Deprecate (soft delete)"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+// ─── Modal: create / edit a dimension tag ─────────────────────────────────
+
+const TagEditorModal: React.FC<{
+  state: EditorState;
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (form: TagFormState) => void;
+}> = ({ state, isSaving, onClose, onSubmit }) => {
+  const [name, setName] = useState(state.initial.name);
+  const [sortOrder, setSortOrder] = useState<number>(state.initial.sortOrder);
+  const [aliases, setAliases] = useState(state.initial.aliases);
+
+  const dimensionLabel =
+    state.dimension === 'format' ? 'Format'
+    : state.dimension === 'domain' ? 'Domain'
+    : 'Sub-Topic';
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onSubmit({ name, sortOrder, aliases });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-700"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+            {state.mode === 'create' ? `Add ${dimensionLabel} Tag` : `Edit ${dimensionLabel} Tag`}
+          </h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+            <X size={18} className="text-slate-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              placeholder="e.g. Climate & Energy"
+              autoFocus
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Sort order
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={sortOrder}
+              onChange={(e) => setSortOrder(parseInt(e.target.value, 10) || 0)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <p className="mt-1 text-xs text-slate-500">Lower numbers appear first in filter bars and pickers.</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Aliases (optional)
+            </label>
+            <input
+              type="text"
+              value={aliases}
+              onChange={(e) => setAliases(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              placeholder="Climate, ESG, Energy Transition"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Comma-separated. Used by the bulk XLSX importer to match historical spellings.
+              {state.mode === 'edit' && ' Leave blank to keep current aliases unchanged is NOT supported — submitting an empty list clears all aliases.'}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving || !name.trim()}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 disabled:opacity-50"
+            >
+              {isSaving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };

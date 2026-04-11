@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Check } from 'lucide-react';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 import type { TaxonomyTag } from '@/types';
@@ -76,6 +76,25 @@ export const DimensionTagPicker: React.FC<DimensionTagPickerProps> = ({
       </div>
     );
   }
+
+  // Once taxonomy loads, strip any selectedTagIds that no longer exist in the
+  // taxonomy (e.g. deprecated or deleted tags carried over from the article).
+  // This prevents stale IDs from being re-sent on save and failing validation.
+  const hasPrunedRef = useRef(false);
+  useEffect(() => {
+    if (!taxonomy || hasPrunedRef.current) return;
+    hasPrunedRef.current = true;
+
+    const validIds = new Set([
+      ...taxonomy.formats.map(t => t.id),
+      ...taxonomy.domains.map(t => t.id),
+      ...taxonomy.subtopics.map(t => t.id),
+    ]);
+    const pruned = selectedTagIds.filter(id => validIds.has(id));
+    if (pruned.length !== selectedTagIds.length) {
+      onSelectedChange(pruned);
+    }
+  }, [taxonomy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!taxonomy || (taxonomy.formats.length === 0 && taxonomy.domains.length === 0 && taxonomy.subtopics.length === 0)) {
     return null;

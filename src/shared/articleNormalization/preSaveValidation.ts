@@ -57,6 +57,7 @@ export interface ValidationInput {
   title?: string;
   content?: string;
   tags?: string[];
+  tagIds?: string[];
   media?: { url?: string; type?: string } | null;
   primaryMedia?: { url?: string } | null;
   supportingMedia?: Array<{ url?: string }>;
@@ -86,12 +87,10 @@ export function validateBeforeSave(
   // REQUIRED FIELD VALIDATIONS (Errors - block save)
   // ============================================================================
 
-  // 1. Tags validation - at least one tag required
+  // 1. Tags validation - at least one tag required (via tags or tagIds)
   const hasValidTags =
-    input.tags &&
-    Array.isArray(input.tags) &&
-    input.tags.length > 0 &&
-    input.tags.some((tag) => typeof tag === 'string' && tag.trim().length > 0);
+    (input.tags && Array.isArray(input.tags) && input.tags.some((tag) => typeof tag === 'string' && tag.trim().length > 0)) ||
+    (input.tagIds && Array.isArray(input.tagIds) && input.tagIds.length > 0);
 
   if (!hasValidTags) {
     errors.push({

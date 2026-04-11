@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { NewsCardLogic } from '@/hooks/useNewsCard';
+import { useDisclaimerConfig, resolveDisclaimer } from '@/hooks/useDisclaimerConfig';
 import { CardMedia } from '../atoms/CardMedia';
 import { CardTitle } from '../atoms/CardTitle';
 import { CardMeta } from '../atoms/CardMeta';
@@ -33,7 +34,12 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
   isPreview = false,
 }) => {
   const { data, handlers } = logic;
-  
+  const { data: disclaimerConfig } = useDisclaimerConfig();
+  const resolvedDisclaimer = useMemo(
+    () => resolveDisclaimer(data, disclaimerConfig),
+    [data.showDisclaimer, data.disclaimerText, disclaimerConfig]
+  );
+
   // Warn if cardType is media-only but has long text
   React.useEffect(() => {
     const textLength = (data.content || data.excerpt || '').length;
@@ -178,6 +184,7 @@ export const UtilityVariant: React.FC<UtilityVariantProps> = ({
             cardType="hybrid"
             title={data.shouldShowTitle ? data.title : undefined}
             onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
+            disclaimerText={resolvedDisclaimer}
           />
               
               {/* 4. Media anchored to bottom for uniformity across cards (or gradient fallback) */}

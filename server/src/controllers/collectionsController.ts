@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import { Collection } from '../models/Collection.js';
 import { Article } from '../models/Article.js';
+import { Tag } from '../models/Tag.js';
 import { User } from '../models/User.js';
-import { normalizeDoc, normalizeDocs } from '../utils/db.js';
+import { normalizeDoc, normalizeDocs, normalizeArticleDocs } from '../utils/db.js';
 import { createCollectionSchema, updateCollectionSchema, addEntrySchema, batchEntriesSchema, flagEntrySchema, setFeaturedSchema, reorderFeaturedSchema } from '../utils/validation.js';
 import { getCommunityCollections, getCommunityCollectionsCount, CollectionQueryFilters } from '../utils/collectionQueryHelpers.js';
 import { createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
@@ -1453,12 +1454,19 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     // Search within collection articles
     if (q && typeof q === 'string' && q.trim().length > 0) {
       const regex = createSearchRegex(q);
-      const searchConditions = [
+      const searchConditions: Record<string, unknown>[] = [
         { title: regex },
         { excerpt: regex },
         { content: regex },
-        { tags: regex },
       ];
+      // P2-9: Resolve matching tag names to tagIds for search
+      const matchingTags = await Tag.find({
+        rawName: regex,
+        status: 'active',
+      }).select('_id').lean();
+      if (matchingTags.length > 0) {
+        searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
+      }
       if (articleQuery.$or) {
         articleQuery.$and = [
           { $or: articleQuery.$or as Record<string, unknown>[] },
@@ -1483,7 +1491,7 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     ]);
 
     res.json({
-      data: normalizeDocs(articles),
+      data: await normalizeArticleDocs(articles),
       total,
       page,
       limit,

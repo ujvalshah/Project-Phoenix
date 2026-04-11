@@ -19,6 +19,7 @@ interface CardContentProps {
   collapseRef?: React.MutableRefObject<(() => void) | null>; // Ref to expose collapse function to parent (for split button layout)
   onExpansionChange?: (isExpanded: boolean) => void; // Callback when expansion state changes (for split button layout)
   onOverflowChange?: (hasOverflow: boolean) => void; // Callback when overflow state changes (for button visibility)
+  disclaimerText?: string | null; // Resolved disclaimer text (null = no disclaimer)
 }
 
 /**
@@ -47,6 +48,7 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   collapseRef,
   onExpansionChange,
   onOverflowChange,
+  disclaimerText,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   
@@ -435,11 +437,17 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
             isHybridCard ? 'leading-relaxed' : ''
           )}
         >
-          <MarkdownRenderer 
-            content={displayContent} 
+          <MarkdownRenderer
+            content={displayContent}
             onYouTubeTimestampClick={onYouTubeTimestampClick}
           />
         </div>
+        {/* DISCLAIMER: Footnote at the end of card content */}
+        {disclaimerText && (
+          <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] italic text-slate-400 dark:text-slate-500 leading-snug [&_a]:underline [&_a]:text-slate-500 dark:[&_a]:text-slate-400">
+            <MarkdownRenderer content={disclaimerText} />
+          </div>
+        )}
         {/* FADE OVERLAY: Show when content is truncated */}
         {/* - If allowExpansion={true}: Show fade with "Read more" button */}
         {/* - If allowExpansion={false}: Show subtle fade only (indicates truncation, clicking card opens drawer) */}

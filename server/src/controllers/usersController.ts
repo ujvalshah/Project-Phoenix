@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { User } from '../models/User.js';
-import { normalizeDoc, normalizeDocs } from '../utils/db.js';
+import { normalizeDoc, normalizeDocs, normalizeArticleDocs } from '../utils/db.js';
 import { Article } from '../models/Article.js';
 import { updateUserSchema } from '../utils/validation.js';
 import { createSearchRegex } from '../utils/escapeRegExp.js';
+import { resolveTagNamesToIds } from '../utils/tagHelpers.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 
@@ -271,24 +272,24 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // TODO: legacy-name-only-if-used-by-frontend - interestedCategories is user preference field (not article field)
     // Get user's interested tags from nested preferences (previously interestedCategories)
-    const tags = user.preferences?.interestedCategories || []; // Keep field name for backward compatibility
-    const lastVisit = user.appState?.lastLoginAt 
-      ? new Date(user.appState.lastLoginAt) 
+    const tagNames = user.preferences?.interestedCategories || [];
+    const lastVisit = user.appState?.lastLoginAt
+      ? new Date(user.appState.lastLoginAt)
       : new Date(0);
-    
+
+    // P2-7: Resolve user preference tag names to tagIds
+    const resolvedTagIds = tagNames.length > 0
+      ? await resolveTagNamesToIds(tagNames)
+      : [];
+
     // Build MongoDB query for articles matching user's interests
     // PRIVACY FIX: Only show public articles in personalized feed
     const articleQuery: any = {
-      visibility: 'public', // Only public articles in personalized feed
-      tags: { $in: tags } // Use tags instead of categories
+      visibility: 'public',
     };
-    
-    // If user has no tags, show all public articles
-    if (tags.length === 0) {
-      delete articleQuery.tags;
-      articleQuery.visibility = 'public';
+    if (resolvedTagIds.length > 0) {
+      articleQuery.tagIds = { $in: resolvedTagIds };
     }
     
     // Find articles matching user's interests (only public)
@@ -311,9 +312,9 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
       { new: false } // Don't need to return updated document
     );
 
-    res.json({ 
-      articles: normalizeDocs(articles), 
-      newCount 
+    res.json({
+      articles: await normalizeArticleDocs(articles),
+      newCount
     });
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture

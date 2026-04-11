@@ -206,8 +206,8 @@ function transformArticle(doc: any): any {
       },
     publishedAt: rest.publishedAt || new Date().toISOString(),
     // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
-    tags: rest.tags || [], // Legacy: string array (Phase 1-2: dual-write, Phase 3: remove)
-    tagIds: rest.tagIds ? rest.tagIds.map((id: any) => id.toString()) : [], // New: ObjectId array (Phase 1+)
+    tags: [], // Populated by resolveTagsFromIds() in normalizeArticleDoc/normalizeArticleDocs
+    tagIds: rest.tagIds ? rest.tagIds.map((id: any) => id.toString()) : [],
     readTime: rest.readTime || calculateReadTime(rest.content || ''),
     visibility: rest.visibility || 'public',
     // Preserve media and metadata fields (including masonryTitle)
@@ -237,6 +237,9 @@ function transformArticle(doc: any): any {
     layoutVisibility: rest.layoutVisibility,
     // Display image index (which media item shows as card thumbnail)
     displayImageIndex: rest.displayImageIndex,
+    // Disclaimer fields
+    showDisclaimer: rest.showDisclaimer,
+    disclaimerText: rest.disclaimerText,
     };
     
     return article;
@@ -369,4 +372,86 @@ export function normalizeDocs(docs: any[]): any[] {
   return docs.map(normalizeDoc).filter(Boolean);
 }
 
+// ─── Tag-name cache for resolving tagIds → display names ────────────────
+// The taxonomy is small (~50-100 tags). We keep a full copy in memory and
+// refresh it every 60 seconds so transformArticle can stay synchronous.
 
+const TAG_CACHE_TTL_MS = 60_000;
+let _tagNameCache: Map<string, string> | null = null;
+let _tagCacheRefreshedAt = 0;
+
+/**
+ * Return a Map of tagId (string) → rawName.
+ * Lazily loads from the Tag collection and caches for 60 s.
+ */
+export async function getTagNameMap(): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (_tagNameCache && now - _tagCacheRefreshedAt < TAG_CACHE_TTL_MS) {
+    return _tagNameCache;
+  }
+
+  // Dynamic import to avoid circular dependency (db.ts ← Tag model ← mongoose ← db.ts)
+  const { Tag } = await import('../models/Tag.js');
+
+  const tags = await Tag.find({ status: 'active' })
+    .select('_id rawName')
+    .lean();
+
+  const map = new Map<string, string>();
+  for (const t of tags) {
+    map.set(t._id.toString(), t.rawName);
+  }
+
+  _tagNameCache = map;
+  _tagCacheRefreshedAt = now;
+  return map;
+}
+
+/** Invalidate the tag-name cache (call after tag create/rename/delete). */
+export function invalidateTagNameCache(): void {
+  _tagNameCache = null;
+  _tagCacheRefreshedAt = 0;
+}
+
+/**
+ * Post-process a normalized article: replace the `tags` string array with
+ * names resolved from `tagIds`. Falls back to the existing `tags` value
+ * when a tagId has no match (e.g. tag was just deleted).
+ */
+function resolveTagsFromIds(article: any, tagNameMap: Map<string, string>): any {
+  if (!article || !article.tagIds || article.tagIds.length === 0) {
+    return article;
+  }
+
+  const resolved: string[] = [];
+  for (const id of article.tagIds) {
+    const name = tagNameMap.get(id.toString());
+    if (name) resolved.push(name);
+  }
+
+  // Only override if we actually resolved something; otherwise keep the
+  // existing tags[] so display doesn't break for articles with stale IDs.
+  if (resolved.length > 0) {
+    article.tags = resolved;
+  }
+  return article;
+}
+
+/**
+ * Async article normalization: normalizeDoc + resolve tags from tagIds.
+ * Use this in controllers that return article responses.
+ */
+export async function normalizeArticleDoc(doc: any): Promise<any> {
+  const tagMap = await getTagNameMap();
+  const normalized = normalizeDoc(doc);
+  return resolveTagsFromIds(normalized, tagMap);
+}
+
+/**
+ * Async batch normalization for article lists.
+ * Loads the tag cache once, then resolves all articles synchronously.
+ */
+export async function normalizeArticleDocs(docs: any[]): Promise<any[]> {
+  const tagMap = await getTagNameMap();
+  return docs.map(normalizeDoc).filter(Boolean).map((a: any) => resolveTagsFromIds(a, tagMap));
+}

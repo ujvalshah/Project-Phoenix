@@ -160,8 +160,7 @@ export class LocalAdapter implements IAdapter {
       publishedAt: new Date().toISOString(),
       readTime: article.readTime || 5,
       images: article.images || [],
-      // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
-      tags: article.tags || [],
+      tags: article.tags || [], // Local storage keeps tags for display
       visibility: article.visibility || 'public',
       displayAuthor: article.displayAuthor
     };

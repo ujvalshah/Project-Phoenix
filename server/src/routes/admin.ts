@@ -6,7 +6,9 @@ import {
   getAdminStats,
   verifyUserEmail,
   getMediaLimits,
-  updateMediaLimits
+  updateMediaLimits,
+  getDisclaimerSettings,
+  updateDisclaimerSettings
 } from '../controllers/adminController.js';
 import { exportTagMapping, importTagMapping } from '../controllers/adminTaggingController.js';
 
@@ -24,6 +26,12 @@ router.get('/settings/media-limits', authenticateToken, requireAdmin, getMediaLi
 
 // PATCH /api/admin/settings/media-limits - Update media quota limits (admin only)
 router.patch('/settings/media-limits', authenticateToken, requireAdmin, updateMediaLimits);
+
+// GET /api/admin/settings/disclaimer - Get current disclaimer config (admin only)
+router.get('/settings/disclaimer', authenticateToken, requireAdmin, getDisclaimerSettings);
+
+// PATCH /api/admin/settings/disclaimer - Update disclaimer config (admin only)
+router.patch('/settings/disclaimer', authenticateToken, requireAdmin, updateDisclaimerSettings);
 
 // ── Bulk tag export/import (two-axis taxonomy) ─────────────────────────────
 // GET  /api/admin/tagging/export  - Download XLSX with current + suggested tags

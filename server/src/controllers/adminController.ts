@@ -6,12 +6,17 @@ import { Report } from '../models/Report.js';
 import { Feedback } from '../models/Feedback.js';
 import { AdminAuditLog } from '../models/AdminAuditLog.js';
 import { MediaQuotaConfig } from '../models/MediaQuotaConfig.js';
+import { DisclaimerConfig } from '../models/DisclaimerConfig.js';
 import { LRUCache } from '../utils/lruCache.js';
 import { buildModerationQuery, getModerationStats } from '../services/moderationService.js';
 import {
   getMediaQuotaConfig,
   invalidateMediaQuotaCache
 } from '../services/mediaQuotaConfigService.js';
+import {
+  getDisclaimerConfig,
+  invalidateDisclaimerCache
+} from '../services/disclaimerConfigService.js';
 import { AdminRequest } from '../middleware/requireAdmin.js';
 import { getLogger } from '../utils/logger.js';
 
@@ -19,6 +24,11 @@ const updateMediaLimitsSchema = z.object({
   maxFilesPerUser: z.number().int().min(1).max(100000).optional(),
   maxStorageMB: z.number().int().min(10).max(5000).optional(),
   maxDailyUploads: z.number().int().min(1).max(1000).optional()
+});
+
+const updateDisclaimerSchema = z.object({
+  defaultText: z.string().min(1, 'Disclaimer text is required').max(500, 'Disclaimer text too long').optional(),
+  enableByDefault: z.boolean().optional()
 });
 
 // Short-lived cache to avoid hammering the database
@@ -378,6 +388,92 @@ export async function updateMediaLimits(req: AdminRequest, res: Response) {
   } catch (error) {
     getLogger().error({ error, adminId }, 'Failed to update media limits');
     return res.status(500).json({ message: 'Failed to update media limits' });
+  }
+}
+
+/**
+ * Get current disclaimer config (admin or public).
+ * GET /api/admin/settings/disclaimer
+ * Returns effective config (from DB or defaults).
+ */
+export async function getDisclaimerSettings(req: AdminRequest, res: Response) {
+  try {
+    const config = await getDisclaimerConfig();
+    return res.json(config);
+  } catch (error) {
+    getLogger().error({ error }, 'Failed to get disclaimer config');
+    return res.status(500).json({ message: 'Failed to get disclaimer config' });
+  }
+}
+
+/**
+ * Update disclaimer config (admin only).
+ * PATCH /api/admin/settings/disclaimer
+ * Body: { defaultText?, enableByDefault? }
+ */
+export async function updateDisclaimerSettings(req: AdminRequest, res: Response) {
+  const adminId = req.userId;
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+
+  const parseResult = updateDisclaimerSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
+  }
+
+  const updates = parseResult.data;
+  if (updates.defaultText === undefined && updates.enableByDefault === undefined) {
+    return res.status(400).json({ message: 'At least one field must be provided' });
+  }
+
+  try {
+    const current = await getDisclaimerConfig();
+    const previousValue = { ...current };
+
+    const newDoc = {
+      id: 'default' as const,
+      defaultText: updates.defaultText ?? current.defaultText,
+      enableByDefault: updates.enableByDefault ?? current.enableByDefault,
+      updatedAt: new Date()
+    };
+
+    await DisclaimerConfig.findOneAndUpdate(
+      { id: 'default' },
+      { $set: newDoc },
+      { upsert: true, new: true }
+    );
+
+    invalidateDisclaimerCache();
+
+    const newValue = {
+      defaultText: newDoc.defaultText,
+      enableByDefault: newDoc.enableByDefault
+    };
+
+    await AdminAuditLog.create({
+      adminId,
+      action: 'UPDATE_DISCLAIMER_CONFIG',
+      targetType: 'system',
+      targetId: 'disclaimer_config',
+      previousValue: previousValue as Record<string, unknown>,
+      newValue: newValue as Record<string, unknown>,
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.get('User-Agent')
+    });
+
+    getLogger().info(
+      { action: 'UPDATE_DISCLAIMER_CONFIG', adminId, previousValue, newValue },
+      'Admin updated disclaimer config'
+    );
+
+    return res.json({
+      message: 'Disclaimer config updated',
+      config: newValue
+    });
+  } catch (error) {
+    getLogger().error({ error, adminId }, 'Failed to update disclaimer config');
+    return res.status(500).json({ message: 'Failed to update disclaimer config' });
   }
 }
 
