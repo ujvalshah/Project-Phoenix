@@ -297,7 +297,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             />
           ) : undefined}
           mainContent={
-            <div className="max-w-[1800px] mx-auto pb-4">
+            <div className="max-w-[1800px] mx-auto pb-16 lg:pb-4">
               <ValuePropStrip />
               <div className="px-4 lg:px-6">
               <ArticleGrid

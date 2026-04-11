@@ -616,29 +616,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Search size={18} />
             </button>
 
-            {/* Filter button with badge */}
-            <button
-              ref={mobileFilterButtonRef}
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsFilterPopoverOpen(!isFilterPopoverOpen);
-              }}
-              className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded transition-all relative ${
-                isFilterPopoverOpen || hasActiveFilters
-                  ? 'text-yellow-500'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-              aria-label={`Filter${hasActiveFilters ? ` (${filters?.activeFilterCount ?? 0} active)` : ''}`}
-              title="Filter"
-            >
-              <Filter size={18} fill={isFilterPopoverOpen || hasActiveFilters ? "currentColor" : "none"} />
-              {hasActiveFilters && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-yellow-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-
             {/* Create button */}
             <button
               onClick={withAuth(onCreateNugget)}

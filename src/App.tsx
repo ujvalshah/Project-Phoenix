@@ -2,6 +2,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Header } from '@/components/Header';
+import { MobileActionBar } from '@/components/MobileActionBar';
 import { BackToTopButton } from '@/components/UI/BackToTopButton';
 import { ToastContainer } from '@/components/UI/Toast';
 import { ToastProvider } from '@/context/ToastContext';
@@ -145,6 +146,12 @@ const AppContent: React.FC = () => {
         setSortOrder={filters.setSortOrder}
         onCreateNugget={() => setIsCreateOpen(true)}
         currentUserId={currentUserId}
+        filters={filters}
+      />
+
+      <MobileActionBar
+        sortOrder={filters.sortOrder}
+        setSortOrder={filters.setSortOrder}
         filters={filters}
       />
 
