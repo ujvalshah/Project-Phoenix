@@ -335,11 +335,16 @@ const GroupedNotificationRow: React.FC<{
 export interface NotificationBellProps {
   /** Merged onto the bell trigger for header glass / hover styling */
   buttonClassName?: string;
+  /** Lucide icon size on the trigger (match other header toolbar icons) */
+  bellIconSize?: number;
 }
 
 // ── Main component ──
 
-export const NotificationBell: React.FC<NotificationBellProps> = ({ buttonClassName }) => {
+export const NotificationBell: React.FC<NotificationBellProps> = ({
+  buttonClassName,
+  bellIconSize = 18,
+}) => {
   const { isAuthenticated, openAuthModal } = useAuth();
   const { unreadCount, useNotificationList, markAsRead, markAllAsRead } =
     useNotifications();
@@ -422,7 +427,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ buttonClassN
         title="Sign in to view notifications"
         aria-label="Sign in to view notifications"
       >
-        <Bell size={16} />
+        <Bell size={bellIconSize} aria-hidden />
       </button>
     );
   }
@@ -464,7 +469,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ buttonClassN
         title="Notifications"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
-        <Bell size={16} />
+        <Bell size={bellIconSize} aria-hidden />
         {unreadCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-h-[18px] min-w-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none tabular-nums border-2 border-white dark:border-slate-900">
             {unreadCount > 99 ? '99+' : unreadCount}

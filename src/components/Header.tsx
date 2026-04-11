@@ -17,6 +17,17 @@ import { DropdownPortal } from './UI/DropdownPortal';
 import type { SortOrder } from '@/types';
 import type { UseFilterStateReturn } from '@/hooks/useFilterState';
 import { useLegalPages } from '@/hooks/useLegalPages';
+
+/** Yellow “N” tile — matches NavigationDrawer / app favicon treatment */
+const NuggetsLogoMark: React.FC = () => (
+  <span
+    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-400 text-sm font-bold text-gray-900 shadow-sm"
+    aria-hidden
+  >
+    N
+  </span>
+);
+
 interface HeaderProps {
   isDark: boolean;
   toggleTheme: () => void;
@@ -263,22 +274,24 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Left: Menu + Logo + Navigation */}
           <div className="flex items-center gap-3 min-w-0 shrink-0">
             <button
+              type="button"
               onClick={() => setSidebarOpen(true)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-slate-800"
               aria-label="Open Menu"
             >
-              <Menu size={16} />
+              <Menu size={18} aria-hidden />
             </button>
 
             <Link
               to="/"
-              className="flex items-baseline gap-1.5 shrink-0 min-w-0"
+              className="flex min-w-0 shrink-0 items-center gap-2"
               aria-label="Home"
             >
-              <span className="font-extrabold text-xl tracking-tight text-gray-900 dark:text-white">
+              <NuggetsLogoMark />
+              <span className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
                 nuggets.
               </span>
-              <span className="hidden sm:inline-block text-sm font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">
+              <span className="hidden text-sm font-medium text-gray-500 sm:inline dark:text-slate-400">
                 - the knowledge app
               </span>
             </Link>
@@ -489,7 +502,10 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {/* Notification Bell */}
-            <NotificationBell buttonClassName="rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" />
+            <NotificationBell
+              bellIconSize={18}
+              buttonClassName="rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+            />
 
             {/* Theme toggle */}
             <button
@@ -526,7 +542,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="min-h-[44px] min-w-[44px] p-2 text-sm font-medium bg-gray-900 text-white rounded-full hover:bg-gray-800 transition-colors flex items-center justify-center dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                 aria-label="Sign In"
               >
-                <LogIn size={16} />
+                <LogIn size={18} strokeWidth={2} aria-hidden />
               </button>
             )}
           </div>
@@ -542,23 +558,29 @@ export const Header: React.FC<HeaderProps> = ({
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 aria-label="Open Menu"
               >
-                <Menu size={18} aria-hidden />
+                <Menu size={18} strokeWidth={2} aria-hidden />
               </button>
               <Link
                 to="/"
-                className="flex min-w-0 items-baseline gap-1"
+                className="flex min-w-0 items-center gap-2"
                 aria-label="Home"
               >
-                <span className="truncate text-xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-                  nuggets.
-                </span>
-                <span className="hidden shrink-0 whitespace-nowrap text-sm font-medium text-gray-500 sm:inline dark:text-slate-400">
-                  - the knowledge app
-                </span>
+                <NuggetsLogoMark />
+                <div className="flex min-w-0 flex-col justify-center gap-0 leading-none sm:flex-row sm:items-center sm:gap-1 sm:leading-tight">
+                  <span className="truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-white sm:text-xl">
+                    nuggets.
+                  </span>
+                  <span className="hidden text-sm font-medium text-gray-500 sm:inline dark:text-slate-400">
+                    - the knowledge app
+                  </span>
+                </div>
               </Link>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <NotificationBell buttonClassName="flex h-10 w-10 min-h-0 min-w-0 items-center justify-center rounded-full p-0 hover:bg-gray-100 dark:hover:bg-slate-800" />
+              <NotificationBell
+                bellIconSize={18}
+                buttonClassName="flex h-10 w-10 min-h-0 min-w-0 items-center justify-center rounded-full p-0 hover:bg-gray-100 dark:hover:bg-slate-800"
+              />
               {isAuthenticated ? (
                 <button
                   type="button"
@@ -585,7 +607,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white shadow-sm transition-colors hover:bg-gray-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                   aria-label="Sign In"
                 >
-                  <LogIn size={16} strokeWidth={2.25} aria-hidden />
+                  <LogIn size={18} strokeWidth={2} aria-hidden />
                 </button>
               )}
             </div>
@@ -610,7 +632,7 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-label="Grid View"
                   aria-pressed={viewMode === 'grid'}
                 >
-                  <LayoutGrid size={16} aria-hidden />
+                  <LayoutGrid size={18} strokeWidth={2} aria-hidden />
                 </button>
                 <button
                   type="button"
@@ -624,7 +646,7 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-label="Masonry View"
                   aria-pressed={viewMode === 'masonry'}
                 >
-                  <Columns size={16} aria-hidden />
+                  <Columns size={18} strokeWidth={2} aria-hidden />
                 </button>
               </div>
             </div>
@@ -636,7 +658,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 aria-label="Search"
               >
-                <Search size={18} aria-hidden />
+                <Search size={18} strokeWidth={2} aria-hidden />
               </button>
             </div>
 
@@ -656,7 +678,12 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-label={`Filter${hasActiveFilters ? ` (${filters?.activeFilterCount ?? 0} active)` : ''}`}
                 title="Filter"
               >
-                <Filter size={18} fill={isFilterPopoverOpen || hasActiveFilters ? 'currentColor' : 'none'} aria-hidden />
+                <Filter
+                  size={18}
+                  strokeWidth={2}
+                  fill={isFilterPopoverOpen || hasActiveFilters ? 'currentColor' : 'none'}
+                  aria-hidden
+                />
                 {hasActiveFilters && (
                   <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary-500 px-0.5 text-[8px] font-bold leading-none text-white">
                     {activeFilterCount}
@@ -673,7 +700,11 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Toggle Theme"
                 aria-label="Toggle Theme"
               >
-                {isDark ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
+                {isDark ? (
+                  <Sun size={18} strokeWidth={2} aria-hidden />
+                ) : (
+                  <Moon size={18} strokeWidth={2} aria-hidden />
+                )}
               </button>
             </div>
           </div>
