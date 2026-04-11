@@ -125,7 +125,7 @@ const AppContent: React.FC = () => {
         - Route transitions
         - Flex/grid recalculations
         
-        Header height: ~92px mobile (brand row + toolbar), h-16 (64px) desktop
+        Header height: 96px mobile (brand row + toolbar), h-16 (64px) desktop
         HeaderSpacer MUST be used in PageStack to reserve this space.
       */}
       <Header

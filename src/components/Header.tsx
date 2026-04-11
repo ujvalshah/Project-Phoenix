@@ -532,40 +532,42 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile/Tablet (<lg): brand row + compact toolbar (matches ~92px header height) */}
-        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex lg:hidden flex-col h-full min-h-0`}>
-          <div className="flex flex-1 min-h-0 items-center justify-between gap-2 border-b border-gray-200/80 dark:border-slate-800/80">
-            <div className="flex items-center gap-2 min-w-0">
+        {/* Mobile/Tablet (<lg): fixed-height rows so controls never overflow into the row above */}
+        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex lg:hidden h-full min-h-0 flex-col`}>
+          <div className="flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-gray-200 dark:border-slate-800">
+            <div className="flex min-w-0 items-center gap-2">
               <button
+                type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="min-h-[44px] min-w-[44px] shrink-0 flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 aria-label="Open Menu"
               >
-                <Menu size={18} />
+                <Menu size={18} aria-hidden />
               </button>
               <Link
                 to="/"
-                className="flex items-baseline gap-1 min-w-0"
+                className="flex min-w-0 items-baseline gap-1"
                 aria-label="Home"
               >
-                <span className="font-extrabold text-xl tracking-tight text-gray-900 dark:text-white truncate">
+                <span className="truncate text-xl font-extrabold tracking-tight text-gray-900 dark:text-white">
                   nuggets.
                 </span>
-                <span className="hidden sm:inline-block text-sm font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap shrink-0">
+                <span className="hidden shrink-0 whitespace-nowrap text-sm font-medium text-gray-500 sm:inline dark:text-slate-400">
                   - the knowledge app
                 </span>
               </Link>
             </div>
-            <div className="flex items-center gap-0.5 shrink-0">
-              <NotificationBell buttonClassName="rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" />
+            <div className="flex shrink-0 items-center gap-1">
+              <NotificationBell buttonClassName="flex h-10 w-10 min-h-0 min-w-0 items-center justify-center rounded-full p-0 hover:bg-gray-100 dark:hover:bg-slate-800" />
               {isAuthenticated ? (
                 <button
+                  type="button"
                   ref={mobileAvatarButtonRef}
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsUserMenuOpen(!isUserMenuOpen);
                   }}
-                  className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 dark:hover:border-slate-600 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  className="flex h-10 w-10 min-h-0 min-w-0 items-center justify-center rounded-full border-2 border-transparent p-0 transition-colors hover:border-gray-300 hover:bg-gray-100 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                   aria-label="User menu"
                   aria-expanded={isUserMenuOpen}
                 >
@@ -573,87 +575,107 @@ export const Header: React.FC<HeaderProps> = ({
                     name={currentUser?.name || 'User'}
                     src={currentUser?.avatarUrl}
                     size="md"
-                    className="w-8 h-8"
+                    className="h-8 w-8"
                   />
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={() => openAuthModal('login')}
-                  className="min-h-[44px] min-w-[44px] p-2 text-sm font-medium bg-gray-900 text-white rounded-full hover:bg-gray-800 transition-colors flex items-center justify-center dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white shadow-sm transition-colors hover:bg-gray-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                   aria-label="Sign In"
                 >
-                  <LogIn size={18} />
+                  <LogIn size={16} strokeWidth={2.25} aria-hidden />
                 </button>
               )}
             </div>
           </div>
 
-          <div className="flex h-11 shrink-0 items-center justify-center gap-1 sm:gap-2 min-h-0">
-            <div className="flex items-center bg-gray-100 dark:bg-slate-800/80 p-0.5 rounded-xl border border-gray-100 dark:border-slate-700">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded-lg transition-all ${
-                  viewMode === 'grid'
-                    ? 'bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
-                }`}
-                title="Grid View"
-                aria-label="Grid View"
+          <div className="grid h-[44px] shrink-0 w-full grid-cols-4 items-center justify-items-stretch gap-0 px-0">
+            <div className="flex min-h-0 min-w-0 items-center justify-center px-0.5">
+              <div
+                className="inline-flex h-9 items-center rounded-xl border border-gray-200 bg-gray-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/90"
+                role="group"
+                aria-label="Feed layout"
               >
-                <LayoutGrid size={18} />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+                    viewMode === 'grid'
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-900 dark:text-white'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                  title="Grid View"
+                  aria-label="Grid View"
+                  aria-pressed={viewMode === 'grid'}
+                >
+                  <LayoutGrid size={16} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('masonry')}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+                    viewMode === 'masonry'
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-900 dark:text-white'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                  title="Masonry View"
+                  aria-label="Masonry View"
+                  aria-pressed={viewMode === 'masonry'}
+                >
+                  <Columns size={16} aria-hidden />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 items-center justify-center">
               <button
-                onClick={() => setViewMode('masonry')}
-                className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded-lg transition-all ${
-                  viewMode === 'masonry'
-                    ? 'bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
-                }`}
-                title="Masonry View"
-                aria-label="Masonry View"
+                type="button"
+                onClick={() => setIsMobileSearchOpen(true)}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="Search"
               >
-                <Columns size={18} />
+                <Search size={18} aria-hidden />
               </button>
             </div>
 
-            <button
-              onClick={() => setIsMobileSearchOpen(true)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
-              aria-label="Search"
-            >
-              <Search size={18} />
-            </button>
+            <div className="flex min-h-0 items-center justify-center">
+              <button
+                type="button"
+                ref={mobileFilterButtonRef}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsFilterPopoverOpen(!isFilterPopoverOpen);
+                }}
+                className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-all ${
+                  isFilterPopoverOpen || hasActiveFilters
+                    ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                }`}
+                aria-label={`Filter${hasActiveFilters ? ` (${filters?.activeFilterCount ?? 0} active)` : ''}`}
+                title="Filter"
+              >
+                <Filter size={18} fill={isFilterPopoverOpen || hasActiveFilters ? 'currentColor' : 'none'} aria-hidden />
+                {hasActiveFilters && (
+                  <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary-500 px-0.5 text-[8px] font-bold leading-none text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            </div>
 
-            <button
-              ref={mobileFilterButtonRef}
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsFilterPopoverOpen(!isFilterPopoverOpen);
-              }}
-              className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full transition-all relative ${
-                isFilterPopoverOpen || hasActiveFilters
-                  ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'
-              }`}
-              aria-label={`Filter${hasActiveFilters ? ` (${filters?.activeFilterCount ?? 0} active)` : ''}`}
-              title="Filter"
-            >
-              <Filter size={18} fill={isFilterPopoverOpen || hasActiveFilters ? 'currentColor' : 'none'} />
-              {hasActiveFilters && (
-                <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 bg-primary-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={toggleTheme}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
-              title="Toggle Theme"
-              aria-label="Toggle Theme"
-            >
-              {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
+            <div className="flex min-h-0 items-center justify-center">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                title="Toggle Theme"
+                aria-label="Toggle Theme"
+              >
+                {isDark ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
+              </button>
+            </div>
           </div>
         </div>
       </header>

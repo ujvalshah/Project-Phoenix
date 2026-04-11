@@ -14,6 +14,7 @@ import {
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { twMerge } from 'tailwind-merge';
 import { Z_INDEX } from '@/constants/zIndex';
 import { articleService } from '@/services/articleService';
 import { ArticleModal } from './ArticleModal';
@@ -414,7 +415,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ buttonClassN
       <button
         type="button"
         onClick={() => openAuthModal('login')}
-        className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors relative ${buttonClassName ?? ''}`}
+        className={twMerge(
+          'relative flex min-h-[44px] min-w-[44px] items-center justify-center p-2 text-gray-500 transition-colors hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200',
+          buttonClassName,
+        )}
         title="Sign in to view notifications"
         aria-label="Sign in to view notifications"
       >
@@ -453,7 +457,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ buttonClassN
       <button
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
-        className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors relative ${buttonClassName ?? ''}`}
+        className={twMerge(
+          'relative flex min-h-[44px] min-w-[44px] items-center justify-center p-2 text-gray-500 transition-colors hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200',
+          buttonClassName,
+        )}
         title="Notifications"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
