@@ -253,25 +253,34 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      {/* Power User Header - Full-bleed, unified with category bar */}
-      {/* No bottom border - category bar provides the visual separation */}
-      <header className={`fixed top-0 left-0 right-0 w-full pt-[env(safe-area-inset-top)] bg-white ${LAYOUT_CLASSES.HEADER_HEIGHT}`} style={{ zIndex: Z_INDEX.HEADER }}>
+      {/* Glass header — fixed (layout invariant); z-50 via Z_INDEX.HEADER */}
+      <header
+        className={`fixed top-0 left-0 right-0 w-full pt-[env(safe-area-inset-top)] bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-200 dark:border-slate-800 ${LAYOUT_CLASSES.HEADER_HEIGHT}`}
+        style={{ zIndex: Z_INDEX.HEADER }}
+      >
         {/* Desktop Layout (lg+) - Original layout preserved */}
         <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full hidden lg:flex items-center gap-3`}>
           {/* Left: Menu + Logo + Navigation */}
           <div className="flex items-center gap-3 min-w-0 shrink-0">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
               aria-label="Open Menu"
             >
               <Menu size={16} />
             </button>
 
-            <Link to="/" className="flex items-center justify-center shrink-0" aria-label="Home">
-              <div className="w-8 h-8 bg-yellow-400 rounded-lg flex items-center justify-center text-gray-900 font-bold text-sm">
-                N
-              </div>
+            <Link
+              to="/"
+              className="flex items-baseline gap-1.5 shrink-0 min-w-0"
+              aria-label="Home"
+            >
+              <span className="font-extrabold text-xl tracking-tight text-gray-900 dark:text-white">
+                nuggets.
+              </span>
+              <span className="hidden sm:inline-block text-sm font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">
+                - the knowledge app
+              </span>
             </Link>
 
             {/* Desktop Navigation (lg+) */}
@@ -480,12 +489,12 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {/* Notification Bell */}
-            <NotificationBell />
+            <NotificationBell buttonClassName="rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" />
 
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
               title="Toggle Theme"
               aria-label="Toggle Theme"
             >
@@ -500,7 +509,7 @@ export const Header: React.FC<HeaderProps> = ({
                   e.stopPropagation();
                   setIsUserMenuOpen(!isUserMenuOpen);
                 }}
-                className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 dark:hover:border-slate-600 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                 aria-label="User menu"
                 aria-expanded={isUserMenuOpen}
               >
@@ -514,7 +523,7 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <button
                 onClick={() => openAuthModal('login')}
-                className="min-h-[44px] min-w-[44px] p-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center"
+                className="min-h-[44px] min-w-[44px] p-2 text-sm font-medium bg-gray-900 text-white rounded-full hover:bg-gray-800 transition-colors flex items-center justify-center dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                 aria-label="Sign In"
               >
                 <LogIn size={16} />
@@ -523,29 +532,70 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile/Tablet Layout (<lg) - Single row */}
-        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full flex lg:hidden items-center justify-between`}>
-          {/* Far Left: Hamburger Menu */}
-          <div className="flex items-center shrink-0">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
-              aria-label="Open Menu"
-            >
-              <Menu size={18} />
-            </button>
+        {/* Mobile/Tablet (<lg): brand row + compact toolbar (matches ~92px header height) */}
+        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex lg:hidden flex-col h-full min-h-0`}>
+          <div className="flex flex-1 min-h-0 items-center justify-between gap-2 border-b border-gray-200/80 dark:border-slate-800/80">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="min-h-[44px] min-w-[44px] shrink-0 flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Open Menu"
+              >
+                <Menu size={18} />
+              </button>
+              <Link
+                to="/"
+                className="flex items-baseline gap-1 min-w-0"
+                aria-label="Home"
+              >
+                <span className="font-extrabold text-xl tracking-tight text-gray-900 dark:text-white truncate">
+                  nuggets.
+                </span>
+                <span className="hidden sm:inline-block text-sm font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap shrink-0">
+                  - the knowledge app
+                </span>
+              </Link>
+            </div>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <NotificationBell buttonClassName="rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors" />
+              {isAuthenticated ? (
+                <button
+                  ref={mobileAvatarButtonRef}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsUserMenuOpen(!isUserMenuOpen);
+                  }}
+                  className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 dark:hover:border-slate-600 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="User menu"
+                  aria-expanded={isUserMenuOpen}
+                >
+                  <Avatar
+                    name={currentUser?.name || 'User'}
+                    src={currentUser?.avatarUrl}
+                    size="md"
+                    className="w-8 h-8"
+                  />
+                </button>
+              ) : (
+                <button
+                  onClick={() => openAuthModal('login')}
+                  className="min-h-[44px] min-w-[44px] p-2 text-sm font-medium bg-gray-900 text-white rounded-full hover:bg-gray-800 transition-colors flex items-center justify-center dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                  aria-label="Sign In"
+                >
+                  <LogIn size={18} />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Middle Group: View Mode Buttons, Search, Filter, Theme Toggle */}
-          <div className="flex items-center gap-2 sm:gap-2 md:gap-3 shrink-0">
-            {/* View mode buttons - Grid and Masonry grouped */}
-            <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-100">
+          <div className="flex h-11 shrink-0 items-center justify-center gap-1 sm:gap-2 min-h-0">
+            <div className="flex items-center bg-gray-100 dark:bg-slate-800/80 p-0.5 rounded-xl border border-gray-100 dark:border-slate-700">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded-md transition-all ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded-lg transition-all ${
                   viewMode === 'grid'
-                    ? 'bg-white text-gray-900'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
                 title="Grid View"
                 aria-label="Grid View"
@@ -554,10 +604,10 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
               <button
                 onClick={() => setViewMode('masonry')}
-                className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded-md transition-all ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded-lg transition-all ${
                   viewMode === 'masonry'
-                    ? 'bg-white text-gray-900'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
                 title="Masonry View"
                 aria-label="Masonry View"
@@ -566,78 +616,44 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
 
-            {/* Search icon button */}
             <button
               onClick={() => setIsMobileSearchOpen(true)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
               aria-label="Search"
             >
               <Search size={18} />
             </button>
 
-            {/* Filter button with badge */}
             <button
               ref={mobileFilterButtonRef}
               onClick={(e) => {
                 e.stopPropagation();
                 setIsFilterPopoverOpen(!isFilterPopoverOpen);
               }}
-              className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded transition-all relative ${
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full transition-all relative ${
                 isFilterPopoverOpen || hasActiveFilters
-                  ? 'text-yellow-500'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'
               }`}
               aria-label={`Filter${hasActiveFilters ? ` (${filters?.activeFilterCount ?? 0} active)` : ''}`}
               title="Filter"
             >
-              <Filter size={18} fill={isFilterPopoverOpen || hasActiveFilters ? "currentColor" : "none"} />
+              <Filter size={18} fill={isFilterPopoverOpen || hasActiveFilters ? 'currentColor' : 'none'} />
               {hasActiveFilters && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-yellow-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 bg-primary-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold">
                   {activeFilterCount}
                 </span>
               )}
             </button>
 
-            {/* Theme toggle */}
             <button
               onClick={toggleTheme}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
               title="Toggle Theme"
               aria-label="Toggle Theme"
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-          </div>
-
-          {/* Far Right: Avatar/Login */}
-          <div className="flex items-center shrink-0">
-            {isAuthenticated ? (
-              <button
-                ref={mobileAvatarButtonRef}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsUserMenuOpen(!isUserMenuOpen);
-                }}
-                className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-                aria-label="User menu"
-                aria-expanded={isUserMenuOpen}
-              >
-                <Avatar
-                  name={currentUser?.name || 'User'}
-                  src={currentUser?.avatarUrl}
-                  size="md"
-                  className="w-8 h-8"
-                />
-              </button>
-            ) : (
-              <button
-                onClick={() => openAuthModal('login')}
-                className="min-h-[44px] min-w-[44px] px-2 py-1 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center"
-                aria-label="Sign In"
-              >
-                <LogIn size={18} />
-              </button>
-            )}
           </div>
         </div>
       </header>

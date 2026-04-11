@@ -331,10 +331,15 @@ const GroupedNotificationRow: React.FC<{
   );
 };
 
+export interface NotificationBellProps {
+  /** Merged onto the bell trigger for header glass / hover styling */
+  buttonClassName?: string;
+}
+
 // ── Main component ──
 
-export const NotificationBell: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+export const NotificationBell: React.FC<NotificationBellProps> = ({ buttonClassName }) => {
+  const { isAuthenticated, openAuthModal } = useAuth();
   const { unreadCount, useNotificationList, markAsRead, markAllAsRead } =
     useNotifications();
   const [isOpen, setIsOpen] = useState(false);
@@ -404,7 +409,19 @@ export const NotificationBell: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [isOpen]);
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) {
+    return (
+      <button
+        type="button"
+        onClick={() => openAuthModal('login')}
+        className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors relative ${buttonClassName ?? ''}`}
+        title="Sign in to view notifications"
+        aria-label="Sign in to view notifications"
+      >
+        <Bell size={16} />
+      </button>
+    );
+  }
 
   const handleNotificationClick = async (notification: InAppNotification) => {
     if (!notification.read) {
@@ -436,17 +453,13 @@ export const NotificationBell: React.FC = () => {
       <button
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
-        className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors relative"
+        className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors relative ${buttonClassName ?? ''}`}
         title="Notifications"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
         <Bell size={16} />
-        {/* Smart badge: dot for 1-9, number for 10+ */}
-        {unreadCount > 0 && unreadCount < 10 && (
-          <span className="absolute top-2 right-2 w-2 h-2 bg-blue-500 rounded-full" />
-        )}
-        {unreadCount >= 10 && (
-          <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-h-[18px] min-w-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none tabular-nums border-2 border-white dark:border-slate-900">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Send, Loader2, CheckCircle, Mail, User, MessageSquare, FileText } from 'lucide-react';
+import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { submitContactMessage } from '@/services/contactService';
@@ -47,9 +48,8 @@ export const ContactPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950">
-      {/* Spacer for fixed header */}
-      <div className="h-14 sm:h-16" />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <HeaderSpacer />
 
       <div className="max-w-xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         {/* Page Header */}

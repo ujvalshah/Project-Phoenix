@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
+import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Calendar, Clock, ChevronDown } from 'lucide-react';
 import type { LegalPageConfig } from '@/services/legalService';
@@ -109,8 +110,7 @@ export const LegalPageLayout: React.FC<LegalPageLayoutProps> = ({ config, conten
 
   return (
     <div ref={articleRef} className="min-h-screen bg-white dark:bg-slate-950">
-      {/* Spacer for fixed header */}
-      <div className="h-14 sm:h-16" />
+      <HeaderSpacer />
 
       {/* Page Header — full-width subtle background */}
       <header className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40">
