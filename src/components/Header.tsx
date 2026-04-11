@@ -1,7 +1,7 @@
 // NOTE: Do not add multiple React imports in this file.
 // Consolidate all hooks into the single import below.
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, MoreHorizontal, Clock, Mail } from 'lucide-react';
+import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, Clock, Mail } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom'; // Still needed for NavigationDrawer
@@ -523,10 +523,54 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile/Tablet Layout (<lg) - Refactored with justify-between */}
-        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full flex lg:hidden items-center justify-between`}>
-          {/* Far Left: Hamburger Menu - Compact styling */}
-          <div className="flex items-center shrink-0">
+        {/* Mobile/Tablet Layout (<lg) - Two-row: Brand Row + Toolbar Row */}
+        <div className="flex lg:hidden flex-col h-full">
+          {/* Brand Row: Logo + App Name + Avatar/Login */}
+          <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex items-center justify-between h-9 shrink-0`}>
+            <Link to="/" className="flex items-center gap-2 min-w-0">
+              <div className="w-6 h-6 bg-yellow-400 rounded-md flex items-center justify-center text-gray-900 font-bold text-[11px] shrink-0">
+                N
+              </div>
+              <span className="text-sm font-bold text-gray-900 truncate">Nuggets</span>
+              <span className="text-[11px] text-gray-400 hidden sm:inline whitespace-nowrap">— The Knowledge App</span>
+            </Link>
+
+            {/* Avatar/Login - right side of brand row */}
+            <div className="flex items-center shrink-0">
+              {isAuthenticated ? (
+                <button
+                  ref={mobileAvatarButtonRef}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsUserMenuOpen(!isUserMenuOpen);
+                  }}
+                  className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
+                  aria-label="User menu"
+                  aria-expanded={isUserMenuOpen}
+                >
+                  <Avatar
+                    name={currentUser?.name || 'User'}
+                    src={currentUser?.avatarUrl}
+                    size="sm"
+                    className="w-7 h-7"
+                  />
+                </button>
+              ) : (
+                <button
+                  onClick={() => openAuthModal('login')}
+                  className="min-h-[36px] px-3 py-1 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-1.5"
+                  aria-label="Sign In"
+                >
+                  <LogIn size={14} />
+                  <span>Sign In</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Toolbar Row: Menu + View Toggles + Search + Filter + Create + Theme */}
+          <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex items-center justify-center gap-1 sm:gap-2 h-11 shrink-0`}>
+            {/* Hamburger Menu */}
             <button
               onClick={() => setSidebarOpen(true)}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
@@ -534,11 +578,8 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Menu size={18} />
             </button>
-          </div>
 
-          {/* Middle Group: View Mode Buttons, Search, Create, Theme Toggle */}
-          <div className="flex items-center gap-2 sm:gap-2 md:gap-3 shrink-0">
-            {/* View mode buttons - Grid and Masonry grouped - Compact mobile styling */}
+            {/* View mode buttons - Grid and Masonry grouped */}
             <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-100">
               <button
                 onClick={() => setViewMode('grid')}
@@ -566,7 +607,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
 
-            {/* Search icon button - Mobile & Tablet - Compact styling */}
+            {/* Search icon button */}
             <button
               onClick={() => setIsMobileSearchOpen(true)}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
@@ -575,7 +616,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Search size={18} />
             </button>
 
-            {/* Filter button - Mobile & Tablet - with badge */}
+            {/* Filter button with badge */}
             <button
               ref={mobileFilterButtonRef}
               onClick={(e) => {
@@ -598,7 +639,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Create button - Compact styling */}
+            {/* Create button */}
             <button
               onClick={withAuth(onCreateNugget)}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-700 hover:text-gray-900 transition-colors"
@@ -607,10 +648,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Sparkles size={18} strokeWidth={2} className="text-yellow-500" fill="currentColor" />
             </button>
 
-            {/* Notification Bell - Mobile/Tablet */}
-            <NotificationBell />
-
-            {/* Theme toggle - Compact styling */}
+            {/* Theme toggle */}
             <button
               onClick={toggleTheme}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
@@ -619,37 +657,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-          </div>
-
-          {/* Far Right: Avatar/Login - Fully right-aligned - Compact styling */}
-          <div className="flex items-center shrink-0">
-            {isAuthenticated ? (
-              <button
-                ref={mobileAvatarButtonRef}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsUserMenuOpen(!isUserMenuOpen);
-                }}
-                className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-                aria-label="User menu"
-                aria-expanded={isUserMenuOpen}
-              >
-                <Avatar
-                  name={currentUser?.name || 'User'}
-                  src={currentUser?.avatarUrl}
-                  size="md"
-                  className="w-8 h-8"
-                />
-              </button>
-            ) : (
-              <button
-                onClick={() => openAuthModal('login')}
-                className="min-h-[44px] min-w-[44px] px-2 py-1 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center"
-                aria-label="Sign In"
-              >
-                <LogIn size={18} />
-              </button>
-            )}
           </div>
         </div>
       </header>

@@ -30,7 +30,7 @@ import { Article, SortOrder, TimeRange } from '@/types';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
 import { useFeaturedCollections } from '@/hooks/useFeaturedCollections';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { PageStack } from '@/components/layouts/PageStack';
@@ -38,6 +38,43 @@ import { CategoryToolbar, ActiveFilterChip } from '@/components/CategoryToolbar'
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'react-router-dom';
 import { articleService } from '@/services/articleService';
+
+const VALUEPROP_DISMISSED_KEY = 'nuggets_valueprop_dismissed';
+
+/** Compact value proposition strip shown to first-time visitors */
+const ValuePropStrip: React.FC = () => {
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(VALUEPROP_DISMISSED_KEY) === '1';
+    }
+    return false;
+  });
+
+  if (dismissed) return null;
+
+  const handleDismiss = () => {
+    setDismissed(true);
+    localStorage.setItem(VALUEPROP_DISMISSED_KEY, '1');
+  };
+
+  return (
+    <div className="relative mx-4 lg:mx-6 mb-3 px-4 py-3 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200/60 rounded-xl">
+      <button
+        onClick={handleDismiss}
+        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+        aria-label="Dismiss"
+      >
+        <X size={14} />
+      </button>
+      <p className="text-sm font-semibold text-gray-900 pr-6">
+        Nuggets: The Knowledge App
+      </p>
+      <p className="text-xs text-gray-600 mt-0.5">
+        Curated high-signal insights across Markets, Geopolitics, AI, and Tech. Save time — follow signal, not noise.
+      </p>
+    </div>
+  );
+};
 
 interface HomePageProps {
   searchQuery: string;
@@ -260,7 +297,9 @@ export const HomePage: React.FC<HomePageProps> = ({
             />
           ) : undefined}
           mainContent={
-            <div className="max-w-[1800px] mx-auto px-4 lg:px-6 pb-4">
+            <div className="max-w-[1800px] mx-auto pb-4">
+              <ValuePropStrip />
+              <div className="px-4 lg:px-6">
               <ArticleGrid
                 articles={articles}
                 viewMode={viewMode}
@@ -276,6 +315,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 error={articlesError || null}
                 onRetry={refetchArticles}
               />
+              </div>
             </div>
           }
         />

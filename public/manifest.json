@@ -1,7 +1,7 @@
 {
-  "name": "Nugget News",
+  "name": "Nuggets: The Knowledge App",
   "short_name": "Nuggets",
-  "description": "Curated insights, sharp takes, and knowledge nuggets.",
+  "description": "Curated high-signal knowledge from Markets, Geopolitics, AI, and Tech.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f1f5f9",
