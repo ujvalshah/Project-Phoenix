@@ -17,6 +17,9 @@ import { DropdownPortal } from './UI/DropdownPortal';
 import type { SortOrder } from '@/types';
 import type { UseFilterStateReturn } from '@/hooks/useFilterState';
 import { useLegalPages } from '@/hooks/useLegalPages';
+import { twMerge } from 'tailwind-merge';
+import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
+import { setNarrowHeaderHidden } from '@/constants/layoutScrollBridge';
 
 /** Yellow “N” tile — matches NavigationDrawer / app favicon treatment */
 const NuggetsLogoMark: React.FC = () => (
@@ -85,6 +88,13 @@ export const Header: React.FC<HeaderProps> = ({
   toggleTheme,
   filters,
 }) => {
+  const { narrowHeaderHidden } = useAppChromeScroll();
+
+  useEffect(() => {
+    setNarrowHeaderHidden(narrowHeaderHidden);
+    return () => setNarrowHeaderHidden(false);
+  }, [narrowHeaderHidden]);
+
   // Dropdown state - managed by DropdownPortal
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
@@ -266,7 +276,12 @@ export const Header: React.FC<HeaderProps> = ({
     <>
       {/* Glass header — fixed (layout invariant); z-50 via Z_INDEX.HEADER */}
       <header
-        className={`fixed top-0 left-0 right-0 w-full pt-[env(safe-area-inset-top)] bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-200 dark:border-slate-800 ${LAYOUT_CLASSES.HEADER_HEIGHT}`}
+        className={twMerge(
+          'fixed left-0 right-0 top-0 w-full border-b border-gray-200 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md transition-[transform,opacity,background-color,border-color] duration-300 ease-out will-change-transform dark:border-slate-800 dark:bg-slate-900/80',
+          LAYOUT_CLASSES.HEADER_HEIGHT,
+          narrowHeaderHidden &&
+            'pointer-events-none -translate-y-full border-transparent bg-transparent opacity-0 backdrop-blur-none dark:bg-transparent',
+        )}
         style={{ zIndex: Z_INDEX.HEADER }}
       >
         {/* Desktop Layout (lg+) - Original layout preserved */}
@@ -282,18 +297,8 @@ export const Header: React.FC<HeaderProps> = ({
               <Menu size={18} aria-hidden />
             </button>
 
-            <Link
-              to="/"
-              className="flex min-w-0 shrink-0 items-center gap-2"
-              aria-label="Home"
-            >
+            <Link to="/" className="shrink-0" aria-label="Home">
               <NuggetsLogoMark />
-              <span className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                nuggets.
-              </span>
-              <span className="hidden text-sm font-medium text-gray-500 sm:inline dark:text-slate-400">
-                - the knowledge app
-              </span>
             </Link>
 
             {/* Desktop Navigation (lg+) */}
@@ -548,165 +553,65 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile/Tablet (<lg): fixed-height rows so controls never overflow into the row above */}
-        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex lg:hidden h-full min-h-0 flex-col`}>
-          <div className="flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-gray-200 dark:border-slate-800">
-            <div className="flex min-w-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(true)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                aria-label="Open Menu"
-              >
-                <Menu size={18} strokeWidth={2} aria-hidden />
-              </button>
-              <Link
-                to="/"
-                className="flex min-w-0 items-center gap-2"
-                aria-label="Home"
-              >
-                <NuggetsLogoMark />
-                <div className="flex min-w-0 flex-col justify-center gap-0 leading-none sm:flex-row sm:items-center sm:gap-1 sm:leading-tight">
-                  <span className="truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-white sm:text-xl">
-                    nuggets.
-                  </span>
-                  <span className="hidden text-sm font-medium text-gray-500 sm:inline dark:text-slate-400">
-                    - the knowledge app
-                  </span>
-                </div>
-              </Link>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <NotificationBell
-                bellIconSize={18}
-                buttonClassName="flex h-10 w-10 min-h-0 min-w-0 items-center justify-center rounded-full p-0 hover:bg-gray-100 dark:hover:bg-slate-800"
-              />
-              {isAuthenticated ? (
-                <button
-                  type="button"
-                  ref={mobileAvatarButtonRef}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsUserMenuOpen(!isUserMenuOpen);
-                  }}
-                  className="flex h-10 w-10 min-h-0 min-w-0 items-center justify-center rounded-full border-2 border-transparent p-0 transition-colors hover:border-gray-300 hover:bg-gray-100 dark:hover:border-slate-600 dark:hover:bg-slate-800"
-                  aria-label="User menu"
-                  aria-expanded={isUserMenuOpen}
-                >
-                  <Avatar
-                    name={currentUser?.name || 'User'}
-                    src={currentUser?.avatarUrl}
-                    size="md"
-                    className="h-8 w-8"
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => openAuthModal('login')}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white shadow-sm transition-colors hover:bg-gray-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                  aria-label="Sign In"
-                >
-                  <LogIn size={18} strokeWidth={2} aria-hidden />
-                </button>
-              )}
-            </div>
+        {/* Mobile/Tablet (<lg): single row — menu + logo | search + bell + profile (view/filter/theme in drawer) */}
+        <div
+          className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex h-full min-h-0 items-center justify-between gap-3 lg:hidden`}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              aria-label="Open Menu"
+            >
+              <Menu size={18} strokeWidth={2} aria-hidden />
+            </button>
+            <Link to="/" className="flex shrink-0 items-center" aria-label="Home">
+              <NuggetsLogoMark />
+            </Link>
           </div>
-
-          <div className="grid h-[44px] shrink-0 w-full grid-cols-4 items-center justify-items-stretch gap-0 px-0">
-            <div className="flex min-h-0 min-w-0 items-center justify-center px-0.5">
-              <div
-                className="inline-flex h-9 items-center rounded-xl border border-gray-200 bg-gray-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/90"
-                role="group"
-                aria-label="Feed layout"
-              >
-                <button
-                  type="button"
-                  onClick={() => setViewMode('grid')}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
-                    viewMode === 'grid'
-                      ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-900 dark:text-white'
-                      : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
-                  }`}
-                  title="Grid View"
-                  aria-label="Grid View"
-                  aria-pressed={viewMode === 'grid'}
-                >
-                  <LayoutGrid size={18} strokeWidth={2} aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('masonry')}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
-                    viewMode === 'masonry'
-                      ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-900 dark:text-white'
-                      : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
-                  }`}
-                  title="Masonry View"
-                  aria-label="Masonry View"
-                  aria-pressed={viewMode === 'masonry'}
-                >
-                  <Columns size={18} strokeWidth={2} aria-hidden />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex min-h-0 items-center justify-center">
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setIsMobileSearchOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              aria-label="Search"
+            >
+              <Search size={18} strokeWidth={2} aria-hidden />
+            </button>
+            <NotificationBell
+              bellIconSize={18}
+              buttonClassName="flex h-10 w-10 min-h-0 min-w-0 items-center justify-center rounded-full p-0 hover:bg-gray-100 dark:hover:bg-slate-800"
+            />
+            {isAuthenticated ? (
               <button
                 type="button"
-                onClick={() => setIsMobileSearchOpen(true)}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                aria-label="Search"
-              >
-                <Search size={18} strokeWidth={2} aria-hidden />
-              </button>
-            </div>
-
-            <div className="flex min-h-0 items-center justify-center">
-              <button
-                type="button"
-                ref={mobileFilterButtonRef}
+                ref={mobileAvatarButtonRef}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsFilterPopoverOpen(!isFilterPopoverOpen);
+                  setIsUserMenuOpen(!isUserMenuOpen);
                 }}
-                className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-all ${
-                  isFilterPopoverOpen || hasActiveFilters
-                    ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
-                }`}
-                aria-label={`Filter${hasActiveFilters ? ` (${filters?.activeFilterCount ?? 0} active)` : ''}`}
-                title="Filter"
+                className="flex h-10 w-10 min-h-0 min-w-0 items-center justify-center rounded-full border-2 border-transparent p-0 transition-colors hover:border-gray-300 hover:bg-gray-100 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+                aria-label="User menu"
+                aria-expanded={isUserMenuOpen}
               >
-                <Filter
-                  size={18}
-                  strokeWidth={2}
-                  fill={isFilterPopoverOpen || hasActiveFilters ? 'currentColor' : 'none'}
-                  aria-hidden
+                <Avatar
+                  name={currentUser?.name || 'User'}
+                  src={currentUser?.avatarUrl}
+                  size="md"
+                  className="h-8 w-8"
                 />
-                {hasActiveFilters && (
-                  <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary-500 px-0.5 text-[8px] font-bold leading-none text-white">
-                    {activeFilterCount}
-                  </span>
-                )}
               </button>
-            </div>
-
-            <div className="flex min-h-0 items-center justify-center">
+            ) : (
               <button
                 type="button"
-                onClick={toggleTheme}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                title="Toggle Theme"
-                aria-label="Toggle Theme"
+                onClick={() => openAuthModal('login')}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white shadow-sm transition-colors hover:bg-gray-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                aria-label="Sign In"
               >
-                {isDark ? (
-                  <Sun size={18} strokeWidth={2} aria-hidden />
-                ) : (
-                  <Moon size={18} strokeWidth={2} aria-hidden />
-                )}
+                <LogIn size={18} strokeWidth={2} aria-hidden />
               </button>
-            </div>
+            )}
           </div>
         </div>
       </header>
@@ -886,7 +791,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Tablet/Mobile Filter+Sort Popover - uses DropdownPortal */}
       <DropdownPortal
         isOpen={isFilterPopoverOpen && (isTablet || isMobile)}
-        anchorRef={isMobile ? mobileFilterButtonRef : filterButtonRef}
+        anchorRef={mobileFilterButtonRef}
         onClickOutside={() => setIsFilterPopoverOpen(false)}
         className="bg-white rounded-xl shadow-xl border border-gray-100 max-w-sm"
       >
@@ -1019,14 +924,22 @@ export const Header: React.FC<HeaderProps> = ({
         document.body
       )}
 
-      <NavigationDrawer 
-        isOpen={sidebarOpen} 
+      <NavigationDrawer
+        isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         isAuthenticated={isAuthenticated}
         currentUser={currentUser}
         isAdmin={isAdmin}
         logout={logout}
         openAuthModal={() => openAuthModal('login')}
+        filterAnchorRef={mobileFilterButtonRef}
+        onOpenFilters={() => setIsFilterPopoverOpen(true)}
+        hasActiveFilters={hasActiveFilters}
+        activeFilterCount={activeFilterCount}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        isDark={isDark}
+        toggleTheme={toggleTheme}
       />
     </>
   );
@@ -1135,14 +1048,36 @@ interface NavigationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   isAuthenticated: boolean;
-  currentUser: any;
+  currentUser: { id?: string; name?: string; email?: string; avatarUrl?: string } | null | undefined;
   isAdmin: boolean;
   logout: () => void;
   openAuthModal: () => void;
+  filterAnchorRef: React.RefObject<HTMLButtonElement | null>;
+  onOpenFilters: () => void;
+  hasActiveFilters: boolean;
+  activeFilterCount: number;
+  viewMode: 'grid' | 'masonry' | 'utility';
+  setViewMode: (mode: 'grid' | 'masonry' | 'utility') => void;
+  isDark: boolean;
+  toggleTheme: () => void;
 }
 
 const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
-  isOpen, onClose, isAuthenticated, currentUser, isAdmin, logout, openAuthModal
+  isOpen,
+  onClose,
+  isAuthenticated,
+  currentUser,
+  isAdmin,
+  logout,
+  openAuthModal,
+  filterAnchorRef,
+  onOpenFilters,
+  hasActiveFilters,
+  activeFilterCount,
+  viewMode,
+  setViewMode,
+  isDark,
+  toggleTheme,
 }) => {
   if (!isOpen) return null;
 
@@ -1156,14 +1091,18 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={onClose} />
       <div className="absolute top-0 bottom-0 left-0 w-[280px] bg-white shadow-2xl flex flex-col animate-in slide-in-from-left duration-300 border-r border-gray-200">
         
-        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-           <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-yellow-400 rounded-lg flex items-center justify-center text-gray-900 font-bold text-lg shadow-sm">N</div>
-              <span className="font-extrabold text-lg text-gray-900">Nuggets</span>
-           </div>
-           <button onClick={onClose} className="p-2 -mr-2 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors">
-             <X size={20} />
-           </button>
+        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-400 text-sm font-bold text-gray-900 shadow-sm">
+            N
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="-mr-2 rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto hide-scrollbar-mobile py-4 px-3 space-y-1">
@@ -1177,6 +1116,79 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
            <Link to="/contact" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
               <Mail size={18} /> Contact Us
            </Link>
+
+           <div className="mx-4 my-2 h-px bg-gray-100" />
+           <p className="px-4 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Feed layout</p>
+           <div className="grid grid-cols-3 gap-2 px-3">
+             <button
+               type="button"
+               onClick={() => setViewMode('grid')}
+               className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-bold transition-colors ${
+                 viewMode === 'grid'
+                   ? 'border-primary-300 bg-primary-50 text-gray-900 dark:border-primary-700 dark:bg-primary-900/20 dark:text-white'
+                   : 'border-gray-100 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+               }`}
+             >
+               <LayoutGrid size={18} />
+               Grid
+             </button>
+             <button
+               type="button"
+               onClick={() => setViewMode('masonry')}
+               className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-bold transition-colors ${
+                 viewMode === 'masonry'
+                   ? 'border-primary-300 bg-primary-50 text-gray-900 dark:border-primary-700 dark:bg-primary-900/20 dark:text-white'
+                   : 'border-gray-100 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+               }`}
+             >
+               <Columns size={18} />
+               Masonry
+             </button>
+             <button
+               type="button"
+               onClick={() => setViewMode('utility')}
+               className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-bold transition-colors ${
+                 viewMode === 'utility'
+                   ? 'border-primary-300 bg-primary-50 text-gray-900 dark:border-primary-700 dark:bg-primary-900/20 dark:text-white'
+                   : 'border-gray-100 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+               }`}
+             >
+               <List size={18} />
+               Compact
+             </button>
+           </div>
+
+           <div className="px-3 pt-2">
+             <button
+               ref={filterAnchorRef}
+               type="button"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 onOpenFilters();
+               }}
+               className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-colors ${
+                 hasActiveFilters
+                   ? 'bg-primary-50 text-primary-800 dark:bg-primary-900/20 dark:text-primary-200'
+                   : 'text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800'
+               }`}
+             >
+               <Filter size={18} fill={hasActiveFilters ? 'currentColor' : 'none'} />
+               Filters
+               {hasActiveFilters && (
+                 <span className="ml-auto flex min-w-[22px] items-center justify-center rounded-full bg-primary-500 px-1.5 text-[11px] font-bold text-white">
+                   {activeFilterCount}
+                 </span>
+               )}
+             </button>
+             <button
+               type="button"
+               onClick={() => toggleTheme()}
+               className="mt-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800"
+             >
+               {isDark ? <Sun size={18} /> : <Moon size={18} />}
+               {isDark ? 'Light mode' : 'Dark mode'}
+             </button>
+           </div>
 
            {isAuthenticated && (
              <>

@@ -18,6 +18,7 @@ import { twMerge } from 'tailwind-merge';
 import { Z_INDEX } from '@/constants/zIndex';
 import { articleService } from '@/services/articleService';
 import { ArticleModal } from './ArticleModal';
+import { NotificationBadge } from './NotificationBadge';
 import type { Article } from '@/types';
 import type { InAppNotification } from '@/services/notificationService';
 
@@ -470,11 +471,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
         <Bell size={bellIconSize} aria-hidden />
-        {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-h-[18px] min-w-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none tabular-nums border-2 border-white dark:border-slate-900">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
+        <NotificationBadge visible={unreadCount > 0} />
       </button>
 
       {/* Dropdown — portaled to document.body so it escapes header stacking context */}

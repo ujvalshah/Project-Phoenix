@@ -19,6 +19,7 @@ import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
 import { PersistentVideoPlayer } from '@/components/PersistentVideoPlayer';
 import { NotificationPrompt } from '@/components/NotificationPrompt';
 import { LegalFooter } from '@/components/legal/LegalFooter';
+import { AppChromeScrollProvider } from '@/context/AppChromeScrollContext';
 
 // Legacy hash URL redirect handler
 // Redirects old /#/path URLs to clean /path URLs for backwards compatibility
@@ -125,9 +126,11 @@ const AppContent: React.FC = () => {
         - Route transitions
         - Flex/grid recalculations
         
-        Header height: 96px mobile (brand row + toolbar), h-16 (64px) desktop
+        Header height: h-14 (56px) mobile, h-16 (64px) desktop.
+        On narrow viewports, scroll &gt; 50px hides the header bar; category rail pins to top (PageStack).
         HeaderSpacer MUST be used in PageStack to reserve this space.
       */}
+      <AppChromeScrollProvider>
       <Header
         isDark={isDark}
         toggleTheme={() => setIsDark(!isDark)}
@@ -269,6 +272,7 @@ const AppContent: React.FC = () => {
         <AuthModal />
       </MainLayout>
       <LegalFooter />
+      </AppChromeScrollProvider>
     </>
   );
 };

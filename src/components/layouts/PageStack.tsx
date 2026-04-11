@@ -1,9 +1,11 @@
 import React from 'react';
+import { twMerge } from 'tailwind-merge';
 import { HeaderSpacer } from './HeaderSpacer';
 import { CategorySpacer } from './CategorySpacer';
 import { MainContentTopSpacer } from './MainContentTopSpacer';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
+import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 
 interface PageStackProps {
   /**
@@ -47,6 +49,18 @@ export const PageStack: React.FC<PageStackProps> = ({
   categoryToolbar, 
   mainContent 
 }) => {
+  const { narrowHeaderHidden } = useAppChromeScroll();
+
+  const categoryStickyClass =
+    categoryToolbar != null
+      ? twMerge(
+          'sticky transition-[box-shadow,background-color] duration-300 ease-out',
+          narrowHeaderHidden
+            ? 'top-0 bg-white/95 pt-[env(safe-area-inset-top)] shadow-md shadow-gray-900/10 backdrop-blur-md dark:bg-slate-900/95 dark:shadow-black/20'
+            : LAYOUT_CLASSES.STICKY_BELOW_HEADER,
+        )
+      : '';
+
   return (
     <div className="relative z-0">
       {/* Explicit spacer for fixed Header */}
@@ -54,7 +68,7 @@ export const PageStack: React.FC<PageStackProps> = ({
       
       {/* Sticky CategoryToolbar Container */}
       {categoryToolbar && (
-        <div className={`sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER}`} style={{ zIndex: Z_INDEX.CATEGORY_BAR }}>
+        <div className={categoryStickyClass} style={{ zIndex: Z_INDEX.CATEGORY_BAR }}>
           {categoryToolbar}
         </div>
       )}
