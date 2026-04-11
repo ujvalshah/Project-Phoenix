@@ -523,53 +523,10 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile/Tablet Layout (<lg) - Two-row: Brand Row + Toolbar Row */}
-        <div className="flex lg:hidden flex-col h-full">
-          {/* Brand Row: Logo + App Name + Avatar/Login */}
-          <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex items-center justify-between h-10 shrink-0 border-b border-gray-100`}>
-            <Link to="/" className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 bg-yellow-400 rounded-lg flex items-center justify-center text-gray-900 font-bold text-xs shrink-0">
-                N
-              </div>
-              <span className="text-[15px] font-bold text-gray-900 tracking-tight truncate">Nuggets</span>
-              <span className="text-[11px] text-gray-400 font-medium hidden sm:inline whitespace-nowrap">— The Knowledge App</span>
-            </Link>
-
-            {/* Avatar/Login - right side of brand row */}
-            <div className="flex items-center shrink-0">
-              {isAuthenticated ? (
-                <button
-                  ref={mobileAvatarButtonRef}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsUserMenuOpen(!isUserMenuOpen);
-                  }}
-                  className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors flex items-center justify-center"
-                  aria-label="User menu"
-                  aria-expanded={isUserMenuOpen}
-                >
-                  <Avatar
-                    name={currentUser?.name || 'User'}
-                    src={currentUser?.avatarUrl}
-                    size="sm"
-                    className="w-7 h-7"
-                  />
-                </button>
-              ) : (
-                <button
-                  onClick={() => openAuthModal('login')}
-                  className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                  aria-label="Sign In"
-                >
-                  <LogIn size={18} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Toolbar Row: Menu + View Toggles + Search + Filter + Create + Theme */}
-          <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex items-center justify-center gap-1 sm:gap-2 h-11 shrink-0`}>
-            {/* Hamburger Menu */}
+        {/* Mobile/Tablet Layout (<lg) - Single row */}
+        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full flex lg:hidden items-center justify-between`}>
+          {/* Far Left: Hamburger Menu */}
+          <div className="flex items-center shrink-0">
             <button
               onClick={() => setSidebarOpen(true)}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-500 hover:text-gray-700 transition-colors"
@@ -577,7 +534,10 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Menu size={18} />
             </button>
+          </div>
 
+          {/* Middle Group: View Mode Buttons, Search, Filter, Theme Toggle */}
+          <div className="flex items-center gap-2 sm:gap-2 md:gap-3 shrink-0">
             {/* View mode buttons - Grid and Masonry grouped */}
             <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-100">
               <button
@@ -615,13 +575,27 @@ export const Header: React.FC<HeaderProps> = ({
               <Search size={18} />
             </button>
 
-            {/* Create button */}
+            {/* Filter button with badge */}
             <button
-              onClick={withAuth(onCreateNugget)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 text-gray-700 hover:text-gray-900 transition-colors"
-              aria-label="Create Nugget"
+              ref={mobileFilterButtonRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFilterPopoverOpen(!isFilterPopoverOpen);
+              }}
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center px-2 py-1 rounded transition-all relative ${
+                isFilterPopoverOpen || hasActiveFilters
+                  ? 'text-yellow-500'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              aria-label={`Filter${hasActiveFilters ? ` (${filters?.activeFilterCount ?? 0} active)` : ''}`}
+              title="Filter"
             >
-              <Sparkles size={18} strokeWidth={2} className="text-yellow-500" fill="currentColor" />
+              <Filter size={18} fill={isFilterPopoverOpen || hasActiveFilters ? "currentColor" : "none"} />
+              {hasActiveFilters && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-yellow-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
             </button>
 
             {/* Theme toggle */}
@@ -633,6 +607,37 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
+          </div>
+
+          {/* Far Right: Avatar/Login */}
+          <div className="flex items-center shrink-0">
+            {isAuthenticated ? (
+              <button
+                ref={mobileAvatarButtonRef}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsUserMenuOpen(!isUserMenuOpen);
+                }}
+                className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="User menu"
+                aria-expanded={isUserMenuOpen}
+              >
+                <Avatar
+                  name={currentUser?.name || 'User'}
+                  src={currentUser?.avatarUrl}
+                  size="md"
+                  className="w-8 h-8"
+                />
+              </button>
+            ) : (
+              <button
+                onClick={() => openAuthModal('login')}
+                className="min-h-[44px] min-w-[44px] px-2 py-1 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center"
+                aria-label="Sign In"
+              >
+                <LogIn size={18} />
+              </button>
+            )}
           </div>
         </div>
       </header>

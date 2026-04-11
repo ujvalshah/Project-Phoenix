@@ -24,8 +24,8 @@
  * Pixel values for calculations (e.g., JS-based positioning)
  */
 export const LAYOUT = {
-  /** Header height on mobile (< lg breakpoint) — two-row: brand + toolbar */
-  HEADER_HEIGHT: 84,
+  /** Header height on mobile (< lg breakpoint) */
+  HEADER_HEIGHT: 56,
   /** Header height on desktop (>= lg breakpoint) */
   HEADER_HEIGHT_LG: 64,
   /** Category filter bar height */
@@ -72,9 +72,9 @@ export const GRID_WIDTHS = {
  */
 export const LAYOUT_CLASSES = {
   /** Header height classes — mobile: two-row (brand+toolbar), desktop: single row */
-  HEADER_HEIGHT: 'h-[84px] lg:h-14',
+  HEADER_HEIGHT: 'h-14',
   /** HeaderSpacer must match Header height */
-  HEADER_SPACER: 'h-[84px] lg:h-14',
+  HEADER_SPACER: 'h-14',
   /** CategoryFilterBar height - compact for power users */
   CATEGORY_BAR_HEIGHT: 'h-11',
   /** 
@@ -88,7 +88,7 @@ export const LAYOUT_CLASSES = {
    */
   CONTENT_TOP_SPACER: 'h-4 shrink-0',
   /** Sticky top offset for elements below Header */
-  STICKY_BELOW_HEADER: 'top-[84px] lg:top-14',
+  STICKY_BELOW_HEADER: 'top-14',
   /** 
    * Full-bleed: No max-width constraint on toolbar zone.
    * Content uses this for inner padding alignment.
