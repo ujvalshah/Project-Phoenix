@@ -49,7 +49,7 @@ export const ContactPage: React.FC = () => {
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950">
       {/* Spacer for fixed header */}
-      <div className="h-20 lg:h-14" />
+      <div className="h-[84px] lg:h-14" />
 
       <div className="max-w-xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         {/* Page Header */}

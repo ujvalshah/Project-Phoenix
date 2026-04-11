@@ -526,13 +526,13 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Mobile/Tablet Layout (<lg) - Two-row: Brand Row + Toolbar Row */}
         <div className="flex lg:hidden flex-col h-full">
           {/* Brand Row: Logo + App Name + Avatar/Login */}
-          <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex items-center justify-between h-9 shrink-0`}>
+          <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex items-center justify-between h-10 shrink-0 border-b border-gray-100`}>
             <Link to="/" className="flex items-center gap-2 min-w-0">
-              <div className="w-6 h-6 bg-yellow-400 rounded-md flex items-center justify-center text-gray-900 font-bold text-[11px] shrink-0">
+              <div className="w-7 h-7 bg-yellow-400 rounded-lg flex items-center justify-center text-gray-900 font-bold text-xs shrink-0">
                 N
               </div>
-              <span className="text-sm font-bold text-gray-900 truncate">Nuggets</span>
-              <span className="text-[11px] text-gray-400 hidden sm:inline whitespace-nowrap">— The Knowledge App</span>
+              <span className="text-[15px] font-bold text-gray-900 tracking-tight truncate">Nuggets</span>
+              <span className="text-[11px] text-gray-400 font-medium hidden sm:inline whitespace-nowrap">— The Knowledge App</span>
             </Link>
 
             {/* Avatar/Login - right side of brand row */}
@@ -544,7 +544,7 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation();
                     setIsUserMenuOpen(!isUserMenuOpen);
                   }}
-                  className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
+                  className="p-0.5 rounded-full border-2 border-transparent hover:border-gray-300 transition-colors flex items-center justify-center"
                   aria-label="User menu"
                   aria-expanded={isUserMenuOpen}
                 >
@@ -558,11 +558,10 @@ export const Header: React.FC<HeaderProps> = ({
               ) : (
                 <button
                   onClick={() => openAuthModal('login')}
-                  className="min-h-[36px] px-3 py-1 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-1.5"
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                   aria-label="Sign In"
                 >
-                  <LogIn size={14} />
-                  <span>Sign In</span>
+                  <LogIn size={18} />
                 </button>
               )}
             </div>
