@@ -553,7 +553,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile/Tablet (<lg): single row — menu + logo | search + bell + profile (view/filter/theme in drawer) */}
+        {/* Mobile/Tablet (<lg): single row — menu + logo | search, filter, theme, bell, profile (extra view/theme in drawer) */}
         <div
           className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex h-full min-h-0 items-center justify-between gap-3 lg:hidden`}
         >
@@ -578,6 +578,42 @@ export const Header: React.FC<HeaderProps> = ({
               aria-label="Search"
             >
               <Search size={18} strokeWidth={2} aria-hidden />
+            </button>
+            <button
+              type="button"
+              ref={mobileFilterButtonRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFilterPopoverOpen(!isFilterPopoverOpen);
+              }}
+              className={`relative flex h-10 w-10 items-center justify-center rounded-full transition-colors ${
+                isFilterPopoverOpen || hasActiveFilters
+                  ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+              }`}
+              aria-label={`Filter${hasActiveFilters ? ` (${activeFilterCount} active)` : ''}`}
+              title="Filter"
+            >
+              <Filter
+                size={18}
+                strokeWidth={2}
+                fill={isFilterPopoverOpen || hasActiveFilters ? 'currentColor' : 'none'}
+                aria-hidden
+              />
+              {hasActiveFilters && (
+                <span className="absolute right-1 top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary-500 px-0.5 text-[7px] font-bold leading-none text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              title="Toggle Theme"
+              aria-label="Toggle Theme"
+            >
+              {isDark ? <Sun size={18} strokeWidth={2} aria-hidden /> : <Moon size={18} strokeWidth={2} aria-hidden />}
             </button>
             <NotificationBell
               bellIconSize={18}
@@ -932,7 +968,6 @@ export const Header: React.FC<HeaderProps> = ({
         isAdmin={isAdmin}
         logout={logout}
         openAuthModal={() => openAuthModal('login')}
-        filterAnchorRef={mobileFilterButtonRef}
         onOpenFilters={() => setIsFilterPopoverOpen(true)}
         hasActiveFilters={hasActiveFilters}
         activeFilterCount={activeFilterCount}
@@ -1052,7 +1087,6 @@ interface NavigationDrawerProps {
   isAdmin: boolean;
   logout: () => void;
   openAuthModal: () => void;
-  filterAnchorRef: React.RefObject<HTMLButtonElement | null>;
   onOpenFilters: () => void;
   hasActiveFilters: boolean;
   activeFilterCount: number;
@@ -1070,7 +1104,6 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   isAdmin,
   logout,
   openAuthModal,
-  filterAnchorRef,
   onOpenFilters,
   hasActiveFilters,
   activeFilterCount,
@@ -1092,8 +1125,11 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
       <div className="absolute top-0 bottom-0 left-0 w-[280px] bg-white shadow-2xl flex flex-col animate-in slide-in-from-left duration-300 border-r border-gray-200">
         
         <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-400 text-sm font-bold text-gray-900 shadow-sm">
-            N
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-400 text-sm font-bold text-gray-900 shadow-sm">
+              N
+            </div>
+            <span className="truncate text-lg font-extrabold text-gray-900">Nuggets</span>
           </div>
           <button
             type="button"
@@ -1160,11 +1196,11 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
            <div className="px-3 pt-2">
              <button
-               ref={filterAnchorRef}
                type="button"
                onClick={(e) => {
                  e.stopPropagation();
-                 onOpenFilters();
+                 onClose();
+                 window.requestAnimationFrame(() => onOpenFilters());
                }}
                className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-colors ${
                  hasActiveFilters

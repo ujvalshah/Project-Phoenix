@@ -18,7 +18,7 @@ export const NotificationBadge: React.FC<NotificationBadgeProps> = ({
   return (
     <span
       className={twMerge(
-        'pointer-events-none absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary-700/90 ring-2 ring-white dark:bg-primary-500/80 dark:ring-slate-900',
+        'pointer-events-none absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary-400 ring-2 ring-white dark:ring-slate-900',
         className,
       )}
       aria-hidden
