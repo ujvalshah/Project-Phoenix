@@ -6,7 +6,7 @@ import { useFeaturedCollections } from '@/hooks/useFeaturedCollections';
 import { useQuery } from '@tanstack/react-query';
 import { storageService } from '@/services/storageService';
 import { Collection, TaxonomyTag } from '@/types';
-import { FilterState } from './FilterPopover';
+import type { FilterState } from './filterTypes';
 import { Z_INDEX } from '@/constants/zIndex';
 
 interface MobileFilterSheetProps {

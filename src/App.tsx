@@ -21,6 +21,7 @@ import { NotificationPrompt } from '@/components/NotificationPrompt';
 import { LegalFooter } from '@/components/legal/LegalFooter';
 import { AppChromeScrollProvider } from '@/context/AppChromeScrollContext';
 import { FilterResultsProvider } from '@/context/FilterResultsContext';
+import { DesktopFilterSidebarProvider } from '@/context/DesktopFilterSidebarContext';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 
 // Legacy hash URL redirect handler
@@ -277,7 +278,9 @@ const App: React.FC = () => {
           <VideoPlayerProvider>
             <FeedScrollStateProvider>
               <FilterStateProvider>
-                <AppContent />
+                <DesktopFilterSidebarProvider>
+                  <AppContent />
+                </DesktopFilterSidebarProvider>
               </FilterStateProvider>
             </FeedScrollStateProvider>
           </VideoPlayerProvider>

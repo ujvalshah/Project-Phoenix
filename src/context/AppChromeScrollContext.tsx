@@ -1,20 +1,19 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { LAYOUT } from '@/constants/layout';
 
-/** Below this offset from the top, direction-based hide/show applies */
-const TOP_REVEAL_PX = 16;
-/** Ignore tiny scroll jitter (px per frame) */
-const DIRECTION_DELTA_PX = 8;
+/** While within this top zone, chrome remains visible and stable */
+const TOP_SAFE_ZONE_PX = 112;
+/** Force visible again when user comes back near the top */
+const TOP_FORCE_VISIBLE_PX = 72;
+/** Ignore tiny per-frame jitter and bounce noise */
+const SCROLL_NOISE_PX = 2;
+/** Hide reluctantly: require meaningful cumulative downward travel */
+const HIDE_ACCUMULATED_PX = 44;
+/** Show quickly: smaller cumulative upward travel required */
+const SHOW_ACCUMULATED_PX = 14;
 
 interface AppChromeScrollContextValue {
-  /** True when window.scrollY is past the small top offset */
+  /** True when window.scrollY is past the top safe zone */
   scrollPastThreshold: boolean;
   /** Viewport width &lt; lg (1024px) */
   isViewportNarrow: boolean;
@@ -23,6 +22,8 @@ interface AppChromeScrollContextValue {
    * shown again when scrolling up or when near the top of the page.
    */
   narrowHeaderHidden: boolean;
+  /** Guard chrome visibility while user interacts with bottom chrome controls. */
+  setChromeInteractionActive: (active: boolean) => void;
 }
 
 const AppChromeScrollContext = createContext<AppChromeScrollContextValue | null>(null);
@@ -37,17 +38,42 @@ export const AppChromeScrollProvider: React.FC<{ children: React.ReactNode }> = 
   /** Narrow viewports only: true = header/category chrome slid away */
   const [narrowChromeHidden, setNarrowChromeHidden] = useState(false);
   const lastScrollYRef = useRef(0);
+  const narrowChromeHiddenRef = useRef(false);
+  const downAccumRef = useRef(0);
+  const upAccumRef = useRef(0);
+  const interactionLockRef = useRef(false);
+
+  const setChromeInteractionActive = useCallback((active: boolean) => {
+    interactionLockRef.current = active;
+    if (active) {
+      downAccumRef.current = 0;
+      upAccumRef.current = 0;
+      if (narrowChromeHiddenRef.current) {
+        narrowChromeHiddenRef.current = false;
+        setNarrowChromeHidden(false);
+      }
+    }
+  }, []);
+
+  const setHiddenIfChanged = useCallback((next: boolean) => {
+    if (narrowChromeHiddenRef.current === next) return;
+    narrowChromeHiddenRef.current = next;
+    setNarrowChromeHidden(next);
+  }, []);
 
   useEffect(() => {
     const readNarrow = () => {
       const narrow = window.innerWidth < LAYOUT.LG_BREAKPOINT;
       setIsViewportNarrow(narrow);
       if (!narrow) {
-        setNarrowChromeHidden(false);
+        downAccumRef.current = 0;
+        upAccumRef.current = 0;
+        setHiddenIfChanged(false);
       }
     };
 
     lastScrollYRef.current = window.scrollY || 0;
+    narrowChromeHiddenRef.current = false;
 
     let raf = 0;
     const onScroll = () => {
@@ -59,7 +85,17 @@ export const AppChromeScrollProvider: React.FC<{ children: React.ReactNode }> = 
 
         const narrow = window.innerWidth < LAYOUT.LG_BREAKPOINT;
         if (!narrow) {
-          setNarrowChromeHidden(false);
+          downAccumRef.current = 0;
+          upAccumRef.current = 0;
+          setHiddenIfChanged(false);
+          lastScrollYRef.current = y;
+          return;
+        }
+
+        if (interactionLockRef.current) {
+          downAccumRef.current = 0;
+          upAccumRef.current = 0;
+          setHiddenIfChanged(false);
           lastScrollYRef.current = y;
           return;
         }
@@ -68,15 +104,39 @@ export const AppChromeScrollProvider: React.FC<{ children: React.ReactNode }> = 
         const delta = y - lastY;
         lastScrollYRef.current = y;
 
-        if (y <= TOP_REVEAL_PX) {
-          setNarrowChromeHidden(false);
+        if (y <= TOP_SAFE_ZONE_PX) {
+          downAccumRef.current = 0;
+          upAccumRef.current = 0;
+          setHiddenIfChanged(false);
           return;
         }
 
-        if (delta > DIRECTION_DELTA_PX) {
-          setNarrowChromeHidden(true);
-        } else if (delta < -DIRECTION_DELTA_PX) {
-          setNarrowChromeHidden(false);
+        if (y <= TOP_FORCE_VISIBLE_PX) {
+          downAccumRef.current = 0;
+          upAccumRef.current = 0;
+          setHiddenIfChanged(false);
+          return;
+        }
+
+        if (Math.abs(delta) <= SCROLL_NOISE_PX) {
+          return;
+        }
+
+        if (delta > 0) {
+          downAccumRef.current += delta;
+          upAccumRef.current = 0;
+          if (!narrowChromeHiddenRef.current && downAccumRef.current >= HIDE_ACCUMULATED_PX) {
+            setHiddenIfChanged(true);
+            downAccumRef.current = 0;
+          }
+          return;
+        }
+
+        upAccumRef.current += Math.abs(delta);
+        downAccumRef.current = 0;
+        if (narrowChromeHiddenRef.current && upAccumRef.current >= SHOW_ACCUMULATED_PX) {
+          setHiddenIfChanged(false);
+          upAccumRef.current = 0;
         }
       });
     };
@@ -91,17 +151,18 @@ export const AppChromeScrollProvider: React.FC<{ children: React.ReactNode }> = 
       window.removeEventListener('resize', readNarrow);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [setHiddenIfChanged]);
 
   const value = useMemo<AppChromeScrollContextValue>(() => {
-    const scrollPastThreshold = scrollY > TOP_REVEAL_PX;
+    const scrollPastThreshold = scrollY > TOP_SAFE_ZONE_PX;
     const narrowHeaderHidden = isViewportNarrow && narrowChromeHidden;
     return {
       scrollPastThreshold,
       isViewportNarrow,
       narrowHeaderHidden,
+      setChromeInteractionActive,
     };
-  }, [scrollY, isViewportNarrow, narrowChromeHidden]);
+  }, [scrollY, isViewportNarrow, narrowChromeHidden, setChromeInteractionActive]);
 
   return (
     <AppChromeScrollContext.Provider value={value}>{children}</AppChromeScrollContext.Provider>
@@ -115,6 +176,7 @@ export function useAppChromeScroll(): AppChromeScrollContextValue {
       scrollPastThreshold: false,
       isViewportNarrow: false,
       narrowHeaderHidden: false,
+      setChromeInteractionActive: () => undefined,
     };
   }
   return ctx;

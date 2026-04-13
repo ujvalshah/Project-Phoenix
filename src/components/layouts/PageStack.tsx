@@ -9,6 +9,10 @@ import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 
 interface PageStackProps {
   /**
+   * When true, skips the in-stack HeaderSpacer (e.g. home feed with a sibling filter column that shares a full-width spacer).
+   */
+  suppressHeaderSpacer?: boolean;
+  /**
    * Optional: CategoryToolbar component to wrap in sticky container
    * If provided, it will be wrapped in a sticky container with proper z-index
    * CategorySpacer will automatically follow it.
@@ -45,9 +49,10 @@ interface PageStackProps {
  * Sticky elements do not reserve space.
  * Always add explicit spacing before content.
  */
-export const PageStack: React.FC<PageStackProps> = ({ 
-  categoryToolbar, 
-  mainContent 
+export const PageStack: React.FC<PageStackProps> = ({
+  suppressHeaderSpacer = false,
+  categoryToolbar,
+  mainContent,
 }) => {
   const { narrowHeaderHidden } = useAppChromeScroll();
 
@@ -64,7 +69,7 @@ export const PageStack: React.FC<PageStackProps> = ({
   return (
     <div className="relative z-0">
       {/* Explicit spacer for fixed Header */}
-      <HeaderSpacer />
+      {!suppressHeaderSpacer && <HeaderSpacer />}
       
       {/* Sticky CategoryToolbar Container */}
       {categoryToolbar && (

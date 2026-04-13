@@ -91,7 +91,7 @@ function usePrefersReducedMotion(): boolean {
 export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
   const filters = useFilters();
-  const { isViewportNarrow, narrowHeaderHidden } = useAppChromeScroll();
+  const { isViewportNarrow, narrowHeaderHidden, setChromeInteractionActive } = useAppChromeScroll();
   const prefersReducedMotion = usePrefersReducedMotion();
   const { data: pulseTodayCount } = usePulseTodayCount();
   const pulseEnabled = isFeatureEnabled('MARKET_PULSE');
@@ -138,6 +138,11 @@ export const MobileBottomNav: React.FC = () => {
     <nav
       role="navigation"
       aria-label="Primary destinations"
+      onTouchStart={() => setChromeInteractionActive(true)}
+      onTouchEnd={() => setChromeInteractionActive(false)}
+      onTouchCancel={() => setChromeInteractionActive(false)}
+      onFocusCapture={() => setChromeInteractionActive(true)}
+      onBlurCapture={() => setChromeInteractionActive(false)}
       className={twMerge(
         'fixed bottom-0 left-0 right-0 border-t border-slate-200/80 bg-white/95 pb-[max(env(safe-area-inset-bottom),0px)] shadow-[0_-8px_20px_-16px_rgba(15,23,42,0.35)] backdrop-blur-lg transition-[transform,opacity] duration-300 ease-out dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-black/40 lg:hidden',
         chromeHidden && 'pointer-events-none translate-y-full opacity-0',

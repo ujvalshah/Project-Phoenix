@@ -32,6 +32,10 @@ import { Loader2, X, Zap } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { PageStack } from '@/components/layouts/PageStack';
+import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
+import { DesktopFilterSidebar } from '@/components/header/DesktopFilterSidebar';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
 import { CategoryToolbar, type ActiveFilterChip } from '@/components/CategoryToolbar';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'react-router-dom';
@@ -147,8 +151,17 @@ export const HomePage: React.FC<HomePageProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const { setResultCount } = useFilterResults();
+  const isLg = useMediaQuery('(min-width: 1024px)');
+  const { setInlineDesktopFiltersActive } = useDesktopFilterSidebar();
 
   const { currentUserId } = useAuth();
+
+  useEffect(() => {
+    setInlineDesktopFiltersActive(isLg);
+    return () => {
+      setInlineDesktopFiltersActive(false);
+    };
+  }, [isLg, setInlineDesktopFiltersActive]);
 
   // Handle ?openArticle=<id> query param (from push notifications / shared links)
   useEffect(() => {
@@ -280,8 +293,51 @@ export const HomePage: React.FC<HomePageProps> = ({
   // Show toolbar when taxonomy is loading or has format/domain tags
   const showToolbar = isLoadingTaxonomy || (taxonomy && (taxonomy.formats.length > 0 || taxonomy.domains.length > 0));
 
+  const categoryToolbarEl = showToolbar ? (
+    <CategoryToolbar
+      formatTags={taxonomy?.formats ?? []}
+      domainTags={taxonomy?.domains ?? []}
+      selectedFormatIds={formatTagIds}
+      selectedDomainIds={domainTagIds}
+      onToggleFormat={toggleFormatTag}
+      onToggleDomain={toggleDomainTag}
+      onClearAll={handleClearToolbar}
+      isLoading={isLoadingTaxonomy}
+      activeFilters={activeFilters}
+    />
+  ) : undefined;
+
+  const feedMain = (
+    <div className="max-w-[1800px] mx-auto pb-4">
+      {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
+      <div className="px-4 lg:px-6">
+        <ArticleGrid
+          articles={articles}
+          viewMode={viewMode}
+          isLoading={isLoadingArticles}
+          isFilterRefetching={isFilterRefetching}
+          onArticleClick={setSelectedArticle}
+          onTagClick={(t) => setSelectedTag(t)}
+          onCategoryClick={(c) => toggleTag(c)}
+          currentUserId={currentUserId}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={fetchNextPage}
+          error={articlesError || null}
+          onRetry={refetchArticles}
+        />
+      </div>
+    </div>
+  );
+
   return (
-    <main className="w-full flex flex-col relative" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} ref={containerRef}>
+    <main
+      className="relative flex min-h-screen w-full flex-col"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      ref={containerRef}
+    >
 
       {/* Refresh Indicator */}
       <div className="absolute top-0 left-0 w-full flex justify-center pointer-events-none z-10" style={{ height: `${pullY}px`, opacity: pullY > 0 ? 1 : 0, transition: isRefreshing ? 'height 0.3s ease' : 'none' }}>
@@ -290,44 +346,23 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </div>
 
-      <div className="w-full transition-transform duration-300 ease-out origin-top" style={{ transform: `translateY(${pullY}px)` }}>
-        <PageStack
-          categoryToolbar={showToolbar ? (
-            <CategoryToolbar
-              formatTags={taxonomy?.formats ?? []}
-              domainTags={taxonomy?.domains ?? []}
-              selectedFormatIds={formatTagIds}
-              selectedDomainIds={domainTagIds}
-              onToggleFormat={toggleFormatTag}
-              onToggleDomain={toggleDomainTag}
-              onClearAll={handleClearToolbar}
-              isLoading={isLoadingTaxonomy}
-              activeFilters={activeFilters}
-            />
-          ) : undefined}
-          mainContent={
-            <div className="max-w-[1800px] mx-auto pb-4">
-              {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
-              <div className="px-4 lg:px-6">
-              <ArticleGrid
-                articles={articles}
-                viewMode={viewMode}
-                isLoading={isLoadingArticles}
-                isFilterRefetching={isFilterRefetching}
-                onArticleClick={setSelectedArticle}
-                onTagClick={(t) => setSelectedTag(t)}
-                onCategoryClick={(c) => toggleTag(c)}
-                currentUserId={currentUserId}
-                hasNextPage={hasNextPage}
-                isFetchingNextPage={isFetchingNextPage}
-                onLoadMore={fetchNextPage}
-                error={articlesError || null}
-                onRetry={refetchArticles}
-              />
+      <div
+        className="flex w-full min-h-0 flex-1 flex-col transition-transform duration-300 ease-out origin-top"
+        style={{ transform: `translateY(${pullY}px)` }}
+      >
+        {isLg ? (
+          <>
+            <HeaderSpacer />
+            <div className="flex w-full min-w-0 flex-1 items-stretch">
+              <DesktopFilterSidebar />
+              <div className="min-h-0 min-w-0 flex-1">
+                <PageStack suppressHeaderSpacer categoryToolbar={categoryToolbarEl} mainContent={feedMain} />
               </div>
             </div>
-          }
-        />
+          </>
+        ) : (
+          <PageStack categoryToolbar={categoryToolbarEl} mainContent={feedMain} />
+        )}
       </div>
 
       {selectedArticle && (

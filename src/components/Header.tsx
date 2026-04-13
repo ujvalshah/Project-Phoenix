@@ -8,7 +8,9 @@ import { NotificationBell } from './NotificationBell';
 import { Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom'; // Still needed for NavigationDrawer
 import { Avatar } from './shared/Avatar';
-import { FilterPopover, FilterState } from './header/FilterPopover';
+import { FilterPopover } from './header/FilterPopover';
+import { useFilterPanelHandlers } from '@/hooks/useFilterPanelHandlers';
+import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useToast } from '@/hooks/useToast';
@@ -102,38 +104,17 @@ export const Header: React.FC<HeaderProps> = ({
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  
-  // Derive filter popover state from the global filter hook (single source of truth).
-  const filterState: FilterState = {
-    collectionId: filters.collectionId ?? null,
-    formatTagIds: filters.formatTagIds,
-    domainTagIds: filters.domainTagIds,
-    subtopicTagIds: filters.subtopicTagIds,
-  };
 
-  const handleFilterChange = (newFilters: FilterState) => {
-    filters.setCollectionId(newFilters.collectionId);
-    // Sync dimension tags — compare and toggle as needed
-    const syncDimension = (prev: string[], next: string[], toggle: (id: string) => void) => {
-      for (const id of next) {
-        if (!prev.includes(id)) toggle(id);
-      }
-      for (const id of prev) {
-        if (!next.includes(id)) toggle(id);
-      }
-    };
-    syncDimension(filters.formatTagIds, newFilters.formatTagIds || [], filters.toggleFormatTag);
-    syncDimension(filters.domainTagIds, newFilters.domainTagIds || [], filters.toggleDomainTag);
-    syncDimension(filters.subtopicTagIds, newFilters.subtopicTagIds || [], filters.toggleSubtopicTag);
-  };
+  const { filterState, handleFilterChange, handleFilterClear } = useFilterPanelHandlers();
 
-  const handleFilterClear = () => {
-    filters.setCollectionId(null);
-    filters.clearFormatTags();
-    filters.clearDomainTags();
-    filters.clearSubtopicTags();
-  };
-  
+  const {
+    isInlineDesktopFiltersActive,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    toggleSidebarCollapsed,
+    expandSidebar,
+  } = useDesktopFilterSidebar();
+
   
   // Dropdown anchor refs - DropdownPortal handles positioning
   // Separate refs for desktop and mobile to avoid ref collision
@@ -169,6 +150,8 @@ export const Header: React.FC<HeaderProps> = ({
   const isHome = currentPath === '/';
   const isCollections = currentPath === '/collections';
   const isBookmarks = currentPath === '/bookmarks';
+
+  const inlineDesktopFilters = isHome && isInlineDesktopFiltersActive && !isMobile;
 
   // DropdownPortal handles positioning, scroll/resize updates, and click-outside detection
   // Only keyboard shortcuts need manual handling
@@ -231,13 +214,24 @@ export const Header: React.FC<HeaderProps> = ({
           setIsMobileSearchOpen(false);
         } else if (isSortOpen) setIsSortOpen(false);
         else if (isUserMenuOpen) setIsUserMenuOpen(false);
-        else if (isFilterPopoverOpen) setIsFilterPopoverOpen(false);
+        else if (inlineDesktopFilters && !sidebarCollapsed) {
+          setSidebarCollapsed(true);
+        } else if (isFilterPopoverOpen) setIsFilterPopoverOpen(false);
         else if (isMoreMenuOpen) setIsMoreMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSortOpen, isUserMenuOpen, isFilterPopoverOpen, isMobileSearchOpen, isMoreMenuOpen]);
+  }, [
+    isSortOpen,
+    isUserMenuOpen,
+    isFilterPopoverOpen,
+    isMobileSearchOpen,
+    isMoreMenuOpen,
+    inlineDesktopFilters,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+  ]);
 
   // Use global filter hook as single source of truth for active filter state
   const hasActiveFilters = filters.hasActiveFilters;
@@ -402,17 +396,29 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setIsFilterPopoverOpen(!isFilterPopoverOpen);
+                    if (inlineDesktopFilters) {
+                      toggleSidebarCollapsed();
+                    } else {
+                      setIsFilterPopoverOpen(!isFilterPopoverOpen);
+                    }
                   }}
                   className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 ${
-                    isFilterPopoverOpen || hasActiveFilters
+                    (inlineDesktopFilters ? !sidebarCollapsed : isFilterPopoverOpen) || hasActiveFilters
                       ? 'bg-yellow-50 text-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-400'
                       : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-slate-800'
                   }`}
                   aria-label="Filter"
                   title="Filter"
+                  aria-expanded={inlineDesktopFilters ? !sidebarCollapsed : isFilterPopoverOpen}
                 >
-                  <Filter size={16} fill={isFilterPopoverOpen || hasActiveFilters ? "currentColor" : "none"} />
+                  <Filter
+                    size={16}
+                    fill={
+                      (inlineDesktopFilters ? !sidebarCollapsed : isFilterPopoverOpen) || hasActiveFilters
+                        ? 'currentColor'
+                        : 'none'
+                    }
+                  />
                   {hasActiveFilters && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-gray-500 px-0.5 text-[9px] font-medium text-white dark:bg-slate-500">
                       {activeFilterCount}
@@ -735,7 +741,12 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Filter Popover - Desktop (lg+) - mega dropdown */}
       <DropdownPortal
-        isOpen={isFilterPopoverOpen && !isTablet && !isMobile}
+        isOpen={
+          isFilterPopoverOpen &&
+          !isTablet &&
+          !isMobile &&
+          !(isHome && isInlineDesktopFiltersActive)
+        }
         anchorRef={filterButtonRef}
         onClickOutside={() => setIsFilterPopoverOpen(false)}
         className=""
@@ -838,7 +849,14 @@ export const Header: React.FC<HeaderProps> = ({
         isAdmin={isAdmin}
         logout={logout}
         openAuthModal={() => openAuthModal('login')}
-        onOpenFilters={() => setIsFilterPopoverOpen(true)}
+        onOpenFilters={() => {
+          if (isHome && isInlineDesktopFiltersActive && !isMobile) {
+            expandSidebar();
+            setIsFilterPopoverOpen(false);
+          } else {
+            setIsFilterPopoverOpen(true);
+          }
+        }}
         hasActiveFilters={hasActiveFilters}
         activeFilterCount={activeFilterCount}
         viewMode={viewMode}
