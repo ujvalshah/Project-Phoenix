@@ -8,6 +8,9 @@ export const BackToTopButton: React.FC = () => {
   const lastVisibleRef = useRef(false);
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
+  const bottomOffsetClass = isAdminRoute
+    ? 'bottom-20 md:bottom-24'
+    : 'max-md:bottom-[calc(1.5rem+var(--mobile-bottom-nav-inset,0px))] md:max-lg:bottom-[calc(2rem+var(--mobile-bottom-nav-inset,0px))] lg:bottom-8';
 
   useEffect(() => {
     // CRITICAL PERFORMANCE FIX: Optimize scroll handler to be < 5ms
@@ -82,9 +85,7 @@ export const BackToTopButton: React.FC = () => {
   return (
     <button
       onClick={scrollToTop}
-      className={`fixed right-6 md:right-8 z-30 p-2.5 rounded-full bg-primary-500 text-slate-900 shadow-lg shadow-primary-500/30 hover:bg-primary-400 hover:scale-110 transition-all duration-300 transform flex items-center justify-center ${
-        isAdminRoute ? 'bottom-20 md:bottom-24' : 'bottom-6 md:bottom-8'
-      } ${
+      className={`fixed right-6 md:right-8 z-30 p-2.5 rounded-full bg-primary-500 text-slate-900 shadow-lg shadow-primary-500/30 hover:bg-primary-400 hover:scale-110 transition-all duration-300 transform flex items-center justify-center ${bottomOffsetClass} ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
       }`}
     >

@@ -1244,4 +1244,27 @@ export const getMyArticleCounts = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Get count of Market Pulse articles created today (UTC)
+ *
+ * GET /api/articles/pulse/today-count
+ * Public endpoint — no authentication required
+ */
+export const getPulseTodayCount = async (_req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
+    const count = await Article.countDocuments({
+      contentStream: { $in: ['pulse', 'both'] },
+      createdAt: { $gte: startOfDay },
+      visibility: { $ne: 'private' },
+    });
+
+    res.json({ count });
+  } catch (error: unknown) {
+    const logger = createRequestLogger(_req);
+    logger.error({ error }, '[Articles] Get pulse today count error');
+    sendInternalError(res);
+  }
+};

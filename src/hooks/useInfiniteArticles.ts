@@ -32,6 +32,7 @@ interface UseInfiniteArticlesOptions {
  */
 export interface UseInfiniteArticlesResult {
   articles: Article[];
+  totalCount?: number;
   isLoading: boolean;
   /** True when fetching due to filter/sort change (not initial load or next page) */
   isFilterRefetching: boolean;
@@ -133,8 +134,11 @@ export const useInfiniteArticles = ({
     return deduplicated;
   }, [query.data]); // FIXED: Use query.data instead of query.data?.pages for more reliable updates
 
+  const totalCount = query.data?.pages?.[0]?.total;
+
   return {
     articles, // Return articles directly - backend has already filtered them
+    totalCount,
     isLoading: query.isLoading,
     isFilterRefetching: query.isFetching && !query.isLoading && !query.isFetchingNextPage,
     isFetchingNextPage: query.isFetchingNextPage,

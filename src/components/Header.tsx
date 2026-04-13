@@ -1,7 +1,7 @@
 // NOTE: Do not add multiple React imports in this file.
 // Consolidate all hooks into the single import below.
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, Mail, Zap } from 'lucide-react';
+import { Sparkles, LogOut, Settings, Shield, LogIn, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, Mail } from 'lucide-react';
 import { SearchInput, SearchInputHandle } from './header/SearchInput';
 import { MobileSearchOverlay } from './header/MobileSearchOverlay';
 import { NotificationBell } from './NotificationBell';
@@ -19,9 +19,12 @@ import { DropdownPortal } from './UI/DropdownPortal';
 import { useFilters } from '@/context/FilterStateContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { useLegalPages } from '@/hooks/useLegalPages';
+import { usePulseTodayCount } from '@/hooks/usePulseTodayCount';
 import { twMerge } from 'tailwind-merge';
 import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { setNarrowHeaderHidden } from '@/constants/layoutScrollBridge';
+import MobileFilterSheet from './header/MobileFilterSheet';
+import { useFilterResults } from '@/context/FilterResultsContext';
 
 /** Yellow “N” tile — matches NavigationDrawer / app favicon treatment */
 const NuggetsLogoMark: React.FC<{ showName?: boolean }> = ({ showName }) => (
@@ -84,7 +87,9 @@ export const Header: React.FC<HeaderProps> = ({
   // Consume filter state from context — no prop drilling required
   const filters = useFilters();
   const { searchInputValue: searchQuery, setSearchInput: setSearchQuery, sortOrder, setSortOrder } = filters;
+  const { data: pulseTodayCount } = usePulseTodayCount();
   const { narrowHeaderHidden } = useAppChromeScroll();
+  const { resultCount } = useFilterResults();
 
   useEffect(() => {
     setNarrowHeaderHidden(narrowHeaderHidden);
@@ -275,7 +280,12 @@ export const Header: React.FC<HeaderProps> = ({
               <Menu size={18} aria-hidden />
             </button>
 
-            <Link to="/" className="shrink-0" aria-label="Home">
+            <Link
+              to="/"
+              className="shrink-0"
+              aria-label="Home"
+              onClick={() => filters.setContentStream('standard')}
+            >
               <NuggetsLogoMark showName />
             </Link>
 
@@ -309,7 +319,12 @@ export const Header: React.FC<HeaderProps> = ({
                   }`}
                   aria-current={isHome && filters.contentStream === 'pulse' ? 'page' : undefined}
                 >
-                  <Zap size={14} /> Market Pulse
+                  Market Pulse
+                  {pulseTodayCount != null && pulseTodayCount > 0 && (
+                    <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-normal leading-none">
+                      {pulseTodayCount}
+                    </span>
+                  )}
                 </Link>
               )}
               <Link
@@ -532,7 +547,12 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Menu size={18} strokeWidth={2} aria-hidden />
             </button>
-            <Link to="/" className="flex shrink-0 items-center" aria-label="Home">
+            <Link
+              to="/"
+              className="flex shrink-0 items-center"
+              aria-label="Home"
+              onClick={() => filters.setContentStream('standard')}
+            >
               <NuggetsLogoMark />
             </Link>
           </div>
@@ -724,6 +744,7 @@ export const Header: React.FC<HeaderProps> = ({
           filters={filterState}
           onChange={handleFilterChange}
           onClear={handleFilterClear}
+          resultCount={resultCount}
         />
       </DropdownPortal>
 
@@ -790,51 +811,16 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </DropdownPortal>
 
-      {/* Tablet/Mobile Filter+Sort Popover - uses DropdownPortal */}
-      <DropdownPortal
+      {/* Tablet/Mobile filter sheet */}
+      <MobileFilterSheet
         isOpen={isFilterPopoverOpen && (isTablet || isMobile)}
-        anchorRef={mobileFilterButtonRef}
-        onClickOutside={() => setIsFilterPopoverOpen(false)}
-        className="bg-white rounded-xl shadow-xl border border-gray-100 max-w-sm"
-      >
-        <div className="p-4 space-y-4">
-          {/* Filter Section */}
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Filters</h3>
-            <FilterPopover
-              filters={filterState}
-              onChange={handleFilterChange}
-              onClear={handleFilterClear}
-              variant="embedded"
-            />
-          </div>
-          
-          {/* Sort Section */}
-          <div className="border-t border-gray-100 pt-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Sort</h3>
-            <div className="space-y-1">
-              {([
-                { value: 'latest' as const, label: 'Latest' },
-                { value: 'oldest' as const, label: 'Oldest' },
-              ]).map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => {
-                    setSortOrder(opt.value);
-                    setIsFilterPopoverOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors ${
-                    sortOrder === opt.value ? 'bg-gray-50 text-gray-900' : 'text-gray-700'
-                  }`}
-                  aria-label={`Sort by ${opt.label}`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </DropdownPortal>
+        filters={filterState}
+        onChange={handleFilterChange}
+        onClearAll={handleFilterClear}
+        onClose={() => setIsFilterPopoverOpen(false)}
+        triggerRef={mobileFilterButtonRef}
+        resultCount={resultCount}
+      />
 
       {/* Mobile Search Overlay — extracted to its own component */}
       <MobileSearchOverlay
@@ -867,7 +853,7 @@ export const Header: React.FC<HeaderProps> = ({
 // --- Internal Feedback Form Component ---
 interface DrawerFeedbackFormProps {
   isAuthenticated: boolean;
-  currentUser?: { id: string; name: string; email?: string; avatarUrl?: string } | null;
+  currentUser?: { id?: string; name?: string; email?: string; avatarUrl?: string } | null;
 }
 
 const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated, currentUser }) => {
@@ -884,16 +870,21 @@ const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated
     
     setIsSending(true);
     try {
+      const feedbackUser =
+        currentUser?.id && currentUser?.name
+          ? {
+              id: currentUser.id,
+              name: currentUser.name,
+              email: currentUser.email,
+              avatarUrl: currentUser.avatarUrl,
+            }
+          : undefined;
+
       await adminFeedbackService.submitFeedback(
         feedback.trim(),
         'general',
-        currentUser ? {
-          id: currentUser.id,
-          name: currentUser.name,
-          email: currentUser.email,
-          avatarUrl: currentUser.avatarUrl
-        } : undefined,
-        !currentUser ? email : undefined
+        feedbackUser,
+        !feedbackUser ? email : undefined
       );
       
       setSent(true);
@@ -996,7 +987,6 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   isDark,
   toggleTheme,
 }) => {
-  const filters = useFilters();
   if (!isOpen) return null;
 
   // IMPORTANT:
@@ -1027,23 +1017,15 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto hide-scrollbar-mobile py-4 px-3 space-y-1">
-           <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Navigation</p>
-           <Link to="/" onClick={() => { filters.setContentStream('standard'); onClose(); }} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
-              <LayoutGrid size={18} /> Home
-           </Link>
-           {isFeatureEnabled('MARKET_PULSE') && (
-             <Link to="/" onClick={() => { filters.setContentStream('pulse'); onClose(); }} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
-                <Zap size={18} /> Market Pulse
-             </Link>
-           )}
-           <Link to="/collections" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
-              <Layers size={18} /> Collections
-           </Link>
-           <Link to="/contact" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
+           <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">More</p>
+           <p className="px-4 pb-2 text-xs leading-snug text-gray-500 dark:text-slate-400">
+             Home, Market Pulse, and Collections live in the bottom tab bar on mobile, or in the header beside the logo on larger screens.
+           </p>
+           <Link to="/contact" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors dark:text-slate-200 dark:hover:bg-slate-800">
               <Mail size={18} /> Contact Us
            </Link>
 
-           <div className="mx-4 my-2 h-px bg-gray-100" />
+           <div className="mx-4 my-2 h-px bg-gray-100 dark:bg-slate-800" />
            <p className="px-4 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Feed layout</p>
            <div className="grid grid-cols-3 gap-2 px-3">
              <button

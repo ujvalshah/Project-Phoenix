@@ -240,6 +240,8 @@ function transformArticle(doc: any): any {
     // Disclaimer fields
     showDisclaimer: rest.showDisclaimer,
     disclaimerText: rest.disclaimerText,
+    // Content stream classification (standard / pulse / both)
+    contentStream: rest.contentStream,
     };
     
     return article;

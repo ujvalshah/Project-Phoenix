@@ -16,7 +16,7 @@ export const LegalFooter: React.FC = () => {
     <footer
       role="contentinfo"
       aria-label="Legal"
-      className="w-full bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 mt-auto print:hidden"
+      className="w-full bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 mt-auto print:hidden pb-[var(--mobile-bottom-nav-inset,0px)] lg:pb-0"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">

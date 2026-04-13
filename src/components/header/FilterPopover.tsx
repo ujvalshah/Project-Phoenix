@@ -18,6 +18,7 @@ interface FilterPopoverProps {
   onChange: (newFilters: FilterState) => void;
   onClear: () => void;
   variant?: 'dropdown' | 'embedded';
+  resultCount?: number;
 }
 
 export const FilterPopover: React.FC<FilterPopoverProps> = ({
@@ -25,6 +26,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
   onChange,
   onClear,
   variant = 'dropdown',
+  resultCount,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'dimensions' | 'collections'>('dimensions');
@@ -318,6 +320,23 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                 );
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {!isLoading && (
+        <div className="mt-3 border-t border-gray-100 dark:border-slate-800 pt-2.5 flex items-center justify-between gap-2">
+          <p className="text-xs text-gray-500 dark:text-slate-400">
+            {typeof resultCount === 'number' ? `Showing ${resultCount} nuggets` : 'Filters apply instantly'}
+          </p>
+          {hasActiveFilter && (
+            <button
+              onClick={onClear}
+              className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+              aria-label="Clear all filters"
+            >
+              Clear all
+            </button>
           )}
         </div>
       )}

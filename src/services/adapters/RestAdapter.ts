@@ -102,6 +102,10 @@ export class RestAdapter implements IAdapter {
     return apiClient.get<Article>(`/articles/${id}`).catch(() => undefined);
   }
 
+  getPulseTodayCount(): Promise<number> {
+    return apiClient.get<{ count: number }>('/articles/pulse/today-count').then(r => r.count);
+  }
+
   getArticlesByAuthor(authorId: string): Promise<Article[]> {
     return apiClient.get<PaginatedArticlesResponse>(`/articles?authorId=${authorId}`)
       .then(response => {

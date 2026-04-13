@@ -11,6 +11,8 @@
  */
 export const Z_INDEX = {
   HEADER: 50,
+  /** Fixed mobile tab bar — below header/modals, above page content */
+  MOBILE_BOTTOM_NAV: 45,
   CATEGORY_BAR: 40,
   HEADER_OVERLAY: 100,
   MODAL: 200,

@@ -12,6 +12,10 @@ router.get('/', articlesController.getArticles);
 // NOTE: This route must come BEFORE /:id route to ensure proper matching
 router.get('/my/counts', authenticateToken, articlesController.getMyArticleCounts);
 
+// GET /api/articles/pulse/today-count - Get count of Market Pulse nuggets added today
+// NOTE: This route must come BEFORE /:id route to ensure proper matching
+router.get('/pulse/today-count', articlesController.getPulseTodayCount);
+
 // GET /api/articles/:id - Get specific article
 router.get('/:id', articlesController.getArticleById);
 

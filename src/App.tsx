@@ -20,6 +20,8 @@ import { PersistentVideoPlayer } from '@/components/PersistentVideoPlayer';
 import { NotificationPrompt } from '@/components/NotificationPrompt';
 import { LegalFooter } from '@/components/legal/LegalFooter';
 import { AppChromeScrollProvider } from '@/context/AppChromeScrollContext';
+import { FilterResultsProvider } from '@/context/FilterResultsContext';
+import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 
 // Legacy hash URL redirect handler
 // Redirects old /#/path URLs to clean /path URLs for backwards compatibility
@@ -127,6 +129,7 @@ const AppContent: React.FC = () => {
         On narrow viewports, scroll &gt; 50px hides the header bar; category rail pins to top (PageStack).
         HeaderSpacer MUST be used in PageStack to reserve this space.
       */}
+      <FilterResultsProvider>
       <AppChromeScrollProvider>
       <Header
         isDark={isDark}
@@ -258,8 +261,10 @@ const AppContent: React.FC = () => {
         <CreateNuggetModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
         <AuthModal />
       </MainLayout>
+      <MobileBottomNav />
       <LegalFooter />
       </AppChromeScrollProvider>
+      </FilterResultsProvider>
     </>
   );
 };

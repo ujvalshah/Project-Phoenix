@@ -28,7 +28,7 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { Article } from '@/types';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, X, Zap } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { PageStack } from '@/components/layouts/PageStack';
@@ -37,8 +37,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'react-router-dom';
 import { articleService } from '@/services/articleService';
 import { useFilters } from '@/context/FilterStateContext';
+import { useFilterResults } from '@/context/FilterResultsContext';
 
 const VALUEPROP_DISMISSED_KEY = 'nuggets_valueprop_dismissed';
+const PULSE_INTRO_DISMISSED_KEY = 'market_pulse_intro_dismissed';
 
 /** Compact value proposition strip shown to first-time visitors */
 const ValuePropStrip: React.FC = () => {
@@ -70,6 +72,41 @@ const ValuePropStrip: React.FC = () => {
       </p>
       <p className="text-xs text-gray-600 mt-0.5">
         Curated high-signal insights across Markets, Geopolitics, AI, and Tech. Save time — follow signal, not noise.
+      </p>
+    </div>
+  );
+};
+
+/** One-time intro banner for Market Pulse, shown on first visit to the pulse feed */
+const MarketPulseIntroBanner: React.FC = () => {
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(PULSE_INTRO_DISMISSED_KEY) === '1';
+    }
+    return false;
+  });
+
+  if (dismissed) return null;
+
+  const handleDismiss = () => {
+    setDismissed(true);
+    localStorage.setItem(PULSE_INTRO_DISMISSED_KEY, '1');
+  };
+
+  return (
+    <div className="relative mx-4 lg:mx-6 mb-3 px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 rounded-xl">
+      <button
+        onClick={handleDismiss}
+        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+        aria-label="Dismiss"
+      >
+        <X size={14} />
+      </button>
+      <p className="text-sm font-semibold text-gray-900 pr-6 flex items-center gap-1.5">
+        <Zap size={14} className="text-amber-500" /> Market Pulse
+      </p>
+      <p className="text-xs text-gray-600 mt-0.5">
+        Daily stream of high-signal market updates and macro intelligence. Refreshed every day.
       </p>
     </div>
   );
@@ -109,6 +146,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const touchStartRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const { setResultCount } = useFilterResults();
 
   const { currentUserId } = useAuth();
 
@@ -140,6 +178,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   // Tag filter continues to work alongside collection filter
   const {
     articles = [],
+    totalCount,
     isLoading: isLoadingArticles,
     isFilterRefetching,
     isFetchingNextPage,
@@ -164,6 +203,10 @@ export const HomePage: React.FC<HomePageProps> = ({
     subtopicTagIds,
     contentStream,
   });
+
+  useEffect(() => {
+    setResultCount(totalCount);
+  }, [setResultCount, totalCount]);
 
   const handleRefreshFeed = async () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -264,7 +307,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           ) : undefined}
           mainContent={
             <div className="max-w-[1800px] mx-auto pb-4">
-              <ValuePropStrip />
+              {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
               <div className="px-4 lg:px-6">
               <ArticleGrid
                 articles={articles}

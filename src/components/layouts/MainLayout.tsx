@@ -40,7 +40,7 @@ interface MainLayoutProps {
  */
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 font-sans selection:bg-primary-500/30">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 font-sans selection:bg-primary-500/30 pb-[var(--mobile-bottom-nav-inset,0px)] lg:pb-0">
       {/* 
         Content container - NO padding-top compensation.
         Header is rendered OUTSIDE this container in App.tsx.
