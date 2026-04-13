@@ -6,6 +6,7 @@ import { LoginPayload, SignupPayload, AuthProvider as AuthProviderType } from '@
 import { authService } from '@/services/authService';
 import { FeatureFlags, SignupConfig } from '@/admin/types/admin';
 import { adminConfigService } from '@/admin/services/adminConfigService';
+import { isTransientAuthMeError } from '@/utils/authBootstrapErrors';
 
 interface AuthContextType {
   user: LegacyUser | null; // Backward compatibility
@@ -42,70 +43,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState<'login' | 'signup'>('login');
 
+  const persistAuth = useCallback(
+    (u: ModularUser, t: string, refreshTkn?: string, expiresIn?: number) => {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem(
+            AUTH_STORAGE_KEY,
+            JSON.stringify({
+              user: u,
+              token: t,
+              accessToken: t,
+              refreshToken: refreshTkn,
+              expiresIn: expiresIn,
+              refreshedAt: Date.now(),
+            })
+          );
+        }
+      } catch (e) {
+        console.warn('Failed to persist auth to storage:', e);
+      }
+      setModularUser(u);
+      setToken(t);
+    },
+    []
+  );
+
   // Hydrate from storage & Load Flags
   useEffect(() => {
     const init = async () => {
       try {
-        // 1. Load Auth
+        // 1. Load Auth — validate token with server when present
         if (typeof window !== 'undefined' && window.localStorage) {
           try {
             const stored = localStorage.getItem(AUTH_STORAGE_KEY);
             if (stored) {
-              const { user: storedUser, token: storedToken } = JSON.parse(stored);
-              setModularUser(storedUser);
-              setToken(storedToken);
+              const parsed = JSON.parse(stored) as {
+                user?: ModularUser;
+                token?: string;
+                refreshToken?: string;
+                expiresIn?: number;
+              };
+              const storedToken = parsed.token;
+              if (!storedToken) {
+                localStorage.removeItem(AUTH_STORAGE_KEY);
+              } else {
+                try {
+                  const freshUser = await authService.getCurrentUser();
+                  persistAuth(freshUser, storedToken, parsed.refreshToken, parsed.expiresIn);
+                } catch (bootstrapErr: unknown) {
+                  if (isTransientAuthMeError(bootstrapErr)) {
+                    if (parsed.user) {
+                      setModularUser(parsed.user);
+                    }
+                    setToken(storedToken);
+                  } else {
+                    localStorage.removeItem(AUTH_STORAGE_KEY);
+                    setModularUser(null);
+                    setToken(null);
+                  }
+                }
+              }
             }
           } catch (e) {
-            console.warn("Failed to load auth from storage", e);
+            console.warn('Failed to load auth from storage', e);
             if (typeof window !== 'undefined' && window.localStorage) {
               localStorage.removeItem(AUTH_STORAGE_KEY);
             }
           }
         }
-        
+
         // 2. Load Global Config
         const [flags, sConf] = await Promise.all([
-            adminConfigService.getFeatureFlags(),
-            adminConfigService.getSignupConfig()
+          adminConfigService.getFeatureFlags(),
+          adminConfigService.getSignupConfig(),
         ]);
         setFeatureFlags(flags);
         setSignupConfig(sConf);
-
       } catch (e) {
-        console.error("Initialization failed", e);
+        console.error('Initialization failed', e);
       } finally {
         setIsLoading(false);
       }
     };
     init();
-  }, []);
-
-  const persistAuth = (
-    u: ModularUser,
-    t: string,
-    refreshTkn?: string,
-    expiresIn?: number
-  ) => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem(
-          AUTH_STORAGE_KEY,
-          JSON.stringify({
-            user: u,
-            token: t,
-            accessToken: t,
-            refreshToken: refreshTkn,
-            expiresIn: expiresIn,
-            refreshedAt: Date.now(),
-          })
-        );
-      }
-    } catch (e) {
-      console.warn('Failed to persist auth to storage:', e);
-    }
-    setModularUser(u);
-    setToken(t);
-  };
+  }, [persistAuth]);
 
   // --- ADAPTER: Modular -> Legacy ---
   const legacyUser: LegacyUser | null = useMemo(() => {

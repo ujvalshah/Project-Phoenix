@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Collection } from '@/types';
+import { Collection, User } from '@/types';
 import { storageService } from '@/services/storageService';
 import { Search, LayoutGrid, List, ArrowUp, ArrowDown, ChevronDown, Plus, X, Folder, CheckSquare } from 'lucide-react';
 import { EmptyState } from '@/components/UI/EmptyState';
@@ -150,10 +150,14 @@ export const CollectionsPage: React.FC = () => {
         });
       }
 
-      const allUsersResponse = await storageService.getUsers();
-
-      // Ensure allUsers is an array
-      const allUsers = Array.isArray(allUsersResponse) ? allUsersResponse : [];
+      // User list requires authentication; guests still see collections without creator hydration
+      let allUsers: User[] = [];
+      try {
+        const allUsersResponse = await storageService.getUsers();
+        allUsers = Array.isArray(allUsersResponse) ? allUsersResponse : [];
+      } catch {
+        allUsers = [];
+      }
 
       const hydrated = collectionsData.map(col => ({
           ...col,

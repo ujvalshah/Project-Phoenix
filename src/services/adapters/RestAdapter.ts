@@ -264,7 +264,7 @@ export class RestAdapter implements IAdapter {
   }
 
   getUserById(id: string): Promise<User | undefined> {
-    return apiClient.get<User>(`/users/${id}`).catch(() => undefined);
+    return apiClient.get<User>(`/users/public/${id}`).catch(() => undefined);
   }
 
   updateUser(id: string, updates: Partial<User>): Promise<User | null> {

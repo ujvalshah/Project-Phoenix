@@ -377,8 +377,8 @@ class ApiClient {
               } catch (e) {
                 // Ignore storage errors
               }
-              if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
+              if (window.location.pathname !== '/') {
+                window.location.href = '/';
               }
             }
             const isExpired = errorInfo.message?.toLowerCase().includes('expired') || 
@@ -442,8 +442,8 @@ class ApiClient {
               // Clear auth data
               clearStoredAuth();
               // Only redirect if we're not already on login page
-              if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
+              if (window.location.pathname !== '/') {
+                window.location.href = '/';
               }
             }
             // Check backend message to provide specific error
@@ -508,15 +508,14 @@ class ApiClient {
             networkError: true,
           },
         });
-        
-        // In development, show helpful message; in production, show generic message
+
         const isDevelopment = import.meta.env.DEV;
-        if (isDevelopment) {
-          throw new Error(
-            "We couldn't connect to the server. Please ensure the backend server is running on port 5000."
-          );
-        }
-        throw new Error("We couldn't connect to the server. Please check your internet connection and try again.");
+        const msg = isDevelopment
+          ? "We couldn't connect to the server. Please ensure the backend server is running on port 5000."
+          : "We couldn't connect to the server. Please check your internet connection and try again.";
+        const networkErr = new Error(msg) as Error & { isNetworkError: boolean; response?: undefined };
+        networkErr.isNetworkError = true;
+        throw networkErr;
       }
       
       // Capture API errors (non-network) in Sentry

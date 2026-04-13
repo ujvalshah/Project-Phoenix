@@ -4,7 +4,7 @@ import './loadEnv.js';
 
 // CRITICAL: Validate environment variables BEFORE any other imports
 // This ensures the server fails fast on misconfiguration
-import { validateEnv, getEnv } from './config/envValidation.js';
+import { validateEnv, getEnv, getCorsAllowedOrigins } from './config/envValidation.js';
 validateEnv();
 
 // Initialize Logger early (after validateEnv, before other imports that might log)
@@ -88,13 +88,8 @@ app.use(compression({
 // Security Middleware
 app.use(helmet());
 
-// CORS Configuration - FRONTEND_URL first (env-specific), then fixed production domains
-const allowedOrigins: string[] = [
-  ...(env.FRONTEND_URL ? [env.FRONTEND_URL] : []),
-  "https://nuggetnews.app",
-  "https://www.nuggetnews.app",
-  "https://nugget-cyan.vercel.app"
-].filter(Boolean);
+// CORS allowlist: FRONTEND_URL + CORS_ALLOWED_ORIGINS (see envValidation.getCorsAllowedOrigins)
+const allowedOrigins: string[] = getCorsAllowedOrigins();
 
 // Diagnostic middleware to log request details before CORS check
 app.use((req, res, next) => {

@@ -155,7 +155,10 @@ export const MobileBottomNav: React.FC = () => {
           label="Home"
           icon={<Home size={19} strokeWidth={isStandard ? 2.3 : 2.1} />}
           active={isStandard}
-          onClick={() => filters.setContentStream('standard')}
+          onClick={() => {
+            filters.setContentStream('standard');
+            if (isStandard) window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         />
 
         {pulseEnabled && (
@@ -164,7 +167,10 @@ export const MobileBottomNav: React.FC = () => {
             label="Market Pulse"
             icon={<Activity size={19} strokeWidth={isPulse ? 2.3 : 2.1} />}
             active={isPulse}
-            onClick={() => filters.setContentStream('pulse')}
+            onClick={() => {
+              filters.setContentStream('pulse');
+              if (isPulse) window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             aria-label="Market Pulse"
             indicator={pulseHasUpdates ? (
               <span
@@ -183,6 +189,9 @@ export const MobileBottomNav: React.FC = () => {
           label="Collections"
           icon={<Layers size={19} strokeWidth={isCollections ? 2.3 : 2.1} />}
           active={isCollections}
+          onClick={() => {
+            if (isCollections) window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         />
       </div>
     </nav>

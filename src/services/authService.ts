@@ -5,6 +5,7 @@ import { LoginPayload, SignupPayload, AuthProvider } from '../types/auth';
 import { apiClient } from './apiClient';
 import { createDefaultUser } from '../models/userDefaults';
 import { mapAuthError } from '../utils/errorMessages';
+import { buildAuthVerifyEmailPath } from '../utils/authApiPaths';
 
 // Helper: Map Backend User Data (Legacy format) -> Frontend Modular Schema
 const mapLegacyToModular = (legacy: LegacyUser): ModularUser => {
@@ -122,10 +123,15 @@ class AuthService {
   }
 
   async loginWithProvider(provider: AuthProvider): Promise<{ user: ModularUser; token: string }> {
-    // Deferred feature — backend support pending
-    // TODO: Implement social login when backend endpoints are ready
-    // For now, throw an error indicating it's not implemented
     throw new Error(`Social login with ${provider} is not yet implemented`);
+  }
+
+  /**
+   * Load current user from the API using the stored access token (session validation).
+   */
+  async getCurrentUser(): Promise<ModularUser> {
+    const user = await apiClient.get('/auth/me');
+    return normalizeUserFromBackend(user);
   }
 
   async requestPasswordReset(email: string): Promise<void> {
@@ -157,7 +163,7 @@ class AuthService {
   }
 
   async verifyEmail(token: string): Promise<void> {
-    await apiClient.get('/auth/verify-email', { params: { token } });
+    await apiClient.get(buildAuthVerifyEmailPath(token));
   }
 
   async resendVerification(email: string): Promise<void> {

@@ -38,7 +38,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   const { data: taxonomy, isLoading: isTaxonomyLoading } = useTagTaxonomy();
   const { data: featuredCollections = [], isLoading: isFeaturedLoading } = useFeaturedCollections();
   const { data: publicCollections = [], isLoading: isPublicLoading } = useQuery<Collection[]>({
-    queryKey: ['collections', 'public', 'filter-panel'],
+    queryKey: ['collections', 'public', 'filter-surface'],
     queryFn: async () => {
       const result = await storageService.getCollections({
         type: 'public',
@@ -105,6 +105,12 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     onChange({ ...filters, collectionId: filters.collectionId === id ? null : id });
   };
 
+  const tagMaps = useMemo(() => ({
+    formats: new Map((taxonomy?.formats ?? []).map((t) => [t.id, t])),
+    domains: new Map((taxonomy?.domains ?? []).map((t) => [t.id, t])),
+    subtopics: new Map((taxonomy?.subtopics ?? []).map((t) => [t.id, t])),
+  }), [taxonomy]);
+
   const appliedChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
     if (filters.collectionId) {
@@ -116,46 +122,44 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         onRemove: () => onChange({ ...filters, collectionId: null }),
       });
     }
-    if (taxonomy) {
-      for (const id of selectedFormatIds) {
-        const tag = taxonomy.formats.find((t) => t.id === id);
-        if (tag) {
-          chips.push({
-            key: `fmt-${id}`,
-            label: tag.rawName,
-            onRemove: () =>
-              onChange({ ...filters, formatTagIds: selectedFormatIds.filter((x) => x !== id) }),
-          });
-        }
+    for (const id of selectedFormatIds) {
+      const tag = tagMaps.formats.get(id);
+      if (tag) {
+        chips.push({
+          key: `fmt-${id}`,
+          label: tag.rawName,
+          onRemove: () =>
+            onChange({ ...filters, formatTagIds: selectedFormatIds.filter((x) => x !== id) }),
+        });
       }
-      for (const id of selectedDomainIds) {
-        const tag = taxonomy.domains.find((t) => t.id === id);
-        if (tag) {
-          chips.push({
-            key: `dom-${id}`,
-            label: tag.rawName,
-            onRemove: () =>
-              onChange({ ...filters, domainTagIds: selectedDomainIds.filter((x) => x !== id) }),
-          });
-        }
+    }
+    for (const id of selectedDomainIds) {
+      const tag = tagMaps.domains.get(id);
+      if (tag) {
+        chips.push({
+          key: `dom-${id}`,
+          label: tag.rawName,
+          onRemove: () =>
+            onChange({ ...filters, domainTagIds: selectedDomainIds.filter((x) => x !== id) }),
+        });
       }
-      for (const id of selectedSubtopicIds) {
-        const tag = taxonomy.subtopics.find((t) => t.id === id);
-        if (tag) {
-          chips.push({
-            key: `sub-${id}`,
-            label: tag.rawName,
-            onRemove: () =>
-              onChange({ ...filters, subtopicTagIds: selectedSubtopicIds.filter((x) => x !== id) }),
-          });
-        }
+    }
+    for (const id of selectedSubtopicIds) {
+      const tag = tagMaps.subtopics.get(id);
+      if (tag) {
+        chips.push({
+          key: `sub-${id}`,
+          label: tag.rawName,
+          onRemove: () =>
+            onChange({ ...filters, subtopicTagIds: selectedSubtopicIds.filter((x) => x !== id) }),
+        });
       }
     }
     return chips;
   }, [
     filters,
     collectionsById,
-    taxonomy,
+    tagMaps,
     selectedFormatIds,
     selectedDomainIds,
     selectedSubtopicIds,
@@ -277,7 +281,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
               type="button"
               role="tab"
               aria-selected={activeMode === 'dimensions'}
-              onClick={() => setActiveMode('dimensions')}
+              onClick={() => { setActiveMode('dimensions'); setSearchQuery(''); }}
               className={`min-h-9 flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 ${
                 activeMode === 'dimensions'
                   ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100'
@@ -290,7 +294,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
               type="button"
               role="tab"
               aria-selected={activeMode === 'collections'}
-              onClick={() => setActiveMode('collections')}
+              onClick={() => { setActiveMode('collections'); setSearchQuery(''); }}
               className={`min-h-9 flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 ${
                 activeMode === 'collections'
                   ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100'
@@ -313,9 +317,19 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
               placeholder={
                 activeMode === 'collections' ? 'Search collections…' : 'Search tags in this mode…'
               }
-              className="h-8 w-full rounded-lg border border-slate-200/80 bg-white pl-8 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-400/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+              className="h-8 w-full rounded-lg border border-slate-200/80 bg-white pl-8 pr-7 text-xs text-slate-800 placeholder:text-slate-400 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-400/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
               aria-label={activeMode === 'collections' ? 'Search collections' : 'Search tags'}
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                aria-label="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
         </div>
       </div>

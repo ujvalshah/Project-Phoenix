@@ -24,6 +24,9 @@ const envSchema = z.object({
   
   // Optional variables with validation
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL').optional(),
+
+  /** Comma-separated extra browser origins allowed by CORS (e.g. preview deploy URL). FRONTEND_URL is always included when set. */
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
   
   // Support MONGODB_URI as alias (for compatibility)
   MONGODB_URI: z.string().optional(),
@@ -97,6 +100,16 @@ export function validateEnv(): ValidatedEnv {
       console.error('Please set FRONTEND_URL in your .env file.\n');
       process.exit(1);
     }
+    if (!result.data.RESEND_API_KEY?.trim()) {
+      console.error('\n❌ PRODUCTION CONFIGURATION ERROR\n');
+      console.error('RESEND_API_KEY is required in production for verification and password-reset emails.\n');
+      process.exit(1);
+    }
+    if (!result.data.EMAIL_FROM?.trim()) {
+      console.error('\n❌ PRODUCTION CONFIGURATION ERROR\n');
+      console.error('EMAIL_FROM is required in production (verified sender in Resend).\n');
+      process.exit(1);
+    }
   }
 
   // Redis configuration validation and warnings
@@ -120,5 +133,21 @@ export function getEnv(): ValidatedEnv {
     throw new Error('Environment validation not yet executed. Call validateEnv() first.');
   }
   return validatedEnv;
+}
+
+/**
+ * Build CORS allowlist: comma-separated CORS_ALLOWED_ORIGINS plus FRONTEND_URL (deduped).
+ */
+export function getCorsAllowedOrigins(): string[] {
+  const env = getEnv();
+  const fromList = (env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const set = new Set<string>(fromList);
+  if (env.FRONTEND_URL) {
+    set.add(env.FRONTEND_URL);
+  }
+  return Array.from(set);
 }
 

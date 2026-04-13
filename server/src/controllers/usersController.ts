@@ -7,6 +7,7 @@ import { createSearchRegex } from '../utils/escapeRegExp.js';
 import { resolveTagNamesToIds } from '../utils/tagHelpers.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+import { accessUserMutation } from '../utils/userAccess.js';
 
 export const getUsers = async (req: Request, res: Response) => {
   try {
@@ -15,14 +16,17 @@ export const getUsers = async (req: Request, res: Response) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
     const skip = (page - 1) * limit;
 
-    const query: any = {};
+    const query: Record<string, unknown> = {};
     // SECURITY: createSearchRegex escapes user input to prevent ReDoS
+    // Email is only searchable by admins to reduce user-enumeration risk.
+    const authRole = (req as { user?: { role?: string } }).user?.role;
+    const includeEmailInSearch = authRole === 'admin';
     if (q && typeof q === 'string' && q.trim().length > 0) {
       const regex = createSearchRegex(q);
       query.$or = [
         { 'profile.displayName': regex },
         { 'profile.username': regex },
-        { 'auth.email': regex }
+        ...(includeEmailInSearch ? [{ 'auth.email': regex }] : []),
       ];
     }
 
@@ -50,6 +54,33 @@ export const getUsers = async (req: Request, res: Response) => {
       error: {
         message: error.message,
         stack: error.stack,
+      },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
+ * Public read-only profile for SPA (profiles, collection contributors).
+ * Same shape as normalizeDoc but auth.email is redacted. Not for admin bulk operations.
+ */
+export const getPublicUserProfile = async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const doc = normalizeDoc(user) as Record<string, unknown>;
+    if (doc?.auth && typeof doc.auth === 'object') {
+      (doc.auth as Record<string, unknown>).email = '';
+    }
+    res.json(doc);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as { user?: { userId?: string } }).user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Users] Get public profile error',
+      error: {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
@@ -90,9 +121,25 @@ export const updateUser = async (req: Request, res: Response) => {
 
     // Don't allow password updates through this endpoint (use separate change password endpoint)
     const { password, ...updateData } = validationResult.data;
-    
-    const userId = req.params.id;
-    
+
+    const authUserId = (req as { user?: { userId?: string; role?: string } }).user?.userId;
+    const authRole = (req as { user?: { userId?: string; role?: string } }).user?.role;
+    const targetUserId = req.params.id;
+    const access = accessUserMutation(authUserId, authRole, targetUserId);
+    if (access === 'unauthenticated') {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    if (access === 'forbid') {
+      return res.status(403).json({ message: 'You can only update your own profile' });
+    }
+
+    // Non-admins cannot change role (prevents privilege escalation)
+    if (authRole !== 'admin') {
+      delete (updateData as { role?: unknown }).role;
+    }
+
+    const userId = targetUserId;
+
     // Check for email uniqueness if email is being updated
     if (updateData.email) {
       const normalizedEmail = updateData.email.toLowerCase();
@@ -245,6 +292,16 @@ export const updateUser = async (req: Request, res: Response) => {
 
 export const deleteUser = async (req: Request, res: Response) => {
   try {
+    const authUserId = (req as { user?: { userId?: string; role?: string } }).user?.userId;
+    const authRole = (req as { user?: { userId?: string; role?: string } }).user?.role;
+    const access = accessUserMutation(authUserId, authRole, req.params.id);
+    if (access === 'unauthenticated') {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    if (access === 'forbid') {
+      return res.status(403).json({ message: 'You can only delete your own account' });
+    }
+
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.status(204).send();

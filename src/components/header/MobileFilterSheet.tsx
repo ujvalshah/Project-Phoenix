@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Search, X } from 'lucide-react';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
@@ -65,6 +65,8 @@ const ChipButton: React.FC<{
   </button>
 );
 
+const SEARCH_ANALYTICS_DEBOUNCE_MS = 600;
+
 const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
   isOpen,
   filters,
@@ -78,13 +80,15 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [announceNoResults, setAnnounceNoResults] = useState(false);
+  const [animState, setAnimState] = useState<'closed' | 'entering' | 'open' | 'exiting'>('closed');
   const panelRef = useRef<HTMLDivElement>(null);
-  const startYRef = useRef<number | null>(null);
+  const handleStartYRef = useRef<number | null>(null);
+  const searchAnalyticsTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const { data: taxonomy, isLoading: isTaxonomyLoading } = useTagTaxonomy();
   const { data: featuredCollections = [], isLoading: isFeaturedLoading } = useFeaturedCollections();
   const { data: publicCollections = [], isLoading: isPublicLoading } = useQuery<Collection[]>({
-    queryKey: ['collections', 'public', 'mobile-filter-sheet'],
+    queryKey: ['collections', 'public', 'filter-surface'],
     queryFn: async () => {
       const result = await storageService.getCollections({
         type: 'public',
@@ -213,14 +217,43 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
   const hasTopicMatches = formatTags.length > 0 || domainTags.length > 0 || subtopicTags.length > 0;
   const hasCollectionMatches = groupedCollections.length > 0;
 
+  // Animation lifecycle: open → entering → open, close → exiting → closed
   useEffect(() => {
-    if (!isOpen) return;
+    if (isOpen && animState === 'closed') {
+      setAnimState('entering');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimState('open'));
+      });
+    } else if (!isOpen && (animState === 'open' || animState === 'entering')) {
+      setAnimState('exiting');
+      const timer = setTimeout(() => setAnimState('closed'), 250);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, animState]);
+
+  // Cleanup search analytics debounce on unmount
+  useEffect(() => {
+    return () => clearTimeout(searchAnalyticsTimerRef.current);
+  }, []);
+
+  const emitDebouncedSearchAnalytics = useCallback((query: string) => {
+    clearTimeout(searchAnalyticsTimerRef.current);
+    searchAnalyticsTimerRef.current = setTimeout(() => {
+      emitFilterAnalytics('filter_search_used', {
+        tabContext: activeTab,
+        queryLength: query.trim().length,
+      });
+    }, SEARCH_ANALYTICS_DEBOUNCE_MS);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (animState !== 'open' && animState !== 'entering') return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isOpen]);
+  }, [animState]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -268,7 +301,9 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
     }
   }, [activeTab, announceNoResults, hasActiveFilter, isOpen, resultCount]);
 
-  if (!isOpen || typeof document === 'undefined') return null;
+  const shouldRender = animState !== 'closed';
+  if (!shouldRender || typeof document === 'undefined') return null;
+  const isVisible = animState === 'open';
 
   const toggleTag = (key: SectionKey, current: string[], id: string, label: string) => {
     const exists = current.includes(id);
@@ -338,7 +373,7 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 bg-slate-900/40 backdrop-blur-[1px] transition-opacity duration-200"
+      className={`fixed inset-0 bg-slate-900/40 backdrop-blur-[1px] transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
       style={{ zIndex: Z_INDEX.MODAL }}
       onClick={onClose}
       role="presentation"
@@ -348,99 +383,115 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label="Filters"
-        className="absolute bottom-0 left-0 right-0 mx-auto flex h-[90dvh] w-full max-w-[640px] flex-col rounded-t-3xl bg-white text-gray-900 shadow-2xl transition-transform duration-200 motion-reduce:transition-none dark:bg-slate-900 dark:text-slate-100"
+        className={`absolute bottom-0 left-0 right-0 mx-auto flex h-[90dvh] w-full max-w-[640px] flex-col rounded-t-3xl bg-white text-gray-900 shadow-2xl transition-transform duration-250 ease-out motion-reduce:transition-none dark:bg-slate-900 dark:text-slate-100 ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}
         onClick={(event) => event.stopPropagation()}
-        onTouchStart={(event) => {
-          startYRef.current = event.touches[0]?.clientY ?? null;
-        }}
-        onTouchMove={(event) => {
-          const currentY = event.touches[0]?.clientY ?? null;
-          if (startYRef.current == null || currentY == null) return;
-          const delta = currentY - startYRef.current;
-          if (delta > 90) onClose();
-        }}
       >
-        <div className="sticky top-0 z-20 border-b border-gray-100 bg-white/95 px-4 pb-2 pt-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-          <div className="mx-auto mb-2 h-1 w-12 rounded-full bg-gray-300 dark:bg-slate-700" aria-hidden />
-          <div className="flex min-h-11 items-center justify-between">
-            <div>
-              <h2 className="text-[18px] font-semibold">Filters</h2>
-              <p className="text-[12px] text-gray-500 dark:text-slate-400">{activeFilterCount > 0 ? `${activeFilterCount} selected` : 'No filters selected'}</p>
+        {/* Single sticky header block — avoids fragile hardcoded top offsets */}
+        <div className="sticky top-0 z-20 bg-white/95 backdrop-blur dark:bg-slate-900/95">
+          {/* Drag handle + title */}
+          <div
+            className="border-b border-gray-100 px-4 pb-2 pt-2 dark:border-slate-800"
+            onTouchStart={(event) => {
+              handleStartYRef.current = event.touches[0]?.clientY ?? null;
+            }}
+            onTouchMove={(event) => {
+              const currentY = event.touches[0]?.clientY ?? null;
+              if (handleStartYRef.current == null || currentY == null) return;
+              const delta = currentY - handleStartYRef.current;
+              if (delta > 80) onClose();
+            }}
+            onTouchEnd={() => { handleStartYRef.current = null; }}
+          >
+            <div className="mx-auto mb-2 h-1 w-12 rounded-full bg-gray-300 dark:bg-slate-700" aria-hidden />
+            <div className="flex min-h-11 items-center justify-between">
+              <div>
+                <h2 className="text-[18px] font-semibold">Filters</h2>
+                <p className="text-[12px] text-gray-500 dark:text-slate-400">{activeFilterCount > 0 ? `${activeFilterCount} selected` : 'No filters selected'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1"
+                aria-label="Close filters"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1"
-              aria-label="Close filters"
-            >
-              <X size={18} />
-            </button>
           </div>
-        </div>
 
-        {activeChips.length > 0 && (
-          <div className="sticky top-[74px] z-20 border-b border-gray-100 bg-white/95 px-4 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95" role="status" aria-label="Active filters">
-            <div className="flex gap-2 overflow-x-auto pb-0.5">
-              {activeChips.map((chip) => (
+          {/* Active filter chips */}
+          {activeChips.length > 0 && (
+            <div className="border-b border-gray-100 px-4 py-2 dark:border-slate-800" role="status" aria-label="Active filters">
+              <div className="flex gap-2 overflow-x-auto pb-0.5">
+                {activeChips.map((chip) => (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    onClick={chip.remove}
+                    className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 text-[13px] font-medium text-primary-800 transition-colors hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-200 dark:hover:bg-primary-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1"
+                    aria-label={`Remove ${chip.label} filter`}
+                  >
+                    <span>{chip.label}</span>
+                    <X size={13} aria-hidden />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tab bar + search */}
+          <div className="border-b border-gray-100 px-4 py-2.5 dark:border-slate-800">
+            <div className="grid grid-cols-2 rounded-full bg-gray-100 p-1 dark:bg-slate-800">
+              <button
+                type="button"
+                onClick={() => { setActiveTab('topics'); setSearchQuery(''); }}
+                className={`min-h-11 rounded-full text-[14px] font-medium transition-colors ${
+                  activeTab === 'topics'
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                Topics
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveTab('collections'); setSearchQuery(''); }}
+                className={`min-h-11 rounded-full text-[14px] font-medium transition-colors ${
+                  activeTab === 'collections'
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                Collections
+              </button>
+            </div>
+            <div className="relative mt-2.5">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={14} />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setSearchQuery(next);
+                  if (next.trim().length > 0) {
+                    emitDebouncedSearchAnalytics(next);
+                  }
+                }}
+                placeholder={activeTab === 'topics' ? 'Search topics' : 'Search collections'}
+                className="h-11 w-full rounded-full border border-gray-200 bg-gray-50 pl-9 pr-9 text-[14px] text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                aria-label={activeTab === 'topics' ? 'Search topics' : 'Search collections'}
+              />
+              {searchQuery && (
                 <button
-                  key={chip.key}
                   type="button"
-                  onClick={chip.remove}
-                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 text-[13px] font-medium text-primary-800 transition-colors hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-200 dark:hover:bg-primary-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1"
-                  aria-label={`Remove ${chip.label} filter`}
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                  aria-label="Clear search"
                 >
-                  <span>{chip.label}</span>
-                  <X size={13} aria-hidden />
+                  <X size={13} />
                 </button>
-              ))}
+              )}
             </div>
-          </div>
-        )}
-
-        <div className="sticky top-[132px] z-20 border-b border-gray-100 bg-white/95 px-4 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-          <div className="grid grid-cols-2 rounded-full bg-gray-100 p-1 dark:bg-slate-800">
-            <button
-              type="button"
-              onClick={() => setActiveTab('topics')}
-              className={`min-h-11 rounded-full text-[14px] font-medium transition-colors ${
-                activeTab === 'topics'
-                  ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
-              }`}
-            >
-              Topics
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('collections')}
-              className={`min-h-11 rounded-full text-[14px] font-medium transition-colors ${
-                activeTab === 'collections'
-                  ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
-              }`}
-            >
-              Collections
-            </button>
-          </div>
-          <div className="relative mt-2.5">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={14} />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => {
-                const next = event.target.value;
-                setSearchQuery(next);
-                if (next.trim().length > 0) {
-                  emitFilterAnalytics('filter_search_used', {
-                    tabContext: activeTab,
-                    queryLength: next.trim().length,
-                  });
-                }
-              }}
-              placeholder={activeTab === 'topics' ? 'Search topics' : 'Search collections'}
-              className="h-11 w-full rounded-full border border-gray-200 bg-gray-50 pl-9 pr-3 text-[14px] text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-              aria-label={activeTab === 'topics' ? 'Search topics' : 'Search collections'}
-            />
           </div>
         </div>
 
@@ -515,18 +566,18 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
           )}
         </div>
 
-        <div className="sticky bottom-0 z-20 border-t border-gray-100 bg-white/95 px-4 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+        <div className="sticky bottom-0 z-20 border-t border-gray-100 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
           {typeof resultCount === 'number' && resultCount === 0 && hasActiveFilter ? (
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium text-gray-700 dark:text-slate-200">No results found</p>
+            <div className="space-y-2.5">
+              <p className="text-[13px] font-medium text-gray-700 dark:text-slate-200">No results match these filters</p>
               <div className="flex items-center gap-2">
                 {activeChips.length > 0 && (
                   <button
                     type="button"
                     onClick={activeChips[activeChips.length - 1].remove}
-                    className="min-h-11 rounded-full border border-gray-200 px-3 text-[13px] font-medium text-gray-700 hover:bg-gray-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="min-h-11 flex-1 rounded-full border border-gray-200 px-3 text-[13px] font-medium text-gray-700 hover:bg-gray-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
-                    Remove a filter
+                    Remove last filter
                   </button>
                 )}
                 <button
@@ -535,17 +586,14 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
                     onClearAll();
                     emitFilterAnalytics('clear_all_clicked', { tabContext: activeTab, resultCount });
                   }}
-                  className="min-h-11 rounded-full border border-primary-300 px-3 text-[13px] font-semibold text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-900/20"
+                  className="min-h-11 flex-1 rounded-full border border-primary-300 px-3 text-[13px] font-semibold text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-900/20"
                 >
-                  Reset all filters
+                  Reset all
                 </button>
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[13px] text-gray-600 dark:text-slate-300">
-                {typeof resultCount === 'number' ? `Showing ${resultCount} nuggets` : 'Filters apply instantly'}
-              </p>
+            <div className="flex items-center gap-3">
               {hasActiveFilter && (
                 <button
                   type="button"
@@ -553,11 +601,20 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
                     onClearAll();
                     emitFilterAnalytics('clear_all_clicked', { tabContext: activeTab, resultCount });
                   }}
-                  className="min-h-11 rounded-full px-3 text-[13px] font-semibold text-primary-700 transition-colors hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20"
+                  className="min-h-11 shrink-0 rounded-full px-3 text-[13px] font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
                   Clear all
                 </button>
               )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="min-h-11 flex-1 rounded-full bg-primary-600 px-4 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 active:bg-primary-800 dark:bg-primary-500 dark:hover:bg-primary-600 dark:active:bg-primary-700"
+              >
+                {typeof resultCount === 'number'
+                  ? `Show ${resultCount} nugget${resultCount !== 1 ? 's' : ''}`
+                  : 'View results'}
+              </button>
             </div>
           )}
         </div>

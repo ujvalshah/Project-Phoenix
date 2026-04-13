@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Mail, Lock, Phone, ArrowRight, Loader2, Linkedin, Chrome, ChevronLeft, MapPin, AtSign, Calendar } from 'lucide-react';
+import { X, Mail, Lock, ArrowRight, Loader2, Chrome, ChevronLeft, AtSign, Calendar } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Input } from '../UI/Input';
 import { ENABLED_SOCIAL_PROVIDERS } from '@/types/auth';
+import { authService } from '@/services/authService';
 
 // Simple mock for Pincode lookup
 const mockPincodeLookup = async (pincode: string) => {
@@ -48,11 +49,12 @@ const checkPasswordRequirements = (password: string) => {
 };
 
 export const AuthModal: React.FC = () => {
-  const { isAuthModalOpen, closeAuthModal, authModalView, login, signup, socialLogin, featureFlags, signupConfig } = useAuth();
-  
+  const { isAuthModalOpen, closeAuthModal, authModalView, login, signup, featureFlags, signupConfig } = useAuth();
+
   const [view, setView] = useState<'login' | 'signup' | 'forgot' | 'verify_pending'>(authModalView);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgotSubmitSuccess, setForgotSubmitSuccess] = useState(false);
   
   // Field-level validation errors
   const [fieldErrors, setFieldErrors] = useState<{
@@ -80,6 +82,7 @@ export const AuthModal: React.FC = () => {
   // Reset state when modal opens
   useEffect(() => {
     setView(authModalView);
+    setForgotSubmitSuccess(false);
     setError(null);
     setFieldErrors({});
     setEmail('');
@@ -219,9 +222,8 @@ export const AuthModal: React.FC = () => {
                 // Auth context handles close
             }
         } else if (view === 'forgot') {
-            await new Promise(r => setTimeout(r, 1000));
-            alert("If an account exists, a reset link has been sent.");
-            setView('login');
+            await authService.requestPasswordReset(email);
+            setForgotSubmitSuccess(true);
         }
     } catch (err: any) {
         setError(err.message || "An error occurred");
@@ -285,7 +287,27 @@ export const AuthModal: React.FC = () => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar px-8 pb-8 pt-6">
-                    
+                    {view === 'forgot' && forgotSubmitSuccess ? (
+                        <div className="text-center py-10 px-2">
+                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                              If an account exists with <strong>{email}</strong>, we&apos;ve sent a password reset link.
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+                              Check spam if you don&apos;t see it. The link expires in 1 hour.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setForgotSubmitSuccess(false);
+                                setView('login');
+                              }}
+                              className="text-sm font-bold text-primary-600 hover:underline"
+                            >
+                              Back to Login
+                            </button>
+                        </div>
+                    ) : (
+                    <>
                     {/* Toggle Tabs */}
                     {view !== 'forgot' && (
                         <div className="flex bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-xl mb-6 relative border border-slate-200/50 dark:border-slate-700/50">
@@ -298,8 +320,17 @@ export const AuthModal: React.FC = () => {
                     {view !== 'forgot' && (
                         <div className="space-y-3 mb-6">
                             {ENABLED_SOCIAL_PROVIDERS.includes('google') && (
-                                <button type="button" onClick={() => socialLogin('google')} className="w-full flex items-center justify-center gap-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 transition-colors font-medium text-sm text-slate-700 dark:text-slate-200 group shadow-sm">
-                                    <Chrome size={18} className="text-slate-500 group-hover:text-blue-500 transition-colors" /> <span>Google</span>
+                                <button
+                                    type="button"
+                                    disabled
+                                    aria-disabled="true"
+                                    title="Google sign-in is not available yet"
+                                    className="w-full flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-white/5 opacity-60 cursor-not-allowed font-medium text-sm text-slate-500 dark:text-slate-400 shadow-sm"
+                                >
+                                    <span className="flex items-center justify-center gap-3">
+                                        <Chrome size={18} className="text-slate-400" /> <span>Google</span>
+                                    </span>
+                                    <span className="text-[10px] font-normal normal-case tracking-normal text-slate-400">Coming soon</span>
                                 </button>
                             )}
                             <div className="relative py-2 flex items-center justify-center mt-2">
@@ -527,7 +558,16 @@ export const AuthModal: React.FC = () => {
                                         <input type="checkbox" className="hidden" checked={keepSignedIn} onChange={(e) => setKeepSignedIn(e.target.checked)} />
                                         <span className="text-xs font-medium text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Remember me</span>
                                     </label>
-                                    <button type="button" onClick={() => setView('forgot')} className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white underline transition-colors">Forgot?</button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setForgotSubmitSuccess(false);
+                                        setView('forgot');
+                                      }}
+                                      className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white underline transition-colors"
+                                    >
+                                      Forgot?
+                                    </button>
                                 </div>
                             </>
                         )}
@@ -571,11 +611,20 @@ export const AuthModal: React.FC = () => {
                         </button>
 
                         {view === 'forgot' && (
-                            <button type="button" onClick={() => setView('login')} className="w-full py-3 mt-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setForgotSubmitSuccess(false);
+                                setView('login');
+                              }}
+                              className="w-full py-3 mt-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                            >
                                 <ChevronLeft size={16} /> Back to Login
                             </button>
                         )}
                     </form>
+                    </>
+                    )}
                 </div>
             </>
         )}

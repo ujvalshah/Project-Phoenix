@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { LAYOUT } from '@/constants/layout';
 
 interface DesktopFilterSidebarContextValue {
   /** Home feed at lg+ — header filter control toggles sidebar instead of a dropdown */
@@ -20,18 +21,38 @@ export const DesktopFilterSidebarProvider: React.FC<{ children: React.ReactNode 
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(() => {
     if (typeof window === 'undefined') return false;
     const w = window.innerWidth;
-    return w >= 1024 && w < 1280;
+    return w >= LAYOUT.LG_BREAKPOINT && w < LAYOUT.XL_BREAKPOINT;
   });
+  const userExplicitRef = React.useRef(false);
+
+  // Auto-collapse on resize: collapse in lg range, expand in xl+ range,
+  // but only when the user hasn't explicitly toggled.
+  useEffect(() => {
+    const onResize = () => {
+      if (userExplicitRef.current) return;
+      const w = window.innerWidth;
+      if (w >= LAYOUT.LG_BREAKPOINT && w < LAYOUT.XL_BREAKPOINT) {
+        setSidebarCollapsedState(true);
+      } else if (w >= LAYOUT.XL_BREAKPOINT) {
+        setSidebarCollapsedState(false);
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const setSidebarCollapsed = useCallback((v: boolean) => {
+    userExplicitRef.current = true;
     setSidebarCollapsedState(v);
   }, []);
 
   const toggleSidebarCollapsed = useCallback(() => {
+    userExplicitRef.current = true;
     setSidebarCollapsedState((c) => !c);
   }, []);
 
   const expandSidebar = useCallback(() => {
+    userExplicitRef.current = true;
     setSidebarCollapsedState(false);
   }, []);
 
