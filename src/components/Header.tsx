@@ -1,7 +1,9 @@
 // NOTE: Do not add multiple React imports in this file.
 // Consolidate all hooks into the single import below.
-import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, List, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, Clock, Mail } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Sparkles, LogOut, Settings, Shield, LogIn, Layers, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, Mail, Zap } from 'lucide-react';
+import { SearchInput, SearchInputHandle } from './header/SearchInput';
+import { MobileSearchOverlay } from './header/MobileSearchOverlay';
 import { NotificationBell } from './NotificationBell';
 import { Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom'; // Still needed for NavigationDrawer
@@ -14,41 +16,38 @@ import { adminFeedbackService } from '@/admin/services/adminFeedbackService';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 import { DropdownPortal } from './UI/DropdownPortal';
-import type { SortOrder } from '@/types';
-import type { UseFilterStateReturn } from '@/hooks/useFilterState';
+import { useFilters } from '@/context/FilterStateContext';
+import { isFeatureEnabled } from '@/constants/featureFlags';
 import { useLegalPages } from '@/hooks/useLegalPages';
 import { twMerge } from 'tailwind-merge';
 import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { setNarrowHeaderHidden } from '@/constants/layoutScrollBridge';
 
 /** Yellow “N” tile — matches NavigationDrawer / app favicon treatment */
-const NuggetsLogoMark: React.FC = () => (
-  <span
-    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-400 text-sm font-bold text-gray-900 shadow-sm"
-    aria-hidden
-  >
-    N
+const NuggetsLogoMark: React.FC<{ showName?: boolean }> = ({ showName }) => (
+  <span className="flex items-center gap-2" title="Nuggets — The Knowledge App">
+    <span
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-400 text-sm font-bold text-gray-900 shadow-sm"
+      aria-hidden
+    >
+      N
+    </span>
+    {showName && (
+      <span className="text-[17px] font-semibold tracking-tight text-gray-800 dark:text-slate-100" style={{ fontFamily: "'Inter', 'SF Pro Display', -apple-system, system-ui, sans-serif" }}>
+        Nuggets
+      </span>
+    )}
   </span>
 );
 
 interface HeaderProps {
   isDark: boolean;
   toggleTheme: () => void;
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (o: boolean) => void;
-  viewMode: 'grid' | 'masonry' | 'utility';
-  setViewMode: (mode: 'grid' | 'masonry' | 'utility') => void;
-  selectedCategories: string[];
-  setSelectedCategories: (c: string[]) => void;
-  selectedTag: string | null;
-  setSelectedTag: (t: string | null) => void;
-  sortOrder: SortOrder;
-  setSortOrder: (s: SortOrder) => void;
+  viewMode: 'grid' | 'masonry';
+  setViewMode: (mode: 'grid' | 'masonry') => void;
   onCreateNugget: () => void;
-  currentUserId?: string;
-  filters?: UseFilterStateReturn;
 }
 
 /** Small legal links section for the user menu dropdown */
@@ -74,20 +73,17 @@ const UserMenuLegalLinks: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 };
 
 export const Header: React.FC<HeaderProps> = ({
-  searchQuery,
-  setSearchQuery,
   onCreateNugget,
   sidebarOpen,
   setSidebarOpen,
   viewMode,
   setViewMode,
-  selectedCategories: _selectedCategories,
-  sortOrder,
-  setSortOrder,
   isDark,
   toggleTheme,
-  filters,
 }) => {
+  // Consume filter state from context — no prop drilling required
+  const filters = useFilters();
+  const { searchInputValue: searchQuery, setSearchInput: setSearchQuery, sortOrder, setSortOrder } = filters;
   const { narrowHeaderHidden } = useAppChromeScroll();
 
   useEffect(() => {
@@ -104,14 +100,13 @@ export const Header: React.FC<HeaderProps> = ({
   
   // Derive filter popover state from the global filter hook (single source of truth).
   const filterState: FilterState = {
-    collectionId: filters?.collectionId ?? null,
-    formatTagIds: filters?.formatTagIds ?? [],
-    domainTagIds: filters?.domainTagIds ?? [],
-    subtopicTagIds: filters?.subtopicTagIds ?? [],
+    collectionId: filters.collectionId ?? null,
+    formatTagIds: filters.formatTagIds,
+    domainTagIds: filters.domainTagIds,
+    subtopicTagIds: filters.subtopicTagIds,
   };
 
   const handleFilterChange = (newFilters: FilterState) => {
-    if (!filters) return;
     filters.setCollectionId(newFilters.collectionId);
     // Sync dimension tags — compare and toggle as needed
     const syncDimension = (prev: string[], next: string[], toggle: (id: string) => void) => {
@@ -128,21 +123,12 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const handleFilterClear = () => {
-    if (!filters) return;
     filters.setCollectionId(null);
     filters.clearFormatTags();
     filters.clearDomainTags();
     filters.clearSubtopicTags();
   };
   
-  // Recent searches state
-  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('recent_searches');
-      return stored ? JSON.parse(stored) : [];
-    }
-    return [];
-  });
   
   // Dropdown anchor refs - DropdownPortal handles positioning
   // Separate refs for desktop and mobile to avoid ref collision
@@ -152,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
   const mobileFilterButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
-  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
+  const desktopSearchRef = useRef<SearchInputHandle>(null);
 
   // Determine which avatar ref to use based on viewport width
   const [isMobile, setIsMobile] = useState(false);
@@ -190,24 +176,28 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  // Save search to recent searches
-  const saveRecentSearch = (query: string) => {
-    if (!query.trim()) return;
+  // Save search to recent searches (localStorage only — the MobileSearchOverlay reads it)
+  const saveRecentSearch = useCallback((query: string) => {
+    if (!query.trim() || typeof window === 'undefined') return;
     const trimmed = query.trim();
-    const updated = [trimmed, ...recentSearches.filter(s => s !== trimmed)].slice(0, 5);
-    setRecentSearches(updated);
-    if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('recent_searches');
+      const prev: string[] = stored ? JSON.parse(stored) : [];
+      const updated = [trimmed, ...prev.filter(s => s !== trimmed)].slice(0, 5);
       localStorage.setItem('recent_searches', JSON.stringify(updated));
+    } catch {
+      // localStorage may be full or disabled
     }
-  };
+  }, []);
 
-  // Handle search query change
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value.trimStart());
-  };
+  // Stable callback: SearchInput calls this after its internal debounce.
+  // This propagates the trimmed value up to useFilterState (which triggers the API query).
+  const handleDebouncedSearch = useCallback((value: string) => {
+    setSearchQuery(value);
+  }, [setSearchQuery]);
 
-  // Handle search submit
-  const handleSearchSubmit = (query: string, closeMobileOverlay = true) => {
+  // Handle search submit (Enter key or recent-search click)
+  const handleSearchSubmit = useCallback((query: string, closeMobileOverlay = true) => {
     if (query.trim()) {
       saveRecentSearch(query);
       setSearchQuery(query.trim());
@@ -215,7 +205,7 @@ export const Header: React.FC<HeaderProps> = ({
     if (closeMobileOverlay) {
       setIsMobileSearchOpen(false);
     }
-  };
+  }, [saveRecentSearch, setSearchQuery]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -227,10 +217,7 @@ export const Header: React.FC<HeaderProps> = ({
         if (window.innerWidth < 768) {
           setIsMobileSearchOpen(true);
         } else {
-          const searchInput = document.querySelector('input[type="text"][placeholder*="Search"]') as HTMLInputElement;
-          if (searchInput) {
-            searchInput.focus();
-          }
+          desktopSearchRef.current?.focus();
         }
       }
       // Escape to close dropdowns and mobile search
@@ -247,18 +234,9 @@ export const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSortOpen, isUserMenuOpen, isFilterPopoverOpen, isMobileSearchOpen, isMoreMenuOpen]);
 
-  // Auto-focus mobile search input when overlay opens
-  useEffect(() => {
-    if (isMobileSearchOpen && mobileSearchInputRef.current) {
-      setTimeout(() => {
-        mobileSearchInputRef.current?.focus();
-      }, 100);
-    }
-  }, [isMobileSearchOpen]);
-
   // Use global filter hook as single source of truth for active filter state
-  const hasActiveFilters = filters?.hasActiveFilters ?? false;
-  const activeFilterCount = filters?.activeFilterCount ?? 0;
+  const hasActiveFilters = filters.hasActiveFilters;
+  const activeFilterCount = filters.activeFilterCount;
 
   // Track window size for tablet detection
   const [isTablet, setIsTablet] = useState(false);
@@ -298,7 +276,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <Link to="/" className="shrink-0" aria-label="Home">
-              <NuggetsLogoMark />
+              <NuggetsLogoMark showName />
             </Link>
 
             {/* Desktop Navigation (lg+) */}
@@ -310,15 +288,30 @@ export const Header: React.FC<HeaderProps> = ({
               {/* REGRESSION CHECK: Header nav labels must be text-sm (14px) font-medium - do not change */}
               <Link
                 to="/"
+                onClick={() => filters.setContentStream('standard')}
                 className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
-                  isHome
+                  isHome && filters.contentStream === 'standard'
                     ? 'bg-white text-gray-900'
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
-                aria-current={isHome ? 'page' : undefined}
+                aria-current={isHome && filters.contentStream === 'standard' ? 'page' : undefined}
               >
                 Home
               </Link>
+              {isFeatureEnabled('MARKET_PULSE') && (
+                <Link
+                  to="/"
+                  onClick={() => filters.setContentStream('pulse')}
+                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 ${
+                    isHome && filters.contentStream === 'pulse'
+                      ? 'bg-white text-gray-900'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  aria-current={isHome && filters.contentStream === 'pulse' ? 'page' : undefined}
+                >
+                  <Zap size={14} /> Market Pulse
+                </Link>
+              )}
               <Link
                 to="/collections"
                 className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
@@ -376,53 +369,37 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Center: Search - Desktop (lg+) */}
           <div className="hidden lg:flex flex-1 items-center justify-center min-w-0">
             <div className="relative w-full max-w-2xl min-w-0">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                <Search size={16} />
-              </div>
-            
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onBlur={(e) => setSearchQuery(e.target.value.trim())}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSearchSubmit(searchQuery, false);
-                  }
-                }}
+              <SearchInput
+                ref={desktopSearchRef}
+                initialValue={searchQuery}
+                onSearch={handleDebouncedSearch}
+                onSubmit={(q) => handleSearchSubmit(q, false)}
                 placeholder="Search..."
-                className="w-full h-9 pl-10 pr-28 text-sm font-medium bg-gray-50 border border-gray-100 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all"
-                aria-label="Search"
+                showClearButton={false}
+                className="w-full"
+                inputClassName="w-full h-9 pl-10 pr-28 text-sm font-medium bg-gray-50 border border-gray-100 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all"
+                iconSize={16}
               />
-            
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-20 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                  aria-label="Clear search"
-                >
-                  <X size={14} />
-                </button>
-              )}
 
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+              <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
                 <button
                   ref={filterButtonRef}
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsFilterPopoverOpen(!isFilterPopoverOpen);
                   }}
-                  className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all relative ${
+                  className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 ${
                     isFilterPopoverOpen || hasActiveFilters
-                      ? 'text-yellow-500 bg-yellow-50'
-                      : 'text-gray-400 hover:text-gray-600'
+                      ? 'bg-yellow-50 text-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-400'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-slate-800'
                   }`}
                   aria-label="Filter"
                   title="Filter"
                 >
                   <Filter size={16} fill={isFilterPopoverOpen || hasActiveFilters ? "currentColor" : "none"} />
                   {hasActiveFilters && (
-                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-gray-400 text-white text-[9px] rounded-full flex items-center justify-center font-medium">
+                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-gray-500 px-0.5 text-[9px] font-medium text-white dark:bg-slate-500">
                       {activeFilterCount}
                     </span>
                   )}
@@ -430,11 +407,12 @@ export const Header: React.FC<HeaderProps> = ({
 
                 <button
                   ref={sortButtonRef}
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsSortOpen(!isSortOpen);
                   }}
-                  className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 dark:hover:bg-slate-800"
                   aria-label="Sort"
                   title="Sort"
                 >
@@ -481,18 +459,6 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-label="Masonry View"
               >
                 <Columns size={16} />
-              </button>
-              <button
-                onClick={() => setViewMode('utility')}
-                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
-                  viewMode === 'utility'
-                    ? 'bg-white text-gray-900'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-                title="Utility View"
-                aria-label="Utility View"
-              >
-                <List size={16} />
               </button>
             </div>
 
@@ -870,95 +836,13 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </DropdownPortal>
 
-      {/* Mobile Search Overlay */}
-      {isMobileSearchOpen && typeof document !== 'undefined' && createPortal(
-        <div 
-          className="fixed inset-0 bg-white z-50 flex flex-col"
-          style={{ zIndex: Z_INDEX.HEADER_OVERLAY }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Search"
-        >
-          {/* Search Bar */}
-          <div className="flex items-center gap-3 p-4 border-b border-gray-200">
-            <div className="relative flex-1">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                <Search size={20} />
-              </div>
-              <input
-                ref={mobileSearchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSearchSubmit(searchQuery);
-                  } else if (e.key === 'Escape') {
-                    setIsMobileSearchOpen(false);
-                  }
-                }}
-                placeholder="Search..."
-                className="w-full h-12 pl-11 pr-12 text-base font-medium bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all"
-                aria-label="Search"
-                autoFocus
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    mobileSearchInputRef.current?.focus();
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-                  aria-label="Clear search"
-                >
-                  <X size={18} />
-                </button>
-              )}
-            </div>
-            <button
-              onClick={() => setIsMobileSearchOpen(false)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-500 hover:text-gray-700 transition-colors"
-              aria-label="Close search"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* Recent Searches */}
-          {recentSearches.length > 0 && (
-            <div className="flex-1 overflow-y-auto hide-scrollbar-mobile p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Clock size={16} className="text-gray-400" />
-                <h3 className="text-sm font-semibold text-gray-700">Recent Searches</h3>
-              </div>
-              <div className="space-y-1">
-                {recentSearches.map((search, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleSearchSubmit(search)}
-                    className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-3 min-h-[44px]"
-                    aria-label={`Search for ${search}`}
-                  >
-                    <Clock size={16} className="text-gray-400" />
-                    {search}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Empty State */}
-          {!searchQuery && recentSearches.length === 0 && (
-            <div className="flex-1 flex items-center justify-center p-8">
-              <div className="text-center">
-                <Search size={48} className="mx-auto text-gray-300 mb-4" />
-                <p className="text-sm text-gray-500">Start typing to search</p>
-              </div>
-            </div>
-          )}
-        </div>,
-        document.body
-      )}
+      {/* Mobile Search Overlay — extracted to its own component */}
+      <MobileSearchOverlay
+        isOpen={isMobileSearchOpen}
+        onClose={() => setIsMobileSearchOpen(false)}
+        initialValue={searchQuery}
+        onSearch={handleDebouncedSearch}
+      />
 
       <NavigationDrawer
         isOpen={sidebarOpen}
@@ -1090,8 +974,8 @@ interface NavigationDrawerProps {
   onOpenFilters: () => void;
   hasActiveFilters: boolean;
   activeFilterCount: number;
-  viewMode: 'grid' | 'masonry' | 'utility';
-  setViewMode: (mode: 'grid' | 'masonry' | 'utility') => void;
+  viewMode: 'grid' | 'masonry';
+  setViewMode: (mode: 'grid' | 'masonry') => void;
   isDark: boolean;
   toggleTheme: () => void;
 }
@@ -1112,6 +996,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   isDark,
   toggleTheme,
 }) => {
+  const filters = useFilters();
   if (!isOpen) return null;
 
   // IMPORTANT:
@@ -1129,7 +1014,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-400 text-sm font-bold text-gray-900 shadow-sm">
               N
             </div>
-            <span className="truncate text-lg font-extrabold text-gray-900">Nuggets</span>
+            <span className="truncate text-lg font-bold text-gray-900">Nuggets</span>
           </div>
           <button
             type="button"
@@ -1143,9 +1028,14 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
         <div className="flex-1 overflow-y-auto hide-scrollbar-mobile py-4 px-3 space-y-1">
            <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Navigation</p>
-           <Link to="/" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
+           <Link to="/" onClick={() => { filters.setContentStream('standard'); onClose(); }} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
               <LayoutGrid size={18} /> Home
            </Link>
+           {isFeatureEnabled('MARKET_PULSE') && (
+             <Link to="/" onClick={() => { filters.setContentStream('pulse'); onClose(); }} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
+                <Zap size={18} /> Market Pulse
+             </Link>
+           )}
            <Link to="/collections" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
               <Layers size={18} /> Collections
            </Link>
@@ -1179,18 +1069,6 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
              >
                <Columns size={18} />
                Masonry
-             </button>
-             <button
-               type="button"
-               onClick={() => setViewMode('utility')}
-               className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-bold transition-colors ${
-                 viewMode === 'utility'
-                   ? 'border-primary-300 bg-primary-50 text-gray-900 dark:border-primary-700 dark:bg-primary-900/20 dark:text-white'
-                   : 'border-gray-100 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-               }`}
-             >
-               <List size={18} />
-               Compact
              </button>
            </div>
 

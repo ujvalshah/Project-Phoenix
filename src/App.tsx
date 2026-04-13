@@ -9,7 +9,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { FeedScrollStateProvider } from '@/context/FeedScrollStateContext';
 import { VideoPlayerProvider } from '@/context/VideoPlayerContext';
 import { MainLayout } from '@/components/layouts/MainLayout';
-import { useFilterState } from '@/hooks/useFilterState';
+import { FilterStateProvider } from '@/context/FilterStateContext';
 import { Loader2 } from 'lucide-react';
 import { CreateNuggetModal } from '@/components/CreateNuggetModal';
 import { useAuth } from '@/hooks/useAuth';
@@ -83,11 +83,8 @@ const NotificationsPage = lazy(() => import('@/pages/NotificationsPage').then(mo
 const AppContent: React.FC = () => {
   const [isDark, setIsDark] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'masonry' | 'utility'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('grid');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-
-  // Unified filter state — single source of truth with URL sync + debounce
-  const filters = useFilterState();
 
   // Use Auth hook for user context
   const { currentUserId } = useAuth();
@@ -134,21 +131,11 @@ const AppContent: React.FC = () => {
       <Header
         isDark={isDark}
         toggleTheme={() => setIsDark(!isDark)}
-        searchQuery={filters.searchInputValue}
-        setSearchQuery={filters.setSearchInput}
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         viewMode={viewMode}
         setViewMode={setViewMode}
-        selectedCategories={filters.selectedCategories}
-        setSelectedCategories={filters.setSelectedCategories}
-        selectedTag={filters.selectedTag}
-        setSelectedTag={filters.setSelectedTag}
-        sortOrder={filters.sortOrder}
-        setSortOrder={filters.setSortOrder}
         onCreateNugget={() => setIsCreateOpen(true)}
-        currentUserId={currentUserId}
-        filters={filters}
       />
 
       <MainLayout>
@@ -161,7 +148,7 @@ const AppContent: React.FC = () => {
           {/* Feed/Content Areas - Wrapped in Error Boundaries */}
           <Route path="/" element={
             <ErrorBoundary>
-              <HomePage searchQuery={filters.searchQuery} viewMode={viewMode} setViewMode={setViewMode} selectedCategories={filters.selectedCategories} setSelectedCategories={filters.setSelectedCategories} selectedTag={filters.selectedTag} setSelectedTag={filters.setSelectedTag} sortOrder={filters.sortOrder} collectionId={filters.collectionId} setCollectionId={filters.setCollectionId} favorites={filters.favorites} unread={filters.unread} formats={filters.formats} timeRange={filters.timeRange} formatTagIds={filters.formatTagIds} domainTagIds={filters.domainTagIds} subtopicTagIds={filters.subtopicTagIds} onToggleFormatTag={filters.toggleFormatTag} onToggleDomainTag={filters.toggleDomainTag} onToggleSubtopicTag={filters.toggleSubtopicTag} />
+              <HomePage viewMode={viewMode} />
             </ErrorBoundary>
           } />
           
@@ -284,7 +271,9 @@ const App: React.FC = () => {
         <AuthProvider>
           <VideoPlayerProvider>
             <FeedScrollStateProvider>
-              <AppContent />
+              <FilterStateProvider>
+                <AppContent />
+              </FilterStateProvider>
             </FeedScrollStateProvider>
           </VideoPlayerProvider>
         </AuthProvider>

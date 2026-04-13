@@ -194,6 +194,9 @@ const baseArticleSchema = z.object({
   showDisclaimer: z.boolean().optional(),
   disclaimerText: z.string().max(500, 'Disclaimer text too long').nullable().optional(),
 
+  // Content stream routing (standard feed vs Market Pulse)
+  contentStream: z.enum(['standard', 'pulse', 'both']).default('standard').optional(),
+
   // Dimension tag IDs (format, domain, subtopic references to Tag collection)
   // Sent from the DimensionTagPicker in Create/Edit modal
   tagIds: z.preprocess(

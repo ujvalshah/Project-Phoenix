@@ -203,10 +203,14 @@ function AdminTableComponent<T extends { id: string }>({
     <div className="space-y-3">
       {/* Toolbar */}
       {(filters || actions || onSearch) && (
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex-1 flex flex-wrap items-center gap-2">
+        <div
+          className={`flex min-w-0 gap-2 bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm ${
+            actions ? 'flex-col' : 'flex-col md:flex-row md:items-center md:justify-between'
+          }`}
+        >
+          <div className="flex min-w-0 w-full flex-1 flex-wrap items-center gap-2">
             {onSearch && (
-              <div className="relative w-full md:w-auto">
+              <div className="relative w-full min-w-[min(100%,12rem)] max-w-full sm:max-w-none md:w-auto">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="text"
@@ -219,7 +223,11 @@ function AdminTableComponent<T extends { id: string }>({
             )}
             {filters}
           </div>
-          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+          {actions && (
+            <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2 dark:border-slate-800 md:border-t-0 md:pt-0">
+              {actions}
+            </div>
+          )}
         </div>
       )}
 

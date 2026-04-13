@@ -592,6 +592,99 @@ export const getTagTaxonomy = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * POST /api/categories/taxonomy/reorder
+ * Bulk-update sortOrder for tags within a single dimension.
+ *
+ * Body options:
+ *   { dimension: 'format'|'domain', tagIds: string[] }
+ *     → Sets sortOrder = index for each tag in the given order (custom mode).
+ *
+ *   { dimension: 'format'|'domain', mode: 'a-z'|'most-nuggets'|'latest' }
+ *     → Auto-sorts active tags in that dimension by the chosen criterion
+ *       and persists the resulting sortOrder values.
+ */
+const reorderTaxonomySchema = z.object({
+  dimension: z.enum(['format', 'domain']),
+  tagIds: z.array(z.string().min(1)).optional(),
+  mode: z.enum(['a-z', 'most-nuggets', 'latest']).optional(),
+}).refine(
+  (d) => d.tagIds !== undefined || d.mode !== undefined,
+  { message: 'Either tagIds (custom order) or mode (auto-sort) is required' }
+);
+
+export const reorderTaxonomy = async (req: Request, res: Response) => {
+  try {
+    const parsed = reorderTaxonomySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: 'Validation failed', errors: parsed.error.errors });
+    }
+
+    const { dimension, tagIds, mode } = parsed.data;
+
+    if (tagIds) {
+      // Custom order — set sortOrder = index
+      const ops = tagIds.map((id, index) => ({
+        updateOne: {
+          filter: { _id: id, dimension },
+          update: { $set: { sortOrder: index } },
+        },
+      }));
+      await Tag.bulkWrite(ops);
+      return res.json({ message: 'Reordered', count: tagIds.length });
+    }
+
+    // Auto-sort mode — fetch, sort, persist
+    const tags = await Tag.find({ dimension, status: 'active' }).lean();
+
+    if (mode === 'a-z') {
+      tags.sort((a, b) => (a.rawName || '').localeCompare(b.rawName || ''));
+    } else if (mode === 'latest') {
+      // Most recently created first
+      tags.sort((a, b) => {
+        const aTime = (a as Record<string, unknown>).createdAt ? new Date((a as Record<string, unknown>).createdAt as string).getTime() : 0;
+        const bTime = (b as Record<string, unknown>).createdAt ? new Date((b as Record<string, unknown>).createdAt as string).getTime() : 0;
+        return bTime - aTime;
+      });
+    } else if (mode === 'most-nuggets') {
+      // Need usage counts from articles
+      const tagIdList = tags.map(t => t._id);
+      const usageAgg = await Article.aggregate([
+        { $match: { tagIds: { $in: tagIdList } } },
+        { $unwind: '$tagIds' },
+        { $match: { tagIds: { $in: tagIdList } } },
+        { $group: { _id: '$tagIds', count: { $sum: 1 } } },
+      ]);
+      const usageMap = new Map<string, number>();
+      for (const row of usageAgg) {
+        usageMap.set(row._id.toString(), row.count);
+      }
+      tags.sort((a, b) => (usageMap.get(b._id.toString()) || 0) - (usageMap.get(a._id.toString()) || 0));
+    }
+
+    const ops = tags.map((t, index) => ({
+      updateOne: {
+        filter: { _id: t._id },
+        update: { $set: { sortOrder: index } },
+      },
+    }));
+    if (ops.length > 0) {
+      await Tag.bulkWrite(ops);
+    }
+
+    return res.json({ message: `Sorted by ${mode}`, count: tags.length });
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const err = error instanceof Error ? error : new Error(String(error));
+    requestLogger.error({
+      msg: '[Tags] Reorder taxonomy error',
+      error: { message: err.message, stack: err.stack },
+    });
+    captureException(err, { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const syncArticleTags = async (req: Request, res: Response) => {
   try {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);

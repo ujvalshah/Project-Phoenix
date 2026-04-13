@@ -62,6 +62,7 @@ export class RestAdapter implements IAdapter {
     formatTagIds?: string[];
     domainTagIds?: string[];
     subtopicTagIds?: string[];
+    contentStream?: string;
   }): Promise<PaginatedArticlesResponse> {
     const queryParams = new URLSearchParams();
     if (params.q) queryParams.set('q', params.q);
@@ -90,10 +91,11 @@ export class RestAdapter implements IAdapter {
     if (params.subtopicTagIds && params.subtopicTagIds.length > 0) {
       params.subtopicTagIds.forEach(id => queryParams.append('subtopicTagIds', id));
     }
+    if (params.contentStream) queryParams.set('contentStream', params.contentStream);
     queryParams.set('page', params.page.toString());
     queryParams.set('limit', params.limit.toString());
 
-    return apiClient.get<PaginatedArticlesResponse>(`/articles?${queryParams}`);
+    return apiClient.get<PaginatedArticlesResponse>(`/articles?${queryParams}`, undefined, 'GET:articles-search');
   }
 
   getArticleById(id: string): Promise<Article | undefined> {
@@ -161,6 +163,8 @@ export class RestAdapter implements IAdapter {
       // Disclaimer fields
       ...((article as any).showDisclaimer !== undefined && { showDisclaimer: (article as any).showDisclaimer }),
       ...((article as any).disclaimerText !== undefined && { disclaimerText: (article as any).disclaimerText }),
+      // Content stream routing
+      ...(article.contentStream && { contentStream: article.contentStream }),
     };
     
     // TEMPORARY DEBUG: Stage 3 - Payload sent to API (RestAdapter)
@@ -233,6 +237,8 @@ export class RestAdapter implements IAdapter {
     // Disclaimer fields
     if (updatesWithoutCategoryIds.showDisclaimer !== undefined) payload.showDisclaimer = updatesWithoutCategoryIds.showDisclaimer;
     if (updatesWithoutCategoryIds.disclaimerText !== undefined) payload.disclaimerText = updatesWithoutCategoryIds.disclaimerText;
+    // Content stream routing
+    if (updatesWithoutCategoryIds.contentStream !== undefined) payload.contentStream = updatesWithoutCategoryIds.contentStream;
 
     // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
     // Frontend is canonical deduplication pass - backend will compute but not mutate

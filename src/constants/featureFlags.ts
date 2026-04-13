@@ -47,6 +47,22 @@ export const FEATURE_FLAGS = {
    * Toggle via VITE_NUGGET_EDITOR_V2 environment variable
    */
   NUGGET_EDITOR_V2: import.meta.env.VITE_NUGGET_EDITOR_V2 === 'true',
+
+  /**
+   * MARKET_PULSE: Enable Market Pulse content stream
+   *
+   * When enabled:
+   * - Stream toggle (Standard / Market Pulse) appears in the header
+   * - Content stream selector appears in the nugget editor
+   * - Articles can be routed to standard feed, Market Pulse, or both
+   *
+   * When disabled:
+   * - No stream toggle visible — all content shows in the standard feed
+   * - Content stream field hidden in editor (defaults to 'standard')
+   *
+   * Toggle via VITE_FEATURE_MARKET_PULSE environment variable
+   */
+  MARKET_PULSE: import.meta.env.VITE_FEATURE_MARKET_PULSE === 'true',
 } as const;
 
 /**

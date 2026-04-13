@@ -32,7 +32,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
   // Taxonomy data
   const { data: taxonomy, isLoading: isTaxonomyLoading } = useTagTaxonomy();
 
-  // Collections data (existing)
+  // Collections data
   const { data: featuredCollections = [], isLoading: isFeaturedLoading } = useFeaturedCollections();
   const { data: publicCollections = [], isLoading: isPublicLoading } = useQuery<Collection[]>({
     queryKey: ['collections', 'public', 'filter-popover'],
@@ -153,7 +153,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
         </button>
       </div>
 
-      {/* Show all / Active summary */}
+      {/* Show all / Active summary + inline search */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <button
           onClick={onClear}
@@ -186,6 +186,18 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
             {selectedSubtopicIds.length} topic{selectedSubtopicIds.length > 1 ? 's' : ''}
           </span>
         )}
+        {/* Inline search — pushed to the right */}
+        <div className="relative ml-auto flex-shrink-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={13} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={activeTab === 'collections' ? 'Search collections...' : 'Search tags...'}
+            className="h-8 w-44 rounded-full border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-3 text-xs text-gray-700 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-400 dark:focus:ring-primary-500"
+            aria-label="Search"
+          />
+        </div>
       </div>
 
       {/* ─── Dimensions Tab ─────────────────────────────────────────────── */}
@@ -242,85 +254,69 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
       {/* ─── Collections Tab ────────────────────────────────────────────── */}
       {activeTab === 'collections' && (
         <div>
-          <div className="relative mb-2.5">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={14} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search collections..."
-              className="w-full h-10 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm text-gray-700 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-400 dark:focus:ring-primary-500"
-              aria-label="Search collections"
-            />
-          </div>
-
           {(isFeaturedLoading || isPublicLoading) ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} className="h-9 rounded-lg bg-gray-100 dark:bg-slate-800 animate-pulse" />
-              ))}
+            <div className="space-y-3">
+              <div className="h-8 rounded-lg bg-gray-100 dark:bg-slate-800 animate-pulse" />
+              <div className="h-32 rounded-lg bg-gray-100 dark:bg-slate-800 animate-pulse" />
             </div>
           ) : groupedCollections.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-slate-400 py-8 text-center">
               No collections available.
             </p>
           ) : (
-            <div className="border-t border-gray-100 dark:border-slate-800 pt-3 max-h-[60vh] overflow-y-auto pr-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-2.5">
-                {groupedCollections.map(({ parent, children }) => {
-                  const parentCount = parent.validEntriesCount ?? parent.entries?.length ?? 0;
-                  const isParentSelected = filters.collectionId === parent.id;
-                  return (
-                    <div key={parent.id} className="min-w-0">
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+              {groupedCollections.map(({ parent, children }) => {
+                const parentCount = parent.validEntriesCount ?? parent.entries?.length ?? 0;
+                const isParentSelected = filters.collectionId === parent.id;
+                return (
+                  <div key={parent.id}>
+                    <h4 className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                      {parent.name}
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {/* Parent collection pill */}
                       <button
                         onClick={() => handleCollectionSelect(parent.id)}
-                        className={`w-full h-8 text-left rounded-md px-2 flex items-center justify-between transition-colors ${isParentSelected
-                          ? 'bg-primary-50 dark:bg-primary-900/20'
-                          : 'hover:bg-gray-50 dark:hover:bg-slate-800/70'
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                          isParentSelected
+                            ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 shadow-sm'
+                            : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800'
                         }`}
-                        aria-label={`Filter by ${parent.name}`}
                         aria-pressed={isParentSelected}
                       >
-                        <span className={`text-[13px] leading-tight ${isParentSelected
-                          ? 'font-semibold text-primary-700 dark:text-primary-300'
-                          : 'font-semibold text-gray-800 dark:text-slate-100'
-                        }`}>{parent.name}</span>
-                        <span className={`text-[11px] tabular-nums ml-2 ${isParentSelected
-                          ? 'text-primary-500 dark:text-primary-400'
-                          : 'text-gray-400 dark:text-slate-500'
-                        }`}>{parentCount}</span>
+                        {isParentSelected && <Check size={11} />}
+                        All {parent.name}
+                        <span className={`text-[10px] tabular-nums ${isParentSelected ? 'text-violet-500 dark:text-violet-400' : 'text-gray-400 dark:text-slate-500'}`}>
+                          {parentCount}
+                        </span>
                       </button>
-                      <div className="mt-0.5 space-y-0.5">
-                        {children.map((child) => {
-                          const isChildSelected = filters.collectionId === child.id;
-                          const childCount = child.validEntriesCount ?? child.entries?.length ?? 0;
-                          return (
-                            <button
-                              key={child.id}
-                              onClick={() => handleCollectionSelect(child.id)}
-                              className={`w-full h-7 text-left rounded-md px-2 flex items-center justify-between transition-colors ${isChildSelected
-                                ? 'bg-primary-50 dark:bg-primary-900/20'
-                                : 'hover:bg-gray-50 dark:hover:bg-slate-800/70'
-                              }`}
-                              aria-label={`Filter by ${child.name}`}
-                              aria-pressed={isChildSelected}
-                            >
-                              <span className={`text-[12px] leading-tight ${isChildSelected
-                                ? 'font-semibold text-primary-700 dark:text-primary-300'
-                                : 'font-medium text-gray-700 dark:text-slate-300'
-                              }`}>- {child.name}</span>
-                              <span className={`text-[10px] tabular-nums ml-2 ${isChildSelected
-                                ? 'text-primary-500 dark:text-primary-400'
-                                : 'text-gray-400 dark:text-slate-500'
-                              }`}>{childCount}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                      {/* Sub-collection pills */}
+                      {children.map((child) => {
+                        const isChildSelected = filters.collectionId === child.id;
+                        const childCount = child.validEntriesCount ?? child.entries?.length ?? 0;
+                        return (
+                          <button
+                            key={child.id}
+                            onClick={() => handleCollectionSelect(child.id)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                              isChildSelected
+                                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 shadow-sm'
+                                : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800'
+                            }`}
+                            aria-pressed={isChildSelected}
+                          >
+                            {isChildSelected && <Check size={11} />}
+                            {child.name}
+                            <span className={`text-[10px] tabular-nums ${isChildSelected ? 'text-violet-500 dark:text-violet-400' : 'text-gray-400 dark:text-slate-500'}`}>
+                              {childCount}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

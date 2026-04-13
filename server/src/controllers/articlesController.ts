@@ -20,6 +20,42 @@ import {
   sendInternalError
 } from '../utils/errorResponse.js';
 
+// ── Lightweight in-memory query cache (LRU, TTL 60s) ────────────────────────
+const SEARCH_CACHE_TTL_MS = 60_000;
+const SEARCH_CACHE_MAX = 100;
+
+interface CacheEntry {
+  data: unknown;
+  total: number;
+  createdAt: number;
+}
+
+const _searchCache = new Map<string, CacheEntry>();
+
+function getCachedResult(key: string): CacheEntry | null {
+  const entry = _searchCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > SEARCH_CACHE_TTL_MS) {
+    _searchCache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function setCachedResult(key: string, data: unknown, total: number): void {
+  // Evict oldest entries if cache is full
+  if (_searchCache.size >= SEARCH_CACHE_MAX) {
+    const firstKey = _searchCache.keys().next().value;
+    if (firstKey !== undefined) _searchCache.delete(firstKey);
+  }
+  _searchCache.set(key, { data, total, createdAt: Date.now() });
+}
+
+/** Invalidate the search cache (call after article create/update/delete). */
+export function invalidateSearchCache(): void {
+  _searchCache.clear();
+}
+
 /**
  * Optionally extract user from token (for privacy filtering)
  * Returns userId if token is present and valid, otherwise undefined
@@ -119,6 +155,8 @@ export const getArticles = async (req: Request, res: Response) => {
       formatTagIds: rawFormatTagIds,
       domainTagIds: rawDomainTagIds,
       subtopicTagIds: rawSubtopicTagIds,
+      // Content stream routing (standard vs Market Pulse)
+      contentStream,
     } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
@@ -165,38 +203,84 @@ export const getArticles = async (req: Request, res: Response) => {
       ];
     }
     // If isViewingOwnArticles is true, no privacy filter needed - user can see all their articles
-    
-    // Search query (case-insensitive regex with ReDoS protection)
-    // SECURITY: escapeRegExp prevents malicious regex patterns
+
+    // Content stream filter: route articles to standard feed or Market Pulse
+    // 'standard' → match 'standard' OR 'both' (or missing field for backward compat)
+    // 'pulse' → match 'pulse' OR 'both'
+    // omitted → return all (backward compatible)
+    if (contentStream && typeof contentStream === 'string') {
+      if (contentStream === 'pulse') {
+        query.contentStream = { $in: ['pulse', 'both'] };
+      } else if (contentStream === 'standard') {
+        // Include documents without contentStream field (backward compat: default to standard)
+        query.$and = [
+          ...(query.$and || []),
+          { $or: [
+            { contentStream: { $in: ['standard', 'both'] } },
+            { contentStream: { $exists: false } },
+            { contentStream: null }
+          ]}
+        ];
+      } else if (contentStream === 'both') {
+        // Admin filter: exact match for articles tagged to appear in both streams
+        query.contentStream = 'both';
+      }
+    }
+
+    // Search query — use MongoDB $text index for word-level search (queries >= 3 chars),
+    // fall back to regex for short/partial queries. Both paths are ReDoS-safe.
     if (q && typeof q === 'string' && q.trim().length > 0) {
-      const regex = createSearchRegex(q);
-      const searchConditions: Record<string, unknown>[] = [
-        { title: regex },
-        { excerpt: regex },
-        { content: regex },
-      ];
+      const trimmedQ = q.trim();
 
       // P2-5: Resolve matching tag names to tagIds for search
+      const regex = createSearchRegex(q);
       const matchingTags = await Tag.find({
         rawName: regex,
         status: 'active',
       }).select('_id').lean();
-      if (matchingTags.length > 0) {
-        searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
-      }
 
-      // Combine search with existing query conditions
-      // If we already have a privacy $or, we need to use $and to combine both
-      if (query.$or) {
-        // We have privacy conditions - combine with search using $and
-        query.$and = [
-          { $or: query.$or }, // Privacy conditions
-          { $or: searchConditions } // Search conditions
-        ];
-        delete query.$or; // Remove top-level $or, now nested in $and
+      if (trimmedQ.length >= 3) {
+        // Use $text index for efficient full-text search (word-level matching)
+        const textCondition: Record<string, unknown> = { $text: { $search: trimmedQ } };
+        const searchConditions: Record<string, unknown>[] = [textCondition];
+
+        if (matchingTags.length > 0) {
+          searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
+        }
+
+        if (query.$or) {
+          query.$and = [
+            { $or: query.$or },
+            { $or: searchConditions }
+          ];
+          delete query.$or;
+        } else {
+          if (searchConditions.length === 1) {
+            Object.assign(query, textCondition);
+          } else {
+            query.$or = searchConditions;
+          }
+        }
       } else {
-        // No privacy filter, just add search conditions
-        query.$or = searchConditions;
+        // Short queries: fall back to regex for substring matching
+        const searchConditions: Record<string, unknown>[] = [
+          { title: regex },
+          { excerpt: regex },
+        ];
+
+        if (matchingTags.length > 0) {
+          searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
+        }
+
+        if (query.$or) {
+          query.$and = [
+            { $or: query.$or },
+            { $or: searchConditions }
+          ];
+          delete query.$or;
+        } else {
+          query.$or = searchConditions;
+        }
       }
     }
     
@@ -370,6 +454,19 @@ export const getArticles = async (req: Request, res: Response) => {
     // Add secondary sort by _id for deterministic ordering when publishedAt values are identical
     const sortOrder = sortMap[sort as string] || { publishedAt: -1, _id: -1 }; // Default: latest first
     
+    // Build a stable cache key from the fully-constructed query + sort + pagination
+    const cacheKey = JSON.stringify({ query, sort: sortOrder, skip, limit });
+    const cached = getCachedResult(cacheKey);
+    if (cached) {
+      return res.json({
+        data: cached.data,
+        total: cached.total,
+        page,
+        limit,
+        hasMore: page * limit < cached.total,
+      });
+    }
+
     const [articles, total] = await Promise.all([
       Article.find(query)
         .sort(sortOrder)
@@ -379,8 +476,11 @@ export const getArticles = async (req: Request, res: Response) => {
       Article.countDocuments(query)
     ]);
 
+    const normalizedData = await normalizeArticleDocs(articles);
+    setCachedResult(cacheKey, normalizedData, total);
+
     res.json({
-      data: await normalizeArticleDocs(articles),
+      data: normalizedData,
       total,
       page,
       limit,
@@ -420,6 +520,7 @@ export const getArticleById = async (req: Request, res: Response) => {
 };
 
 export const createArticle = async (req: Request, res: Response) => {
+  invalidateSearchCache();
   try {
     // Validate input
     const validationResult = createArticleSchema.safeParse(req.body);
@@ -570,6 +671,7 @@ export const createArticle = async (req: Request, res: Response) => {
 };
 
 export const updateArticle = async (req: Request, res: Response) => {
+  invalidateSearchCache();
   try {
     // Get current user from authentication middleware
     const currentUserId = (req as any).user?.userId;
@@ -797,6 +899,7 @@ export const updateArticle = async (req: Request, res: Response) => {
 };
 
 export const deleteArticle = async (req: Request, res: Response) => {
+  invalidateSearchCache();
   try {
     const articleId = req.params.id;
     

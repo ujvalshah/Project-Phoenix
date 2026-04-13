@@ -1,6 +1,6 @@
 import React, { useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { Collection } from '@/types';
+import { TaxonomyTag } from '@/types';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 
 /** Describes a single active-filter chip to render in the toolbar. */
@@ -11,35 +11,49 @@ export interface ActiveFilterChip {
 }
 
 interface CategoryToolbarProps {
-  collections: Collection[];
+  /** Format dimension tags (Content Format) */
+  formatTags: TaxonomyTag[];
+  /** Domain dimension tags (Subject Domain) */
+  domainTags: TaxonomyTag[];
+  /** Currently selected format tag IDs */
+  selectedFormatIds: string[];
+  /** Currently selected domain tag IDs */
+  selectedDomainIds: string[];
+  /** Toggle a format tag on/off */
+  onToggleFormat: (tagId: string) => void;
+  /** Toggle a domain tag on/off */
+  onToggleDomain: (tagId: string) => void;
+  /** Clear all toolbar selections */
+  onClearAll: () => void;
+  /** Loading state */
   isLoading: boolean;
-  selectedCollectionId: string | null; // null = "All"
-  onSelect: (collectionId: string | null) => void;
-  /** Active filter chips rendered inline after the collection pills */
+  /** Active filter chips rendered inline after the tag pills */
   activeFilters?: ActiveFilterChip[];
-  /** Callback to clear all active filters at once */
-  onClearAllFilters?: () => void;
 }
 
 /**
  * Horizontal sticky category rail for the home feed.
- * Shows "All" + featured community collections + inline active filter chips.
+ * Shows: [All] | [Format tags...] | [Domain tags...]
  *
  * UX:
- * - Single-select (one active at a time)
+ * - Multi-select within each dimension group
+ * - "All" clears all selections
+ * - Dividers between sections
  * - Horizontal scroll on mobile with hidden scrollbar
  * - Hover-reveal arrow buttons on desktop
- * - Active filter chips appear after the pills with a divider
- * - Min 44px tap targets for accessibility
+ * - Min 36px tap targets for accessibility
  * - Keyboard navigable with appropriate ARIA states
  */
 export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
-  collections,
+  formatTags,
+  domainTags,
+  selectedFormatIds,
+  selectedDomainIds,
+  onToggleFormat,
+  onToggleDomain,
+  onClearAll,
   isLoading,
-  selectedCollectionId,
-  onSelect,
   activeFilters = [],
-  onClearAllFilters,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +66,7 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
     }
   }, []);
 
+  const hasAnySelection = selectedFormatIds.length > 0 || selectedDomainIds.length > 0;
   const hasChips = activeFilters.length > 0;
 
   return (
@@ -75,7 +90,7 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
           <ChevronLeft size={16} />
         </button>
 
-        {/* Scrollable category pills + filter chips */}
+        {/* Scrollable tag pills */}
         <div
           ref={scrollRef}
           role="toolbar"
@@ -85,27 +100,44 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
           {/* "All" button — always first */}
           <CategoryPill
             label="All"
-            isActive={selectedCollectionId === null}
-            onClick={() => onSelect(null)}
+            isActive={!hasAnySelection}
+            onClick={onClearAll}
           />
 
+          {/* Divider after All */}
+          <ToolbarDivider />
+
+          {/* Format tags section */}
           {isLoading ? (
-            // Skeleton pills while loading
-            <>
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="h-8 w-20 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse shrink-0"
-                />
-              ))}
-            </>
+            <SkeletonPills count={3} />
           ) : (
-            collections.map((c) => (
+            formatTags.map((tag) => (
               <CategoryPill
-                key={c.id}
-                label={c.name}
-                isActive={selectedCollectionId === c.id}
-                onClick={() => onSelect(c.id)}
+                key={tag.id}
+                label={tag.rawName}
+                isActive={selectedFormatIds.includes(tag.id)}
+                onClick={() => onToggleFormat(tag.id)}
+                accentColor="blue"
+              />
+            ))
+          )}
+
+          {/* Divider between Format and Domain */}
+          {(formatTags.length > 0 || isLoading) && (domainTags.length > 0 || isLoading) && (
+            <ToolbarDivider />
+          )}
+
+          {/* Domain tags section */}
+          {isLoading ? (
+            <SkeletonPills count={4} />
+          ) : (
+            domainTags.map((tag) => (
+              <CategoryPill
+                key={tag.id}
+                label={tag.rawName}
+                isActive={selectedDomainIds.includes(tag.id)}
+                onClick={() => onToggleDomain(tag.id)}
+                accentColor="emerald"
               />
             ))
           )}
@@ -113,7 +145,7 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
           {/* Inline active filter chips — after a subtle divider */}
           {hasChips && (
             <>
-              <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 shrink-0 mx-1" aria-hidden />
+              <ToolbarDivider />
               {activeFilters.map((chip) => (
                 <FilterChipPill
                   key={chip.key}
@@ -121,15 +153,6 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
                   onRemove={chip.onRemove}
                 />
               ))}
-              {activeFilters.length > 1 && onClearAllFilters && (
-                <button
-                  onClick={onClearAllFilters}
-                  className="shrink-0 text-[11px] font-medium text-slate-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 transition-colors whitespace-nowrap px-1"
-                  aria-label="Clear all filters"
-                >
-                  Clear all
-                </button>
-              )}
             </>
           )}
         </div>
@@ -147,16 +170,46 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
   );
 };
 
+/** Vertical divider between toolbar sections */
+const ToolbarDivider: React.FC = () => (
+  <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 shrink-0 mx-1" aria-hidden />
+);
+
+/** Skeleton loading pills */
+const SkeletonPills: React.FC<{ count: number }> = ({ count }) => (
+  <>
+    {Array.from({ length: count }, (_, i) => (
+      <div
+        key={i}
+        className="h-8 w-20 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse shrink-0"
+      />
+    ))}
+  </>
+);
+
+const ACCENT_PILL = {
+  blue: {
+    active: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-700 shadow-sm',
+  },
+  emerald: {
+    active: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700 shadow-sm',
+  },
+  primary: {
+    active: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 border-primary-200 dark:border-primary-700 shadow-sm',
+  },
+} as const;
+
 /**
  * Individual category pill button.
- * - 44px min height for tap target (h-8 + padding)
- * - High-contrast active state using primary color
+ * - 36px min height for tap target
+ * - Color-coded active state per dimension
  */
 const CategoryPill: React.FC<{
   label: string;
   isActive: boolean;
   onClick: () => void;
-}> = ({ label, isActive, onClick }) => (
+  accentColor?: keyof typeof ACCENT_PILL;
+}> = ({ label, isActive, onClick, accentColor = 'primary' }) => (
   <button
     aria-pressed={isActive}
     onClick={onClick}
@@ -169,7 +222,7 @@ const CategoryPill: React.FC<{
       transition-all duration-150 ease-out
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1
       ${isActive
-        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 border-primary-200 dark:border-primary-700 shadow-sm'
+        ? ACCENT_PILL[accentColor].active
         : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
       }
     `}
@@ -180,7 +233,6 @@ const CategoryPill: React.FC<{
 
 /**
  * Inline dismissable filter chip — smaller and more subtle than category pills.
- * Uses the primary color to distinguish from collection pills.
  */
 const FilterChipPill: React.FC<{
   label: string;

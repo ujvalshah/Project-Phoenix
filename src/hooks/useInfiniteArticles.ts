@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { articleService, PaginatedArticlesResponse } from '@/services/articleService';
-import { FilterState, SortOrder, Article } from '@/types';
+import { FilterState, SortOrder, ContentStream, Article } from '@/types';
 
 interface UseInfiniteArticlesOptions {
   searchQuery: string;
@@ -18,6 +18,7 @@ interface UseInfiniteArticlesOptions {
   formatTagIds?: string[];
   domainTagIds?: string[];
   subtopicTagIds?: string[];
+  contentStream?: ContentStream;
 }
 
 /**
@@ -56,6 +57,7 @@ export const useInfiniteArticles = ({
   formatTagIds = [],
   domainTagIds = [],
   subtopicTagIds = [],
+  contentStream,
 }: UseInfiniteArticlesOptions): UseInfiniteArticlesResult => {
   // useInfiniteQuery automatically handles:
   // - Page accumulation
@@ -63,7 +65,7 @@ export const useInfiniteArticles = ({
   // - Caching
   // - Race condition protection
   const query = useInfiniteQuery<PaginatedArticlesResponse>({
-    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? '', collectionId ?? '', favorites, unread, formats.join(','), timeRange, formatTagIds.join(','), domainTagIds.join(','), subtopicTagIds.join(',')],
+    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? '', collectionId ?? '', favorites, unread, formats.join(','), timeRange, formatTagIds.join(','), domainTagIds.join(','), subtopicTagIds.join(','), contentStream ?? ''],
     queryFn: async ({ pageParam = 1 }) => {
       // Build filters inside queryFn to avoid stale closures
       // Use full selectedCategories array when available, fall back to activeCategory
@@ -88,6 +90,7 @@ export const useInfiniteArticles = ({
         formatTagIds: formatTagIds.length > 0 ? formatTagIds : undefined,
         domainTagIds: domainTagIds.length > 0 ? domainTagIds : undefined,
         subtopicTagIds: subtopicTagIds.length > 0 ? subtopicTagIds : undefined,
+        contentStream: contentStream || undefined,
       };
 
       return articleService.getArticles(filters, pageParam as number);
@@ -125,14 +128,6 @@ export const useInfiniteArticles = ({
         seen.add(article.id);
         deduplicated.push(article);
       }
-    }
-
-    if (deduplicated.length !== allArticles.length) {
-      console.log('[useInfiniteArticles] Deduplicated articles:', {
-        before: allArticles.length,
-        after: deduplicated.length,
-        removed: allArticles.length - deduplicated.length,
-      });
     }
 
     return deduplicated;

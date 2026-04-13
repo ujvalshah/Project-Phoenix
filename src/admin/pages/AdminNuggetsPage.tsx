@@ -41,6 +41,7 @@ export const AdminNuggetsPage: React.FC = () => {
   const [tagFilter, setTagFilter] = useState('');
   const [sourceTypeFilter, setSourceTypeFilter] = useState<'all' | 'link' | 'video' | 'document' | 'twitter'>('all');
   const [youtubeFilter, setYoutubeFilter] = useState<'all' | 'youtube' | 'non-youtube'>('all');
+  const [streamFilter, setStreamFilter] = useState<'all' | 'standard' | 'pulse' | 'both'>('all');
 
   // Sorting
   const [sortKey, setSortKey] = useState<string>('createdAt');
@@ -123,8 +124,9 @@ export const AdminNuggetsPage: React.FC = () => {
     if (tagFilter) params.tag = tagFilter;
     if (sourceTypeFilter !== 'all') params.source = sourceTypeFilter;
     if (youtubeFilter !== 'all') params.youtube = youtubeFilter;
+    if (streamFilter !== 'all') params.stream = streamFilter;
     setSearchParams(params, { replace: true });
-  }, [searchQuery, statusFilter, dateFilter, tagFilter, sourceTypeFilter, youtubeFilter, setSearchParams]);
+  }, [searchQuery, statusFilter, dateFilter, tagFilter, sourceTypeFilter, youtubeFilter, streamFilter, setSearchParams]);
 
   // Memoize loadData to prevent recreation on every render
   // This prevents infinite loops in useEffect dependencies
@@ -139,6 +141,7 @@ export const AdminNuggetsPage: React.FC = () => {
           tag: tagFilter,
           sourceType: sourceTypeFilter,
           youtubeMode: youtubeFilter,
+          contentStream: streamFilter,
           page: currentPage,
           limit: pageSize,
         }),
@@ -177,7 +180,7 @@ export const AdminNuggetsPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter, searchQuery, tagFilter, sourceTypeFilter, youtubeFilter, currentPage, pageSize]);
+  }, [statusFilter, searchQuery, tagFilter, sourceTypeFilter, youtubeFilter, streamFilter, currentPage, pageSize]);
 
   // Load data when statusFilter changes, with debounce
   useEffect(() => {
@@ -534,7 +537,7 @@ export const AdminNuggetsPage: React.FC = () => {
 
   // Memoize Filters JSX to prevent re-renders
   const Filters = useMemo(() => (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
       <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
         <button
           onClick={() => setViewMode('table')}
@@ -599,9 +602,18 @@ export const AdminNuggetsPage: React.FC = () => {
         </select>
       </div>
 
+      <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
+        <select value={streamFilter} onChange={(e) => setStreamFilter(e.target.value as any)} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
+            <option value="all">All Streams</option>
+            <option value="standard">Standard</option>
+            <option value="pulse">Pulse</option>
+            <option value="both">Both</option>
+        </select>
+      </div>
+
       <div className="relative flex items-center">
-        <input 
-            type="date" 
+        <input
+            type="date"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
             className="pl-3 pr-2 py-1 text-[10px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -641,28 +653,31 @@ export const AdminNuggetsPage: React.FC = () => {
       </div>
       )}
     </div>
-  ), [statusFilter, dateFilter, tagFilter, sourceTypeFilter, youtubeFilter, showColumnMenu, visibleColumns, allColumns, viewMode]);
+  ), [statusFilter, dateFilter, tagFilter, sourceTypeFilter, youtubeFilter, streamFilter, showColumnMenu, visibleColumns, allColumns, viewMode]);
 
   // Memoize BulkActions to prevent re-renders
   const BulkActions = useMemo(() => selectedIds.length > 0 ? (
-      <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 duration-200 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 px-2 py-1.5">
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">{selectedIds.length} selected</span>
-          <select
-            value={targetCollectionId}
-            onChange={(e) => setTargetCollectionId(e.target.value)}
-            className="px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 min-w-44"
-          >
+      <div className="flex min-w-0 w-full max-w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:max-w-[min(100%,36rem)] animate-in fade-in slide-in-from-right-2 duration-200 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 px-2 py-1.5">
+          <span className="shrink-0 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">{selectedIds.length} selected</span>
+          <div className="min-w-0 w-full max-w-full flex-1 basis-[10rem] sm:w-auto sm:min-w-[11rem] sm:max-w-[14rem] md:max-w-[18rem]">
+            <select
+              value={targetCollectionId}
+              onChange={(e) => setTargetCollectionId(e.target.value)}
+              aria-label="Target collection for bulk add"
+              className="box-border w-full min-w-0 max-w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300"
+            >
             <option value="">Select collection</option>
             {collectionOptions.map((collection) => (
               <option key={collection.id} value={collection.id}>
                 {formatCollectionOptionLabel(collection)}
               </option>
             ))}
-          </select>
+            </select>
+          </div>
           <button
             onClick={handleBulkAction}
             disabled={isAssigning || !targetCollectionId}
-            className="px-3 py-1.5 bg-primary-500 text-white hover:bg-primary-600 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+            className="shrink-0 px-3 py-1.5 bg-primary-500 text-white hover:bg-primary-600 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
           >
             {isAssigning ? 'Adding...' : 'Add to collection'}
           </button>
@@ -670,9 +685,13 @@ export const AdminNuggetsPage: React.FC = () => {
   ) : null, [selectedIds.length, targetCollectionId, collectionOptions, formatCollectionOptionLabel, handleBulkAction, isAssigning]);
 
   const CardToolbar = useMemo(() => (
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-      <div className="flex-1 flex flex-wrap items-center gap-2">
-        <div className="relative w-full md:w-auto">
+    <div
+      className={`flex min-w-0 gap-2 bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm ${
+        BulkActions ? 'flex-col' : 'flex-col md:flex-row md:items-center md:justify-between'
+      }`}
+    >
+      <div className="flex min-w-0 w-full flex-1 flex-wrap items-center gap-2">
+        <div className="relative w-full min-w-[min(100%,12rem)] max-w-full sm:max-w-none md:w-auto">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input
             type="text"
@@ -685,7 +704,11 @@ export const AdminNuggetsPage: React.FC = () => {
         </div>
         {Filters}
       </div>
-      {BulkActions && <div className="flex items-center gap-2 shrink-0">{BulkActions}</div>}
+      {BulkActions && (
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-2 dark:border-slate-800 md:border-t-0 md:pt-0">
+          {BulkActions}
+        </div>
+      )}
     </div>
   ), [searchQuery, Filters, BulkActions]);
 

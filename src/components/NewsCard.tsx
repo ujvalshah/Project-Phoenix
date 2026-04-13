@@ -4,7 +4,6 @@ import { useNewsCard } from '@/hooks/useNewsCard';
 import { GridVariant } from './card/variants/GridVariant';
 import { FeedVariant } from './card/variants/FeedVariant';
 import { MasonryVariant } from './card/variants/MasonryVariant';
-import { UtilityVariant } from './card/variants/UtilityVariant';
 import { CollectionPopover } from './CollectionPopover';
 import { ReportModal, ReportPayload } from './ReportModal';
 import { ArticleModal } from './ArticleModal';
@@ -22,7 +21,7 @@ const YouTubeModal = lazy(() => import('./YouTubeModal').then(module => ({ defau
 
 interface NewsCardProps {
   article: Article;
-  viewMode: 'grid' | 'feed' | 'masonry' | 'utility';
+  viewMode: 'grid' | 'feed' | 'masonry';
   onTagClick?: (tag: string) => void;
   onCategoryClick: (category: string) => void;
   onClick: (article: Article) => void;
@@ -116,20 +115,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
       case 'masonry':
         variant = (
           <MasonryVariant
-            logic={logic}
-            showTagPopover={modals.showTagPopover}
-            showMenu={modals.showMenu}
-            menuRef={refs.menuRef}
-            tagPopoverRef={refs.tagPopoverRef}
-            isOwner={isOwner}
-            isAdmin={isAdmin}
-            isPreview={isPreview}
-          />
-        );
-        break;
-      case 'utility':
-        variant = (
-          <UtilityVariant
             logic={logic}
             showTagPopover={modals.showTagPopover}
             showMenu={modals.showMenu}

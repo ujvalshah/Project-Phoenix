@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 // useNavigate removed - not currently used in this component
-import { X, Globe, Lock, Loader2 } from 'lucide-react';
+import { X, Globe, Lock, Loader2, Zap } from 'lucide-react';
 import { getInitials } from '@/utils/formatters';
 import { storageService } from '@/services/storageService';
 import { detectProviderFromUrl, looksLikeMultipleUrls, splitPastedUrlCandidates } from '@/utils/urlUtils';
@@ -127,6 +127,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // Metadata State
   const [dimensionTagIds, setDimensionTagIds] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [contentStream, setContentStream] = useState<'standard' | 'pulse' | 'both'>('standard');
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   
   // Identity State (Admin Only)
@@ -150,7 +151,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const [layoutVisibility, setLayoutVisibility] = useState<LayoutVisibility>({
     grid: true,
     masonry: true,
-    utility: true,
     feed: true,
   });
 
@@ -230,12 +230,12 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           setCustomCreatedAt(`${year}-${month}-${day}T${hours}:${minutes}`);
         }
         setVisibility(initialData.visibility || 'public');
+        setContentStream(initialData.contentStream || 'standard');
         // Initialize externalLinks and layoutVisibility from initialData
         setExternalLinks(initialData.externalLinks || []);
         setLayoutVisibility(initialData.layoutVisibility || {
           grid: true,
           masonry: true,
-          utility: true,
           feed: true,
         });
         // Initialize disclaimer from initialData
@@ -451,7 +451,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setLayoutVisibility({
       grid: true,
       masonry: true,
-      utility: true,
       feed: true,
     });
     // Reset disclaimer
@@ -992,17 +991,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     }
   };
 
-  // Handle Utility media toggle (NEW)
-  const handleUtilityMediaToggle = (itemId: string, showInUtility: boolean) => {
-    let item = masonryMediaItems.find(m => m.id === itemId);
-    if (!item) {
-      item = masonryMediaItems.find(m => m.url === itemId || m.id === itemId);
-    }
-    if (item?.url) {
-      // TODO: Implement imageManager.toggleUtility() when backend support is ready
-      console.log('[UtilityToggle] Utility visibility:', itemId, showInUtility);
-    }
-  };
 
   // ═══════════════════════════════════════════════════════════════════════════
   // EXTERNAL LINKS HANDLERS (NEW)
@@ -1067,7 +1055,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       : index === 0,
     showInMasonry: item.showInMasonry,
     showInGrid: item.showInGrid,
-    showInUtility: true, // Default to true (show in utility by default)
     masonryTitle: item.masonryTitle,
     previewMetadata: item.previewMetadata,
   }));
@@ -1661,6 +1648,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             updatePayload.layoutVisibility = layoutVisibility;
             updatePayload.showDisclaimer = showDisclaimer;
             updatePayload.disclaimerText = disclaimerText.trim() || null;
+            updatePayload.contentStream = contentStream;
 
             // V2: Add displayImageIndex if user selected a specific thumbnail
             if (isFeatureEnabled('NUGGET_EDITOR_V2') && displayImageId) {
@@ -1949,6 +1937,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             layoutVisibility: layoutVisibility,
             showDisclaimer,
             disclaimerText: disclaimerText.trim() || null,
+            contentStream,
             // V2: Add displayImageIndex if user selected a specific thumbnail
             ...(isFeatureEnabled('NUGGET_EDITOR_V2') && displayImageId ? {
               displayImageIndex: currentMasonryItems.findIndex(m => m.id === displayImageId),
@@ -2118,21 +2107,44 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         </div>
                     )}
 
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
-                             <button 
+                             <button
                                 onClick={() => { setVisibility('public'); setSelectedCollections([]); }}
                                 className={`px-3 py-1.5 text-[10px] font-bold rounded-md flex items-center gap-1.5 transition-all ${visibility === 'public' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
                              >
                                 <Globe size={12} /> Public
                              </button>
-                             <button 
+                             <button
                                 onClick={() => { setVisibility('private'); setSelectedCollections([]); }}
                                 className={`px-3 py-1.5 text-[10px] font-bold rounded-md flex items-center gap-1.5 transition-all ${visibility === 'private' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
                              >
                                 <Lock size={12} /> Private
                              </button>
                         </div>
+                        {/* Content stream selector — gated by feature flag */}
+                        {isFeatureEnabled('MARKET_PULSE') && (
+                          <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
+                            <button
+                              onClick={() => setContentStream('standard')}
+                              className={`px-2.5 py-1.5 text-[10px] font-bold rounded-md transition-all ${contentStream === 'standard' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
+                            >
+                              Standard
+                            </button>
+                            <button
+                              onClick={() => setContentStream('pulse')}
+                              className={`px-2.5 py-1.5 text-[10px] font-bold rounded-md flex items-center gap-1 transition-all ${contentStream === 'pulse' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
+                            >
+                              <Zap size={10} /> Pulse
+                            </button>
+                            <button
+                              onClick={() => setContentStream('both')}
+                              className={`px-2.5 py-1.5 text-[10px] font-bold rounded-md transition-all ${contentStream === 'both' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
+                            >
+                              Both
+                            </button>
+                          </div>
+                        )}
                     </div>
                 </div>
 
@@ -2432,7 +2444,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     onSetDisplayImage={handleSetDisplayImage}
                     onToggleMasonry={handleMasonryMediaToggle}
                     onToggleGrid={handleGridMediaToggle}
-                    onToggleUtility={handleUtilityMediaToggle}
                     onMasonryTitleChange={handleMasonryTitleChange}
                     onAddMedia={() => fileInputRef.current?.click()}
                     disabled={isSubmitting}

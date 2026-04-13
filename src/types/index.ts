@@ -187,7 +187,6 @@ export interface ExternalLink {
 export interface LayoutVisibility {
   grid: boolean;              // Standard grid layout
   masonry: boolean;           // Masonry gallery layout (requires media with showInMasonry)
-  utility: boolean;           // Compact utility layout
   feed?: boolean;             // Feed layout (optional, defaults to grid visibility)
 }
 
@@ -198,7 +197,6 @@ export interface LayoutVisibility {
 export const DEFAULT_LAYOUT_VISIBILITY: LayoutVisibility = {
   grid: true,
   masonry: true,
-  utility: true,
   feed: true,
 };
 
@@ -289,6 +287,15 @@ export interface Article {
   showDisclaimer?: boolean;
   disclaimerText?: string | null; // null/undefined = use site-wide default
 
+  // ============================================================================
+  // CONTENT STREAM ROUTING
+  // ============================================================================
+  // Routes articles to standard feed, Market Pulse, or both
+  // 'standard' = main thematic feed (default)
+  // 'pulse' = Market Pulse feed (current/daily market updates)
+  // 'both' = appears in both feeds
+  contentStream?: 'standard' | 'pulse' | 'both';
+
   // Contextual
   addedBy?: Contributor; // When inside a collection
 }
@@ -368,6 +375,8 @@ export type SortOrder = 'latest' | 'oldest';
 
 export type TimeRange = 'all' | '24h' | '7d';
 
+export type ContentStream = 'standard' | 'pulse';
+
 export interface FilterState {
   query: string;
   categories: string[];
@@ -386,6 +395,8 @@ export interface FilterState {
   domainTagIds?: string[];
   /** Sub-topic dimension tag IDs (OR within, AND across dimensions) */
   subtopicTagIds?: string[];
+  /** Content stream: 'standard' (default) or 'pulse' (Market Pulse) */
+  contentStream?: ContentStream;
 }
 
 /** Serializable filter state for URL params and localStorage */
@@ -406,6 +417,8 @@ export interface SerializableFilterState {
   domainTagIds?: string[];
   /** Sub-topic dimension tag IDs */
   subtopicTagIds?: string[];
+  /** Content stream: 'standard' or 'pulse' */
+  contentStream?: ContentStream;
 }
 
 /** Taxonomy tag returned by GET /api/categories/taxonomy */

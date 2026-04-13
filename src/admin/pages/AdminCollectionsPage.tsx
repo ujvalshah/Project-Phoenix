@@ -4,7 +4,7 @@ import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
 import { AdminCollection } from '../types/admin';
 import { adminCollectionsService } from '../services/adminCollectionsService';
-import { Eye, Trash2, Lock, Globe, EyeOff, Folder, Layers, Pencil, Check, X, Star } from 'lucide-react';
+import { Eye, Trash2, Lock, Globe, Folder, Layers, Pencil, Check, X, Star } from 'lucide-react';
 import { sortBy, filterByDate, type SortConfig } from '@/utils/sortAndFilter';
 import { useToast } from '@/hooks/useToast';
 import { AdminDrawer } from '../components/AdminDrawer';
@@ -13,7 +13,7 @@ import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { FeaturedSortableList } from '../components/FeaturedSortableList';
+// FeaturedSortableList import removed — toolbar now uses dimension tags (see AdminTagsPage)
 
 export const AdminCollectionsPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
@@ -31,6 +31,7 @@ export const AdminCollectionsPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editParentId, setEditParentId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   
   // Sorting & Filtering
@@ -109,6 +110,11 @@ export const AdminCollectionsPage: React.FC = () => {
     [collections]
   );
 
+  const rootCollections = useMemo(
+    () => collections.filter((c) => !c.parentId).sort((a, b) => a.name.localeCompare(b.name)),
+    [collections]
+  );
+
   const handleDelete = async () => {
     if (!selectedCollection || isDeleting) {
       return;
@@ -164,17 +170,6 @@ export const AdminCollectionsPage: React.FC = () => {
     }
   };
 
-  const handleToggleStatus = async (col: AdminCollection) => {
-    const newStatus = col.status === 'active' ? 'hidden' : 'active';
-    try {
-        await adminCollectionsService.updateCollectionStatus(col.id, newStatus);
-        setCollections(prev => prev.map(c => c.id === col.id ? { ...c, status: newStatus } : c));
-        toast.success(`Collection is now ${newStatus}`);
-    } catch(e) {
-        toast.error("Status update failed");
-    }
-  };
-
   const handleToggleFeatured = async (col: AdminCollection) => {
     const newFeatured = !col.isFeatured;
     // Optimistic update
@@ -197,32 +192,8 @@ export const AdminCollectionsPage: React.FC = () => {
     }
   };
 
-  // Drag-and-drop reorder for featured collections
-  const handleReorderFeatured = async (orderedIds: string[]) => {
-    // Optimistic update: reorder locally
-    const orderMap = new Map(orderedIds.map((id, i) => [id, i]));
-    setCollections(prev => prev.map(c =>
-      orderMap.has(c.id) ? { ...c, featuredOrder: orderMap.get(c.id)! } : c
-    ));
-
-    try {
-      await adminCollectionsService.reorderFeatured(orderedIds);
-      queryClient.invalidateQueries({ queryKey: ['collections', 'featured'] });
-    } catch (_e) {
-      // Revert by reloading
-      const fresh = await adminCollectionsService.listCollections();
-      setCollections(fresh);
-      toast.error('Failed to reorder featured collections');
-    }
-  };
-
-  // Derived: featured collections sorted by order for the drag-and-drop list
-  const featuredCollections = useMemo(
-    () => collections
-      .filter(c => c.isFeatured)
-      .sort((a, b) => a.featuredOrder - b.featuredOrder),
-    [collections]
-  );
+  // handleReorderFeatured and featuredCollections removed — toolbar now uses
+  // dimension tags. See AdminTagsPage > ToolbarTagPlacement.
 
   const handleBulkAction = (action: string) => {
     if (action === 'delete') {
@@ -299,6 +270,7 @@ export const AdminCollectionsPage: React.FC = () => {
   const handleStartEdit = (col: AdminCollection) => {
     setEditName(col.name || '');
     setEditDescription(col.description || '');
+    setEditParentId(col.parentId || null);
     setIsEditing(true);
   };
 
@@ -306,6 +278,7 @@ export const AdminCollectionsPage: React.FC = () => {
     setIsEditing(false);
     setEditName('');
     setEditDescription('');
+    setEditParentId(null);
   };
 
   const handleSaveEdit = async () => {
@@ -318,16 +291,17 @@ export const AdminCollectionsPage: React.FC = () => {
     try {
       await adminCollectionsService.updateCollection(selectedCollection.id, {
         name: editName.trim(),
-        description: editDescription.trim()
-      });
+        description: editDescription.trim(),
+        parentId: editParentId,
+      } as Partial<AdminCollection>);
 
       // Update local state
       setCollections(prev => prev.map(c =>
         c.id === selectedCollection.id
-          ? { ...c, name: editName.trim(), description: editDescription.trim() }
+          ? { ...c, name: editName.trim(), description: editDescription.trim(), parentId: editParentId }
           : c
       ));
-      setSelectedCollection(prev => prev ? { ...prev, name: editName.trim(), description: editDescription.trim() } : null);
+      setSelectedCollection(prev => prev ? { ...prev, name: editName.trim(), description: editDescription.trim(), parentId: editParentId } : null);
 
       toast.success('Collection updated');
       setIsEditing(false);
@@ -520,20 +494,8 @@ export const AdminCollectionsPage: React.FC = () => {
         isLoading={isLoading}
       />
 
-      {featuredCollections.length > 0 && (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
-          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-            <Star size={16} className="text-amber-500" />
-            Category Toolbar Order
-            <span className="text-xs font-normal text-slate-400">Drag to reorder</span>
-          </h3>
-          <FeaturedSortableList
-            collections={featuredCollections}
-            onReorder={handleReorderFeatured}
-            onRemoveFeatured={handleToggleFeatured}
-          />
-        </div>
-      )}
+      {/* Category Toolbar Order — hidden: toolbar now uses dimension tags instead of collections.
+         See AdminTagsPage > ToolbarTagPlacement for the new toolbar ordering UI. */}
 
       <AdminTable
         columns={columns}
@@ -661,6 +623,22 @@ export const AdminCollectionsPage: React.FC = () => {
                                     rows={3}
                                     className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Parent Collection</label>
+                                <select
+                                    value={editParentId || ''}
+                                    onChange={(e) => setEditParentId(e.target.value || null)}
+                                    className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                >
+                                    <option value="">None (Root)</option>
+                                    {rootCollections
+                                      .filter((c) => c.id !== selectedCollection?.id)
+                                      .map((c) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                      ))
+                                    }
+                                </select>
                             </div>
                         </div>
                     ) : (

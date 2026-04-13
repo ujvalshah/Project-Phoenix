@@ -15,7 +15,6 @@ export interface MediaSectionItem {
   isDisplayImage: boolean;    // Radio: selected as card thumbnail
   showInMasonry: boolean;     // Checkbox: show in masonry layout
   showInGrid: boolean;        // Checkbox: show in grid layout
-  showInUtility: boolean;     // Checkbox: show in utility layout
   masonryTitle?: string;
   isUploading?: boolean;
   uploadError?: string;
@@ -29,7 +28,6 @@ interface MediaSectionProps {
   onSetDisplayImage: (itemId: string | null) => void;
   onToggleMasonry: (itemId: string, showInMasonry: boolean) => void;
   onToggleGrid: (itemId: string, showInGrid: boolean) => void;
-  onToggleUtility: (itemId: string, showInUtility: boolean) => void;
   onMasonryTitleChange: (itemId: string, title: string) => void;
   onAddMedia: () => void;
   disabled?: boolean;
@@ -68,7 +66,6 @@ export const MediaSection: React.FC<MediaSectionProps> = ({
   onSetDisplayImage,
   onToggleMasonry,
   onToggleGrid,
-  onToggleUtility,
   onMasonryTitleChange,
   onAddMedia,
   disabled = false,
@@ -219,17 +216,6 @@ export const MediaSection: React.FC<MediaSectionProps> = ({
                   <span className="text-slate-600 dark:text-slate-400">Masonry</span>
                 </label>
 
-                {/* Checkbox: Utility */}
-                <label className="flex items-center gap-2 cursor-pointer text-xs">
-                  <input
-                    type="checkbox"
-                    checked={item.showInUtility}
-                    onChange={(e) => onToggleUtility(item.id, e.target.checked)}
-                    disabled={disabled || item.isUploading}
-                    className="w-3.5 h-3.5 text-primary-500 border-slate-300 rounded focus:ring-primary-500"
-                  />
-                  <span className="text-slate-600 dark:text-slate-400">Utility</span>
-                </label>
               </div>
 
               {/* Delete Button */}

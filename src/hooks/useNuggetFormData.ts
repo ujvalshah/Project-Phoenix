@@ -100,7 +100,7 @@ export function useCollections(type?: 'public' | 'private') {
     queryKey: nuggetFormKeys.collections(type),
     queryFn: async () => {
       const result = await storageService.getCollections(
-        type ? { type } : undefined
+        type ? { type, limit: 100 } : { limit: 100 }
       );
       // Handle union type: Collection[] | { data: Collection[], count: number }
       const collections: Collection[] = Array.isArray(result)
@@ -121,7 +121,7 @@ export function useAllCollections() {
   return useQuery({
     queryKey: nuggetFormKeys.collections(),
     queryFn: async () => {
-      const result = await storageService.getCollections();
+      const result = await storageService.getCollections({ limit: 100 });
       const collections: Collection[] = Array.isArray(result)
         ? result
         : result?.data ?? [];
@@ -266,7 +266,7 @@ export function usePrefetchNuggetFormData() {
         queryKey: nuggetFormKeys.collections(type),
         queryFn: async () => {
           const result = await storageService.getCollections(
-            type ? { type } : undefined
+            type ? { type, limit: 100 } : { limit: 100 }
           );
           return Array.isArray(result) ? result : result?.data ?? [];
         },

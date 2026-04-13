@@ -24,7 +24,6 @@ import {
   ChevronRight,
   Grid3X3,
   LayoutGrid,
-  Square,
 } from 'lucide-react';
 import { Image } from '@/components/Image';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
@@ -41,7 +40,6 @@ export interface UnifiedMediaItem {
   isDisplayImage: boolean;    // Selected as card thumbnail
   showInMasonry: boolean;     // Show in masonry layout
   showInGrid: boolean;        // Show in grid layout
-  showInUtility: boolean;     // Show in utility layout
   masonryTitle?: string;
   isUploading?: boolean;
   uploadError?: string;
@@ -56,7 +54,6 @@ interface UnifiedMediaManagerProps {
   onSetDisplayImage: (itemId: string | null) => void;
   onToggleMasonry: (itemId: string, showInMasonry: boolean) => void;
   onToggleGrid: (itemId: string, showInGrid: boolean) => void;
-  onToggleUtility: (itemId: string, showInUtility: boolean) => void;
   onMasonryTitleChange: (itemId: string, title: string) => void;
   onAddMedia: () => void;
   disabled?: boolean;
@@ -98,7 +95,7 @@ function useIsMobile(): boolean {
 /**
  * Layout visibility icon component
  */
-const LayoutIcon: React.FC<{ type: 'grid' | 'masonry' | 'utility'; size?: number }> = ({
+const LayoutIcon: React.FC<{ type: 'grid' | 'masonry'; size?: number }> = ({
   type,
   size = 12,
 }) => {
@@ -107,8 +104,6 @@ const LayoutIcon: React.FC<{ type: 'grid' | 'masonry' | 'utility'; size?: number
       return <Grid3X3 size={size} />;
     case 'masonry':
       return <LayoutGrid size={size} />;
-    case 'utility':
-      return <Square size={size} />;
   }
 };
 
@@ -122,7 +117,6 @@ interface SortableMediaItemProps {
   onSetDisplayImage: (itemId: string) => void;
   onToggleMasonry: (itemId: string, show: boolean) => void;
   onToggleGrid: (itemId: string, show: boolean) => void;
-  onToggleUtility: (itemId: string, show: boolean) => void;
   disabled?: boolean;
 }
 
@@ -133,7 +127,6 @@ const SortableMediaItem: React.FC<SortableMediaItemProps> = ({
   onSetDisplayImage,
   onToggleMasonry,
   onToggleGrid,
-  onToggleUtility,
   disabled,
 }) => {
   const {
@@ -288,20 +281,6 @@ const SortableMediaItem: React.FC<SortableMediaItemProps> = ({
             >
               <LayoutIcon type="masonry" />
             </button>
-            {/* Utility */}
-            <button
-              type="button"
-              onClick={() => onToggleUtility(item.id, !item.showInUtility)}
-              disabled={disabled || item.isUploading}
-              className={`p-1 rounded transition-colors ${
-                item.showInUtility
-                  ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
-              }`}
-              title={item.showInUtility ? 'Hide from Utility' : 'Show in Utility'}
-            >
-              <LayoutIcon type="utility" />
-            </button>
           </div>
         </div>
       </div>
@@ -322,7 +301,6 @@ interface MobileMediaItemProps {
   onSetDisplayImage: (itemId: string) => void;
   onToggleMasonry: (itemId: string, show: boolean) => void;
   onToggleGrid: (itemId: string, show: boolean) => void;
-  onToggleUtility: (itemId: string, show: boolean) => void;
   disabled?: boolean;
 }
 
@@ -336,7 +314,6 @@ const MobileMediaItem: React.FC<MobileMediaItemProps> = ({
   onSetDisplayImage,
   onToggleMasonry,
   onToggleGrid,
-  onToggleUtility,
   disabled,
 }) => {
   return (
@@ -435,18 +412,6 @@ const MobileMediaItem: React.FC<MobileMediaItemProps> = ({
             >
               M
             </button>
-            <button
-              type="button"
-              onClick={() => onToggleUtility(item.id, !item.showInUtility)}
-              disabled={disabled || item.isUploading}
-              className={`px-1.5 py-0.5 text-[10px] rounded ${
-                item.showInUtility
-                  ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
-              }`}
-            >
-              U
-            </button>
           </div>
         </div>
 
@@ -490,7 +455,7 @@ const MobileMediaItem: React.FC<MobileMediaItemProps> = ({
  * Features:
  * - Drag-to-reorder (desktop) / Arrow buttons (mobile)
  * - Card thumbnail selection (star icon)
- * - Layout visibility toggles (Grid/Masonry/Utility)
+ * - Layout visibility toggles (Grid/Masonry)
  * - Delete buttons
  * - Masonry titles (collapsible)
  * - Order numbers
@@ -503,7 +468,6 @@ export const UnifiedMediaManager: React.FC<UnifiedMediaManagerProps> = ({
   onSetDisplayImage,
   onToggleMasonry,
   onToggleGrid,
-  onToggleUtility,
   onMasonryTitleChange,
   onAddMedia,
   disabled = false,
@@ -611,7 +575,6 @@ export const UnifiedMediaManager: React.FC<UnifiedMediaManagerProps> = ({
               onSetDisplayImage={onSetDisplayImage}
               onToggleMasonry={onToggleMasonry}
               onToggleGrid={onToggleGrid}
-              onToggleUtility={onToggleUtility}
               disabled={disabled}
             />
           ))}
@@ -634,8 +597,7 @@ export const UnifiedMediaManager: React.FC<UnifiedMediaManagerProps> = ({
                   onSetDisplayImage={onSetDisplayImage}
                   onToggleMasonry={onToggleMasonry}
                   onToggleGrid={onToggleGrid}
-                  onToggleUtility={onToggleUtility}
-                  disabled={disabled}
+                      disabled={disabled}
                 />
               ))}
             </div>
@@ -656,10 +618,6 @@ export const UnifiedMediaManager: React.FC<UnifiedMediaManagerProps> = ({
         <div className="flex items-center gap-1">
           <LayoutIcon type="masonry" size={10} />
           <span>= Masonry</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <LayoutIcon type="utility" size={10} />
-          <span>= Utility</span>
         </div>
       </div>
 

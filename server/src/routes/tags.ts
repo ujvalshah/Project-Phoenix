@@ -12,6 +12,9 @@ router.get('/taxonomy', tagsController.getTagTaxonomy);
 // GET /api/categories/taxonomy/coverage - Dimension coverage stats across all articles
 router.get('/taxonomy/coverage', tagsController.getTaxonomyCoverage);
 
+// POST /api/categories/taxonomy/reorder - Bulk-update sortOrder for dimension tags
+router.post('/taxonomy/reorder', authenticateToken, tagsController.reorderTaxonomy);
+
 // GET /api/categories - Returns tag frequency counts (legacy endpoint name, uses tags)
 router.get('/', categoriesController.getCategories);
 

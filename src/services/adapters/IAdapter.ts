@@ -35,6 +35,7 @@ export interface IAdapter {
     formatTagIds?: string[];
     domainTagIds?: string[];
     subtopicTagIds?: string[];
+    contentStream?: string;
   }): Promise<PaginatedArticlesResponse>;
   getArticleById(id: string): Promise<Article | undefined>;
   getArticlesByAuthor(authorId: string): Promise<Article[]>;

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Grid3x3, Rss, LayoutGrid, Settings } from 'lucide-react';
+import { Grid3x3, Rss, LayoutGrid } from 'lucide-react';
 
-export type LayoutMode = 'grid' | 'feed' | 'masonry' | 'utility';
+export type LayoutMode = 'grid' | 'feed' | 'masonry';
 
 interface LayoutPreviewToggleProps {
   currentLayout: LayoutMode;
@@ -16,7 +16,6 @@ export const LayoutPreviewToggle: React.FC<LayoutPreviewToggleProps> = ({
     { mode: 'grid', icon: <Grid3x3 size={18} />, label: 'Grid' },
     { mode: 'feed', icon: <Rss size={18} />, label: 'Feed' },
     { mode: 'masonry', icon: <LayoutGrid size={18} />, label: 'Masonry' },
-    { mode: 'utility', icon: <Settings size={18} />, label: 'Utility' },
   ];
 
   return (

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { SortOrder, TimeRange, SerializableFilterState } from '@/types';
+import { SortOrder, TimeRange, ContentStream, SerializableFilterState } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -22,6 +22,7 @@ const DEFAULTS: Required<SerializableFilterState> = {
   formatTagIds: [],
   domainTagIds: [],
   subtopicTagIds: [],
+  contentStream: 'standard' as ContentStream,
 };
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,7 @@ export function filtersToParams(f: SerializableFilterState): URLSearchParams {
   if (f.subtopicTagIds && f.subtopicTagIds.length > 0) {
     f.subtopicTagIds.forEach(id => p.append('st', id));
   }
+  if (f.contentStream && f.contentStream !== 'standard') p.set('stream', f.contentStream);
   return p;
 }
 
@@ -85,6 +87,7 @@ export function paramsToFilters(p: URLSearchParams): SerializableFilterState {
     formatTagIds: p.getAll('ft').filter(Boolean),
     domainTagIds: p.getAll('dt').filter(Boolean),
     subtopicTagIds: p.getAll('st').filter(Boolean),
+    contentStream: (p.get('stream') as ContentStream) || undefined,
   };
 }
 
@@ -145,6 +148,8 @@ export interface UseFilterStateReturn {
   domainTagIds: string[];
   /** Selected sub-topic dimension tag IDs */
   subtopicTagIds: string[];
+  /** Active content stream: 'standard' (default) or 'pulse' (Market Pulse) */
+  contentStream: ContentStream;
 
   // Derived
   activeCategory: string;        // 'All', 'Today', or first category
@@ -165,6 +170,7 @@ export interface UseFilterStateReturn {
   toggleFormatTag: (tagId: string) => void;
   toggleDomainTag: (tagId: string) => void;
   toggleSubtopicTag: (tagId: string) => void;
+  setContentStream: (stream: ContentStream) => void;
 
   // Reset
   clearAll: () => void;
@@ -213,6 +219,7 @@ export function useFilterState(): UseFilterStateReturn {
     subtopicTagIds: urlFilters.subtopicTagIds && urlFilters.subtopicTagIds.length > 0
       ? urlFilters.subtopicTagIds
       : DEFAULTS.subtopicTagIds,
+    contentStream: urlFilters.contentStream || DEFAULTS.contentStream,
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- State ----
@@ -229,6 +236,7 @@ export function useFilterState(): UseFilterStateReturn {
   const [formatTagIds, setFormatTagIds] = useState<string[]>(initial.formatTagIds);
   const [domainTagIds, setDomainTagIds] = useState<string[]>(initial.domainTagIds);
   const [subtopicTagIds, setSubtopicTagIds] = useState<string[]>(initial.subtopicTagIds);
+  const [contentStream, setContentStream] = useState<ContentStream>(initial.contentStream);
 
   // ---- Debounce search input ----
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -250,7 +258,7 @@ export function useFilterState(): UseFilterStateReturn {
   // ---- URL sync (write) ----
   // CRITICAL: Must preserve URL params that belong to other components (e.g. "expanded"
   // used by ArticleGrid's drawer). Only touch params that belong to the filter system.
-  const FILTER_PARAM_KEYS = new Set(['q', 'cat', 'tag', 'sort', 'favorites', 'unread', 'fmt', 'time', 'col', 'ft', 'dt', 'st']);
+  const FILTER_PARAM_KEYS = new Set(['q', 'cat', 'tag', 'sort', 'favorites', 'unread', 'fmt', 'time', 'col', 'ft', 'dt', 'st', 'stream']);
 
   const syncRef = useRef(false);
   useEffect(() => {
@@ -272,6 +280,7 @@ export function useFilterState(): UseFilterStateReturn {
       formatTagIds: formatTagIds.length > 0 ? formatTagIds : undefined,
       domainTagIds: domainTagIds.length > 0 ? domainTagIds : undefined,
       subtopicTagIds: subtopicTagIds.length > 0 ? subtopicTagIds : undefined,
+      contentStream: contentStream !== 'standard' ? contentStream : undefined,
     };
     const filterParams = filtersToParams(serializable);
 
@@ -291,7 +300,7 @@ export function useFilterState(): UseFilterStateReturn {
     }, { replace: true });
 
     persistFilters(serializable);
-  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, formatTagIds, domainTagIds, subtopicTagIds, setSearchParams]);
+  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, formatTagIds, domainTagIds, subtopicTagIds, contentStream, setSearchParams]);
 
   // ---- Derived ----
   const activeCategory = useMemo(() => {
@@ -367,6 +376,7 @@ export function useFilterState(): UseFilterStateReturn {
     setFormatTagIds([]);
     setDomainTagIds([]);
     setSubtopicTagIds([]);
+    setContentStream('standard');
     clearTimeout(debounceRef.current);
   }, []);
 
@@ -402,6 +412,7 @@ export function useFilterState(): UseFilterStateReturn {
     formatTagIds,
     domainTagIds,
     subtopicTagIds,
+    contentStream,
     activeCategory,
     hasActiveFilters,
     activeFilterCount,
@@ -418,6 +429,7 @@ export function useFilterState(): UseFilterStateReturn {
     toggleFormatTag,
     toggleDomainTag,
     toggleSubtopicTag,
+    setContentStream,
     clearAll,
     clearSearch,
     clearCategories,

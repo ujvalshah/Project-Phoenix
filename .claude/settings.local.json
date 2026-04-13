@@ -60,7 +60,12 @@
       "WebFetch(domain:www.nuggetnews.app)",
       "WebFetch(domain:nuggets-zhih.onrender.com)",
       "Bash(gh run:*)",
-      "Bash(where gh:*)"
+      "Bash(where gh:*)",
+      "Bash(findstr:*)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(netstat -ano)",
+      "Bash(powershell:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

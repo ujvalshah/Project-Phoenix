@@ -4,7 +4,7 @@ import { twMerge } from 'tailwind-merge';
 interface CardTitleProps {
   title?: string;
   className?: string;
-  variant?: 'grid' | 'feed' | 'masonry' | 'utility'; // Variant for feed-specific styling
+  variant?: 'grid' | 'feed' | 'masonry'; // Variant for feed-specific styling
 }
 
 export const CardTitle: React.FC<CardTitleProps> = ({ title, className, variant }) => {

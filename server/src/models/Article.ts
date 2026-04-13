@@ -144,6 +144,14 @@ export interface IArticle extends Document {
    */
   showDisclaimer?: boolean;
   disclaimerText?: string | null;
+
+  /**
+   * Content stream routing
+   * 'standard' = main thematic feed (default)
+   * 'pulse' = Market Pulse feed (current/daily market updates)
+   * 'both' = appears in both feeds
+   */
+  contentStream?: 'standard' | 'pulse' | 'both';
 }
 
 const NuggetMediaSchema = new Schema<INuggetMedia>({
@@ -268,7 +276,10 @@ const ArticleSchema = new Schema<IArticle>({
 
   // Disclaimer fields
   showDisclaimer: { type: Boolean, required: false },
-  disclaimerText: { type: String, required: false, maxlength: 500 }
+  disclaimerText: { type: String, required: false, maxlength: 500 },
+
+  // Content stream routing (standard feed vs Market Pulse)
+  contentStream: { type: String, enum: ['standard', 'pulse', 'both'], default: 'standard' }
 }, {
   timestamps: false // We manage our own timestamps
 });
@@ -285,6 +296,13 @@ ArticleSchema.index({ tagIds: 1, publishedAt: -1 }); // Compound index for tag-f
 ArticleSchema.index({ authorId: 1, visibility: 1 }); // User's articles by visibility
 // Audit Phase-2 Fix: Add index for media.url field (for YouTube cache lookup in AI controller)
 ArticleSchema.index({ 'media.url': 1 });
+// Content stream + date compound index for feed routing queries
+ArticleSchema.index({ contentStream: 1, publishedAt: -1 });
+// Text index for full-text search on title, excerpt, and content (weighted: title > excerpt > content)
+ArticleSchema.index(
+  { title: 'text', excerpt: 'text', content: 'text' },
+  { weights: { title: 10, excerpt: 5, content: 1 }, name: 'article_text_search', background: true }
+);
 
 /**
  * Content Truncation Detection Instrumentation

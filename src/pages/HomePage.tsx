@@ -7,7 +7,7 @@
  * @see src/LAYOUT_ARCHITECTURE.md for full documentation
  *
  * PURPOSE:
- * - Display articles in multiple view modes (grid, feed, masonry, utility)
+ * - Display articles in multiple view modes (grid, feed, masonry)
  * - Handle view mode switching via Header buttons
  * - Article clicks open modal overlays (NOT side panel like FeedLayoutPage)
  * - Category toolbar filters feed by community collection
@@ -15,7 +15,6 @@
  * VIEW MODES:
  * - grid: 4-column ArticleGrid (default)
  * - masonry: Masonry-style ArticleGrid
- * - utility: Compact utility ArticleGrid
  *
  * STABILITY RULES:
  * - Use stable grid-cols-{n} classes only (NO arbitrary templates)
@@ -26,18 +25,18 @@
  */
 
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { Article, SortOrder, TimeRange } from '@/types';
+import { Article } from '@/types';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
-import { useFeaturedCollections } from '@/hooks/useFeaturedCollections';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 import { Loader2, X } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { PageStack } from '@/components/layouts/PageStack';
-import { CategoryToolbar, ActiveFilterChip } from '@/components/CategoryToolbar';
+import { CategoryToolbar, type ActiveFilterChip } from '@/components/CategoryToolbar';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'react-router-dom';
 import { articleService } from '@/services/articleService';
+import { useFilters } from '@/context/FilterStateContext';
 
 const VALUEPROP_DISMISSED_KEY = 'nuggets_valueprop_dismissed';
 
@@ -77,50 +76,33 @@ const ValuePropStrip: React.FC = () => {
 };
 
 interface HomePageProps {
-  searchQuery: string;
-  viewMode: 'grid' | 'masonry' | 'utility';
-  setViewMode: (mode: 'grid' | 'masonry' | 'utility') => void;
-  selectedCategories: string[];
-  setSelectedCategories: (c: string[]) => void;
-  selectedTag: string | null;
-  setSelectedTag: (t: string | null) => void;
-  sortOrder: SortOrder;
-  /** Active community collection ID from useFilterState (URL-persisted) */
-  collectionId: string | null;
-  setCollectionId: (id: string | null) => void;
-  favorites?: boolean;
-  unread?: boolean;
-  formats?: string[];
-  timeRange?: TimeRange;
-  formatTagIds?: string[];
-  domainTagIds?: string[];
-  subtopicTagIds?: string[];
-  onToggleFormatTag?: (tagId: string) => void;
-  onToggleDomainTag?: (tagId: string) => void;
-  onToggleSubtopicTag?: (tagId: string) => void;
+  viewMode: 'grid' | 'masonry';
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
-  searchQuery,
   viewMode,
-  selectedCategories,
-  setSelectedCategories,
-  selectedTag,
-  setSelectedTag,
-  sortOrder,
-  collectionId,
-  setCollectionId,
-  favorites = false,
-  unread = false,
-  formats = [],
-  timeRange = 'all',
-  formatTagIds = [],
-  domainTagIds = [],
-  subtopicTagIds = [],
-  onToggleFormatTag,
-  onToggleDomainTag,
-  onToggleSubtopicTag,
 }) => {
+  // Consume filter state from context — no prop drilling required
+  const {
+    searchQuery,
+    selectedCategories,
+    setSelectedCategories,
+    selectedTag,
+    setSelectedTag,
+    sortOrder,
+    collectionId,
+    favorites,
+    unread,
+    formats,
+    timeRange,
+    formatTagIds,
+    domainTagIds,
+    subtopicTagIds,
+    toggleFormatTag,
+    toggleDomainTag,
+    toggleSubtopicTag,
+    contentStream,
+  } = useFilters();
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [pullY, setPullY] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -143,14 +125,8 @@ export const HomePage: React.FC<HomePageProps> = ({
     });
   }, [searchParams, setSearchParams]);
 
-  // Fetch featured collections for the category toolbar
-  const {
-    data: featuredCollections = [],
-    isLoading: isLoadingCollections,
-  } = useFeaturedCollections();
-
-  // Fetch tag taxonomy for dimension filter chips
-  const { data: taxonomy } = useTagTaxonomy();
+  // Fetch tag taxonomy for the category toolbar (Format + Domain tags)
+  const { data: taxonomy, isLoading: isLoadingTaxonomy } = useTagTaxonomy();
 
   // Determine active tag from selectedCategories (needed for useInfiniteArticles)
   const activeCategory = useMemo(() => {
@@ -186,6 +162,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     formatTagIds,
     domainTagIds,
     subtopicTagIds,
+    contentStream,
   });
 
   const handleRefreshFeed = async () => {
@@ -229,51 +206,36 @@ export const HomePage: React.FC<HomePageProps> = ({
     );
   };
 
-  const handleCategorySelect = useCallback((id: string | null) => {
-    setCollectionId(id);
+  const handleClearToolbar = useCallback(() => {
+    if (toggleFormatTag) {
+      for (const id of formatTagIds) toggleFormatTag(id);
+    }
+    if (toggleDomainTag) {
+      for (const id of domainTagIds) toggleDomainTag(id);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [setCollectionId]);
+  }, [formatTagIds, domainTagIds, toggleFormatTag, toggleDomainTag]);
 
-  // Build inline filter chips for the CategoryToolbar
-  // Collection filter is already shown via the highlighted toolbar pill.
-  // Non-toolbar filters (tag, dimension tags) get explicit chips here.
+  // Build inline filter chips for non-toolbar filters (subtopics, free-form tag, etc.)
   const activeFilters = useMemo(() => {
     const chips: ActiveFilterChip[] = [];
     if (selectedTag) {
       chips.push({ key: 'tag', label: `Tag: ${selectedTag}`, onRemove: () => setSelectedTag(null) });
     }
-    // Dimension format tag chips
-    if (taxonomy && formatTagIds.length > 0) {
-      for (const fid of formatTagIds) {
-        const tag = taxonomy.formats.find(f => f.id === fid);
-        if (tag && onToggleFormatTag) {
-          chips.push({ key: `ft-${fid}`, label: tag.rawName, onRemove: () => onToggleFormatTag(fid) });
-        }
-      }
-    }
-    // Dimension domain tag chips
-    if (taxonomy && domainTagIds.length > 0) {
-      for (const did of domainTagIds) {
-        const tag = taxonomy.domains.find(t => t.id === did);
-        if (tag && onToggleDomainTag) {
-          chips.push({ key: `dt-${did}`, label: tag.rawName, onRemove: () => onToggleDomainTag(did) });
-        }
-      }
-    }
-    // Dimension subtopic tag chips
+    // Subtopic tag chips (not in toolbar, show as filter chips)
     if (taxonomy && subtopicTagIds.length > 0) {
       for (const sid of subtopicTagIds) {
         const tag = taxonomy.subtopics.find(t => t.id === sid);
-        if (tag && onToggleSubtopicTag) {
-          chips.push({ key: `st-${sid}`, label: tag.rawName, onRemove: () => onToggleSubtopicTag(sid) });
+        if (tag && toggleSubtopicTag) {
+          chips.push({ key: `st-${sid}`, label: tag.rawName, onRemove: () => toggleSubtopicTag(sid) });
         }
       }
     }
     return chips;
-  }, [selectedTag, setSelectedTag, formatTagIds, domainTagIds, subtopicTagIds, taxonomy, onToggleFormatTag, onToggleDomainTag, onToggleSubtopicTag]);
+  }, [selectedTag, setSelectedTag, subtopicTagIds, taxonomy, toggleSubtopicTag]);
 
-  // Only show toolbar if there are featured collections (or still loading)
-  const showToolbar = isLoadingCollections || featuredCollections.length > 0;
+  // Show toolbar when taxonomy is loading or has format/domain tags
+  const showToolbar = isLoadingTaxonomy || (taxonomy && (taxonomy.formats.length > 0 || taxonomy.domains.length > 0));
 
   return (
     <main className="w-full flex flex-col relative" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} ref={containerRef}>
@@ -289,10 +251,14 @@ export const HomePage: React.FC<HomePageProps> = ({
         <PageStack
           categoryToolbar={showToolbar ? (
             <CategoryToolbar
-              collections={featuredCollections}
-              isLoading={isLoadingCollections}
-              selectedCollectionId={collectionId}
-              onSelect={handleCategorySelect}
+              formatTags={taxonomy?.formats ?? []}
+              domainTags={taxonomy?.domains ?? []}
+              selectedFormatIds={formatTagIds}
+              selectedDomainIds={domainTagIds}
+              onToggleFormat={toggleFormatTag}
+              onToggleDomain={toggleDomainTag}
+              onClearAll={handleClearToolbar}
+              isLoading={isLoadingTaxonomy}
               activeFilters={activeFilters}
             />
           ) : undefined}

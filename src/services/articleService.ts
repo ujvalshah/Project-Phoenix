@@ -45,6 +45,7 @@ export const articleService = {
         formatTagIds: filters.formatTagIds && filters.formatTagIds.length > 0 ? filters.formatTagIds : undefined,
         domainTagIds: filters.domainTagIds && filters.domainTagIds.length > 0 ? filters.domainTagIds : undefined,
         subtopicTagIds: filters.subtopicTagIds && filters.subtopicTagIds.length > 0 ? filters.subtopicTagIds : undefined,
+        contentStream: filters.contentStream || undefined,
         page,
         limit
       });

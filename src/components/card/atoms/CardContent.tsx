@@ -8,7 +8,7 @@ interface CardContentProps {
   excerpt: string;
   content: string;
   isTextNugget: boolean;
-  variant?: 'grid' | 'feed' | 'masonry' | 'utility'; // Design System: Variant-specific typography
+  variant?: 'grid' | 'feed' | 'masonry'; // Design System: Variant-specific typography
   className?: string;
   allowExpansion?: boolean; // Allow expansion via fade overlay click (Hybrid cards only)
   cardType?: 'hybrid' | 'media-only'; // Card type - truncation ONLY for Hybrid cards

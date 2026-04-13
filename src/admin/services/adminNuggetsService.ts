@@ -17,6 +17,7 @@ export interface AdminNuggetListFilters {
   tag?: string;
   sourceType?: string;
   youtubeMode?: 'all' | 'youtube' | 'non-youtube';
+  contentStream?: 'all' | 'standard' | 'pulse' | 'both';
   page?: number;
   limit?: number;
 }
@@ -53,6 +54,9 @@ class AdminNuggetsService {
         params.set('youtubeOnly', '1');
       } else if (filters?.youtubeMode === 'non-youtube') {
         params.set('nonYoutubeOnly', '1');
+      }
+      if (filters?.contentStream && filters.contentStream !== 'all') {
+        params.set('contentStream', filters.contentStream);
       }
 
       // Fetch articles and reports in parallel for better performance

@@ -15,7 +15,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface ArticleGridProps {
   articles: Article[];
-  viewMode: 'grid' | 'feed' | 'masonry' | 'utility';
+  viewMode: 'grid' | 'feed' | 'masonry';
   isLoading: boolean;
   /** True when refetching due to filter/sort change — shows subtle overlay instead of full skeleton */
   isFilterRefetching?: boolean;
@@ -432,7 +432,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     );
   }
 
-  // Render feed, grid, or utility layout
+  // Render feed or grid layout
   // RESPONSIVE CARD HEIGHTS:
   // - Mobile (1 col): auto-rows-auto - cards size to their content naturally
   // - Tablet+ (2+ cols): auto-rows-fr - equal height rows for visual consistency
@@ -454,9 +454,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         ${isFilterRefetching ? 'opacity-40 pointer-events-none' : 'opacity-100'}
         ${viewMode === 'feed'
           ? "max-w-2xl mx-auto flex flex-col gap-8"
-          : viewMode === 'utility'
-            ? "grid grid-cols-1 auto-rows-auto md:grid-cols-2 md:auto-rows-fr lg:grid-cols-3 xl:grid-cols-4 gap-4 mx-auto w-full"
-            : "grid grid-cols-1 auto-rows-auto md:grid-cols-2 md:auto-rows-fr lg:grid-cols-3 xl:grid-cols-4 gap-6 mx-auto w-full"
+          : "grid grid-cols-1 auto-rows-auto md:grid-cols-2 md:auto-rows-fr lg:grid-cols-3 xl:grid-cols-4 gap-6 mx-auto w-full"
         }
       `}
     >
@@ -510,7 +508,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         );
       })}
 
-      {/* Infinite Scroll Trigger - Only show for grid/utility views (not masonry, which has its own) */}
+      {/* Infinite Scroll Trigger - Only show for grid views (not masonry, which has its own) */}
       {viewMode !== 'masonry' && (
         <InfiniteScrollTrigger
           onIntersect={handleLoadMore}
