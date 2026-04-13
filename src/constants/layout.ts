@@ -29,10 +29,10 @@ export const LAYOUT = {
   /** Header height on mobile (< lg breakpoint) — single consolidated row */
   HEADER_HEIGHT: 56,
   /**
-   * Mobile bottom nav chrome height (text-only tabs + vertical padding) — keep in sync with MobileBottomNav.tsx.
+   * Mobile bottom nav chrome height (icon + label tabs + vertical padding).
    * Safe area is added separately via CSS var (--mobile-bottom-nav-inset).
    */
-  MOBILE_BOTTOM_NAV_HEIGHT: 60,
+  MOBILE_BOTTOM_NAV_HEIGHT: 64,
   /** Header height on desktop (>= lg breakpoint) */
   HEADER_HEIGHT_LG: 64,
   /** Category filter bar height */
