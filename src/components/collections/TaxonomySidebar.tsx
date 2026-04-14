@@ -197,26 +197,32 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
   const touchStartYRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (isMobileOpen && animState === 'closed') {
-      setAnimState('entering');
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setAnimState('open'));
-      });
-    } else if (!isMobileOpen && (animState === 'open' || animState === 'entering')) {
+    if (isMobileOpen) {
+      if (animState === 'closed' || animState === 'exiting') {
+        setAnimState('entering');
+        const raf1 = requestAnimationFrame(() => {
+          requestAnimationFrame(() => setAnimState('open'));
+        });
+        return () => cancelAnimationFrame(raf1);
+      }
+    } else if (animState === 'open' || animState === 'entering') {
       setAnimState('exiting');
       const timer = setTimeout(() => setAnimState('closed'), 250);
       return () => clearTimeout(timer);
     }
   }, [isMobileOpen, animState]);
 
+  // Lock body scroll while the sheet is mounted. Capture "previous" once per open cycle
+  // so we can't stash "hidden" as the restore target and leave the page frozen on close.
+  const sheetMounted = animState !== 'closed';
   useEffect(() => {
-    if (animState !== 'open' && animState !== 'entering') return;
+    if (!sheetMounted) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [animState]);
+  }, [sheetMounted]);
 
   useEffect(() => {
     if (!isMobileOpen) return;
@@ -245,7 +251,7 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
       {shouldRenderSheet && typeof document !== 'undefined' &&
         createPortal(
           <div
-            className={`fixed inset-0 bg-slate-900/45 backdrop-blur-[1px] transition-opacity duration-200 lg:hidden ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+            className={`fixed inset-0 bg-slate-900/45 transition-opacity duration-200 lg:hidden ${isVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
             style={{ zIndex: Z_INDEX.MODAL }}
             onClick={onCloseMobile}
             role="presentation"
@@ -293,7 +299,7 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
                 <TaxonomySidebarContent {...props} />
               </div>
 
-              <div className="sticky bottom-0 z-10 shrink-0 border-t border-slate-100 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+              <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-3">
                   {hasActiveFilter && onClearAll && (
                     <button
