@@ -116,7 +116,7 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
   return (
     <div className={className ?? 'flex items-center px-3 transition-colors cursor-text w-full overflow-hidden'}>
       <div className="relative w-full">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+        <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500">
           <Search size={iconSize} />
         </div>
         <input
@@ -127,14 +127,14 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           placeholder={placeholder}
-          className={inputClassName ?? 'flex-1 bg-transparent py-2.5 text-sm font-medium focus:outline-none text-slate-700 dark:text-slate-200 min-w-[50px] placeholder-slate-400 w-full pl-10'}
+          className={inputClassName ?? 'min-w-[50px] w-full flex-1 bg-transparent py-2.5 pl-10 text-sm font-medium text-slate-700 placeholder-slate-400 focus:outline-none dark:text-slate-200 dark:placeholder-slate-500'}
           aria-label={ariaLabel}
           autoFocus={autoFocus}
         />
         {showClearButton && localValue && (
           <button
             onClick={handleClear}
-            className="absolute right-2 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            className="absolute right-2 top-1/2 flex min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center p-1 text-gray-400 transition-colors hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
             aria-label="Clear search"
           >
             <X size={14} />

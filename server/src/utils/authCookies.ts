@@ -26,9 +26,12 @@ function getSameSite(): 'strict' | 'none' {
 /**
  * Set HttpOnly auth cookies on the response.
  *
- * - access_token: HttpOnly, Secure (prod), SameSite=Strict, Path=/api
- * - refresh_token: HttpOnly, Secure (prod), SameSite=Strict, Path=/api/auth/refresh
- *   (scoped to refresh endpoint so it's not sent on every request)
+ * Both tokens use Path=/api. The refresh cookie was previously scoped to
+ * `/api/auth/refresh`, but any reverse proxy that rewrites the `/api` prefix
+ * (common on Vercel / Cloudflare / NGINX ingress) would silently drop the
+ * cookie and cascade into a logout loop. HttpOnly + SameSite + the CSRF
+ * double-submit already bound the refresh token to legitimate clients; the
+ * narrow path added fragility without meaningful defense-in-depth.
  */
 export function setAuthCookies(
   res: Response,
@@ -51,7 +54,7 @@ export function setAuthCookies(
       httpOnly: true,
       secure,
       sameSite,
-      path: '/api/auth/refresh',
+      path: '/api',
       maxAge: TOKEN_CONFIG.REFRESH_TOKEN_SECONDS * 1000, // ms
     });
   }
@@ -72,6 +75,15 @@ export function clearAuthCookies(res: Response): void {
     path: '/api',
   });
 
+  res.clearCookie(REFRESH_TOKEN_COOKIE, {
+    httpOnly: true,
+    secure,
+    sameSite,
+    path: '/api',
+  });
+
+  // Legacy: clear the previously narrowly-scoped refresh cookie so users
+  // upgrading from an older build don't end up with two refresh cookies.
   res.clearCookie(REFRESH_TOKEN_COOKIE, {
     httpOnly: true,
     secure,

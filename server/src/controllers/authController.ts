@@ -29,6 +29,8 @@ import {
   isAccountLocked,
   getUserSessions,
   isTokenServiceAvailable,
+  checkRefreshTokenReuse,
+  isSessionFingerprintMismatch,
   RedisUnavailableError,
 } from '../services/tokenService.js';
 import { z } from 'zod';
@@ -746,6 +748,22 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 
     const oldRefreshToken = refreshTokenInput;
 
+    // REUSE DETECTION (RFC 6749-bis): if this exact refresh token was
+    // previously rotated, presenting it again means either (a) the legitimate
+    // client's new token was stolen and the attacker is replaying, or (b) the
+    // token was stolen before rotation and we're seeing the attacker now.
+    // Either way, the safe response is to revoke the entire session family.
+    const reusedUserId = await checkRefreshTokenReuse(oldRefreshToken);
+    if (reusedUserId) {
+      requestLogger.error({
+        msg: 'SECURITY: Refresh token reuse detected — revoking all sessions',
+        userId: reusedUserId,
+      });
+      await revokeAllRefreshTokens(reusedUserId);
+      clearAuthCookies(res);
+      return sendUnauthorizedError(res, 'Session revoked due to suspicious activity. Please sign in again.');
+    }
+
     // Resolve user identity from refresh token index first (refresh token is the source of truth).
     let userId = await getUserIdFromRefreshToken(oldRefreshToken);
 
@@ -817,16 +835,34 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
       return sendUnauthorizedError(res, 'Invalid or expired refresh token');
     }
 
-    requestLogger.debug({ 
-      msg: 'Refresh token validated', 
+    requestLogger.debug({
+      msg: 'Refresh token validated',
       userId,
       tokenCreatedAt: tokenData.createdAt,
       tokenExpiresAt: tokenData.expiresAt
     });
 
-    // Rotate refresh token (invalidates old one, issues new one)
-    const deviceInfo = req.headers['user-agent'] || 'Unknown device';
+    // DEVICE/IP BINDING: compare the stored session fingerprint against the
+    // current request. We bucket aggressively (browser family + /24 IPv4) so
+    // mobile reconnects and minor UA bumps don't false-positive. A real
+    // mismatch means the refresh token is being used from a materially
+    // different client — treat as theft and revoke the family.
+    const deviceInfo = (req.headers['user-agent'] as string | undefined) || 'Unknown device';
     const ipAddress = req.ip || req.socket.remoteAddress;
+    if (isSessionFingerprintMismatch(
+      { deviceInfo: tokenData.deviceInfo, ipAddress: tokenData.ipAddress },
+      { deviceInfo, ipAddress }
+    )) {
+      requestLogger.error({
+        msg: 'SECURITY: Refresh token fingerprint mismatch — revoking all sessions',
+        userId,
+        storedDevice: tokenData.deviceInfo,
+        storedIp: tokenData.ipAddress,
+      });
+      await revokeAllRefreshTokens(userId);
+      clearAuthCookies(res);
+      return sendUnauthorizedError(res, 'Session revoked due to suspicious activity. Please sign in again.');
+    }
     
     requestLogger.debug({ msg: 'Attempting token rotation', userId });
     const newRefreshToken = await rotateRefreshToken(userId, oldRefreshToken, deviceInfo, ipAddress);
@@ -853,9 +889,19 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 
     requestLogger.info({ msg: 'Token refreshed successfully', userId });
 
-    // Set HttpOnly auth cookies with refreshed tokens
+    // Set HttpOnly auth cookies with refreshed tokens.
     setAuthCookies(res, accessToken, newRefreshToken);
-    const csrfToken = crypto.randomBytes(32).toString('hex');
+
+    // CSRF token is intentionally NOT rotated on refresh. Two concurrent
+    // tabs both refreshing would otherwise have one tab's in-memory CSRF
+    // header lag behind the new cookie value for ~1 request, producing
+    // spurious CSRF_INVALID 403s. CSRF tokens rotate on login/logout only.
+    // We re-issue the existing csrf cookie (extending its TTL) so it stays
+    // aligned with the new access-token lifetime.
+    const existingCsrf = (req as any).cookies?.csrf_token as string | undefined;
+    const csrfToken = existingCsrf && existingCsrf.length >= 32
+      ? existingCsrf
+      : crypto.randomBytes(32).toString('hex');
     setCsrfCookie(res, csrfToken);
 
     res.json({

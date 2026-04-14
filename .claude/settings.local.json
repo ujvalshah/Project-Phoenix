@@ -65,7 +65,9 @@
       "Bash(echo \"exit: $?\")",
       "Bash(netstat -ano)",
       "Bash(powershell:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm ls:*)"
     ]
   }
 }

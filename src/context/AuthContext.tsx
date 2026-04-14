@@ -9,13 +9,13 @@ import { FeatureFlags, SignupConfig } from '@/admin/types/admin';
 import { adminConfigService } from '@/admin/services/adminConfigService';
 import { isTransientAuthMeError } from '@/utils/authBootstrapErrors';
 import { getSafeUsernameHandle } from '@/utils/userIdentity';
+import { captureException } from '@/utils/sentry';
 
 interface AuthContextType {
   user: LegacyUser | null; // Backward compatibility
   modularUser: ModularUser | null; // New Schema
   isAuthenticated: boolean;
   isLoading: boolean;
-  token: string | null;
   featureFlags: FeatureFlags | null;
   signupConfig: SignupConfig | null;
   login: (payload: LoginPayload) => Promise<void>;
@@ -32,7 +32,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [modularUser, setModularUser] = useState<ModularUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags | null>(null);
   const [signupConfig, setSignupConfig] = useState<SignupConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,7 +55,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     apiClient.onSessionExpired(() => {
       setModularUser(null);
-      setToken(null);
     });
   }, []);
 
@@ -68,14 +66,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const freshUser = await authService.getCurrentUser();
           setModularUser(freshUser);
-          setToken('cookie'); // Sentinel value — actual token is in HttpOnly cookie
         } catch (bootstrapErr: unknown) {
           if (isTransientAuthMeError(bootstrapErr)) {
             // Network/server error — don't clear session, user may still be authenticated
           } else {
             // 401 or other auth error — user is not authenticated
             setModularUser(null);
-            setToken(null);
           }
         }
 
@@ -87,7 +83,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setFeatureFlags(flags);
         setSignupConfig(sConf);
       } catch (e) {
-        console.error('Initialization failed', e);
+        captureException(e instanceof Error ? e : new Error(String(e)), {
+          route: 'AuthContext/init',
+        });
       } finally {
         setIsLoading(false);
       }
@@ -125,7 +123,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const response = await authService.loginWithEmail(payload);
     // Backend sets HttpOnly cookies; we just store user state in memory
     setModularUser(response.user);
-    setToken('cookie');
     closeAuthModal();
   };
 
@@ -138,16 +135,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (response.user) {
       setModularUser(response.user);
-      setToken('cookie');
     }
     closeAuthModal();
-    return { needsVerification: false };
+    // If email verification is enabled and the user is an email-provider
+    // signup whose email is not yet verified, surface that to the caller so
+    // the UI can prompt. Otherwise the user is immediately fully active.
+    const needsVerification =
+      !!response.user &&
+      response.user.auth?.provider === 'email' &&
+      response.user.auth?.emailVerified === false;
+    return { needsVerification };
   };
 
   const socialLogin = async (provider: AuthProviderType) => {
     const response = await authService.loginWithProvider(provider);
     setModularUser(response.user);
-    setToken('cookie');
     closeAuthModal();
   };
 
@@ -156,10 +158,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await authService.logoutApi();
     } catch (e) {
-      console.error('Logout API failed', e);
+      captureException(e instanceof Error ? e : new Error(String(e)), {
+        route: 'AuthContext/logout',
+      });
     }
     setModularUser(null);
-    setToken(null);
   };
 
   const openAuthModal = useCallback((view: 'login' | 'signup' = 'login') => {
@@ -177,7 +180,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       modularUser,      // Expose new schema
       isAuthenticated: !!modularUser,
       isLoading,
-      token,
       featureFlags,
       signupConfig,
       login,

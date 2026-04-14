@@ -16,6 +16,7 @@ import {
   initRedisClient,
   ensureRedisConnection,
 } from '../utils/redisClient.js';
+import { getEnv } from '../config/envValidation.js';
 
 /**
  * Error thrown when Redis is unavailable for a critical operation.
@@ -34,10 +35,19 @@ const PREFIX = {
   BLACKLIST: 'bl:',           // Blacklisted access tokens
   REFRESH: 'rt:',             // Refresh tokens by userId
   REFRESH_INDEX: 'rti:',      // Refresh token hash -> userId lookup
+  REFRESH_ROTATED: 'rtrot:',  // Tombstone for rotated refresh tokens — used
+                              // to detect reuse (stolen token replay).
   LOCKOUT: 'lock:',           // Account lockout counters
   LOCKOUT_TIME: 'locktime:',  // Lockout timestamp
   SESSION: 'sess:',           // Active sessions per user
 } as const;
+
+/**
+ * Reuse-detection window (seconds). If a rotated (deleted) refresh token
+ * is presented inside this window, we treat it as a stolen-token replay
+ * and revoke the entire session family for the user.
+ */
+const REFRESH_ROTATED_TTL = 24 * 60 * 60; // 24h
 
 // Configuration
 const CONFIG = {
@@ -121,11 +131,29 @@ export async function blacklistToken(token: string, expiresInSeconds: number): P
 }
 
 /**
- * Check if a token is blacklisted
+ * Check if a token is blacklisted.
+ *
+ * Fail mode is governed by STRICT_TOKEN_REVOCATION:
+ *   - false (default): fail OPEN — Redis outages don't break auth, but a
+ *     revoked token can be used until Redis recovers. Alerts via logger.error
+ *     so on-call notices and can flip the env flag under attack.
+ *   - true: fail CLOSED — Redis outage rejects all tokens. Preferred in
+ *     production where compromised-token risk outweighs availability risk.
  */
 export async function isTokenBlacklisted(token: string): Promise<boolean> {
+  const logger = getLogger();
+  const strict = (() => {
+    try { return getEnv().STRICT_TOKEN_REVOCATION === true; }
+    catch { return false; }
+  })();
+
   if (!isRedisAvailable()) {
-    return false; // If Redis unavailable, allow token (fail open for availability)
+    logger.error({
+      msg: '[TokenService] Blacklist check unavailable — Redis down',
+      strict,
+      action: strict ? 'fail-closed (reject token)' : 'fail-open (allow token)',
+    });
+    return strict;
   }
 
   try {
@@ -134,9 +162,13 @@ export async function isTokenBlacklisted(token: string): Promise<boolean> {
     const result = await client.get(`${PREFIX.BLACKLIST}${tokenHash}`);
     return result !== null;
   } catch (error: any) {
-    const logger = getLogger();
-    logger.error({ msg: '[TokenService] Failed to check blacklist', err: { message: error.message } });
-    return false; // Fail open
+    logger.error({
+      msg: '[TokenService] Failed to check blacklist',
+      err: { message: error.message },
+      strict,
+      action: strict ? 'fail-closed (reject token)' : 'fail-open (allow token)',
+    });
+    return strict;
   }
 }
 
@@ -441,7 +473,8 @@ export async function rotateRefreshToken(
 
     // OPTIMIZATION: Use pipeline for atomic operations
     if (client.pipeline) {
-      // Store new token, add to session set, then delete old token
+      // Store new token, add to session set, then delete old token and
+      // leave a reuse-detection tombstone for the old hash.
       const pipeline = client.pipeline();
       pipeline.setEx(newRefreshKey, CONFIG.REFRESH_TOKEN_TTL, JSON.stringify(newData));
       pipeline.setEx(newRefreshIndexKey, CONFIG.REFRESH_TOKEN_TTL, userId);
@@ -450,15 +483,20 @@ export async function rotateRefreshToken(
       pipeline.del(refreshKey);  // Delete old token AFTER new one is stored
       pipeline.del(refreshIndexKey);
       pipeline.sRem(sessionKey, oldHash);
+      pipeline.setEx(
+        `${PREFIX.REFRESH_ROTATED}${oldHash}`,
+        REFRESH_ROTATED_TTL,
+        userId
+      );
       
       const results = await pipeline.exec();
       
       // CRITICAL FIX: Validate pipeline results - pipelines are NOT atomic
-      if (!results || results.length !== 7) {
-        logger.error({ 
-          msg: '[TokenService] CRITICAL: Token rotation pipeline incomplete', 
+      if (!results || results.length !== 8) {
+        logger.error({
+          msg: '[TokenService] CRITICAL: Token rotation pipeline incomplete',
           userId,
-          expectedCommands: 7,
+          expectedCommands: 8,
           actualResults: results?.length || 0
         });
         // Try to clean up - verify old token still exists (rotation failed)
@@ -483,7 +521,8 @@ export async function rotateRefreshToken(
               i === 3 ? 'expire' :
               i === 4 ? 'del-old-refresh' :
               i === 5 ? 'del-old-refresh-index' :
-              'sRem',
+              i === 6 ? 'sRem' :
+              'setEx-rotated-tombstone',
             error: results[i].message
           });
           // If new token storage failed (index 0), old token is still valid - return null
@@ -551,6 +590,12 @@ export async function rotateRefreshToken(
       await client.del(refreshKey);
       await client.del(refreshIndexKey);
       await client.sRem(sessionKey, oldHash);
+      // Reuse-detection tombstone (fallback path)
+      await client.setEx(
+        `${PREFIX.REFRESH_ROTATED}${oldHash}`,
+        REFRESH_ROTATED_TTL,
+        userId
+      );
       
       // CRITICAL FIX: Verify old token was deleted (security check)
       const oldTokenStillExists = await client.exists(refreshKey);
@@ -648,6 +693,81 @@ export async function revokeAllRefreshTokens(userId: string): Promise<boolean> {
     logger.error({ msg: '[TokenService] Failed to revoke all tokens', err: { message: error.message } });
     return false;
   }
+}
+
+/**
+ * Check whether a refresh token has been rotated previously. If it has,
+ * presenting it again is a reuse event (stolen-token replay) and the caller
+ * should revoke every session for that user.
+ *
+ * Returns the userId whose session family should be revoked, or null.
+ */
+export async function checkRefreshTokenReuse(refreshToken: string): Promise<string | null> {
+  await ensureRedisConnection();
+  if (!isRedisAvailable()) return null;
+  try {
+    const client = getClient();
+    const tokenHash = hashToken(refreshToken);
+    const userId = await client.get(`${PREFIX.REFRESH_ROTATED}${tokenHash}`);
+    return typeof userId === 'string' && userId.length > 0 ? userId : null;
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    getLogger().error({
+      msg: '[TokenService] Failed to check refresh-token reuse',
+      err: { message: errMsg },
+    });
+    return null;
+  }
+}
+
+/**
+ * Normalize a User-Agent into a coarse fingerprint. We intentionally bucket
+ * aggressively (browser family only) to avoid false positives on minor UA
+ * version bumps.
+ */
+function fingerprintUserAgent(ua: string | undefined): string {
+  if (!ua) return 'unknown';
+  const lower = ua.toLowerCase();
+  if (lower.includes('edg/')) return 'edge';
+  if (lower.includes('chrome/')) return 'chrome';
+  if (lower.includes('firefox/')) return 'firefox';
+  if (lower.includes('safari/')) return 'safari';
+  if (lower.includes('opera/') || lower.includes('opr/')) return 'opera';
+  return 'other';
+}
+
+/**
+ * Normalize an IP address to its /24 (IPv4) or /48 (IPv6) prefix so that
+ * CGNAT / mobile reconnects don't continuously trip the mismatch alarm.
+ */
+function fingerprintIp(ip: string | undefined): string {
+  if (!ip) return 'unknown';
+  const stripped = ip.replace(/^::ffff:/, '');
+  if (stripped.includes('.')) {
+    const parts = stripped.split('.');
+    if (parts.length === 4) return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
+    return stripped;
+  }
+  if (stripped.includes(':')) {
+    const parts = stripped.split(':').slice(0, 3);
+    return `${parts.join(':')}::/48`;
+  }
+  return stripped;
+}
+
+/**
+ * Return true if the stored session fingerprint diverges materially from
+ * the current request fingerprint. Caller should revoke the family on true.
+ */
+export function isSessionFingerprintMismatch(
+  stored: { deviceInfo?: string; ipAddress?: string },
+  current: { deviceInfo?: string; ipAddress?: string }
+): boolean {
+  const storedUa = fingerprintUserAgent(stored.deviceInfo);
+  const currentUa = fingerprintUserAgent(current.deviceInfo);
+  const storedIp = fingerprintIp(stored.ipAddress);
+  const currentIp = fingerprintIp(current.ipAddress);
+  return storedUa !== currentUa || storedIp !== currentIp;
 }
 
 /**

@@ -27,7 +27,7 @@ export const DesktopFilterSidebar: React.FC = () => {
         <button
           type="button"
           onClick={toggleSidebarCollapsed}
-          className="sticky top-16 z-10 flex h-[calc(100vh-4rem)] min-h-[12rem] w-full flex-col items-center gap-2 border-0 bg-transparent px-1.5 py-4 text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400 dark:text-slate-300 dark:hover:bg-slate-900/80"
+          className="sticky top-16 z-10 flex h-[calc(100vh-4rem)] min-h-[12rem] w-full flex-col items-center gap-2 border-0 bg-transparent px-1.5 py-4 text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800/90"
           aria-expanded={false}
           aria-controls="desktop-filter-panel"
           title="Show filters"

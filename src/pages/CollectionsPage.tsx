@@ -81,6 +81,20 @@ export const CollectionsPage: React.FC = () => {
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement>(null);
 
+  // Table layout can't breathe on narrow screens; force grid without clobbering the user's
+  // explicit desktop preference.
+  const [isSmallScreen, setIsSmallScreen] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 639px)');
+    const handler = (event: MediaQueryListEvent) => setIsSmallScreen(event.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  const effectiveViewMode: ViewMode = isSmallScreen ? 'grid' : viewMode;
+
   const navigate = useNavigate();
   const toast = useToast();
   const { isAdmin } = useAuth();
@@ -444,6 +458,7 @@ export const CollectionsPage: React.FC = () => {
                 </div>
               }
               onOpenFiltersMobile={() => setIsMobileFiltersOpen(true)}
+              mobileFilterCount={(selectedParentId ? 1 : 0) + (selectedChildId ? 1 : 0)}
             />
           </div>
           {appliedFilters.length > 0 && (
@@ -472,6 +487,11 @@ export const CollectionsPage: React.FC = () => {
             onSelectChild={setSelectedChildId}
             isMobileOpen={isMobileFiltersOpen}
             onCloseMobile={() => setIsMobileFiltersOpen(false)}
+            resultCount={processedCollections.length}
+            onClearAll={() => {
+              setSelectedParentId(null);
+              setSelectedChildId(null);
+            }}
           />
 
           <section>
@@ -485,7 +505,7 @@ export const CollectionsPage: React.FC = () => {
                     : 'No collections available yet. Create the first collection to get started.'
                 }
               />
-            ) : viewMode === 'grid' ? (
+            ) : effectiveViewMode === 'grid' ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
                 {processedCollections.map((collection) => (
                   <CollectionCard

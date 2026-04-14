@@ -35,6 +35,7 @@ interface CollectionsToolbarProps {
   isActionMenuOpen: boolean;
   actionMenu: React.ReactNode;
   onOpenFiltersMobile: () => void;
+  mobileFilterCount?: number;
 }
 
 export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
@@ -56,6 +57,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
   isActionMenuOpen,
   actionMenu,
   onOpenFiltersMobile,
+  mobileFilterCount = 0,
 }) => {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -76,10 +78,20 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
       <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
         <button
           onClick={onOpenFiltersMobile}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 lg:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          className={`relative inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 lg:hidden ${
+            mobileFilterCount > 0
+              ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
+              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+          }`}
+          aria-label={mobileFilterCount > 0 ? `Filters (${mobileFilterCount} active)` : 'Filters'}
         >
           <SlidersHorizontal size={14} />
           Filters
+          {mobileFilterCount > 0 && (
+            <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-semibold tabular-nums leading-none text-white dark:bg-primary-500">
+              {mobileFilterCount}
+            </span>
+          )}
         </button>
 
         <div className="flex h-9 items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
@@ -106,7 +118,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           </button>
         </div>
 
-        <div className="flex h-9 items-center rounded-lg border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900">
+        <div className="hidden h-9 items-center rounded-lg border border-slate-200 bg-white p-0.5 sm:flex dark:border-slate-700 dark:bg-slate-900">
           <button
             onClick={() => setViewMode('table')}
             className={`inline-flex h-7 w-8 items-center justify-center rounded-md transition-all ${

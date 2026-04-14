@@ -47,6 +47,34 @@ function getStaticString(node) {
   return null;
 }
 
+/**
+ * Return any literal-ish fragment we can extract from a fetch URL argument
+ * for backend-route matching. Static string / template literal: their
+ * cooked value. Dynamic concatenation like `${apiBase}/admin/foo`: the
+ * concatenated tail string. Returning the broadest signal here lets the
+ * `isBackendRoute` regex catch routes that aren't fully static.
+ */
+function getBackendRouteFragment(node) {
+  const direct = getStaticString(node);
+  if (direct) return direct;
+
+  const clean = unwrapNode(node);
+  if (!clean) return null;
+
+  if (clean.type === 'TemplateLiteral') {
+    // Already covered by getStaticString, but be defensive.
+    return clean.quasis.map((q) => q.value.cooked || '').join('/');
+  }
+
+  if (clean.type === 'BinaryExpression' && clean.operator === '+') {
+    const left = getBackendRouteFragment(clean.left) || '';
+    const right = getBackendRouteFragment(clean.right) || '';
+    return left + right;
+  }
+
+  return null;
+}
+
 function getObjectProperty(objectExpression, name) {
   if (!objectExpression || objectExpression.type !== 'ObjectExpression') return null;
   for (const prop of objectExpression.properties) {
@@ -153,7 +181,7 @@ module.exports = {
       const callee = unwrapNode(callNode.callee);
       if (!callee || callee.type !== 'Identifier' || callee.name !== 'fetch') return;
 
-      const target = getStaticString(callNode.arguments[0]);
+      const target = getBackendRouteFragment(callNode.arguments[0]);
       if (!isBackendRoute(target)) return;
 
       const optionsNode = unwrapNode(callNode.arguments[1]);
@@ -174,7 +202,7 @@ module.exports = {
       const method = (getStaticString(callNode.arguments[0]) || 'GET').toUpperCase();
       if (!MUTATION_METHODS.has(method)) return;
 
-      const target = getStaticString(callNode.arguments[1]);
+      const target = getBackendRouteFragment(callNode.arguments[1]);
       if (!isBackendRoute(target)) return;
 
       context.report({ node: callNode, messageId: 'unsafeXhr' });
@@ -190,7 +218,7 @@ module.exports = {
       const memberName = getPropertyName(callee.property);
       if (!memberName || !['request', 'post', 'put', 'patch', 'delete'].includes(memberName)) return;
 
-      const target = getStaticString(callNode.arguments[0]);
+      const target = getBackendRouteFragment(callNode.arguments[0]);
       if (!isBackendRoute(target)) return;
 
       let method = memberName.toUpperCase();

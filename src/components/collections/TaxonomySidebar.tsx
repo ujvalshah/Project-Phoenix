@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, FolderTree, X } from 'lucide-react';
+import { Z_INDEX } from '@/constants/zIndex';
 
 export interface TaxonomyNode {
   id: string;
@@ -20,6 +22,8 @@ interface TaxonomySidebarProps {
   onSelectChild: (id: string | null) => void;
   isMobileOpen: boolean;
   onCloseMobile: () => void;
+  resultCount?: number;
+  onClearAll?: () => void;
 }
 
 const TaxonomySidebarContent: React.FC<Omit<TaxonomySidebarProps, 'isMobileOpen' | 'onCloseMobile'>> = ({
@@ -184,8 +188,52 @@ const TaxonomySidebarContent: React.FC<Omit<TaxonomySidebarProps, 'isMobileOpen'
 export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
   isMobileOpen,
   onCloseMobile,
+  resultCount,
+  onClearAll,
   ...props
 }) => {
+  const [animState, setAnimState] = useState<'closed' | 'entering' | 'open' | 'exiting'>('closed');
+  const panelRef = useRef<HTMLDivElement>(null);
+  const touchStartYRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isMobileOpen && animState === 'closed') {
+      setAnimState('entering');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimState('open'));
+      });
+    } else if (!isMobileOpen && (animState === 'open' || animState === 'entering')) {
+      setAnimState('exiting');
+      const timer = setTimeout(() => setAnimState('closed'), 250);
+      return () => clearTimeout(timer);
+    }
+  }, [isMobileOpen, animState]);
+
+  useEffect(() => {
+    if (animState !== 'open' && animState !== 'entering') return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [animState]);
+
+  useEffect(() => {
+    if (!isMobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseMobile();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isMobileOpen, onCloseMobile]);
+
+  const hasActiveFilter = props.selectedParentId !== null || props.selectedChildId !== null;
+  const shouldRenderSheet = animState !== 'closed';
+  const isVisible = animState === 'open';
+
   return (
     <>
       <aside className="hidden lg:sticky lg:top-[146px] lg:block lg:self-start">
@@ -194,30 +242,83 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
         </div>
       </aside>
 
-      {isMobileOpen && (
-        <div className="fixed inset-0 z-50 flex lg:hidden">
-          <button
-            className="flex-1 bg-slate-900/45 backdrop-blur-[2px] animate-in fade-in duration-200"
+      {shouldRenderSheet && typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className={`fixed inset-0 bg-slate-900/45 backdrop-blur-[1px] transition-opacity duration-200 lg:hidden ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+            style={{ zIndex: Z_INDEX.MODAL }}
             onClick={onCloseMobile}
-            aria-label="Close filters"
-          />
-          <div className="flex h-full w-[88vw] max-w-sm flex-col border-l border-slate-200 bg-white p-3 shadow-xl animate-in slide-in-from-right duration-200 dark:border-slate-800 dark:bg-slate-900">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Filters</p>
-              <button
-                onClick={onCloseMobile}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                aria-label="Close filters"
+            role="presentation"
+          >
+            <div
+              ref={panelRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filter collections"
+              onClick={(event) => event.stopPropagation()}
+              className={`absolute bottom-0 left-0 right-0 mx-auto flex h-[85dvh] w-full max-w-[640px] flex-col rounded-t-3xl bg-white text-slate-900 shadow-2xl transition-transform duration-250 ease-out motion-reduce:transition-none dark:bg-slate-900 dark:text-slate-100 ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}
+            >
+              <div
+                className="shrink-0 border-b border-slate-100 px-4 pb-3 pt-2 dark:border-slate-800"
+                onTouchStart={(event) => {
+                  touchStartYRef.current = event.touches[0]?.clientY ?? null;
+                }}
+                onTouchMove={(event) => {
+                  const currentY = event.touches[0]?.clientY ?? null;
+                  if (touchStartYRef.current == null || currentY == null) return;
+                  if (currentY - touchStartYRef.current > 80) onCloseMobile();
+                }}
+                onTouchEnd={() => { touchStartYRef.current = null; }}
               >
-                <X size={16} />
-              </button>
+                <div className="mx-auto mb-2.5 h-1 w-12 rounded-full bg-slate-300 dark:bg-slate-700" aria-hidden />
+                <div className="flex min-h-11 items-center justify-between">
+                  <div>
+                    <h2 className="text-[17px] font-semibold leading-tight">Filter by taxonomy</h2>
+                    <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400">
+                      {hasActiveFilter ? '1 filter applied' : 'No filters applied'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onCloseMobile}
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    aria-label="Close filters"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+                <TaxonomySidebarContent {...props} />
+              </div>
+
+              <div className="sticky bottom-0 z-10 shrink-0 border-t border-slate-100 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+                <div className="flex items-center gap-3">
+                  {hasActiveFilter && onClearAll && (
+                    <button
+                      type="button"
+                      onClick={onClearAll}
+                      className="min-h-11 shrink-0 rounded-full px-3 text-[13px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onCloseMobile}
+                    className="min-h-11 flex-1 rounded-full bg-slate-900 px-4 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                  >
+                    {typeof resultCount === 'number'
+                      ? `Show ${resultCount} collection${resultCount !== 1 ? 's' : ''}`
+                      : 'View results'}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="min-h-0 flex-1">
-              <TaxonomySidebarContent {...props} />
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 };

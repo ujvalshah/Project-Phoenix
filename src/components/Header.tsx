@@ -60,14 +60,14 @@ const UserMenuLegalLinks: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { enabledPages } = useLegalPages();
   if (enabledPages.length === 0) return null;
   return (
-    <div className="border-t border-gray-100 px-4 py-2">
+    <div className="border-t border-gray-100 px-4 py-2 dark:border-slate-700">
       <div className="flex flex-wrap gap-x-3 gap-y-0.5">
         {enabledPages.map((page) => (
           <Link
             key={page.slug}
             to={`/legal/${page.slug}`}
             onClick={onClose}
-            className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-[11px] text-gray-400 transition-colors hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
           >
             {page.title}
           </Link>
@@ -112,7 +112,6 @@ export const Header: React.FC<HeaderProps> = ({
     sidebarCollapsed,
     setSidebarCollapsed,
     toggleSidebarCollapsed,
-    expandSidebar,
   } = useDesktopFilterSidebar();
 
   
@@ -268,7 +267,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-slate-800"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
               aria-label="Open Menu"
             >
               <Menu size={18} aria-hidden />
@@ -285,7 +284,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Desktop Navigation (lg+) */}
             <nav 
-              className="bg-gray-100 rounded-lg p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 shrink-0" 
+              className="rounded-lg border border-gray-200/80 bg-gray-100 p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 shrink-0 dark:border-slate-700/80 dark:bg-slate-800/90" 
               role="navigation"
               aria-label="Main navigation"
             >
@@ -295,8 +294,8 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => filters.setContentStream('standard')}
                 className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
                   isHome && filters.contentStream === 'standard'
-                    ? 'bg-white text-gray-900'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
                 }`}
                 aria-current={isHome && filters.contentStream === 'standard' ? 'page' : undefined}
               >
@@ -308,8 +307,8 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => filters.setContentStream('pulse')}
                   className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 ${
                     isHome && filters.contentStream === 'pulse'
-                      ? 'bg-white text-gray-900'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
                   }`}
                   aria-current={isHome && filters.contentStream === 'pulse' ? 'page' : undefined}
                 >
@@ -325,8 +324,8 @@ export const Header: React.FC<HeaderProps> = ({
                 to="/collections"
                 className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
                   isCollections
-                    ? 'bg-white text-gray-900'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
                 }`}
                 aria-current={isCollections ? 'page' : undefined}
               >
@@ -337,8 +336,8 @@ export const Header: React.FC<HeaderProps> = ({
                   to={`/profile/${currentUser?.id || ''}`}
                   className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
                     currentPath.includes('/profile') || currentPath === '/myspace'
-                      ? 'bg-white text-gray-900'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
                   }`}
                   aria-current={(currentPath.includes('/profile') || currentPath === '/myspace') ? 'page' : undefined}
                 >
@@ -350,8 +349,8 @@ export const Header: React.FC<HeaderProps> = ({
                   to="/bookmarks"
                   className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
                     isBookmarks
-                      ? 'bg-white text-gray-900'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
                   }`}
                   aria-current={isBookmarks ? 'page' : undefined}
                 >
@@ -363,8 +362,8 @@ export const Header: React.FC<HeaderProps> = ({
                   to="/admin"
                   className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
                     currentPath.startsWith('/admin')
-                      ? 'bg-white text-gray-900'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
                   }`}
                   aria-current={currentPath.startsWith('/admin') ? 'page' : undefined}
                 >
@@ -386,7 +385,7 @@ export const Header: React.FC<HeaderProps> = ({
                 placeholder="Search..."
                 showClearButton={false}
                 className="w-full"
-                inputClassName="w-full h-9 pl-10 pr-28 text-sm font-medium bg-gray-50 border border-gray-100 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all"
+                inputClassName="w-full h-9 pl-10 pr-28 text-sm font-medium bg-gray-50 border border-gray-100 rounded-lg text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-yellow-500/50"
                 iconSize={16}
               />
 
@@ -402,10 +401,10 @@ export const Header: React.FC<HeaderProps> = ({
                       setIsFilterPopoverOpen(!isFilterPopoverOpen);
                     }
                   }}
-                  className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 ${
+                  className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900 ${
                     (inlineDesktopFilters ? !sidebarCollapsed : isFilterPopoverOpen) || hasActiveFilters
                       ? 'bg-yellow-50 text-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-400'
-                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-slate-800'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300'
                   }`}
                   aria-label="Filter"
                   title="Filter"
@@ -433,7 +432,7 @@ export const Header: React.FC<HeaderProps> = ({
                     e.stopPropagation();
                     setIsSortOpen(!isSortOpen);
                   }}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 dark:hover:bg-slate-800"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300 dark:focus-visible:ring-offset-slate-900"
                   aria-label="Sort"
                   title="Sort"
                 >
@@ -449,20 +448,20 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Create button */}
             <button
               onClick={withAuth(onCreateNugget)}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors dark:text-slate-200 dark:hover:text-white"
               aria-label="Create Nugget"
             >
               <Sparkles size={16} strokeWidth={2.5} className="text-yellow-500" fill="currentColor" />
             </button>
 
             {/* View mode buttons - Desktop only (lg+) */}
-            <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-100">
+            <div className="flex items-center rounded-lg border border-gray-200/80 bg-gray-100 p-1 dark:border-slate-700/80 dark:bg-slate-800/90">
               <button
                 onClick={() => setViewMode('grid')}
                 className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
                   viewMode === 'grid'
-                    ? 'bg-white text-gray-900'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
                 }`}
                 title="Grid View"
                 aria-label="Grid View"
@@ -473,8 +472,8 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => setViewMode('masonry')}
                 className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
                   viewMode === 'masonry'
-                    ? 'bg-white text-gray-900'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
                 }`}
                 title="Masonry View"
                 aria-label="Masonry View"
@@ -486,7 +485,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Fullscreen button */}
             <button
               onClick={toggleFullScreen}
-              className="min-h-[44px] min-w-[44px] items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors flex"
+              className="min-h-[44px] min-w-[44px] items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors flex dark:text-slate-400 dark:hover:text-slate-200"
               title="Toggle Fullscreen"
               aria-label="Toggle Fullscreen"
             >
@@ -651,15 +650,15 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={isUserMenuOpen}
         anchorRef={activeAvatarRef}
         onClickOutside={() => setIsUserMenuOpen(false)}
-        className="w-56 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden"
+        className="w-56 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
       >
         {/* User Info */}
-        <div className="px-4 py-3 border-b border-gray-100">
-          <p className="text-sm font-medium text-gray-900 truncate">
+        <div className="border-b border-gray-100 px-4 py-3 dark:border-slate-700">
+          <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">
             {currentUser?.name}
           </p>
           {currentUser?.email && (
-            <p className="text-xs text-gray-500 truncate mt-0.5">
+            <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-slate-400">
               {currentUser.email}
             </p>
           )}
@@ -670,7 +669,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Link
             to={`/profile/${currentUser?.id || ''}`}
             onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <UserIcon size={16} />
             My Space
@@ -678,7 +677,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Link
             to="/bookmarks"
             onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <BookOpen size={16} />
             Bookmarks
@@ -686,7 +685,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Link
             to="/account"
             onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <Settings size={16} />
             Settings
@@ -694,18 +693,18 @@ export const Header: React.FC<HeaderProps> = ({
           <Link
             to="/contact"
             onClick={() => setIsUserMenuOpen(false)}
-            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <Mail size={16} />
             Contact Us
           </Link>
           {isAdmin && (
             <>
-              <div className="h-px bg-gray-100 my-1" />
+              <div className="my-1 h-px bg-gray-100 dark:bg-slate-700" />
               <Link
                 to="/admin"
                 onClick={() => setIsUserMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:text-slate-100 dark:hover:bg-slate-800"
               >
                 <Shield size={16} />
                 Admin Panel
@@ -715,7 +714,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Logout */}
-        <div className="border-t border-gray-100 py-1">
+        <div className="border-t border-gray-100 py-1 dark:border-slate-700">
           <button
             onClick={async (e) => {
               e.preventDefault();
@@ -728,7 +727,7 @@ export const Header: React.FC<HeaderProps> = ({
                 setIsUserMenuOpen(false);
               }
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
           >
             <LogOut size={16} />
             Log Out
@@ -764,7 +763,7 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={isSortOpen}
         anchorRef={sortButtonRef}
         onClickOutside={() => setIsSortOpen(false)}
-        className="w-40 bg-white rounded-lg border border-gray-100 overflow-hidden"
+        className="w-40 overflow-hidden rounded-lg border border-gray-100 bg-white dark:border-slate-700 dark:bg-slate-900"
       >
         {([
           { value: 'latest' as const, label: 'Latest' },
@@ -773,8 +772,8 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             key={opt.value}
             onClick={() => { setSortOrder(opt.value); setIsSortOpen(false); }}
-            className={`w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
-              sortOrder === opt.value ? 'bg-gray-50' : ''
+            className={`w-full px-4 py-2 text-left text-sm font-medium transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800 ${
+              sortOrder === opt.value ? 'bg-gray-50 dark:bg-slate-800' : ''
             }`}
             aria-label={`Sort by ${opt.label}`}
           >
@@ -788,17 +787,17 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={isMoreMenuOpen}
         anchorRef={moreMenuButtonRef}
         onClickOutside={() => setIsMoreMenuOpen(false)}
-        className="w-48 bg-white rounded-lg border border-gray-100 overflow-hidden shadow-lg"
+        className="w-48 overflow-hidden rounded-lg border border-gray-100 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="py-1">
           {isAuthenticated && (
             <Link
               to={`/profile/${currentUser?.id || ''}`}
               onClick={() => setIsMoreMenuOpen(false)}
-              className={`flex items-center gap-3 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
+              className={`flex items-center gap-3 px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50 dark:hover:bg-slate-800 ${
                 currentPath.includes('/profile') || currentPath === '/myspace'
-                  ? 'bg-gray-50 text-gray-900'
-                  : 'text-gray-700'
+                  ? 'bg-gray-50 text-gray-900 dark:bg-slate-800 dark:text-slate-50'
+                  : 'text-gray-700 dark:text-slate-200'
               }`}
             >
               <UserIcon size={16} />
@@ -809,10 +808,10 @@ export const Header: React.FC<HeaderProps> = ({
             <Link
               to="/admin"
               onClick={() => setIsMoreMenuOpen(false)}
-              className={`flex items-center gap-3 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors ${
+              className={`flex items-center gap-3 px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50 dark:hover:bg-slate-800 ${
                 currentPath.startsWith('/admin')
-                  ? 'bg-gray-50 text-gray-900'
-                  : 'text-gray-700'
+                  ? 'bg-gray-50 text-gray-900 dark:bg-slate-800 dark:text-slate-50'
+                  : 'text-gray-700 dark:text-slate-200'
               }`}
             >
               <Shield size={16} />
@@ -849,20 +848,8 @@ export const Header: React.FC<HeaderProps> = ({
         isAdmin={isAdmin}
         logout={logout}
         openAuthModal={() => openAuthModal('login')}
-        onOpenFilters={() => {
-          if (isHome && isInlineDesktopFiltersActive && !isMobile) {
-            expandSidebar();
-            setIsFilterPopoverOpen(false);
-          } else {
-            setIsFilterPopoverOpen(true);
-          }
-        }}
-        hasActiveFilters={hasActiveFilters}
-        activeFilterCount={activeFilterCount}
         viewMode={viewMode}
         setViewMode={setViewMode}
-        isDark={isDark}
-        toggleTheme={toggleTheme}
       />
     </>
   );
@@ -923,7 +910,7 @@ const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated
 
   if (sent) {
       return (
-        <div className="mx-3 my-2 p-4 bg-green-50 text-green-600 text-xs rounded-xl font-bold text-center border border-green-100 animate-in fade-in flex items-center justify-center gap-2 h-32">
+        <div className="mx-3 my-2 flex h-32 items-center justify-center gap-2 rounded-xl border border-green-100 bg-green-50 p-4 text-center text-xs font-bold text-green-600 animate-in fade-in dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
            <CheckCircle2 size={24} />
            <div>
              Thanks for your thoughts! <br/> We read every message.
@@ -933,11 +920,14 @@ const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated
   }
 
   return (
-    <div className="mx-3 my-4 px-4 py-3 bg-yellow-50/40 rounded-xl border border-yellow-100/50" onClick={(e) => e.stopPropagation()}>
-        <p className="text-[10px] font-bold text-yellow-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <MessageSquare size={12} className="text-yellow-500" /> Feedback
+    <div
+      className="mx-3 my-4 rounded-xl border border-yellow-100/50 bg-yellow-50/40 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/25"
+      onClick={(e) => e.stopPropagation()}
+    >
+        <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-yellow-700 dark:text-amber-200/90">
+            <MessageSquare size={12} className="text-yellow-500 dark:text-amber-400" /> Feedback
         </p>
-        <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+        <p className="mb-3 text-xs leading-relaxed text-gray-500 dark:text-slate-400">
             Have an idea? Send suggestions directly to us.
         </p>
         <form onSubmit={handleSubmit} className="space-y-2">
@@ -945,7 +935,7 @@ const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder="I wish this app had..."
-                className="w-full text-xs p-3 bg-white border border-yellow-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400/50 resize-none h-24 text-gray-700 placeholder:text-gray-400 cursor-text"
+                className="h-24 w-full cursor-text resize-none rounded-xl border border-yellow-100 bg-white p-3 text-xs text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-amber-500/40"
                 onKeyDown={(e) => e.stopPropagation()}
             />
             {!isAuthenticated && (
@@ -954,14 +944,14 @@ const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Your email (optional)"
-                    className="w-full text-xs p-2.5 bg-white border border-yellow-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400/50 text-gray-700 placeholder:text-gray-400"
+                    className="w-full rounded-xl border border-yellow-100 bg-white p-2.5 text-xs text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-amber-500/40"
                     onKeyDown={(e) => e.stopPropagation()}
                 />
             )}
             <button 
                 type="submit"
                 disabled={!feedback.trim() || isSending}
-                className="w-full py-2 bg-yellow-100 text-yellow-900 border border-yellow-200 text-xs font-bold rounded-xl hover:bg-yellow-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-yellow-200 bg-yellow-100 py-2 text-xs font-bold text-yellow-900 shadow-sm transition-all hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800/60 dark:bg-amber-900/35 dark:text-amber-100 dark:hover:bg-amber-900/55"
                 onClick={(e) => e.stopPropagation()}
             >
                 {isSending ? 'Sending...' : <><Send size={12} /> Send</>}
@@ -980,13 +970,8 @@ interface NavigationDrawerProps {
   isAdmin: boolean;
   logout: () => void;
   openAuthModal: () => void;
-  onOpenFilters: () => void;
-  hasActiveFilters: boolean;
-  activeFilterCount: number;
   viewMode: 'grid' | 'masonry';
   setViewMode: (mode: 'grid' | 'masonry') => void;
-  isDark: boolean;
-  toggleTheme: () => void;
 }
 
 const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
@@ -997,13 +982,8 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   isAdmin,
   logout,
   openAuthModal,
-  onOpenFilters,
-  hasActiveFilters,
-  activeFilterCount,
   viewMode,
   setViewMode,
-  isDark,
-  toggleTheme,
 }) => {
   if (!isOpen) return null;
 
@@ -1015,36 +995,27 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   return createPortal(
     <div className="fixed inset-0" style={{ zIndex: Z_INDEX.HEADER_OVERLAY }}>
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={onClose} />
-      <div className="absolute top-0 bottom-0 left-0 w-[280px] bg-white shadow-2xl flex flex-col animate-in slide-in-from-left duration-300 border-r border-gray-200">
+      <div className="absolute bottom-0 left-0 top-0 flex w-[280px] flex-col border-r border-gray-200 bg-white shadow-2xl animate-in slide-in-from-left duration-300 dark:border-slate-700 dark:bg-slate-900">
         
-        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-5">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-5 dark:border-slate-800 dark:bg-slate-900/95">
+          <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-400 text-sm font-bold text-gray-900 shadow-sm">
               N
             </div>
-            <span className="truncate text-lg font-bold text-gray-900">Nuggets</span>
+            <span className="truncate text-lg font-bold text-gray-900 dark:text-slate-100">Nuggets</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="-mr-2 rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            className="-mr-2 rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100"
             aria-label="Close menu"
           >
             <X size={20} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto hide-scrollbar-mobile py-4 px-3 space-y-1">
-           <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">More</p>
-           <p className="px-4 pb-2 text-xs leading-snug text-gray-500 dark:text-slate-400">
-             Home, Market Pulse, and Collections live in the bottom tab bar on mobile, or in the header beside the logo on larger screens.
-           </p>
-           <Link to="/contact" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors dark:text-slate-200 dark:hover:bg-slate-800">
-              <Mail size={18} /> Contact Us
-           </Link>
-
-           <div className="mx-4 my-2 h-px bg-gray-100 dark:bg-slate-800" />
-           <p className="px-4 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Feed layout</p>
+        <div className="hide-scrollbar-mobile flex-1 space-y-1 overflow-y-auto px-3 py-4">
+           <p className="px-4 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">Feed layout</p>
            <div className="grid grid-cols-3 gap-2 px-3">
              <button
                type="button"
@@ -1072,71 +1043,59 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
              </button>
            </div>
 
-           <div className="px-3 pt-2">
-             <button
-               type="button"
-               onClick={(e) => {
-                 e.stopPropagation();
-                 onClose();
-                 window.requestAnimationFrame(() => onOpenFilters());
-               }}
-               className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-colors ${
-                 hasActiveFilters
-                   ? 'bg-primary-50 text-primary-800 dark:bg-primary-900/20 dark:text-primary-200'
-                   : 'text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800'
-               }`}
-             >
-               <Filter size={18} fill={hasActiveFilters ? 'currentColor' : 'none'} />
-               Filters
-               {hasActiveFilters && (
-                 <span className="ml-auto flex min-w-[22px] items-center justify-center rounded-full bg-primary-500 px-1.5 text-[11px] font-bold text-white">
-                   {activeFilterCount}
-                 </span>
-               )}
-             </button>
-             <button
-               type="button"
-               onClick={() => toggleTheme()}
-               className="mt-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800"
-             >
-               {isDark ? <Sun size={18} /> : <Moon size={18} />}
-               {isDark ? 'Light mode' : 'Dark mode'}
-             </button>
-           </div>
+           {!isAuthenticated && (
+             <>
+               <div className="mx-4 my-2 h-px bg-gray-100 dark:bg-slate-800" />
+               <Link
+                 to="/contact"
+                 onClick={onClose}
+                 className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800"
+               >
+                 <Mail size={18} /> Contact Us
+               </Link>
+             </>
+           )}
 
            {isAuthenticated && (
              <>
-               <div className="my-2 h-px bg-gray-100 mx-4" />
-               <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Personal</p>
-               <Link to={`/profile/${currentUser?.id || ''}`} onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
+               <div className="mx-4 my-2 h-px bg-gray-100 dark:bg-slate-800" />
+               <p className="px-4 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">Personal</p>
+               <Link to={`/profile/${currentUser?.id || ''}`} onClick={onClose} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800">
                   <UserIcon size={18} /> My Space
                </Link>
-               <Link to="/bookmarks" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
+               <Link to="/bookmarks" onClick={onClose} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800">
                   <BookOpen size={18} /> Bookmarks
                </Link>
-               <Link to="/account" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 text-gray-700 font-bold text-sm transition-colors">
+               <Link to="/account" onClick={onClose} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800">
                   <Settings size={18} /> Settings
+               </Link>
+               <Link
+                 to="/contact"
+                 onClick={onClose}
+                 className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800"
+               >
+                 <Mail size={18} /> Contact Us
                </Link>
              </>
            )}
 
            {isAdmin && (
              <>
-               <div className="my-2 h-px bg-gray-100 mx-4" />
-               <p className="px-4 pb-2 pt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Admin</p>
-               <Link to="/admin" onClick={onClose} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-900 text-white shadow-md font-bold text-sm mb-1">
+               <div className="mx-4 my-2 h-px bg-gray-100 dark:bg-slate-800" />
+               <p className="px-4 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">Admin</p>
+               <Link to="/admin" onClick={onClose} className="mb-1 flex items-center gap-3 rounded-xl bg-gray-900 px-4 py-3 text-sm font-bold text-white shadow-md ring-1 ring-black/5 dark:bg-slate-950 dark:text-white dark:ring-slate-600">
                   <Shield size={18} /> Admin Panel
                </Link>
              </>
            )}
 
-           <div className="my-4 h-px bg-gray-100 mx-4" />
+           <div className="mx-4 my-4 h-px bg-gray-100 dark:bg-slate-800" />
            
            {/* Feedback Widget */}
            <DrawerFeedbackForm isAuthenticated={isAuthenticated} currentUser={currentUser} />
         </div>
 
-        <div className="p-4 border-t border-gray-100 bg-gray-50/50">
+        <div className="border-t border-gray-100 bg-gray-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/95">
            {isAuthenticated ? (
              <button onClick={async (e) => { 
                e.preventDefault();
@@ -1147,11 +1106,11 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                } catch (error) {
                  console.error('Logout failed:', error);
                }
-             }} className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-white border border-gray-200 text-red-600 font-bold text-sm hover:bg-red-50 transition-colors shadow-sm">
+             }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-red-600 shadow-sm transition-colors hover:bg-red-50 dark:border-slate-600 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-red-950/35">
                <LogOut size={18} /> Sign Out
              </button>
            ) : (
-             <button onClick={() => { openAuthModal(); onClose(); }} className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-yellow-400 text-gray-900 font-bold text-sm shadow-lg shadow-yellow-400/20 hover:scale-[1.02] transition-transform">
+             <button onClick={() => { openAuthModal(); onClose(); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-400 px-4 py-3 text-sm font-bold text-gray-900 shadow-lg shadow-yellow-400/20 transition-transform hover:scale-[1.02] dark:bg-primary-400 dark:text-gray-900 dark:shadow-primary-900/30">
                <LogIn size={18} /> Sign In
              </button>
            )}

@@ -25,9 +25,13 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
 
   const authHeader = req.headers['authorization'];
   const headerToken = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-  // Fallback: read access_token from HttpOnly cookie (set by authCookies.ts)
+  // Cookie-based auth is the canonical browser flow and is set fresh by
+  // login/refresh. A stale `Authorization: Bearer` header from an older
+  // client could otherwise out-vote a fresher cookie token. Cookie-first
+  // closes that class of "I logged in again but the old token is being
+  // used" bugs. The header path remains for non-browser API clients.
   const cookieToken = (req as any).cookies?.access_token as string | undefined;
-  const token = headerToken || cookieToken;
+  const token = cookieToken || headerToken;
   const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
 
   if (!token) {

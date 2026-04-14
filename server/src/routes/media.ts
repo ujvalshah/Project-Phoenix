@@ -1,39 +1,29 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/authenticateToken.js';
-import { requireEmailVerified } from '../middleware/requireEmailVerified.js';
 import { uploadMedia, linkMedia, deleteMedia, getMedia, upload } from '../controllers/mediaController.js';
 
 const router = express.Router();
 
 /**
  * Media Routes
- * All write routes require authentication + email verification
+ * All write routes require authentication.
  */
 
-// Upload media (requires auth + email verification)
+// Upload media
 router.post(
   '/upload/cloudinary',
   authenticateToken,
-  requireEmailVerified,
   upload.single('file'),
   uploadMedia
 );
 
-// Get media by ID (auth only)
+// Get media by ID
 router.get('/:mediaId', authenticateToken, getMedia);
 
-// Link media to entity (requires auth + email verification)
-router.post('/:mediaId/link', authenticateToken, requireEmailVerified, linkMedia);
+// Link media to entity
+router.post('/:mediaId/link', authenticateToken, linkMedia);
 
-// Delete media (requires auth + email verification)
-router.delete('/:mediaId', authenticateToken, requireEmailVerified, deleteMedia);
+// Delete media
+router.delete('/:mediaId', authenticateToken, deleteMedia);
 
 export default router;
-
-
-
-
-
-
-
-

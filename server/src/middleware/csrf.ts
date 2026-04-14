@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { CSRF_TOKEN_COOKIE } from '../utils/authCookies.js';
+import { ACCESS_TOKEN_COOKIE, CSRF_TOKEN_COOKIE } from '../utils/authCookies.js';
 
 /**
  * CSRF protection using the double-submit cookie pattern.
@@ -34,13 +34,34 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return next();
   }
 
-  // If no csrf cookie is set, user is not using cookie-based auth — skip
   const csrfCookie = (req as any).cookies?.[CSRF_TOKEN_COOKIE] as string | undefined;
+  const accessCookie = (req as any).cookies?.[ACCESS_TOKEN_COOKIE] as string | undefined;
+
+  // If the request is cookie-authenticated (access_token present), CSRF is
+  // REQUIRED — even if the csrf_token cookie was lost. Previously we skipped
+  // enforcement whenever the csrf cookie was absent, which let a client with
+  // a valid session cookie mutate without any CSRF verification. That
+  // defeats the double-submit defense.
+  if (accessCookie) {
+    const csrfHeader = req.headers['x-csrf-token'] as string | undefined;
+    if (!csrfCookie || !csrfHeader || csrfHeader !== csrfCookie) {
+      res.status(403).json({
+        error: true,
+        message: 'CSRF token mismatch',
+        code: 'CSRF_INVALID',
+      });
+      return;
+    }
+    return next();
+  }
+
+  // No cookie auth AND no csrf cookie → unauthenticated public request, skip.
   if (!csrfCookie) {
     return next();
   }
 
-  // Verify the X-CSRF-Token header matches the cookie
+  // Defense in depth: if somehow a csrf cookie exists without access_token
+  // (e.g. session partially cleared), still require header parity.
   const csrfHeader = req.headers['x-csrf-token'] as string | undefined;
   if (!csrfHeader || csrfHeader !== csrfCookie) {
     res.status(403).json({

@@ -56,6 +56,12 @@ const envSchema = z.object({
   USE_LOCAL_REDIS: z.string().transform((val) => val === 'true').optional(),
   REDIS_LOCAL_URL: z.string().url('REDIS_LOCAL_URL must be a valid URL').optional(),
 
+  // When true, token revocation checks fail CLOSED if Redis is unavailable —
+  // blacklisted tokens cannot be bypassed during a Redis outage at the cost
+  // of denying all authenticated traffic until Redis recovers. Defaults to
+  // false (fail-open) so dev and single-node deploys stay available.
+  STRICT_TOKEN_REVOCATION: z.string().transform((val) => val === 'true').optional().default('false'),
+
   // Web Push / VAPID (optional – notifications disabled if not set)
   VAPID_PUBLIC_KEY: z.string().min(1).optional(),
   VAPID_PRIVATE_KEY: z.string().min(1).optional(),

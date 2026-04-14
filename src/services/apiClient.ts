@@ -10,6 +10,17 @@ const BASE_URL = getNormalizedApiBase();
 // CSRF cookie name (set by backend, non-HttpOnly so JS can read it)
 const CSRF_COOKIE_NAME = 'csrf_token';
 
+// Error codes that indicate the access/refresh token itself is invalid and
+// the session should be cleared. Any other 401/403 is an authorization or
+// CSRF failure and must NOT cascade into a logout.
+const TOKEN_ERROR_CODES = new Set([
+  'TOKEN_EXPIRED',
+  'TOKEN_INVALID',
+  'TOKEN_REVOKED',
+  'TOKEN_REQUIRED',
+  'TOKEN_ERROR',
+]);
+
 /**
  * Read a cookie value by name from document.cookie.
  */
@@ -82,58 +93,44 @@ class ApiClient {
     this.isRefreshing = true;
     this.refreshPromise = this.doRefresh();
 
+    let success = false;
     try {
-      const success = await this.refreshPromise;
-      // Notify all waiting subscribers
-      this.refreshSubscribers.forEach((callback) => callback(success));
-      this.refreshSubscribers = [];
+      success = await this.refreshPromise;
       return success;
+    } catch {
+      success = false;
+      return false;
     } finally {
+      // Always drain subscribers — otherwise a thrown refresh leaks waiters
+      // that never resolve and stall the next request forever.
+      const subscribers = this.refreshSubscribers;
+      this.refreshSubscribers = [];
+      subscribers.forEach((callback) => {
+        try { callback(success); } catch { /* ignore subscriber errors */ }
+      });
       this.isRefreshing = false;
       this.refreshPromise = null;
     }
   }
 
   private async doRefresh(): Promise<boolean> {
+    // Single-shot refresh. We intentionally do NOT retry 503 inside a user
+    // action — that amplifies Redis outages into multi-second hangs while
+    // still failing. Let React Query / the caller decide to retry.
     try {
       const csrfToken = getCookie(CSRF_COOKIE_NAME);
-      const csrfHeaders = csrfToken ? { 'X-CSRF-Token': csrfToken } : {};
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
 
       const response = await fetch(`${BASE_URL}/auth/refresh`, {
         method: 'POST',
         credentials: 'include', // Sends HttpOnly access_token + refresh_token cookies
-        headers: { 'Content-Type': 'application/json', ...csrfHeaders },
+        headers,
         body: JSON.stringify({}), // Body kept for backward compat; tokens come from cookies
       });
 
-      // 503 = Redis/token service temporarily unavailable - retry with backoff
-      if (response.status === 503) {
-        const delays = [1000, 2000, 4000];
-        for (const delay of delays) {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          const retryResponse = await fetch(`${BASE_URL}/auth/refresh`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json', ...csrfHeaders },
-            body: JSON.stringify({}),
-          });
-
-          if (retryResponse.ok) {
-            return true; // Backend sets new cookies automatically
-          }
-          if (retryResponse.status !== 503) {
-            return false;
-          }
-        }
-        return false;
-      }
-
-      if (!response.ok) {
-        return false;
-      }
-
       // Success — backend has set new HttpOnly cookies in the response
-      return true;
+      return response.ok;
     } catch {
       return false;
     }
@@ -242,36 +239,26 @@ class ApiClient {
           notFoundError.response = { status: response.status, data: errorInfo };
           throw notFoundError;
         }
+        // CASCADE RULE: A 401/403 only clears session state when the server
+        // explicitly returns a token-error `code`. Every other 401/403
+        // (authorization, CSRF, email-verification, etc.) is a request-level
+        // failure and must NOT log the user out.
+        const errorCode = typeof errorInfo.code === 'string' ? errorInfo.code : undefined;
+        const isTokenError = !!(errorCode && TOKEN_ERROR_CODES.has(errorCode));
+
         if (response.status === 403) {
           const isPublicAuth = this.isPublicAuthEndpoint(endpoint);
-          const isBookmarkEndpoint =
-            endpoint.startsWith('/bookmarks') || endpoint.startsWith('/bookmark-collections');
-
-          // Check if error message indicates token issue
-          const isTokenError = errorInfo.message?.toLowerCase().includes('token') ||
-                              errorInfo.message?.toLowerCase().includes('expired') ||
-                              errorInfo.message?.toLowerCase().includes('invalid');
-
-          if (isPublicAuth) {
-            throw error;
-          }
-
-          // Bookmark authorization errors should never force a global session reset.
-          if (isBookmarkEndpoint) {
+          if (isPublicAuth || !isTokenError) {
             throw error;
           }
 
           // Token-related 403 → session expired
-          if (isTokenError) {
-            this.handleSessionExpired();
-            const isExpired = errorInfo.message?.toLowerCase().includes('expired');
-            throw new Error(isExpired
+          this.handleSessionExpired();
+          throw new Error(
+            errorCode === 'TOKEN_EXPIRED'
               ? 'Your session has expired. Please sign in again.'
               : 'Your session is invalid. Please sign in again.'
-            );
-          }
-
-          throw error;
+          );
         }
         if (response.status === 401) {
           const isPublicAuth = this.isPublicAuthEndpoint(endpoint);
@@ -281,11 +268,12 @@ class ApiClient {
             throw error;
           }
 
-          const isTokenExpired =
-            errorInfo.code === 'TOKEN_EXPIRED' ||
-            errorInfo.message?.toLowerCase().includes('expired');
+          // Non-token 401 (e.g. unauthorized access to a resource) → surface as-is.
+          if (!isTokenError) {
+            throw error;
+          }
 
-          // Attempt refresh on 401 (cookie-based: browser has the refresh token)
+          // Attempt refresh on token-error 401 (cookie-based: browser has the refresh token)
           if (!_isRetry) {
             if (this.isRefreshing) {
               const refreshed = await this.waitForRefresh();
@@ -303,7 +291,7 @@ class ApiClient {
           // Refresh failed or was already retried → session expired
           this.handleSessionExpired();
           throw new Error(
-            isTokenExpired
+            errorCode === 'TOKEN_EXPIRED'
               ? 'Your session has expired. Please sign in again.'
               : 'Your session is invalid. Please sign in again.'
           );
