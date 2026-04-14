@@ -40,6 +40,10 @@ export function CollectionSelector({
   onCollectionChange,
   anchorRef
 }: CollectionSelectorProps) {
+  const getCollectionErrorMessage = useCallback((_error: unknown, fallback: string) => {
+    return fallback;
+  }, []);
+
   // Note: itemId is kept for potential future use (e.g., syncing with localStorage)
   const toast = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -60,7 +64,6 @@ export function CollectionSelector({
 
   // Sync selected IDs when currentCollectionIds changes
   useEffect(() => {
-    console.log('[CollectionSelector] currentCollectionIds changed, resetting selectedIds to:', currentCollectionIds);
     setSelectedIds(new Set(currentCollectionIds));
   }, [currentCollectionIds]);
 
@@ -98,7 +101,10 @@ export function CollectionSelector({
         setFocusedIndex((prev) => (prev > 0 ? prev - 1 : prev));
       } else if (event.key === 'Enter' && focusedIndex >= 0) {
         event.preventDefault();
-        toggleCollection(collections[focusedIndex].id);
+        const focusedCollection = collections[focusedIndex];
+        if (focusedCollection) {
+          toggleCollection(focusedCollection.id);
+        }
       }
     };
 
@@ -121,33 +127,20 @@ export function CollectionSelector({
   const handleSave = useCallback(async () => {
     const collectionIds = Array.from(selectedIds);
 
-    // Debug logging
-    console.log('[CollectionSelector] handleSave called', {
-      selectedIds: collectionIds,
-      currentCollectionIds,
-      bookmarkId
-    });
-
     // Only save if there are changes
     const currentSet = new Set(currentCollectionIds);
     const hasChanges =
       selectedIds.size !== currentSet.size ||
       [...selectedIds].some((id) => !currentSet.has(id));
 
-    console.log('[CollectionSelector] hasChanges:', hasChanges, 'collectionIds.length:', collectionIds.length);
-
     if (hasChanges && collectionIds.length > 0) {
       try {
-        console.log('[CollectionSelector] Calling assignMutation with:', { bookmarkId, collectionIds });
         await assignMutation.mutateAsync({ bookmarkId, collectionIds });
         onCollectionChange?.();
         toast.success('Folders updated');
       } catch (error) {
-        console.error('[CollectionSelector] assignMutation failed:', error);
-        toast.error('Failed to update folders');
+        toast.error(getCollectionErrorMessage(error, 'Failed to update folders'));
       }
-    } else {
-      console.log('[CollectionSelector] No changes to save or no folders selected');
     }
 
     onClose();
@@ -166,20 +159,14 @@ export function CollectionSelector({
     if (!name) return;
 
     try {
-      console.log('[CollectionSelector] Creating collection:', name);
       const newCollection = await createMutation.mutateAsync({
         name,
         description: ''
       });
 
-      console.log('[CollectionSelector] Collection created:', newCollection);
-      console.log('[CollectionSelector] New collection ID:', newCollection.id);
-
       // Add to selected
       setSelectedIds((prev) => {
-        const next = new Set([...prev, newCollection.id]);
-        console.log('[CollectionSelector] Updated selectedIds:', Array.from(next));
-        return next;
+        return new Set([...prev, newCollection.id]);
       });
 
       // Reset form
@@ -187,15 +174,14 @@ export function CollectionSelector({
       setIsCreating(false);
 
       toast.success(`Created "${name}"`);
-    } catch (error: any) {
-      console.error('[CollectionSelector] Create collection failed:', error);
-      if (error?.message?.includes('already exists')) {
+    } catch (error: unknown) {
+      if ((error as any)?.message?.includes('already exists')) {
         toast.error('A folder with this name already exists');
       } else {
-        toast.error('Failed to create folder');
+        toast.error(getCollectionErrorMessage(error, 'Failed to create folder'));
       }
     }
-  }, [newCollectionName, createMutation, toast]);
+  }, [newCollectionName, createMutation, toast, getCollectionErrorMessage]);
 
   // Calculate position based on anchor element
   const getPosition = useCallback(() => {

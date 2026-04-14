@@ -21,21 +21,17 @@ export const DesktopFilterSidebarProvider: React.FC<{ children: React.ReactNode 
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(() => {
     if (typeof window === 'undefined') return false;
     const w = window.innerWidth;
-    return w >= LAYOUT.LG_BREAKPOINT && w < LAYOUT.XL_BREAKPOINT;
+    return w >= LAYOUT.LG_BREAKPOINT;
   });
   const userExplicitRef = React.useRef(false);
 
-  // Auto-collapse on resize: collapse in lg range, expand in xl+ range,
-  // but only when the user hasn't explicitly toggled.
+  // Auto-collapse on resize for desktop widths, but only when the user
+  // hasn't explicitly toggled.
   useEffect(() => {
     const onResize = () => {
       if (userExplicitRef.current) return;
       const w = window.innerWidth;
-      if (w >= LAYOUT.LG_BREAKPOINT && w < LAYOUT.XL_BREAKPOINT) {
-        setSidebarCollapsedState(true);
-      } else if (w >= LAYOUT.XL_BREAKPOINT) {
-        setSidebarCollapsedState(false);
-      }
+      if (w >= LAYOUT.LG_BREAKPOINT) setSidebarCollapsedState(true);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);

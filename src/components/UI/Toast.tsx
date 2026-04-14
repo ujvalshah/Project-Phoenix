@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useToastContext, Toast as ToastType } from '@/context/ToastContext';
 import { CheckCircle2, AlertCircle, Info, X, AlertTriangle } from 'lucide-react';
+import { Z_INDEX } from '@/constants/zIndex';
 
 const ToastItem: React.FC<{ toast: ToastType; onRemove: (id: string) => void }> = ({ toast, onRemove }) => {
   const [isPaused, setIsPaused] = useState(false);
@@ -69,7 +71,9 @@ const ToastItem: React.FC<{ toast: ToastType; onRemove: (id: string) => void }> 
         transition-all duration-500 ease-out
         ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-4 opacity-0 scale-95'}
       `}
-      role="alert"
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
+      aria-atomic="true"
     >
       {/* Icon */}
       <div className="shrink-0 flex items-center">
@@ -119,12 +123,23 @@ const ToastItem: React.FC<{ toast: ToastType; onRemove: (id: string) => void }> 
 export const ToastContainer: React.FC = () => {
   const { toasts, removeToast } = useToastContext();
 
-  return (
-    <div className="fixed z-[100] inset-x-0 bottom-0 pb-4 pointer-events-none flex flex-col items-center sm:items-end gap-3 sm:bottom-6 sm:right-6" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-x-0 bottom-0 pb-4 pointer-events-none flex flex-col items-center sm:items-end gap-3 sm:bottom-6 sm:right-6"
+      style={{
+        zIndex: Z_INDEX.TOAST,
+        paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+      }}
+      aria-live="polite"
+      aria-relevant="additions text"
+    >
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onRemove={removeToast} />
       ))}
-    </div>
+    </div>,
+    document.body
   );
 };
 

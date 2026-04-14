@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { getNormalizedApiBase } from '@/utils/urlUtils';
+import { getCsrfHeaders } from '@/utils/csrf';
 
 export interface MediaUploadResult {
   mediaId: string;
@@ -125,6 +126,7 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
         method: 'POST',
         body: formData,
         credentials: 'include',
+        headers: getCsrfHeaders(),
         signal,
       });
 

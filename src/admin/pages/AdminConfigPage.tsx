@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, Mail, ClipboardType, Eye, EyeOff, HardDrive, Bell, FileText } from 'lucide-react';
+import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, ClipboardType, Eye, EyeOff, HardDrive, Bell, FileText } from 'lucide-react';
 import { getNotificationSystemStatus, toggleNotificationSystem } from '@/services/notificationService';
 import { useToast } from '@/hooks/useToast';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -241,20 +241,6 @@ export const AdminConfigPage: React.FC = () => {
                             className={`transition-colors ${flags.enablePublicSignup ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
                         >
                             {flags.enablePublicSignup ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                        </button>
-                    </div>
-
-                    {/* EMAIL VERIFICATION */}
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white">Email Verification</div>
-                            <div className="text-xs text-slate-500 mt-0.5">Require verification before login.</div>
-                        </div>
-                        <button 
-                            onClick={() => handleToggleFlag('enableEmailVerification')}
-                            className={`transition-colors ${flags.enableEmailVerification ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                        >
-                            {flags.enableEmailVerification ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
                         </button>
                     </div>
 

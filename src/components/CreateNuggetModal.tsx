@@ -40,6 +40,7 @@ import { isFeatureEnabled } from '@/constants/featureFlags';
 import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
 import { useAllCollections, nuggetFormKeys } from '@/hooks/useNuggetFormData';
 import { useDisclaimerConfig } from '@/hooks/useDisclaimerConfig';
+import { Z_INDEX } from '@/constants/zIndex';
 
 interface CreateNuggetModalProps {
   isOpen: boolean;
@@ -2028,8 +2029,15 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-0 sm:p-4" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={(e) => { e.stopPropagation(); handleClose(); }} />
+    <div
+      className="fixed inset-0 flex items-center justify-center p-0 sm:p-4"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+        style={{ zIndex: Z_INDEX.BACKDROP }}
+        onClick={(e) => { e.stopPropagation(); handleClose(); }}
+      />
       
       <div 
         ref={modalRef}
@@ -2037,6 +2045,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         aria-modal="true"
         aria-labelledby="modal-title"
         className="relative w-full h-screen max-h-screen sm:h-auto sm:max-h-[90vh] sm:max-w-4xl bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 fade-in duration-200 border border-slate-200 dark:border-slate-800 overflow-hidden"
+        style={{ zIndex: Z_INDEX.MODAL }}
       >
         
         {/* Header */}

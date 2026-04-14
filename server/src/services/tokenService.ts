@@ -33,6 +33,7 @@ export class RedisUnavailableError extends Error {
 const PREFIX = {
   BLACKLIST: 'bl:',           // Blacklisted access tokens
   REFRESH: 'rt:',             // Refresh tokens by userId
+  REFRESH_INDEX: 'rti:',      // Refresh token hash -> userId lookup
   LOCKOUT: 'lock:',           // Account lockout counters
   LOCKOUT_TIME: 'locktime:',  // Lockout timestamp
   SESSION: 'sess:',           // Active sessions per user
@@ -194,12 +195,14 @@ export async function storeRefreshToken(
     };
 
     const refreshKey = `${PREFIX.REFRESH}${userId}:${tokenHash}`;
+    const refreshIndexKey = `${PREFIX.REFRESH_INDEX}${tokenHash}`;
     const sessionKey = `${PREFIX.SESSION}${userId}`;
 
     // OPTIMIZATION: Use pipeline to batch operations (reduces from 4+ calls to 1)
     if (client.pipeline) {
       const pipeline = client.pipeline();
       pipeline.setEx(refreshKey, CONFIG.REFRESH_TOKEN_TTL, JSON.stringify(data));
+      pipeline.setEx(refreshIndexKey, CONFIG.REFRESH_TOKEN_TTL, userId);
       pipeline.sAdd(sessionKey, tokenHash);
       pipeline.expire(sessionKey, CONFIG.REFRESH_TOKEN_TTL);
       pipeline.sMembers(sessionKey); // Get sessions to check limit
@@ -208,11 +211,11 @@ export async function storeRefreshToken(
       
       // CRITICAL FIX: Validate pipeline results - pipelines are NOT atomic
       // If any command fails, we need to know about it
-      if (!results || results.length !== 4) {
+      if (!results || results.length !== 5) {
         logger.error({ 
           msg: '[TokenService] CRITICAL: Pipeline execution incomplete', 
           userId,
-          expectedCommands: 4,
+          expectedCommands: 5,
           actualResults: results?.length || 0
         });
         return false;
@@ -231,7 +234,7 @@ export async function storeRefreshToken(
         }
       }
       
-      const sessions = results[3] as string[] || [];
+      const sessions = results[4] as string[] || [];
       
       // Enforce max sessions (remove oldest if exceeded)
       if (sessions.length > CONFIG.MAX_SESSIONS_PER_USER) {
@@ -246,6 +249,7 @@ export async function storeRefreshToken(
     } else {
       // Fallback for in-memory client
       await client.setEx(refreshKey, CONFIG.REFRESH_TOKEN_TTL, JSON.stringify(data));
+      await client.setEx(refreshIndexKey, CONFIG.REFRESH_TOKEN_TTL, userId);
       await client.sAdd(sessionKey, tokenHash);
       await client.expire(sessionKey, CONFIG.REFRESH_TOKEN_TTL);
       
@@ -413,6 +417,7 @@ export async function rotateRefreshToken(
 
     const oldHash = hashToken(oldRefreshToken);
     const refreshKey = `${PREFIX.REFRESH}${userId}:${oldHash}`;
+    const refreshIndexKey = `${PREFIX.REFRESH_INDEX}${oldHash}`;
     const sessionKey = `${PREFIX.SESSION}${userId}`;
 
     // CRITICAL FIX: Store new token FIRST, then delete old token
@@ -420,6 +425,7 @@ export async function rotateRefreshToken(
     const newToken = generateRefreshToken();
     const newHash = hashToken(newToken);
     const newRefreshKey = `${PREFIX.REFRESH}${userId}:${newHash}`;
+    const newRefreshIndexKey = `${PREFIX.REFRESH_INDEX}${newHash}`;
     
     // Prepare new token data
     const now = new Date();
@@ -438,19 +444,21 @@ export async function rotateRefreshToken(
       // Store new token, add to session set, then delete old token
       const pipeline = client.pipeline();
       pipeline.setEx(newRefreshKey, CONFIG.REFRESH_TOKEN_TTL, JSON.stringify(newData));
+      pipeline.setEx(newRefreshIndexKey, CONFIG.REFRESH_TOKEN_TTL, userId);
       pipeline.sAdd(sessionKey, newHash);
       pipeline.expire(sessionKey, CONFIG.REFRESH_TOKEN_TTL);
       pipeline.del(refreshKey);  // Delete old token AFTER new one is stored
+      pipeline.del(refreshIndexKey);
       pipeline.sRem(sessionKey, oldHash);
       
       const results = await pipeline.exec();
       
       // CRITICAL FIX: Validate pipeline results - pipelines are NOT atomic
-      if (!results || results.length !== 5) {
+      if (!results || results.length !== 7) {
         logger.error({ 
           msg: '[TokenService] CRITICAL: Token rotation pipeline incomplete', 
           userId,
-          expectedCommands: 5,
+          expectedCommands: 7,
           actualResults: results?.length || 0
         });
         // Try to clean up - verify old token still exists (rotation failed)
@@ -468,15 +476,22 @@ export async function rotateRefreshToken(
             msg: '[TokenService] CRITICAL: Token rotation pipeline command failed', 
             userId,
             commandIndex: i,
-            command: i === 0 ? 'setEx' : i === 1 ? 'sAdd' : i === 2 ? 'expire' : i === 3 ? 'del' : 'sRem',
+            command:
+              i === 0 ? 'setEx-new-refresh' :
+              i === 1 ? 'setEx-refresh-index' :
+              i === 2 ? 'sAdd' :
+              i === 3 ? 'expire' :
+              i === 4 ? 'del-old-refresh' :
+              i === 5 ? 'del-old-refresh-index' :
+              'sRem',
             error: results[i].message
           });
           // If new token storage failed (index 0), old token is still valid - return null
-          // If delete failed (index 3), security issue - log but continue
-          if (i === 0) {
+          // If delete failed (index 4), security issue - log but continue
+          if (i === 0 || i === 1) {
             return null; // New token not stored, keep old token
           }
-          if (i === 3) {
+          if (i === 4) {
             logger.error({ msg: '[TokenService] SECURITY: Failed to delete old token', userId, key: refreshKey });
             // Continue - new token is stored, old token deletion failed (security issue but not fatal)
           }
@@ -491,12 +506,12 @@ export async function rotateRefreshToken(
       }
       
       // CRITICAL FIX: Verify old token was deleted (security check)
-      const oldTokenDeleted = results[3] === 1 || results[3] === '1';
+      const oldTokenDeleted = results[4] === 1 || results[4] === '1';
       if (!oldTokenDeleted) {
         logger.error({ 
           msg: '[TokenService] SECURITY: Old refresh token not deleted during rotation', 
           userId,
-          deleteResult: results[3]
+          deleteResult: results[4]
         });
         // Security issue but not fatal - new token is stored
       }
@@ -521,6 +536,7 @@ export async function rotateRefreshToken(
     } else {
       // Fallback for in-memory client - store new first, then delete old
       await client.setEx(newRefreshKey, CONFIG.REFRESH_TOKEN_TTL, JSON.stringify(newData));
+      await client.setEx(newRefreshIndexKey, CONFIG.REFRESH_TOKEN_TTL, userId);
       await client.sAdd(sessionKey, newHash);
       await client.expire(sessionKey, CONFIG.REFRESH_TOKEN_TTL);
       
@@ -533,6 +549,7 @@ export async function rotateRefreshToken(
       
       // Now safe to delete old token
       await client.del(refreshKey);
+      await client.del(refreshIndexKey);
       await client.sRem(sessionKey, oldHash);
       
       // CRITICAL FIX: Verify old token was deleted (security check)
@@ -571,16 +588,19 @@ export async function revokeRefreshToken(userId: string, refreshToken: string): 
     const client = getClient();
     const tokenHash = hashToken(refreshToken);
     const key = `${PREFIX.REFRESH}${userId}:${tokenHash}`;
+    const indexKey = `${PREFIX.REFRESH_INDEX}${tokenHash}`;
     const sessionKey = `${PREFIX.SESSION}${userId}`;
 
     // OPTIMIZATION: Batch operations
     if (client.pipeline) {
       const pipeline = client.pipeline();
       pipeline.del(key);
+      pipeline.del(indexKey);
       pipeline.sRem(sessionKey, tokenHash);
       await pipeline.exec();
     } else {
       await client.del(key);
+      await client.del(indexKey);
       await client.sRem(sessionKey, tokenHash);
     }
 
@@ -610,12 +630,14 @@ export async function revokeAllRefreshTokens(userId: string): Promise<boolean> {
       const pipeline = client.pipeline();
       for (const tokenHash of sessions) {
         pipeline.del(`${PREFIX.REFRESH}${userId}:${tokenHash}`);
+        pipeline.del(`${PREFIX.REFRESH_INDEX}${tokenHash}`);
       }
       pipeline.del(sessionKey);
       await pipeline.exec();
     } else {
       for (const tokenHash of sessions) {
         await client.del(`${PREFIX.REFRESH}${userId}:${tokenHash}`);
+        await client.del(`${PREFIX.REFRESH_INDEX}${tokenHash}`);
       }
       await client.del(sessionKey);
     }
@@ -625,6 +647,29 @@ export async function revokeAllRefreshTokens(userId: string): Promise<boolean> {
     const logger = getLogger();
     logger.error({ msg: '[TokenService] Failed to revoke all tokens', err: { message: error.message } });
     return false;
+  }
+}
+
+/**
+ * Resolve user ID from a refresh token hash index.
+ * This allows refresh flow to rely on the refresh token itself instead of access-token decoding.
+ */
+export async function getUserIdFromRefreshToken(refreshToken: string): Promise<string | null> {
+  await ensureRedisConnection();
+
+  try {
+    const client = getClient();
+    const tokenHash = hashToken(refreshToken);
+    const userId = await client.get(`${PREFIX.REFRESH_INDEX}${tokenHash}`);
+    return typeof userId === 'string' && userId.length > 0 ? userId : null;
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const logger = getLogger();
+    logger.error({
+      msg: '[TokenService] Failed to resolve refresh token user',
+      err: { message: errMsg },
+    });
+    return null;
   }
 }
 

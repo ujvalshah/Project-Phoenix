@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Collection } from '@/types';
-import { getCollectionTheme } from '@/constants/theme';
-import { Folder, Lock, Check, Plus, Layers, Users, ArrowRight } from 'lucide-react';
+import { Folder, Lock, Check, Plus, Layers, Users, ArrowRight, Clock3 } from 'lucide-react';
 import { ShareMenu } from '../shared/ShareMenu';
 import { useAuth } from '@/hooks/useAuth';
 import { storageService } from '@/services/storageService';
 import { useToast } from '@/hooks/useToast';
+import { formatDate } from '@/utils/formatters';
 
 // PHASE 5: Import getCollectionById for refetch after optimistic update
 
@@ -18,6 +18,7 @@ interface CollectionCardProps {
   onSelect?: (id: string) => void;
   // Optional callback to update collection in parent state
   onCollectionUpdate?: (updatedCollection: Collection) => void;
+  taxonomyLabel?: string;
 }
 
 export const CollectionCard: React.FC<CollectionCardProps> = ({ 
@@ -26,9 +27,9 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
     selectionMode,
     isSelected,
     onSelect,
-    onCollectionUpdate
+    onCollectionUpdate,
+    taxonomyLabel,
 }) => {
-  const theme = getCollectionTheme(collection.id);
   const { currentUserId } = useAuth();
   const toast = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -108,8 +109,8 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
     <div 
         onClick={handleCardClick}
         className={`
-            group relative bg-white dark:bg-slate-900 border rounded-xl overflow-hidden transition-all duration-300 flex flex-col h-full
-            ${selectionMode ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800' : 'cursor-pointer hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-700 hover:-translate-y-1'}
+            group relative flex h-full flex-col overflow-hidden rounded-xl border bg-white motion-safe:transition-all motion-safe:duration-200 motion-safe:ease-out
+            ${selectionMode ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800' : 'cursor-pointer hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_6px_16px_rgba(15,23,42,0.07)] dark:hover:border-slate-700'}
             ${isSelected ? 'border-primary-500 ring-1 ring-primary-500' : 'border-slate-200 dark:border-slate-800'}
         `}
     >
@@ -125,14 +126,11 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
             </div>
         )}
 
-        {/* Top Accent Bar - Differentiate Private vs Public */}
-        <div className={`h-1.5 w-full ${isPrivate ? 'bg-slate-200 dark:bg-slate-700' : theme.bg}`} />
-
-        <div className="p-5 flex flex-col flex-1">
-            <div className="flex justify-between items-start mb-4">
+        <div className="flex flex-1 flex-col p-4">
+            <div className="mb-2.5 flex items-start justify-between">
                 {/* Icon Logic: Folder/Lock for Private, Colored Folder/Layers for Public */}
-                <div className={`p-2.5 rounded-lg ${isPrivate ? 'bg-slate-100 text-slate-500 dark:bg-slate-800' : `${theme.light} ${theme.text} dark:bg-slate-800`}`}>
-                    {isPrivate ? <Lock size={20} strokeWidth={2} /> : <Layers size={20} strokeWidth={2} />}
+                <div className={`rounded-md border p-1.5 ${isPrivate ? 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800' : 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-900/60 dark:bg-primary-900/20 dark:text-primary-300'}`}>
+                    {isPrivate ? <Lock size={18} strokeWidth={2} /> : <Layers size={18} strokeWidth={2} />}
                 </div>
 
                 {/* Follow Button - Hide in selection mode & Hide for private folders (can't follow private) */}
@@ -141,10 +139,10 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
                         onClick={handleFollow}
                         disabled={isLoading}
                         className={`
-                            flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all border
+                            flex h-7.5 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium motion-safe:transition-all motion-safe:duration-150
                             ${isFollowing 
                                 ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900' 
-                                : 'bg-white text-gray-500 border-gray-200 hover:border-yellow-300 hover:text-yellow-700 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                             }
                             ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
                         `}
@@ -165,37 +163,47 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
                 
                 {/* Label for Private Folders */}
                 {isPrivate && (
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded">
+                    <span className="rounded bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:bg-slate-800">
                         Folder
                     </span>
                 )}
             </div>
 
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 truncate group-hover:text-primary-600 transition-colors">
+            {taxonomyLabel && (
+              <div className="mb-1.5 truncate text-[11px] font-medium tracking-wide text-slate-500 dark:text-slate-400">
+                {taxonomyLabel}
+              </div>
+            )}
+
+            <h3 className="mb-1 truncate text-[15px] font-semibold leading-5 text-slate-900 motion-safe:transition-colors motion-safe:duration-150 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-100">
                 {collection.name}
             </h3>
             
-            <div className="flex-1 mb-5 relative" title={collection.description}>
-                <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+            <div className="relative mb-3.5 flex-1" title={collection.description}>
+                <p className="line-clamp-2 text-[13px] leading-5 text-slate-500 dark:text-slate-400">
                     {collection.description || 'No description provided.'}
                 </p>
             </div>
 
-            <div className={`flex items-center justify-between mt-auto pt-3 border-t border-slate-100 dark:border-slate-800 ${selectionMode ? 'opacity-50' : ''}`}>
-                <div className="flex gap-4 text-xs font-medium text-slate-500 dark:text-slate-400">
-                    <span className="flex items-center gap-1.5" title="Items">
-                        <Folder size={14} className="text-slate-400 dark:text-slate-500" /> 
+            <div className={`mt-auto border-t border-slate-100 pt-2.5 dark:border-slate-800 ${selectionMode ? 'opacity-50' : ''}`}>
+                <div className="mb-2 flex items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1.5" title="Nuggets">
+                        <Folder size={12.5} className="text-slate-400 dark:text-slate-500" /> 
                         {collection.validEntriesCount ?? collection.entries?.length ?? 0}
                     </span>
                     {!isPrivate && (
                         <span className="flex items-center gap-1.5" title="Followers">
-                            <Users size={14} className="text-slate-400 dark:text-slate-500" /> 
+                            <Users size={12.5} className="text-slate-400 dark:text-slate-500" /> 
                             {collection.followersCount ?? 0}
                         </span>
                     )}
+                    <span className="ml-auto flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                      <Clock3 size={12} />
+                      {formatDate(collection.updatedAt || collection.createdAt, false)}
+                    </span>
                 </div>
                 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center justify-end gap-1.5">
                     {/* Only show share if public */}
                     {!isPrivate && (
                         <ShareMenu 
@@ -208,11 +216,11 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
                             meta={{
                                 text: collection.description
                             }}
-                            className="hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                            className="rounded-md text-slate-400 motion-safe:transition-all motion-safe:duration-150 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                             iconSize={16}
                         />
                     )}
-                    <span className="flex items-center gap-1 text-xs font-bold text-primary-600 dark:text-primary-400 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 ml-1">
+                    <span className="ml-1 flex -translate-x-2 items-center gap-1 text-xs font-medium text-slate-500 opacity-0 motion-safe:transition-all motion-safe:duration-200 group-hover:translate-x-0 group-hover:opacity-100 dark:text-slate-300">
                         Open <ArrowRight size={14} />
                     </span>
                 </div>

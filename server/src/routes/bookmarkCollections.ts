@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import * as bookmarkCollectionsController from '../controllers/bookmarkCollectionsController.js';
 import { authenticateToken } from '../middleware/authenticateToken.js';
-import { requireEmailVerified } from '../middleware/requireEmailVerified.js';
 
 /**
  * Bookmark Collection Routes
@@ -14,7 +13,6 @@ const router = Router();
 
 // All collection routes require authentication
 router.use(authenticateToken);
-router.use(requireEmailVerified);
 
 // PUT /api/bookmark-collections/reorder - Reorder collections (drag and drop)
 // NOTE: This route must come BEFORE /:id to ensure proper matching

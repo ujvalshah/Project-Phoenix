@@ -41,7 +41,6 @@ export type RolePermissions = Record<AdminRole, ServiceId[]>;
 export interface FeatureFlags {
   enableAvatarUpload: boolean;
   enablePublicSignup: boolean;
-  enableEmailVerification: boolean;
   maintenanceMode: boolean;
   // Guest Capabilities
   guestBookmarks: boolean;

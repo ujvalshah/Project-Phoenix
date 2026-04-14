@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import * as bookmarksController from '../controllers/bookmarksController.js';
 import { authenticateToken } from '../middleware/authenticateToken.js';
-import { requireEmailVerified } from '../middleware/requireEmailVerified.js';
 
 /**
  * Bookmark Routes
@@ -14,7 +13,6 @@ const router = Router();
 
 // All bookmark routes require authentication
 router.use(authenticateToken);
-router.use(requireEmailVerified);
 
 // POST /api/bookmarks/toggle - Toggle bookmark (create/delete in one endpoint)
 router.post('/toggle', bookmarksController.toggleBookmark);

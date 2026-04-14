@@ -18,6 +18,7 @@ import { setAuthCookies, clearAuthCookies, setCsrfCookie } from '../utils/authCo
 import {
   generateRefreshToken,
   storeRefreshToken,
+  getUserIdFromRefreshToken,
   validateRefreshToken,
   rotateRefreshToken,
   revokeRefreshToken,
@@ -745,29 +746,26 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 
     const oldRefreshToken = refreshTokenInput;
 
-    // We need to find the user associated with this refresh token
-    // The refresh token contains userId in Redis, but we need to extract it
-    // For security, we'll require userId in the request or extract from a still-valid access token
+    // Resolve user identity from refresh token index first (refresh token is the source of truth).
+    let userId = await getUserIdFromRefreshToken(oldRefreshToken);
 
-    // Check for expired access token — from Authorization header or HttpOnly cookie
+    // Backward-compatibility fallback: older refresh tokens may not have an index entry.
+    // In that case, attempt to decode access token if present.
     const authHeader = req.headers['authorization'];
     const headerAccessToken = authHeader && authHeader.split(' ')[1];
     const cookieAccessToken = (req as any).cookies?.access_token as string | undefined;
-    const expiredAccessToken = headerAccessToken || cookieAccessToken;
-
-    if (!expiredAccessToken) {
-      return sendErrorResponse(res, 400, 'Access token required for refresh', 'ACCESS_TOKEN_REQUIRED');
+    const accessTokenForFallback = headerAccessToken || cookieAccessToken;
+    if (!userId && accessTokenForFallback) {
+      const { decodeTokenUnsafe } = await import('../utils/jwt.js');
+      const decoded = decodeTokenUnsafe(accessTokenForFallback);
+      if (decoded?.userId) {
+        userId = decoded.userId;
+      }
     }
 
-    // Decode the expired token (don't verify - it's expected to be expired)
-    const { decodeTokenUnsafe } = await import('../utils/jwt.js');
-    const decoded = decodeTokenUnsafe(expiredAccessToken);
-
-    if (!decoded || !decoded.userId) {
-      return sendErrorResponse(res, 400, 'Invalid access token', 'INVALID_ACCESS_TOKEN');
+    if (!userId) {
+      return sendUnauthorizedError(res, 'Invalid or expired refresh token');
     }
-
-    const userId = decoded.userId;
 
     // Validate refresh token
     // CRITICAL: Distinguish between "token not found" (→ 401) and "Redis down" (→ 503)

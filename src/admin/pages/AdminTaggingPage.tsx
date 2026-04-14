@@ -6,6 +6,7 @@ import { useAdminHeader } from '../layout/AdminLayout';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 import { apiClient } from '@/services/apiClient';
 import { getNormalizedApiBase } from '@/utils/urlUtils';
+import { getCsrfHeaders } from '@/utils/csrf';
 import type { TaxonomyTag } from '@/types';
 
 type Dimension = 'format' | 'domain' | 'subtopic';
@@ -221,6 +222,7 @@ export const AdminTaggingPage: React.FC = () => {
       const response = await fetch(`${BASE_URL}/admin/tagging/import`, {
         method: 'POST',
         credentials: 'include', // HttpOnly cookies sent automatically
+        headers: getCsrfHeaders(),
         body: formData,
       });
 

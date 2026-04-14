@@ -52,7 +52,10 @@
     // Best Practices
     "no-unused-expressions": "warn",
     "no-return-await": "warn",
-    "require-await": "warn"
+    "require-await": "warn",
+
+    // Security: prevent auth/CSRF drift on direct backend mutation calls
+    "no-unsafe-direct-mutation-fetch": "error"
   },
   "settings": {
     "react": {

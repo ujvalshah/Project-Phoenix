@@ -96,10 +96,13 @@ class ApiClient {
 
   private async doRefresh(): Promise<boolean> {
     try {
+      const csrfToken = getCookie(CSRF_COOKIE_NAME);
+      const csrfHeaders = csrfToken ? { 'X-CSRF-Token': csrfToken } : {};
+
       const response = await fetch(`${BASE_URL}/auth/refresh`, {
         method: 'POST',
         credentials: 'include', // Sends HttpOnly access_token + refresh_token cookies
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...csrfHeaders },
         body: JSON.stringify({}), // Body kept for backward compat; tokens come from cookies
       });
 
@@ -111,7 +114,7 @@ class ApiClient {
           const retryResponse = await fetch(`${BASE_URL}/auth/refresh`, {
             method: 'POST',
             credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...csrfHeaders },
             body: JSON.stringify({}),
           });
 
@@ -241,6 +244,8 @@ class ApiClient {
         }
         if (response.status === 403) {
           const isPublicAuth = this.isPublicAuthEndpoint(endpoint);
+          const isBookmarkEndpoint =
+            endpoint.startsWith('/bookmarks') || endpoint.startsWith('/bookmark-collections');
 
           // Check if error message indicates token issue
           const isTokenError = errorInfo.message?.toLowerCase().includes('token') ||
@@ -248,6 +253,11 @@ class ApiClient {
                               errorInfo.message?.toLowerCase().includes('invalid');
 
           if (isPublicAuth) {
+            throw error;
+          }
+
+          // Bookmark authorization errors should never force a global session reset.
+          if (isBookmarkEndpoint) {
             throw error;
           }
 

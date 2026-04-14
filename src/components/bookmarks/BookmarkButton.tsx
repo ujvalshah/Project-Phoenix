@@ -36,6 +36,10 @@ interface BookmarkButtonProps {
   onChangeCollection?: (bookmarkId: string) => void;
 }
 
+function getBookmarkErrorMessage(_error: unknown, fallback: string): string {
+  return fallback;
+}
+
 const sizeClasses = {
   sm: 'w-3.5 h-3.5', // 14px
   md: 'w-4 h-4',     // 16px - matches CardActions iconSize
@@ -141,9 +145,9 @@ function BookmarkButtonInner({
           onToggle?.(data.bookmarked, undefined);
           toast.info('Removed from Bookmarks', { duration: 2000 });
         },
-        onError: () => {
+        onError: (error) => {
           setIsBookmarked(true);
-          toast.error('Failed to remove bookmark');
+          toast.error(getBookmarkErrorMessage(error, 'Failed to remove bookmark'));
         }
       }
     );
@@ -197,10 +201,10 @@ function BookmarkButtonInner({
               });
             }
           },
-          onError: () => {
+          onError: (error) => {
             // Rollback optimistic update
             setIsBookmarked(false);
-            toast.error('Failed to add bookmark');
+            toast.error(getBookmarkErrorMessage(error, 'Failed to add bookmark'));
           }
         }
       );

@@ -37,8 +37,11 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
+      // Default fallback must clear the fixed Header (h-14 lg:h-16 = 56/64px)
+      // since it may replace an entire page, where HeaderSpacer would otherwise
+      // reserve that space. See src/LAYOUT_ARCHITECTURE.md.
       return (
-        <div className="w-full py-12 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
+        <div className="w-full min-h-[60vh] pt-20 lg:pt-24 pb-12 px-4 flex flex-col items-center justify-center text-center text-slate-500 dark:text-slate-400">
           <AlertCircle className="w-12 h-12 mb-4 text-slate-400 dark:text-slate-500" />
           <p className="text-sm font-medium mb-2">Something went wrong displaying this content.</p>
           <button

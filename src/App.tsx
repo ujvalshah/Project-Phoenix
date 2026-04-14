@@ -74,7 +74,6 @@ const AdminPanelPage = lazy(() =>
     };
   })
 );
-const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then(module => ({ default: module.VerifyEmailPage })));
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage').then(module => ({ default: module.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage').then(module => ({ default: module.ResetPasswordPage })));
 const SavedPage = lazy(() => import('@/pages/SavedPage').then(module => ({ default: module.SavedPage })));
@@ -147,7 +146,7 @@ const AppContent: React.FC = () => {
           Suspense fallback must NOT use min-h-screen to prevent layout shifts.
           It should only provide visual feedback without affecting layout structure.
         */}
-        <Suspense fallback={<div className="flex items-center justify-center py-32"><Loader2 className="animate-spin w-8 h-8 text-primary-500" /></div>}>
+        <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh] pt-20 lg:pt-24 pb-12"><Loader2 className="animate-spin w-8 h-8 text-primary-500" /></div>}>
           <Routes>
           {/* Feed/Content Areas - Wrapped in Error Boundaries */}
           <Route path="/" element={
@@ -208,11 +207,7 @@ const AppContent: React.FC = () => {
           <Route path="/youtube-analysis" element={<Navigate to="/" replace />} />
 
           {/* Auth Routes - Wrapped in Error Boundary */}
-          <Route path="/verify-email" element={
-            <ErrorBoundary>
-              <VerifyEmailPage />
-            </ErrorBoundary>
-          } />
+          <Route path="/verify-email" element={<Navigate to="/" replace />} />
           <Route path="/forgot-password" element={
             <ErrorBoundary>
               <ForgotPasswordPage />

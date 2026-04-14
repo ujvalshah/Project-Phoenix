@@ -75,7 +75,12 @@ export function useToggleBookmark() {
     }: {
       itemId: string;
       itemType?: BookmarkItemType;
-    }) => bookmarkService.toggle(itemId, itemType),
+    }) => bookmarkService.toggle(itemId, itemType).then((response) => {
+      if (!response || typeof response.bookmarked !== 'boolean') {
+        throw new Error('Bookmark request did not complete. Please try again.');
+      }
+      return response;
+    }),
 
     onMutate: async ({ itemId, itemType = 'nugget' }) => {
       // Cancel outgoing queries

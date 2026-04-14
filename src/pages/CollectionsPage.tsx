@@ -1,14 +1,22 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Collection, User } from '@/types';
 import { storageService } from '@/services/storageService';
-import { Search, LayoutGrid, List, ArrowUp, ArrowDown, ChevronDown, Plus, X, Folder, CheckSquare } from 'lucide-react';
+import { Folder, X } from 'lucide-react';
 import { EmptyState } from '@/components/UI/EmptyState';
 import { useNavigate } from 'react-router-dom';
 import { CollectionCard } from '@/components/collections/CollectionCard';
-import { TableView } from '@/components/collections/TableView';
+import { CollectionTable } from '@/components/collections/CollectionTable';
+import { CollectionsHeader } from '@/components/collections/CollectionsHeader';
+import { CollectionsToolbar } from '@/components/collections/CollectionsToolbar';
+import {
+  AppliedFilterChip,
+  AppliedFiltersBar,
+} from '@/components/collections/AppliedFiltersBar';
+import { TaxonomySidebar, TaxonomyNode } from '@/components/collections/TaxonomySidebar';
+import { CollectionsSkeletonState } from '@/components/collections/CollectionsSkeletonState';
 import { createPortal } from 'react-dom';
 import { useToast } from '@/hooks/useToast';
-import { Tooltip } from '@/components/UI/Tooltip';
+import { useAuth } from '@/hooks/useAuth';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 import { Z_INDEX } from '@/constants/zIndex';
@@ -68,10 +76,14 @@ export const CollectionsPage: React.FC = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
   const toast = useToast();
+  const { isAdmin } = useAuth();
 
   // Debounce search input (300ms) to avoid API call on every keystroke
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -181,9 +193,126 @@ export const CollectionsPage: React.FC = () => {
   // PHASE 5: Collections are already sorted/filtered by backend, no client-side processing needed
   // Keep this for backward compatibility but collections come pre-sorted from backend
   const processedCollections = useMemo(() => {
-    // Backend handles all sorting and filtering, so we just return collections as-is
+    if (selectedChildId) {
+      return collections.filter((collection) => collection.id === selectedChildId);
+    }
+
+    if (selectedParentId) {
+      return collections.filter(
+        (collection) => collection.id === selectedParentId || collection.parentId === selectedParentId
+      );
+    }
+
     return collections;
+  }, [collections, selectedChildId, selectedParentId]);
+
+  const parentCollectionMap = useMemo(() => {
+    const map = new Map<string, Collection>();
+    collections.forEach((collection) => {
+      if (!collection.parentId) {
+        map.set(collection.id, collection);
+      }
+    });
+    return map;
   }, [collections]);
+
+  const taxonomyGroups = useMemo<TaxonomyNode[]>(() => {
+    const childrenByParent = new Map<string, Collection[]>();
+    collections.forEach((collection) => {
+      if (collection.parentId) {
+        const next = childrenByParent.get(collection.parentId) || [];
+        next.push(collection);
+        childrenByParent.set(collection.parentId, next);
+      }
+    });
+
+    const groups: TaxonomyNode[] = [];
+    collections
+      .filter((collection) => !collection.parentId)
+      .forEach((parent) => {
+        const children = (childrenByParent.get(parent.id) || []).map((child) => ({
+          id: child.id,
+          name: child.name,
+          count: child.validEntriesCount ?? child.entries?.length ?? 0,
+        }));
+
+        groups.push({
+          id: parent.id,
+          name: parent.name,
+          count: parent.validEntriesCount ?? parent.entries?.length ?? 0,
+          children,
+        });
+      });
+
+    return groups.sort((a, b) => a.name.localeCompare(b.name));
+  }, [collections]);
+
+  const taxonomyLabelById = useMemo<Record<string, string>>(() => {
+    const labels: Record<string, string> = {};
+    collections.forEach((collection) => {
+      const parent = collection.parentId ? parentCollectionMap.get(collection.parentId) : null;
+      labels[collection.id] = parent ? `${parent.name} / ${collection.name}` : collection.name;
+    });
+    return labels;
+  }, [collections, parentCollectionMap]);
+
+  const breadcrumb = useMemo(() => {
+    if (selectedChildId) {
+      const child = collections.find((collection) => collection.id === selectedChildId);
+      if (!child) return [];
+      const parent = child.parentId ? parentCollectionMap.get(child.parentId) : null;
+      return ['Collections', parent?.name || 'Sub-collection', child.name];
+    }
+
+    if (selectedParentId) {
+      const parent = collections.find((collection) => collection.id === selectedParentId);
+      return parent ? ['Collections', parent.name] : ['Collections'];
+    }
+
+    return [];
+  }, [selectedChildId, selectedParentId, collections, parentCollectionMap]);
+
+  const appliedFilters = useMemo<AppliedFilterChip[]>(() => {
+    const chips: AppliedFilterChip[] = [];
+
+    if (searchQuery) {
+      chips.push({
+        id: 'search',
+        label: `Search: "${searchQuery}"`,
+        onRemove: () => {
+          setSearchInputValue('');
+          setSearchQuery('');
+        },
+      });
+    }
+
+    if (selectedParentId) {
+      const selectedParent = collections.find((collection) => collection.id === selectedParentId);
+      if (selectedParent) {
+        chips.push({
+          id: `parent-${selectedParent.id}`,
+          label: `Parent: ${selectedParent.name}`,
+          onRemove: () => {
+            setSelectedParentId(null);
+            setSelectedChildId(null);
+          },
+        });
+      }
+    }
+
+    if (selectedChildId) {
+      const selectedChild = collections.find((collection) => collection.id === selectedChildId);
+      if (selectedChild) {
+        chips.push({
+          id: `child-${selectedChild.id}`,
+          label: `Sub-collection: ${selectedChild.name}`,
+          onRemove: () => setSelectedChildId(null),
+        });
+      }
+    }
+
+    return chips;
+  }, [collections, searchQuery, selectedParentId, selectedChildId]);
 
   const toggleSelectionMode = () => {
       const newMode = !selectionMode;
@@ -255,166 +384,135 @@ export const CollectionsPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-32">
         <HeaderSpacer />
-        <div 
-          className={`sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER} ${LAYOUT_CLASSES.PAGE_TOOLBAR}`}
-          style={{ zIndex: Z_INDEX.CATEGORY_BAR }}
-        >
-          <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="h-8 bg-gray-200 dark:bg-slate-700 rounded w-64 animate-pulse" />
-          </div>
-        </div>
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-xl p-5 animate-pulse">
-                <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-3/4 mb-4" />
-                <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-full mb-2" />
-                <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-2/3 mb-5" />
-                <div className="flex gap-4 mt-auto pt-3 border-t border-gray-100 dark:border-slate-800">
-                  <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-16" />
-                  <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-20" />
-                </div>
-              </div>
-            ))}
-          </div>
+          <CollectionsSkeletonState />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-32">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-24">
       <HeaderSpacer />
-      {/* Unified Light Theme Toolbar - matches Header aesthetic */}
-      <div 
-        className={`sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER} ${LAYOUT_CLASSES.PAGE_TOOLBAR} transition-colors`}
+      <div
+        className={`sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER} ${LAYOUT_CLASSES.PAGE_TOOLBAR} border-b border-slate-200/80 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/75 transition-colors dark:border-slate-800 dark:bg-slate-950/85`}
         style={{ zIndex: Z_INDEX.CATEGORY_BAR }}
       >
-          <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex flex-col gap-6">
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight mb-1">Community Collections</h1>
-                        <p className="text-sm text-gray-500 dark:text-slate-400 max-w-xl">Curated themes and topics shared across the Nuggets ecosystem.</p>
-                    </div>
-                    
-                    <div className="flex gap-2 items-center self-end md:self-auto">
-                        {/* Select Toggle */}
-                        {collections.length > 0 && (
-                            <>
-                                {selectionMode ? (
-                                    <div className="flex items-center gap-2 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-700 animate-in fade-in slide-in-from-right-4 duration-200">
-                                        <span className="text-xs font-bold text-gray-600 dark:text-slate-300 ml-2">{selectedIds.length} Selected</span>
-                                        
-                                        <div className="relative" ref={actionMenuRef}>
-                                            <button 
-                                                onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
-                                                disabled={selectedIds.length === 0}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-400 text-gray-900 rounded-lg text-xs font-bold hover:bg-yellow-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                Actions <ChevronDown size={14} />
-                                            </button>
-                                            
-                                            {isActionMenuOpen && (
-                                                <div className="absolute right-0 top-full mt-2 w-40 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-gray-200 dark:border-slate-700 z-50 overflow-hidden animate-in zoom-in-95 duration-100 origin-top-right">
-                                                    <button onClick={() => handleBulkFollow('follow')} className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-green-600 hover:bg-green-50 dark:hover:bg-green-900/10 transition-colors">
-                                                        <Plus size={14} /> Follow All
-                                                    </button>
-                                                    <div className="h-px bg-gray-100 dark:bg-slate-800" />
-                                                    <button onClick={() => handleBulkFollow('unfollow')} className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
-                                                        <X size={14} /> Unfollow All
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <button 
-                                            onClick={toggleSelectionMode}
-                                            className="p-1.5 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors"
-                                        >
-                                            <X size={16} />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <Tooltip content="Select collections to follow/unfollow">
-                                        <button 
-                                            onClick={toggleSelectionMode}
-                                            className="flex items-center gap-2 px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100 dark:bg-yellow-900/10 dark:text-yellow-400 dark:border-yellow-900/30 rounded-xl text-sm font-bold transition-all shadow-sm"
-                                        >
-                                            <CheckSquare size={16} /> Select
-                                        </button>
-                                    </Tooltip>
-                                )}
-                            </>
-                        )}
-                        
-                        {!selectionMode && (
-                            <button 
-                                onClick={() => setShowInstruction(true)} 
-                                className="flex items-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-800 dark:hover:bg-gray-100 transition-all shadow-sm"
-                            >
-                                <Plus size={16} /> Create
-                            </button>
-                        )}
-                    </div>
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
+          <CollectionsHeader
+            totalCount={totalCount}
+            visibleCount={processedCollections.length}
+            breadcrumb={breadcrumb}
+          />
+          <div className="mt-3">
+            <CollectionsToolbar
+              searchInputValue={searchInputValue}
+              onSearchInput={handleSearchInput}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              setSortField={setSortField}
+              toggleSortDirection={() =>
+                setSortDirection((previous) => (previous === 'asc' ? 'desc' : 'asc'))
+              }
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              selectionMode={selectionMode}
+              selectedCount={selectedIds.length}
+              canSelect={collections.length > 0}
+              canCreate={isAdmin}
+              onToggleSelection={toggleSelectionMode}
+              onOpenCreate={() => setShowInstruction(true)}
+              onOpenActions={() => setIsActionMenuOpen((previous) => !previous)}
+              isActionMenuOpen={isActionMenuOpen}
+              actionMenu={
+                <div
+                  ref={actionMenuRef}
+                  className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150 dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <button
+                    onClick={() => handleBulkFollow('follow')}
+                    className="w-full px-3 py-2 text-left text-xs font-semibold text-green-600 transition-colors hover:bg-green-50 dark:hover:bg-green-900/10"
+                  >
+                    Follow selected
+                  </button>
+                  <button
+                    onClick={() => handleBulkFollow('unfollow')}
+                    className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:hover:bg-red-900/10"
+                  >
+                    Unfollow selected
+                  </button>
                 </div>
-
-                {/* Filter Row */}
-                <div className={`flex flex-col md:flex-row gap-4 items-center justify-between w-full transition-opacity duration-300 ${selectionMode ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                    <div className="relative w-full md:max-w-2xl">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input type="text" placeholder="Search collections..." value={searchInputValue} onChange={(e) => handleSearchInput(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 focus:border-yellow-400 dark:focus:border-yellow-500 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all shadow-sm" />
-                    </div>
-                    <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                        <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-0.5 shadow-sm">
-                            <div className="relative shrink-0 border-r border-gray-200 dark:border-slate-700 pr-1">
-                                <select value={sortField} onChange={(e) => setSortField(e.target.value as SortField)} className="appearance-none pl-3 pr-8 py-2 bg-transparent text-sm font-medium text-gray-700 dark:text-slate-200 focus:outline-none cursor-pointer w-[140px]">
-                                    <option value="created">Created Date</option>
-                                    <option value="updated">Last Updated</option>
-                                    <option value="followers">Followers</option>
-                                    <option value="nuggets">Nugget Count</option>
-                                    <option value="name">Name (A-Z)</option>
-                                </select>
-                                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
-                            </div>
-                            <button onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors">
-                                {sortDirection === 'asc' ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
-                            </button>
-                        </div>
-                        <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-700 shrink-0 shadow-sm">
-                            <button onClick={() => setViewMode('table')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'table' ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 hover:text-gray-700 dark:hover:text-white'}`}><List size={18} /></button>
-                            <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 hover:text-gray-700 dark:hover:text-white'}`}><LayoutGrid size={18} /></button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+              }
+              onOpenFiltersMobile={() => setIsMobileFiltersOpen(true)}
+            />
           </div>
+          {appliedFilters.length > 0 && (
+            <div className="mt-2.5">
+              <AppliedFiltersBar
+                filters={appliedFilters}
+                onClearAll={() => {
+                  setSearchInputValue('');
+                  setSearchQuery('');
+                  setSelectedParentId(null);
+                  setSelectedChildId(null);
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {processedCollections.length === 0 ? (
-            <EmptyState icon={<Search />} title="No collections found" description={searchInputValue ? `We couldn't find anything matching "${searchInputValue}".` : "Be the first to create a community collection!"} />
-        ) : (
-            <div className={`animate-in fade-in slide-in-from-bottom-2 duration-500`}>
-                {viewMode === 'grid' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {processedCollections.map(col => (
-                            <CollectionCard 
-                                key={col.id} 
-                                collection={col} 
-                                onClick={() => selectionMode ? handleSelect(col.id) : navigate(`/collections/${col.id}`)} 
-                                selectionMode={selectionMode}
-                                isSelected={selectedIds.includes(col.id)}
-                                onSelect={handleSelect}
-                                onCollectionUpdate={handleCollectionUpdate}
-                            />
-                        ))}
-                    </div>
-                ) : (
-                    <TableView collections={processedCollections} onClick={(id) => navigate(`/collections/${id}`)} />
-                )}
-            </div>
-        )}
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-5">
+        <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
+          <TaxonomySidebar
+            groups={taxonomyGroups}
+            selectedParentId={selectedParentId}
+            selectedChildId={selectedChildId}
+            onSelectParent={setSelectedParentId}
+            onSelectChild={setSelectedChildId}
+            isMobileOpen={isMobileFiltersOpen}
+            onCloseMobile={() => setIsMobileFiltersOpen(false)}
+          />
+
+          <section>
+            {processedCollections.length === 0 ? (
+              <EmptyState
+                icon={<Folder />}
+                title="No matching collections"
+                description={
+                  appliedFilters.length > 0
+                    ? 'Try removing one or more filters, or broaden your search.'
+                    : 'No collections available yet. Create the first collection to get started.'
+                }
+              />
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                {processedCollections.map((collection) => (
+                  <CollectionCard
+                    key={collection.id}
+                    collection={collection}
+                    onClick={() =>
+                      selectionMode
+                        ? handleSelect(collection.id)
+                        : navigate(`/collections/${collection.id}`)
+                    }
+                    selectionMode={selectionMode}
+                    isSelected={selectedIds.includes(collection.id)}
+                    onSelect={handleSelect}
+                    onCollectionUpdate={handleCollectionUpdate}
+                    taxonomyLabel={taxonomyLabelById[collection.id]}
+                  />
+                ))}
+              </div>
+            ) : (
+              <CollectionTable
+                collections={processedCollections}
+                taxonomyLabelById={taxonomyLabelById}
+                onClick={(id) => navigate(`/collections/${id}`)}
+              />
+            )}
+          </section>
+        </div>
       </div>
 
       {showInstruction && <CreateCollectionInstructionModal isOpen={showInstruction} onClose={() => setShowInstruction(false)} />}

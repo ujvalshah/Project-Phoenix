@@ -5,7 +5,6 @@ import { LoginPayload, SignupPayload, AuthProvider } from '../types/auth';
 import { apiClient } from './apiClient';
 import { createDefaultUser } from '../models/userDefaults';
 import { mapAuthError } from '../utils/errorMessages';
-import { buildAuthVerifyEmailPath } from '../utils/authApiPaths';
 import { getSafeUsernameHandle } from '../utils/userIdentity';
 
 // Helper: Map Backend User Data (Legacy format) -> Frontend Modular Schema
@@ -186,14 +185,6 @@ class AuthService {
     // Deferred feature — backend support pending
     // TODO: Implement when backend endpoint is ready
     throw new Error('Change password is not yet implemented');
-  }
-
-  async verifyEmail(token: string): Promise<void> {
-    await apiClient.get(buildAuthVerifyEmailPath(token));
-  }
-
-  async resendVerification(email: string): Promise<void> {
-    await apiClient.post('/auth/resend-verification', { email });
   }
 
   async logoutApi(): Promise<void> {

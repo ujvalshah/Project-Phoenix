@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Key, AlertCircle, RefreshCw } from 'lucide-react';
-import { getNormalizedApiBase } from '@/utils/urlUtils';
-
-// API base URL - normalized to always include /api suffix
-const API_BASE = getNormalizedApiBase();
+import { apiClient } from '@/services/apiClient';
 
 interface KeyStatus {
   total: number;
@@ -19,24 +16,17 @@ interface KeyStatus {
  * Fetch key status from the backend
  */
 const fetchKeyStatus = async (): Promise<KeyStatus> => {
-  const response = await fetch(`${API_BASE}/ai/admin/key-status`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch key status');
-  }
-  return response.json();
+  return apiClient.get<KeyStatus>('/ai/admin/key-status');
 };
 
 /**
  * Reset all exhausted keys
  */
 const resetKeys = async (): Promise<{ success: boolean; message: string; keyStatus: KeyStatus }> => {
-  const response = await fetch(`${API_BASE}/ai/admin/reset-keys`, {
-    method: 'POST',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to reset keys');
-  }
-  return response.json();
+  return apiClient.post<{ success: boolean; message: string; keyStatus: KeyStatus }>(
+    '/ai/admin/reset-keys',
+    {}
+  );
 };
 
 export const KeyStatusWidget: React.FC = () => {

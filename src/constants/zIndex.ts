@@ -1,21 +1,23 @@
 /**
- * Z-Index Constants
- * 
- * Centralized z-index values to prevent stacking context conflicts.
- * 
- * Hierarchy:
- * - HEADER: Fixed header at top (50)
- * - CATEGORY_BAR: Sticky category filter bar (40)
- * - HEADER_OVERLAY: Header-triggered overlays (100)
- * - MODAL: Modal dialogs and overlays (200)
+ * Centralized z-index scale.
+ *
+ * Layer order:
+ * - App content: 0
+ * - Sticky UI and header overlays: 100-400
+ * - Modal backdrop/panel/popovers: 1000-1020
+ * - Global toasts/alerts: 1100+
  */
 export const Z_INDEX = {
-  HEADER: 50,
-  /** Fixed mobile tab bar — below header/modals, above page content */
-  MOBILE_BOTTOM_NAV: 45,
-  CATEGORY_BAR: 40,
-  HEADER_OVERLAY: 100,
-  MODAL: 200,
+  APP_CONTENT: 0,
+  /** Fixed mobile tab bar — above content, below header overlays. */
+  MOBILE_BOTTOM_NAV: 150,
+  CATEGORY_BAR: 200,
+  HEADER: 300,
+  HEADER_OVERLAY: 400,
+  BACKDROP: 1000,
+  MODAL: 1010,
+  MODAL_POPOVER: 1020,
+  TOAST: 1100,
 } as const;
 
 

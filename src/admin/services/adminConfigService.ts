@@ -22,7 +22,6 @@ const INITIAL_PERMISSIONS: RolePermissions = {
 const INITIAL_FLAGS: FeatureFlags = {
   enableAvatarUpload: false,
   enablePublicSignup: true,
-  enableEmailVerification: false,
   maintenanceMode: false,
   guestBookmarks: false,
   guestReports: false,
