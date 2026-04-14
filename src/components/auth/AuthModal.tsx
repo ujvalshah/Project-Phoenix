@@ -1,23 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Mail, Lock, ArrowRight, Loader2, Chrome, ChevronLeft, Calendar } from 'lucide-react';
+import { X, Mail, Lock, ArrowRight, Loader2, Chrome, ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Input } from '../UI/Input';
 import { ENABLED_SOCIAL_PROVIDERS } from '@/types/auth';
 import type { SignupPayload } from '@/types/auth';
 import { authService } from '@/services/authService';
-
-// Simple mock for Pincode lookup
-const mockPincodeLookup = async (pincode: string) => {
-    await new Promise(r => setTimeout(r, 600)); // Simulate net delay
-    // Deterministic mock based on last digit
-    const lastDigit = pincode.slice(-1);
-    if (['1','2','3'].includes(lastDigit)) return { city: 'New York', country: 'USA' };
-    if (['4','5','6'].includes(lastDigit)) return { city: 'London', country: 'UK' };
-    if (['7','8','9'].includes(lastDigit)) return { city: 'Mumbai', country: 'India' };
-    return { city: 'Unknown City', country: 'Unknown Country' };
-};
 
 // Simple validation helpers (minimal client-side checks)
 const validateEmail = (email: string): string | null => {
@@ -44,7 +33,7 @@ const checkPasswordRequirements = (password: string) => {
 };
 
 export const AuthModal: React.FC = () => {
-  const { isAuthModalOpen, closeAuthModal, authModalView, login, signup, signupConfig } = useAuth();
+  const { isAuthModalOpen, closeAuthModal, authModalView, login, signup } = useAuth();
 
   const [view, setView] = useState<'login' | 'signup' | 'forgot'>(authModalView);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,13 +53,6 @@ export const AuthModal: React.FC = () => {
 
   // Signup Form
   const [fullName, setFullName] = useState('');
-  const [pincode, setPincode] = useState('');
-  const [city, setCity] = useState('');
-  const [country, setCountry] = useState('');
-  const [gender, setGender] = useState('');
-  const [phone, setPhone] = useState('');
-  const [dob, setDob] = useState('');
-  const [isLookingUpPin, setIsLookingUpPin] = useState(false);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -82,12 +64,6 @@ export const AuthModal: React.FC = () => {
     setPassword('');
     // Reset Signup
     setFullName('');
-    setPincode('');
-    setCity('');
-    setCountry('');
-    setGender('');
-    setPhone('');
-    setDob('');
   }, [isAuthModalOpen, authModalView]);
 
   useEffect(() => {
@@ -95,28 +71,6 @@ export const AuthModal: React.FC = () => {
     else document.body.style.overflow = 'unset';
     return () => { document.body.style.overflow = 'unset'; };
   }, [isAuthModalOpen]);
-
-  // Handle Pincode Auto-fill
-  useEffect(() => {
-      if (pincode.length >= 5) {
-          const fetchLoc = async () => {
-              setIsLookingUpPin(true);
-              try {
-                  const data = await mockPincodeLookup(pincode);
-                  if (data) {
-                      setCity(data.city);
-                      setCountry(data.country);
-                  }
-              } catch (e) {
-                  // ignore
-              } finally {
-                  setIsLookingUpPin(false);
-              }
-          };
-          const timer = setTimeout(fetchLoc, 500); // Debounce
-          return () => clearTimeout(timer);
-      }
-  }, [pincode]);
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
@@ -178,20 +132,12 @@ export const AuthModal: React.FC = () => {
         if (view === 'login') {
             await login({ email, password });
         } else if (view === 'signup') {
-            // Send only backend-supported signup keys and omit empty values.
-            // This avoids strict-schema rejections from unknown/blank fields.
+            // Launch contract: keep signup payload to the minimal 3 fields.
             const signupPayload: SignupPayload = {
                 fullName: fullName.trim(),
                 email: email.trim(),
                 password,
             };
-
-            if (pincode.trim()) signupPayload.pincode = pincode.trim();
-            if (city.trim()) signupPayload.city = city.trim();
-            if (country.trim()) signupPayload.country = country.trim();
-            if (gender.trim()) signupPayload.gender = gender.trim();
-            if (phone.trim()) signupPayload.phoneNumber = phone.trim();
-            if (dob.trim()) signupPayload.dateOfBirth = dob.trim();
 
             await signup(signupPayload);
         } else if (view === 'forgot') {
@@ -377,86 +323,6 @@ export const AuthModal: React.FC = () => {
                                     )}
                                 </div>
 
-                                {/* LOCATION GROUP - Configurable */}
-                                {signupConfig?.location.show && (
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="col-span-1">
-                                            <label className={labelClass}>Pincode {signupConfig.location.required ? '*' : ''}</label>
-                                            <Input 
-                                                placeholder="Zip" 
-                                                value={pincode} 
-                                                onChange={e => setPincode(e.target.value)} 
-                                                required={signupConfig.location.required}
-                                                className={inputClass} 
-                                                maxLength={10}
-                                            />
-                                        </div>
-                                        <div className="col-span-2 relative">
-                                            {isLookingUpPin && <div className="absolute right-2 top-8"><Loader2 size={14} className="animate-spin text-primary-500"/></div>}
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label className={labelClass}>City</label>
-                                                    <Input value={city} onChange={e => setCity(e.target.value)} placeholder="City" className={inputClass} />
-                                                </div>
-                                                <div>
-                                                    <label className={labelClass}>Country</label>
-                                                    <Input value={country} onChange={e => setCountry(e.target.value)} placeholder="Country" className={inputClass} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    {/* GENDER - Configurable */}
-                                    {signupConfig?.gender.show && (
-                                        <div>
-                                            <label className={labelClass}>Gender {signupConfig.gender.required ? '*' : ''}</label>
-                                            <select 
-                                                value={gender} 
-                                                onChange={e => setGender(e.target.value)} 
-                                                className={`w-full py-2.5 px-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${inputClass}`}
-                                                required={signupConfig.gender.required}
-                                            >
-                                                <option value="" disabled>Select</option>
-                                                <option value="male">Male</option>
-                                                <option value="female">Female</option>
-                                                <option value="other">Other</option>
-                                                <option value="prefer_not_to_say">Prefer not to say</option>
-                                            </select>
-                                        </div>
-                                    )}
-                                    
-                                    {/* PHONE - Configurable */}
-                                    {signupConfig?.phone.show && (
-                                        <div>
-                                            <label className={labelClass}>Mobile {signupConfig.phone.required ? '*' : <span className="normal-case opacity-50 font-normal">(Optional)</span>}</label>
-                                            <Input 
-                                                type="tel" 
-                                                placeholder="+1..." 
-                                                value={phone} 
-                                                onChange={e => setPhone(e.target.value)} 
-                                                className={inputClass} 
-                                                required={signupConfig.phone.required}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* DATE OF BIRTH - Configurable */}
-                                {signupConfig?.dob.show && (
-                                    <div>
-                                        <label className={labelClass}>Date of Birth {signupConfig.dob.required ? '*' : ''}</label>
-                                        <Input 
-                                            type="date" 
-                                            value={dob}
-                                            onChange={e => setDob(e.target.value)}
-                                            required={signupConfig.dob.required}
-                                            className={inputClass}
-                                            leftIcon={<Calendar size={16} />}
-                                        />
-                                    </div>
-                                )}
                             </>
                         )}
 

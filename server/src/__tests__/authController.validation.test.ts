@@ -35,7 +35,7 @@ describe('authController validation safety', () => {
     });
   });
 
-  it('does not require username in signup validation', async () => {
+  it('does not require legacy optional profile fields in signup validation', async () => {
     const req = {
       body: {
         fullName: 'Launch User',
@@ -50,7 +50,22 @@ describe('authController validation safety', () => {
 
     expect((res as any).statusCode).toBe(400);
     const errors = ((res as any).body as { errors?: Array<{ path?: string[] }> }).errors || [];
-    const hasUsernameValidationError = errors.some((err) => (err.path || []).join('.') === 'username');
-    expect(hasUsernameValidationError).toBe(false);
+    const forbiddenPaths = [
+      'username',
+      'pincode',
+      'city',
+      'country',
+      'gender',
+      'phoneNumber',
+      'dateOfBirth',
+      'interestedCategories',
+      'preferences.interestedCategories',
+      'onboarding.completed',
+    ];
+
+    for (const path of forbiddenPaths) {
+      const hasValidationError = errors.some((err) => (err.path || []).join('.') === path);
+      expect(hasValidationError).toBe(false);
+    }
   });
 });

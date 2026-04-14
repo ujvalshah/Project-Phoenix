@@ -9,14 +9,7 @@ export interface LoginPayload {
 export interface SignupPayload {
   fullName: string;
   email: string;
-  password?: string;
-  username?: string;
-  pincode?: string;
-  city?: string;
-  country?: string;
-  gender?: string;
-  phoneNumber?: string;
-  dateOfBirth?: string; // Format: YYYY-MM-DD
+  password: string;
 }
 
 export const ENABLED_SOCIAL_PROVIDERS: AuthProvider[] = ["google", "linkedin"];
