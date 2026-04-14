@@ -34,4 +34,23 @@ describe('authController validation safety', () => {
       code: 'VALIDATION_ERROR',
     });
   });
+
+  it('does not require username in signup validation', async () => {
+    const req = {
+      body: {
+        fullName: 'Launch User',
+        email: 'not-an-email',
+        password: 'Invalid',
+      },
+      path: '/api/auth/signup',
+    } as Request;
+    const res = createMockResponse();
+
+    await expect(signup(req, res)).resolves.toBeUndefined();
+
+    expect((res as any).statusCode).toBe(400);
+    const errors = ((res as any).body as { errors?: Array<{ path?: string[] }> }).errors || [];
+    const hasUsernameValidationError = errors.some((err) => (err.path || []).join('.') === 'username');
+    expect(hasUsernameValidationError).toBe(false);
+  });
 });

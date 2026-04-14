@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/useToast';
 import { formatDate } from '@/utils/formatters';
 import { Avatar } from '@/components/shared/Avatar';
 import { useAdminHeader } from '../layout/AdminLayout';
+import { getSafeUsernameHandle } from '@/utils/userIdentity';
 
 type FeedbackFilter = 'new' | 'read' | 'archived' | 'all';
 
@@ -23,6 +24,12 @@ export const AdminFeedbackPage: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const getHandle = (user: NonNullable<AdminFeedback['user']>) =>
+    getSafeUsernameHandle({
+      username: user.username,
+      displayName: user.fullName || user.name,
+      userId: user.id,
+    });
 
   useEffect(() => {
     setPageHeader(
@@ -176,7 +183,7 @@ export const AdminFeedbackPage: React.FC = () => {
               <Avatar name={f.user.name} size="sm" src={f.user.avatar} />
               <div>
                   <div className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-primary-600 group-hover:underline">{f.user.fullName || f.user.name}</div>
-                  <div className="text-[10px] text-slate-500">@{f.user.username}</div>
+                  <div className="text-[10px] text-slate-500">@{getHandle(f.user)}</div>
               </div>
           </div>
       ) : (

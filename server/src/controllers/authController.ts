@@ -36,9 +36,7 @@ import {
   sendValidationError,
   sendUnauthorizedError,
   sendNotFoundError,
-  sendConflictError,
-  sendInternalError,
-  handleDuplicateKeyError
+  sendInternalError
 } from '../utils/errorResponse.js';
 import { createRequestLogger } from '../utils/logger.js';
 
@@ -51,6 +49,47 @@ const loginSchema = z.object({
 // Generic login failure message to prevent user enumeration
 const LOGIN_FAILURE_MSG = 'Invalid email or password';
 const isEmailVerificationEnabled = (): boolean => getEnv().ENABLE_EMAIL_VERIFICATION;
+const USERNAME_MIN_LENGTH = 3;
+const USERNAME_MAX_LENGTH = 30;
+const USERNAME_RANDOM_BYTES = 3;
+
+function normalizeUsernameSeed(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+
+  if (!normalized) return 'user';
+  return normalized.slice(0, USERNAME_MAX_LENGTH);
+}
+
+function deriveUsernameSeed(fullName: string, email: string): string {
+  const fullNameSeed = normalizeUsernameSeed(fullName);
+  if (fullNameSeed && fullNameSeed !== 'user') return fullNameSeed;
+  const emailLocalPart = email.split('@')[0] || '';
+  return normalizeUsernameSeed(emailLocalPart);
+}
+
+async function generateUniqueUsername(baseSeed: string): Promise<string> {
+  const seed = normalizeUsernameSeed(baseSeed);
+  const base = seed.length >= USERNAME_MIN_LENGTH ? seed : `${seed}_user`;
+  const trimmedBase = base.slice(0, USERNAME_MAX_LENGTH);
+
+  const existingBase = await User.exists({ 'profile.username': trimmedBase });
+  if (!existingBase) return trimmedBase;
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const suffix = crypto.randomBytes(USERNAME_RANDOM_BYTES).toString('hex');
+    const maxBaseLength = USERNAME_MAX_LENGTH - suffix.length - 1;
+    const basePart = trimmedBase.slice(0, Math.max(USERNAME_MIN_LENGTH, maxBaseLength));
+    const candidate = `${basePart}_${suffix}`;
+    const exists = await User.exists({ 'profile.username': candidate });
+    if (!exists) return candidate;
+  }
+
+  throw new Error('Failed to generate a unique username');
+}
 
 function getZodIssues(error: z.ZodError): z.ZodIssue[] {
   const issuesFromV4 = (error as any).issues;
@@ -102,7 +141,6 @@ function formatValidationErrors(errors: z.ZodIssue[] | undefined): string {
 
 const signupSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
-  username: z.string().min(3, 'Username must be at least 3 characters').transform((val) => val.toLowerCase().trim()),
   email: z.string().email('Invalid email format').transform((s) => s.toLowerCase().trim()),
   password: z.string()
     .min(8, 'Password must be at least 8 characters long')
@@ -114,7 +152,18 @@ const signupSchema = z.object({
   city: z.string().optional(),
   country: z.string().optional(),
   gender: z.string().optional(),
-  phoneNumber: z.string().optional()
+  phoneNumber: z.string().optional(),
+  // Optional DOB for rollout flexibility (UI may hide this field)
+  dateOfBirth: z.string().optional(),
+  // Legacy/alternate onboarding payload shapes accepted with safe defaults
+  interestedCategories: z.array(z.string()).optional(),
+  categories: z.array(z.string()).optional(),
+  preferences: z.object({
+    interestedCategories: z.array(z.string()).optional(),
+  }).optional(),
+  onboarding: z.object({
+    completed: z.boolean().optional(),
+  }).optional(),
 }).strict();
 
 
@@ -271,7 +320,6 @@ export const signup = async (req: Request, res: Response) => {
   let normalizedEmail: string = '';
   let normalizedUsername: string = '';
   let existingUser: any = null;
-  let existingUsername: any = null;
   
   try {
     // Validate input
@@ -294,9 +342,8 @@ export const signup = async (req: Request, res: Response) => {
     const data = validationResult.data;
     const now = new Date().toISOString();
 
-    // Schema already normalizes email and username
+    // Schema already normalizes email
     normalizedEmail = data.email;
-    normalizedUsername = data.username;
 
     // Check if email already exists — return identical 201 to prevent enumeration
     existingUser = await User.findOne({ 'auth.email': normalizedEmail });
@@ -316,11 +363,8 @@ export const signup = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if username already exists (case-insensitive)
-    existingUsername = await User.findOne({ 'profile.username': normalizedUsername });
-    if (existingUsername) {
-      return sendConflictError(res, 'Username already taken', 'USERNAME_ALREADY_EXISTS');
-    }
+    // Generate a unique username server-side so signup can stay minimal.
+    normalizedUsername = await generateUniqueUsername(deriveUsernameSeed(data.fullName, normalizedEmail));
 
     // Hash password (bcrypt 12 rounds for production security)
     // 12 rounds ≈ 250ms on modern hardware - good balance of security and performance
@@ -328,6 +372,14 @@ export const signup = async (req: Request, res: Response) => {
     if (data.password) {
       hashedPassword = await bcrypt.hash(data.password, 12);
     }
+
+    // Normalize category preference inputs across accepted payload variants.
+    // Keep this defensive so omitted arrays default safely to [].
+    const interestedCategories =
+      data.preferences?.interestedCategories ??
+      data.interestedCategories ??
+      data.categories ??
+      [];
 
     // Create new user with nested modular structure
     const newUser = new User({
@@ -342,20 +394,21 @@ export const signup = async (req: Request, res: Response) => {
       },
       profile: {
         displayName: data.fullName,
-        username: normalizedUsername, // Already normalized above
+        username: normalizedUsername,
         avatarColor: 'blue',
         phoneNumber: data.phoneNumber,
         pincode: data.pincode,
         city: data.city,
         country: data.country,
-        gender: data.gender
+        gender: data.gender,
+        dateOfBirth: data.dateOfBirth
       },
       security: {
         mfaEnabled: false
       },
       preferences: {
         theme: 'system',
-        interestedCategories: [],
+        interestedCategories,
         notifications: {
           emailDigest: true,
           productUpdates: false,
@@ -363,7 +416,7 @@ export const signup = async (req: Request, res: Response) => {
         }
       },
       appState: {
-        onboardingCompleted: false
+        onboardingCompleted: data.onboarding?.completed ?? false
       }
     });
 
@@ -432,11 +485,75 @@ export const signup = async (req: Request, res: Response) => {
           message: 'Account created. You can now sign in.',
         });
       }
-      // Username collision is fine to expose (usernames are public)
+      // Retry with a fresh generated username in the rare event of race collisions.
       if (keyPattern['profile.username']) {
         const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
-        requestLogger.warn({ msg: 'Signup duplicate key: profile.username. If unexpected, run: npm run fix-indexes' });
-        return sendConflictError(res, 'Username already taken', 'USERNAME_ALREADY_EXISTS');
+        requestLogger.warn({ msg: 'Signup duplicate key race on generated profile.username - retrying once' });
+        try {
+          const retryData = signupSchema.parse(req.body);
+          const now = new Date().toISOString();
+          const retryUsername = await generateUniqueUsername(deriveUsernameSeed(retryData.fullName, retryData.email));
+          const interestedCategories =
+            retryData.preferences?.interestedCategories ??
+            retryData.interestedCategories ??
+            retryData.categories ??
+            [];
+          const hashedPassword = retryData.password ? await bcrypt.hash(retryData.password, 12) : undefined;
+          const retryUser = new User({
+            role: 'user',
+            password: hashedPassword,
+            auth: {
+              email: retryData.email,
+              emailVerified: !isEmailVerificationEnabled(),
+              provider: 'email',
+              createdAt: now,
+              updatedAt: now
+            },
+            profile: {
+              displayName: retryData.fullName,
+              username: retryUsername,
+              avatarColor: 'blue',
+              phoneNumber: retryData.phoneNumber,
+              pincode: retryData.pincode,
+              city: retryData.city,
+              country: retryData.country,
+              gender: retryData.gender,
+              dateOfBirth: retryData.dateOfBirth
+            },
+            security: { mfaEnabled: false },
+            preferences: {
+              theme: 'system',
+              interestedCategories,
+              notifications: { emailDigest: true, productUpdates: false, newFollowers: true }
+            },
+            appState: { onboardingCompleted: retryData.onboarding?.completed ?? false }
+          });
+          await retryUser.save();
+          const accessToken = generateAccessToken(retryUser._id.toString(), retryUser.role, retryUser.auth.email);
+          let refreshToken: string | undefined;
+          if (isTokenServiceAvailable()) {
+            refreshToken = generateRefreshToken();
+            const deviceInfo = req.headers['user-agent'] || 'Unknown device';
+            const ipAddress = req.ip || req.socket.remoteAddress;
+            await storeRefreshToken(retryUser._id.toString(), refreshToken, deviceInfo, ipAddress);
+          }
+          setAuthCookies(res, accessToken, refreshToken);
+          const csrfToken = crypto.randomBytes(32).toString('hex');
+          setCsrfCookie(res, csrfToken);
+          const userData = normalizeDoc(retryUser);
+          return res.status(201).json({
+            message: 'Account created. You can now sign in.',
+            user: userData,
+            token: accessToken,
+            accessToken,
+            refreshToken,
+            csrfToken,
+            expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_SECONDS,
+          });
+        } catch (retryError) {
+          requestLogger.error({ err: retryError }, 'Signup retry after username collision failed');
+          return sendInternalError(res, 'Something went wrong on our end. Please try again in a moment.');
+        }
       }
     }
 

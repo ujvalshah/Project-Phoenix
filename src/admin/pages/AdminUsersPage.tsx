@@ -12,6 +12,7 @@ import { Avatar } from '@/components/shared/Avatar';
 import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
 import { AdminDrawer } from '../components/AdminDrawer';
 import { useAdminHeader } from '../layout/AdminLayout';
+import { getSafeUsernameHandle } from '@/utils/userIdentity';
 
 export const AdminUsersPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
@@ -47,6 +48,12 @@ export const AdminUsersPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { can } = useAdminPermissions();
+  const getHandle = (user: AdminUser) =>
+    getSafeUsernameHandle({
+      username: user.username,
+      displayName: user.fullName || user.name,
+      userId: user.id,
+    });
 
   useEffect(() => {
     setPageHeader("User Management", "Overview of all registered users.");
@@ -251,7 +258,7 @@ export const AdminUsersPage: React.FC = () => {
                 </span>
                 {u.role === 'admin' && <Shield size={12} className="text-purple-500 fill-purple-100 dark:fill-purple-900/30" />}
             </div>
-            <div className="text-[10px] text-slate-500 truncate">@{u.username || 'unknown'}</div>
+            <div className="text-[10px] text-slate-500 truncate">@{getHandle(u)}</div>
           </div>
         </div>
       )
@@ -622,7 +629,7 @@ export const AdminUsersPage: React.FC = () => {
                                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">{selectedUser.name}</h2>
                                 <p className="text-sm text-slate-500">{selectedUser.fullName}</p>
                                 <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm mt-1">
-                                    <span>@{selectedUser.username}</span>
+                                    <span>@{getHandle(selectedUser)}</span>
                                     <span>•</span>
                                     <span className="font-mono text-xs opacity-70 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{selectedUser.id}</span>
                                 </div>

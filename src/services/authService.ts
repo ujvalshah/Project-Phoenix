@@ -6,6 +6,7 @@ import { apiClient } from './apiClient';
 import { createDefaultUser } from '../models/userDefaults';
 import { mapAuthError } from '../utils/errorMessages';
 import { buildAuthVerifyEmailPath } from '../utils/authApiPaths';
+import { getSafeUsernameHandle } from '../utils/userIdentity';
 
 // Helper: Map Backend User Data (Legacy format) -> Frontend Modular Schema
 const mapLegacyToModular = (legacy: LegacyUser): ModularUser => {
@@ -18,7 +19,11 @@ const mapLegacyToModular = (legacy: LegacyUser): ModularUser => {
     },
     profile: {
       displayName: legacy.name,
-      username: legacy.username || legacy.email.split('@')[0],
+      username: getSafeUsernameHandle({
+        username: legacy.username,
+        displayName: legacy.name,
+        userId: legacy.id,
+      }),
       phoneNumber: legacy.phoneNumber,
       avatarUrl: legacy.avatarUrl,
       pincode: legacy.pincode,
@@ -48,9 +53,18 @@ const isModularUser = (user: any): user is ModularUser => {
 const normalizeUserFromBackend = (user: any): ModularUser => {
   // If already in modular format, return as-is (with id field)
   if (isModularUser(user)) {
+    const normalizedId = user.id || (user as any)._id?.toString() || '';
     return {
       ...user,
-      id: user.id || (user as any)._id?.toString() || ''
+      id: normalizedId,
+      profile: {
+        ...user.profile,
+        username: getSafeUsernameHandle({
+          username: user.profile?.username,
+          displayName: user.profile?.displayName,
+          userId: normalizedId,
+        }),
+      },
     };
   }
   

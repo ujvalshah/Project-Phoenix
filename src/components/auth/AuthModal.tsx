@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Mail, Lock, ArrowRight, Loader2, Chrome, ChevronLeft, AtSign, Calendar } from 'lucide-react';
+import { X, Mail, Lock, ArrowRight, Loader2, Chrome, ChevronLeft, Calendar } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Input } from '../UI/Input';
 import { ENABLED_SOCIAL_PROVIDERS } from '@/types/auth';
+import type { SignupPayload } from '@/types/auth';
 import { authService } from '@/services/authService';
 
 // Simple mock for Pincode lookup
@@ -23,12 +24,6 @@ const validateEmail = (email: string): string | null => {
     if (!email) return null; // Let HTML5 required handle empty
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email) ? null : 'Please enter a valid email address';
-};
-
-const validateUsername = (username: string): string | null => {
-    if (!username) return null; // Let HTML5 required handle empty
-    if (username.length < 3) return 'Username must be at least 3 characters';
-    return null;
 };
 
 const validatePassword = (password: string): string | null => {
@@ -59,7 +54,6 @@ export const AuthModal: React.FC = () => {
   // Field-level validation errors
   const [fieldErrors, setFieldErrors] = useState<{
     email?: string;
-    username?: string;
     password?: string;
   }>({});
   
@@ -70,7 +64,6 @@ export const AuthModal: React.FC = () => {
 
   // Signup Form
   const [fullName, setFullName] = useState('');
-  const [username, setUsername] = useState('');
   const [pincode, setPincode] = useState('');
   const [city, setCity] = useState('');
   const [country, setCountry] = useState('');
@@ -89,7 +82,6 @@ export const AuthModal: React.FC = () => {
     setPassword('');
     // Reset Signup
     setFullName('');
-    setUsername('');
     setPincode('');
     setCity('');
     setCountry('');
@@ -125,16 +117,6 @@ export const AuthModal: React.FC = () => {
           return () => clearTimeout(timer);
       }
   }, [pincode]);
-
-  const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      // Sanitize: Remove @ and spaces, allow alphanum + underscore
-      const val = e.target.value.replace(/[@\s]/g, '').replace(/[^a-zA-Z0-9_]/g, '');
-      setUsername(val);
-      // Clear username error when user types
-      if (fieldErrors.username) {
-          setFieldErrors(prev => ({ ...prev, username: undefined }));
-      }
-  };
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
@@ -177,12 +159,6 @@ export const AuthModal: React.FC = () => {
             hasErrors = true;
         }
         
-        const usernameError = validateUsername(username);
-        if (usernameError) {
-            newFieldErrors.username = usernameError;
-            hasErrors = true;
-        }
-        
         const passwordError = validatePassword(password);
         if (passwordError) {
             newFieldErrors.password = passwordError;
@@ -202,24 +178,32 @@ export const AuthModal: React.FC = () => {
         if (view === 'login') {
             await login({ email, password });
         } else if (view === 'signup') {
-            await signup({
-                fullName,
-                username,
-                email,
+            // Send only backend-supported signup keys and omit empty values.
+            // This avoids strict-schema rejections from unknown/blank fields.
+            const signupPayload: SignupPayload = {
+                fullName: fullName.trim(),
+                email: email.trim(),
                 password,
-                pincode,
-                city,
-                country,
-                gender,
-                phoneNumber: phone,
-                dateOfBirth: dob
-            });
+            };
+
+            if (pincode.trim()) signupPayload.pincode = pincode.trim();
+            if (city.trim()) signupPayload.city = city.trim();
+            if (country.trim()) signupPayload.country = country.trim();
+            if (gender.trim()) signupPayload.gender = gender.trim();
+            if (phone.trim()) signupPayload.phoneNumber = phone.trim();
+            if (dob.trim()) signupPayload.dateOfBirth = dob.trim();
+
+            await signup(signupPayload);
         } else if (view === 'forgot') {
             await authService.requestPasswordReset(email);
             setForgotSubmitSuccess(true);
         }
     } catch (err: any) {
-        setError(err.message || "An error occurred");
+        const safeMessage =
+          typeof err?.message === 'string'
+            ? err.message
+            : (typeof err === 'string' ? err : 'An error occurred');
+        setError(safeMessage);
     } finally {
         setIsLoading(false);
     }
@@ -323,29 +307,9 @@ export const AuthModal: React.FC = () => {
                         {/* SIGNUP FIELDS */}
                         {view === 'signup' && (
                             <>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className={labelClass}>Full Name</label>
-                                        <Input placeholder="John Doe" value={fullName} onChange={e => setFullName(e.target.value)} required className={inputClass} />
-                                    </div>
-                                    <div>
-                                        <label className={labelClass}>Username</label>
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                                <AtSign size={14} />
-                                            </div>
-                                            <input 
-                                                className={`block w-full py-2.5 pl-8 pr-4 ${inputClass} ${fieldErrors.username ? 'border-red-300 dark:border-red-700' : ''} rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500`}
-                                                placeholder="username" 
-                                                value={username} 
-                                                onChange={handleUsernameChange}
-                                                required 
-                                            />
-                                        </div>
-                                        {fieldErrors.username && (
-                                            <p className="mt-1 text-xs text-red-600 dark:text-red-400 ml-1">{fieldErrors.username}</p>
-                                        )}
-                                    </div>
+                                <div>
+                                    <label className={labelClass}>Full Name</label>
+                                    <Input placeholder="John Doe" value={fullName} onChange={e => setFullName(e.target.value)} required className={inputClass} />
                                 </div>
 
                                 <div>

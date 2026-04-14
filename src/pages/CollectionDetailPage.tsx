@@ -14,6 +14,7 @@ import { LAYOUT_CLASSES } from '@/constants/layout';
 import { Z_INDEX } from '@/constants/zIndex';
 import { BulkActionBar } from '@/components/shared/BulkActionBar';
 import { AddToCollectionModal } from '@/components/AddToCollectionModal';
+import { getSafeUsernameHandle } from '@/utils/userIdentity';
 
 export const CollectionDetailPage: React.FC = () => {
   // URL params are the single source of truth for selected collection
@@ -99,7 +100,11 @@ export const CollectionDetailPage: React.FC = () => {
             const contributor: Contributor | undefined = adder ? {
                 userId: adder.id,
                 name: adder.name,
-                username: adder.username || (adder.email ? adder.email.split('@')[0] : undefined), 
+                username: getSafeUsernameHandle({
+                  username: adder.username,
+                  displayName: adder.name,
+                  userId: adder.id,
+                }),
                 avatarUrl: adder.avatarUrl,
                 addedAt: entry.addedAt
             } : undefined;
@@ -269,7 +274,11 @@ export const CollectionDetailPage: React.FC = () => {
               const contributor: Contributor | undefined = adder ? {
                 userId: adder.id,
                 name: adder.name,
-                username: adder.username || (adder.email ? adder.email.split('@')[0] : undefined),
+                username: getSafeUsernameHandle({
+                  username: adder.username,
+                  displayName: adder.name,
+                  userId: adder.id,
+                }),
                 avatarUrl: adder.avatarUrl,
                 addedAt: entry.addedAt
               } : undefined;

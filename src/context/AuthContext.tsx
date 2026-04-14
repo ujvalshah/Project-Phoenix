@@ -8,6 +8,7 @@ import { apiClient } from '@/services/apiClient';
 import { FeatureFlags, SignupConfig } from '@/admin/types/admin';
 import { adminConfigService } from '@/admin/services/adminConfigService';
 import { isTransientAuthMeError } from '@/utils/authBootstrapErrors';
+import { getSafeUsernameHandle } from '@/utils/userIdentity';
 
 interface AuthContextType {
   user: LegacyUser | null; // Backward compatibility
@@ -100,7 +101,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {
       id: modularUser.id,
       name: modularUser.profile.displayName,
-      username: modularUser.profile.username,
+      username: getSafeUsernameHandle({
+        username: modularUser.profile.username,
+        displayName: modularUser.profile.displayName,
+        userId: modularUser.id,
+      }),
       email: modularUser.auth.email,
       role: modularUser.role,
       status: 'active', // Default

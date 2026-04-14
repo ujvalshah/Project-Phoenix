@@ -9,7 +9,8 @@
  * Maps authentication-related error messages to user-friendly copy
  */
 export function mapAuthError(error: any, context: 'login' | 'signup' | 'password_reset' | 'general' = 'general'): string {
-  const message = error?.message || error?.toString() || 'An unexpected error occurred';
+  const rawMessage = error?.message ?? error?.toString?.() ?? 'An unexpected error occurred';
+  const message = typeof rawMessage === 'string' ? rawMessage : 'An unexpected error occurred';
   
   // Handle network/connection errors
   if (error instanceof TypeError && error.message.includes('fetch')) {

@@ -8,9 +8,9 @@ export interface LoginPayload {
 
 export interface SignupPayload {
   fullName: string;
-  username: string;
   email: string;
   password?: string;
+  username?: string;
   pincode?: string;
   city?: string;
   country?: string;
