@@ -62,11 +62,12 @@ const normalizeUserFromBackend = (user: any): ModularUser => {
  * Auth response from backend with new token structure
  */
 interface AuthResponse {
-  user: any;
-  token: string; // Legacy field (access token)
+  user?: any;
+  token?: string; // Legacy field (access token)
   accessToken?: string;
   refreshToken?: string;
   expiresIn?: number; // Seconds until access token expires
+  message?: string; // Present on all signup responses
 }
 
 class AuthService {
@@ -80,12 +81,16 @@ class AuthService {
       // Call real backend API - backend now returns modular User structure with tokens
       const response = await apiClient.post<AuthResponse>('/auth/login', payload);
 
+      if (!response.user || (!response.accessToken && !response.token)) {
+        throw new Error('Invalid login response from server');
+      }
+
       // Normalize backend user to frontend ModularUser format
       const modularUser = normalizeUserFromBackend(response.user);
 
       return {
         user: modularUser,
-        token: response.accessToken || response.token,
+        token: response.accessToken || response.token || '',
         refreshToken: response.refreshToken,
         expiresIn: response.expiresIn,
       };
@@ -97,14 +102,21 @@ class AuthService {
   }
 
   async signupWithEmail(payload: SignupPayload): Promise<{
-    user: ModularUser;
-    token: string;
+    user?: ModularUser;
+    token?: string;
+    accessToken?: string;
     refreshToken?: string;
     expiresIn?: number;
+    message?: string;
   }> {
     try {
       // Call real backend API - backend now returns modular User structure with tokens
       const response = await apiClient.post<AuthResponse>('/auth/signup', payload);
+
+      // Anti-enumeration: backend returns 201 without user/tokens when email already exists
+      if (!response.user) {
+        return { message: response.message };
+      }
 
       // Normalize backend user to frontend ModularUser format
       const modularUser = normalizeUserFromBackend(response.user);
@@ -170,10 +182,10 @@ class AuthService {
     await apiClient.post('/auth/resend-verification', { email });
   }
 
-  async logoutApi(refreshToken?: string): Promise<void> {
+  async logoutApi(): Promise<void> {
     try {
-      // Call backend to invalidate tokens (blacklist access token, revoke refresh token)
-      await apiClient.post('/auth/logout', { refreshToken });
+      // Call backend to invalidate tokens — cookies sent automatically via credentials: 'include'
+      await apiClient.post('/auth/logout', {});
     } catch {
       // Ignore logout errors - we'll clear local state regardless
     }

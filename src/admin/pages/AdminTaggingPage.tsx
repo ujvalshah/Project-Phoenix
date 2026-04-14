@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
+import { apiClient } from '@/services/apiClient';
 import { getNormalizedApiBase } from '@/utils/urlUtils';
 import type { TaxonomyTag } from '@/types';
 
@@ -21,19 +22,6 @@ interface EditorState {
   /** Present in edit mode only */
   tagId?: string;
   initial: TagFormState;
-}
-
-const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
-
-function getAuthToken(): string | null {
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    return data.token || data.accessToken || null;
-  } catch {
-    return null;
-  }
 }
 
 interface ImportResult {
@@ -71,13 +59,8 @@ export const AdminTaggingPage: React.FC = () => {
   const fetchCoverage = async () => {
     setIsCoverageLoading(true);
     try {
-      const token = getAuthToken();
-      const BASE_URL = getNormalizedApiBase();
-      const response = await fetch(`${BASE_URL}/categories/taxonomy/coverage`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!response.ok) throw new Error(`${response.status}`);
-      setCoverage(await response.json());
+      const data = await apiClient.get<typeof coverage>('/categories/taxonomy/coverage');
+      setCoverage(data);
     } catch {
       toast.error('Failed to load coverage stats');
     } finally {
@@ -127,8 +110,6 @@ export const AdminTaggingPage: React.FC = () => {
     if (!editorState) return;
     setIsSavingTag(true);
     try {
-      const token = getAuthToken();
-      const BASE_URL = getNormalizedApiBase();
       const aliases = form.aliases
         .split(',')
         .map(s => s.trim())
@@ -143,23 +124,10 @@ export const AdminTaggingPage: React.FC = () => {
         status: 'active' as const,
       };
 
-      const url = editorState.mode === 'create'
-        ? `${BASE_URL}/categories`
-        : `${BASE_URL}/categories/${editorState.tagId}`;
-      const method = editorState.mode === 'create' ? 'POST' : 'PUT';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.message || `Save failed (${response.status})`);
+      if (editorState.mode === 'create') {
+        await apiClient.post('/categories', body);
+      } else {
+        await apiClient.put(`/categories/${editorState.tagId}`, body);
       }
 
       toast.success(editorState.mode === 'create' ? 'Tag created' : 'Tag updated');
@@ -182,16 +150,7 @@ export const AdminTaggingPage: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      const token = getAuthToken();
-      const BASE_URL = getNormalizedApiBase();
-      const response = await fetch(`${BASE_URL}/categories/by-id/${tag.id}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.message || `Delete failed (${response.status})`);
-      }
+      await apiClient.delete(`/categories/by-id/${tag.id}`);
       toast.success(`"${tag.rawName}" deprecated`);
       refreshTaxonomy();
     } catch (err: unknown) {
@@ -211,10 +170,9 @@ export const AdminTaggingPage: React.FC = () => {
   const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      const token = getAuthToken();
       const BASE_URL = getNormalizedApiBase();
       const response = await fetch(`${BASE_URL}/admin/tagging/export`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include', // HttpOnly cookies sent automatically
       });
 
       if (!response.ok) {
@@ -256,14 +214,13 @@ export const AdminTaggingPage: React.FC = () => {
     setIsUploading(true);
     setImportResult(null);
     try {
-      const token = getAuthToken();
       const BASE_URL = getNormalizedApiBase();
       const formData = new FormData();
       formData.append('file', selectedFile);
 
       const response = await fetch(`${BASE_URL}/admin/tagging/import`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include', // HttpOnly cookies sent automatically
         body: formData,
       });
 

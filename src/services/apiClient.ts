@@ -7,11 +7,17 @@ import { getNormalizedApiBase } from '../utils/urlUtils.js';
 // Normalize API base URL: defaults to '/api', respects VITE_API_URL if set (ensures /api suffix)
 const BASE_URL = getNormalizedApiBase();
 
-// SECURITY: Token in localStorage is vulnerable to XSS. Prefer HttpOnly cookies; use credentials: 'include' and stop sending Authorization.
-const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
+// CSRF cookie name (set by backend, non-HttpOnly so JS can read it)
+const CSRF_COOKIE_NAME = 'csrf_token';
 
-// Token refresh configuration
-const REFRESH_BUFFER_SECONDS = 300; // Refresh 5 minutes before expiry
+/**
+ * Read a cookie value by name from document.cookie.
+ */
+function getCookie(name: string): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
 
 // Helper to extract error message and details from response
 async function extractError(response: Response): Promise<{ message: string; errors?: any[]; code?: string }> {
@@ -29,73 +35,6 @@ async function extractError(response: Response): Promise<{ message: string; erro
   }
 }
 
-/**
- * Storage helper for auth tokens
- */
-interface StoredAuthData {
-  user: any;
-  token: string; // Access token (legacy name for compatibility)
-  accessToken?: string;
-  refreshToken?: string;
-  expiresIn?: number; // Seconds until access token expires
-  refreshedAt?: number; // Timestamp when tokens were last refreshed
-}
-
-function getStoredAuth(): StoredAuthData | null {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    }
-  } catch {
-    // Ignore parsing errors
-  }
-  return null;
-}
-
-function setStoredAuth(data: StoredAuthData): void {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data));
-    }
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-function clearStoredAuth(): void {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-    }
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-/**
- * Check if access token is about to expire
- */
-function isTokenExpiringSoon(authData: StoredAuthData): boolean {
-  if (!authData.expiresIn) {
-    return false; // No expiry info, can't determine
-  }
-
-  // If refreshedAt is missing, assume token needs refresh to be safe
-  if (!authData.refreshedAt) {
-    return true;
-  }
-
-  const now = Date.now() / 1000; // Current time in seconds
-  const refreshedAtSeconds = authData.refreshedAt / 1000;
-  const expiresAt = refreshedAtSeconds + authData.expiresIn;
-
-  // Token expires within buffer period
-  return now >= expiresAt - REFRESH_BUFFER_SECONDS;
-}
-
 class ApiClient {
   // Track active AbortControllers by request key to cancel previous requests
   private activeControllers = new Map<string, AbortController>();
@@ -104,6 +43,17 @@ class ApiClient {
   private isRefreshing = false;
   private refreshPromise: Promise<boolean> | null = null;
   private refreshSubscribers: Array<(success: boolean) => void> = [];
+
+  // Session expired callback — registered by AuthContext to handle logout
+  private sessionExpiredCallback: (() => void) | null = null;
+
+  /**
+   * Register a callback to be invoked when the session expires (401 after failed refresh).
+   * AuthContext should call this on mount to wire up its logout logic.
+   */
+  onSessionExpired(callback: () => void): void {
+    this.sessionExpiredCallback = callback;
+  }
 
   /**
    * Check if endpoint is a public auth endpoint (login/signup/refresh)
@@ -119,33 +69,9 @@ class ApiClient {
   }
 
   /**
-   * Check if we have an authenticated session (token exists in storage)
-   * Used to determine if 401 means "expired session" vs "not authenticated"
-   */
-  private hasAuthenticatedSession(): boolean {
-    const authData = getStoredAuth();
-    return !!(authData?.token);
-  }
-
-  /**
-   * Check if we have a refresh token available
-   */
-  private hasRefreshToken(): boolean {
-    const authData = getStoredAuth();
-    return !!(authData?.refreshToken);
-  }
-
-  private getAuthHeader(): Record<string, string> {
-    const authData = getStoredAuth();
-    if (authData?.token) {
-      return { 'Authorization': `Bearer ${authData.token}` };
-    }
-    return {};
-  }
-
-  /**
-   * Attempt to refresh the access token using the refresh token
-   * Returns true if refresh succeeded, false otherwise
+   * Attempt to refresh the access token using HttpOnly cookies.
+   * The browser sends both access_token and refresh_token cookies automatically.
+   * Returns true if refresh succeeded, false otherwise.
    */
   private async refreshAccessToken(): Promise<boolean> {
     // If already refreshing, wait for that to complete
@@ -153,13 +79,8 @@ class ApiClient {
       return this.refreshPromise;
     }
 
-    const authData = getStoredAuth();
-    if (!authData?.refreshToken || !authData?.token) {
-      return false;
-    }
-
     this.isRefreshing = true;
-    this.refreshPromise = this.doRefresh(authData);
+    this.refreshPromise = this.doRefresh();
 
     try {
       const success = await this.refreshPromise;
@@ -173,47 +94,30 @@ class ApiClient {
     }
   }
 
-  private async doRefresh(authData: StoredAuthData): Promise<boolean> {
+  private async doRefresh(): Promise<boolean> {
     try {
       const response = await fetch(`${BASE_URL}/auth/refresh`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authData.token}`, // Send expired access token
-        },
-        body: JSON.stringify({ refreshToken: authData.refreshToken }),
+        credentials: 'include', // Sends HttpOnly access_token + refresh_token cookies
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}), // Body kept for backward compat; tokens come from cookies
       });
 
       // 503 = Redis/token service temporarily unavailable - retry with backoff
-      // CRITICAL: Do NOT treat this as "invalid token". The token may still be valid
-      // once the service recovers. Retry instead of failing.
       if (response.status === 503) {
-        const delays = [1000, 2000, 4000]; // Exponential backoff: 1s, 2s, 4s
+        const delays = [1000, 2000, 4000];
         for (const delay of delays) {
           await new Promise(resolve => setTimeout(resolve, delay));
           const retryResponse = await fetch(`${BASE_URL}/auth/refresh`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${authData.token}`,
-            },
-            body: JSON.stringify({ refreshToken: authData.refreshToken }),
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
           });
 
           if (retryResponse.ok) {
-            const retryData = await retryResponse.json();
-            setStoredAuth({
-              ...authData,
-              token: retryData.accessToken || retryData.token,
-              accessToken: retryData.accessToken,
-              refreshToken: retryData.refreshToken || authData.refreshToken,
-              expiresIn: retryData.expiresIn,
-              refreshedAt: Date.now(),
-            });
-            return true;
+            return true; // Backend sets new cookies automatically
           }
-
-          // If not 503 anymore, stop retrying
           if (retryResponse.status !== 503) {
             return false;
           }
@@ -222,22 +126,10 @@ class ApiClient {
       }
 
       if (!response.ok) {
-        // Refresh failed - likely refresh token expired or invalid
         return false;
       }
 
-      const data = await response.json();
-
-      // Update stored tokens
-      setStoredAuth({
-        ...authData,
-        token: data.accessToken || data.token,
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken || authData.refreshToken, // Keep old if not rotated
-        expiresIn: data.expiresIn,
-        refreshedAt: Date.now(),
-      });
-
+      // Success — backend has set new HttpOnly cookies in the response
       return true;
     } catch {
       return false;
@@ -251,16 +143,6 @@ class ApiClient {
     return new Promise((resolve) => {
       this.refreshSubscribers.push(resolve);
     });
-  }
-
-  /**
-   * Proactively refresh token if it's about to expire
-   */
-  private async maybeProactiveRefresh(): Promise<void> {
-    const authData = getStoredAuth();
-    if (authData && authData.refreshToken && isTokenExpiringSoon(authData)) {
-      await this.refreshAccessToken();
-    }
   }
 
   /**
@@ -287,6 +169,18 @@ class ApiClient {
     return `${method}:${endpoint}`;
   }
 
+  /**
+   * Handle session expiration — notify AuthContext to clean up UI state
+   */
+  private handleSessionExpired(): void {
+    if (this.sessionExpiredCallback) {
+      this.sessionExpiredCallback();
+    } else if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+      // Fallback: redirect to home if no callback registered
+      window.location.href = '/';
+    }
+  }
+
   private async request<T>(
     endpoint: string,
     options?: RequestInit & { cancelKey?: string; _isRetry?: boolean }
@@ -300,22 +194,17 @@ class ApiClient {
     let success = false;
     let aborted = false;
 
-    // Proactively refresh token if about to expire
-    // Blocking: wait for refresh so the request uses the new token
-    if (!_isRetry && !this.isPublicAuthEndpoint(endpoint)) {
-      try {
-        await this.maybeProactiveRefresh();
-      } catch {
-        // Ignore proactive refresh errors - reactive refresh will catch it
-      }
-    }
+    // Build headers: include CSRF token on state-changing requests
+    const isMutation = method !== 'GET' && method !== 'HEAD';
+    const csrfToken = isMutation ? getCookie(CSRF_COOKIE_NAME) : undefined;
 
-    const config = {
+    const config: RequestInit = {
       ...requestOptions,
       signal: abortController.signal,
+      credentials: 'include', // Send HttpOnly cookies with every request
       headers: {
         'Content-Type': 'application/json',
-        ...this.getAuthHeader(), // Auto-attach token
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
         ...requestOptions?.headers,
       },
     };
@@ -324,27 +213,26 @@ class ApiClient {
     try {
       const response = await fetch(`${BASE_URL}${endpoint}`, config);
       statusCode = response.status;
-      
+
       // Extract request ID from response headers for correlation
       requestId = response.headers.get('X-Request-Id');
 
       if (!response.ok) {
         const errorInfo = await extractError(response);
         const error: any = new Error(errorInfo.message);
-        
-        // PHASE 6: Include request ID in error for correlation with backend logs
+
         if (requestId) {
           error.requestId = requestId;
         }
-        
+
         // Attach errors array if present (for validation errors)
         if (errorInfo.errors) {
           error.errors = errorInfo.errors;
         }
-        
+
         // Attach response data for debugging
         error.response = { status: response.status, data: errorInfo };
-        
+
         // For 404, preserve the response data in the error
         if (response.status === 404) {
           const notFoundError: any = new Error(errorInfo.message || 'The requested resource was not found.');
@@ -352,127 +240,76 @@ class ApiClient {
           throw notFoundError;
         }
         if (response.status === 403) {
-          // Handle 403 Forbidden (often used for expired/invalid tokens)
           const isPublicAuth = this.isPublicAuthEndpoint(endpoint);
-          const hasSession = this.hasAuthenticatedSession();
-          const authHeader = this.getAuthHeader();
-          const tokenWasSent = !!authHeader['Authorization'];
-          
+
           // Check if error message indicates token issue
-          const isTokenError = errorInfo.message?.toLowerCase().includes('token') || 
+          const isTokenError = errorInfo.message?.toLowerCase().includes('token') ||
                               errorInfo.message?.toLowerCase().includes('expired') ||
                               errorInfo.message?.toLowerCase().includes('invalid');
-          
-          // Never logout on public auth endpoints
+
           if (isPublicAuth) {
             throw error;
           }
-          
-          // If it's a token-related 403 and we have a session, treat it like 401
-          if (isTokenError && hasSession && tokenWasSent) {
-            // Token expired/invalid → logout
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.removeItem(AUTH_STORAGE_KEY);
-              } catch (e) {
-                // Ignore storage errors
-              }
-              if (window.location.pathname !== '/') {
-                window.location.href = '/';
-              }
-            }
-            const isExpired = errorInfo.message?.toLowerCase().includes('expired') || 
-                            errorInfo.message?.toLowerCase().includes('token expired');
-            throw new Error(isExpired 
+
+          // Token-related 403 → session expired
+          if (isTokenError) {
+            this.handleSessionExpired();
+            const isExpired = errorInfo.message?.toLowerCase().includes('expired');
+            throw new Error(isExpired
               ? 'Your session has expired. Please sign in again.'
               : 'Your session is invalid. Please sign in again.'
             );
           }
-          
-          // Otherwise, just throw the 403 error
+
           throw error;
         }
         if (response.status === 401) {
           const isPublicAuth = this.isPublicAuthEndpoint(endpoint);
-          const hasSession = this.hasAuthenticatedSession();
-          const hasRefresh = this.hasRefreshToken();
-          const authHeader = this.getAuthHeader();
-          const tokenWasSent = !!authHeader['Authorization'];
 
           // CRITICAL: Never logout on 401 for public auth endpoints (login/signup)
-          // These return 401 for invalid credentials, not expired tokens
           if (isPublicAuth) {
-            // Public auth endpoint - just throw error with backend message, never logout
             throw error;
           }
 
-          // Check if this is a token expiration that we can recover from
           const isTokenExpired =
             errorInfo.code === 'TOKEN_EXPIRED' ||
             errorInfo.message?.toLowerCase().includes('expired');
 
-          // If token expired and we have a refresh token, attempt to refresh
-          if (isTokenExpired && hasRefresh && tokenWasSent && !_isRetry) {
-            // Wait for any ongoing refresh
+          // Attempt refresh on 401 (cookie-based: browser has the refresh token)
+          if (!_isRetry) {
             if (this.isRefreshing) {
               const refreshed = await this.waitForRefresh();
               if (refreshed) {
-                // Retry the original request with new token
                 return this.request<T>(endpoint, { ...options, _isRetry: true });
               }
             } else {
-              // Attempt refresh
               const refreshed = await this.refreshAccessToken();
               if (refreshed) {
-                // Retry the original request with new token
                 return this.request<T>(endpoint, { ...options, _isRetry: true });
               }
             }
           }
 
-          // For all other endpoints: logout only if we have an authenticated session
-          // AND token was sent (meaning token is expired/invalid)
-          // This handles:
-          // - Expired tokens on protected endpoints (after refresh failed) → logout ✅
-          // - Invalid tokens on protected endpoints → logout ✅
-          // - Missing tokens (no session) → don't logout (user not logged in) ✅
-          if (hasSession && tokenWasSent) {
-            // Authenticated session with expired/invalid token → logout
-            if (typeof window !== 'undefined') {
-              // Clear auth data
-              clearStoredAuth();
-              // Only redirect if we're not already on login page
-              if (window.location.pathname !== '/') {
-                window.location.href = '/';
-              }
-            }
-            // Check backend message to provide specific error
-            throw new Error(
-              isTokenExpired
-                ? 'Your session has expired. Please sign in again.'
-                : 'Your session is invalid. Please sign in again.'
-            );
-          }
-
-          // No authenticated session OR token wasn't sent → just throw error without logging out
-          // This handles cases where:
-          // - User tries to access protected endpoint without being logged in
-          // - Public endpoint returns 401 for other reasons
-          throw error;
+          // Refresh failed or was already retried → session expired
+          this.handleSessionExpired();
+          throw new Error(
+            isTokenExpired
+              ? 'Your session has expired. Please sign in again.'
+              : 'Your session is invalid. Please sign in again.'
+          );
         }
         if (response.status === 429) {
           throw new Error('Too many attempts. Please wait a moment and try again.');
         }
         if (response.status === 500) {
-          // Preserve backend error message if available, otherwise use generic message
-          const backendMessage = errorInfo.message && errorInfo.message !== 'Internal server error' 
-            ? errorInfo.message 
+          const backendMessage = errorInfo.message && errorInfo.message !== 'Internal server error'
+            ? errorInfo.message
             : 'Something went wrong on our end. Please try again in a moment.';
           const serverError: any = new Error(backendMessage);
           serverError.response = error.response;
           throw serverError;
         }
-        
+
         // For other errors (like 400 validation errors), throw with errors array attached
         throw error;
       }
@@ -486,19 +323,16 @@ class ApiClient {
     } catch (error: any) {
       // SAFETY PATCH: Treat request cancellations as non-errors
       if (error?.name === 'AbortError' || error?.message?.includes('Request cancelled')) {
-        // Only clean up if this controller is still the active one (not replaced by newer request)
         const currentController = this.activeControllers.get(cancelKey);
         if (currentController === abortController) {
           this.activeControllers.delete(cancelKey);
         }
-        // Intentional cancellation — no action needed, return silently
         aborted = true;
         return undefined as T;
       }
-      
+
       // Handle network errors (connection refused, timeout, etc.)
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        // Capture network errors in Sentry
         captureException(error, {
           requestId: requestId || undefined,
           route: endpoint,
@@ -517,10 +351,9 @@ class ApiClient {
         networkErr.isNetworkError = true;
         throw networkErr;
       }
-      
+
       // Capture API errors (non-network) in Sentry
       if (statusCode && statusCode >= 500) {
-        // Only capture server errors (5xx), not client errors (4xx)
         captureException(error, {
           requestId: requestId || undefined,
           route: endpoint,
@@ -531,8 +364,8 @@ class ApiClient {
           },
         });
       }
-      
-      // Re-throw other errors as-is (they'll be mapped by authService)
+
+      // Re-throw other errors as-is
       throw error;
     } finally {
       const endedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -546,8 +379,6 @@ class ApiClient {
           ok: success
         });
       }
-      // Clean up controller after request completes (success or error)
-      // Only delete if this is still the active controller (not replaced by newer request)
       const currentController = this.activeControllers.get(cancelKey);
       if (currentController === abortController) {
         this.activeControllers.delete(cancelKey);

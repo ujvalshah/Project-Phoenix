@@ -24,7 +24,10 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
   }
 
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const headerToken = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  // Fallback: read access_token from HttpOnly cookie (set by authCookies.ts)
+  const cookieToken = (req as any).cookies?.access_token as string | undefined;
+  const token = headerToken || cookieToken;
   const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
 
   if (!token) {
@@ -33,6 +36,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       method: req.method,
       hasAuthorizationHeader: !!authHeader,
       authHeaderPrefix: typeof authHeader === 'string' ? authHeader.slice(0, 20) : null,
+      hasCookieToken: !!cookieToken,
     });
     return res.status(401).json({
       error: true,

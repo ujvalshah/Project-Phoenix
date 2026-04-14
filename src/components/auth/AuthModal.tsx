@@ -49,9 +49,9 @@ const checkPasswordRequirements = (password: string) => {
 };
 
 export const AuthModal: React.FC = () => {
-  const { isAuthModalOpen, closeAuthModal, authModalView, login, signup, featureFlags, signupConfig } = useAuth();
+  const { isAuthModalOpen, closeAuthModal, authModalView, login, signup, signupConfig } = useAuth();
 
-  const [view, setView] = useState<'login' | 'signup' | 'forgot' | 'verify_pending'>(authModalView);
+  const [view, setView] = useState<'login' | 'signup' | 'forgot'>(authModalView);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forgotSubmitSuccess, setForgotSubmitSuccess] = useState(false);
@@ -202,25 +202,18 @@ export const AuthModal: React.FC = () => {
         if (view === 'login') {
             await login({ email, password });
         } else if (view === 'signup') {
-            await signup({ 
-                fullName, 
-                username, 
-                email, 
-                password, 
-                pincode, 
-                city, 
-                country, 
+            await signup({
+                fullName,
+                username,
+                email,
+                password,
+                pincode,
+                city,
+                country,
                 gender,
                 phoneNumber: phone,
                 dateOfBirth: dob
             });
-            
-            // Check if verification is required
-            if (featureFlags?.enableEmailVerification) {
-                setView('verify_pending');
-            } else {
-                // Auth context handles close
-            }
         } else if (view === 'forgot') {
             await authService.requestPasswordReset(email);
             setForgotSubmitSuccess(true);
@@ -261,22 +254,7 @@ export const AuthModal: React.FC = () => {
             <X size={20} />
         </button>
 
-        {/* Verification Pending View */}
-        {view === 'verify_pending' ? (
-            <div className="p-8 text-center flex flex-col items-center justify-center h-full min-h-[400px]">
-                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6">
-                    <Mail size={32} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Check your inbox</h2>
-                <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-xs">
-                    We've sent a verification link to <strong>{email}</strong>. Please click the link to activate your account.
-                </p>
-                <button onClick={() => setView('login')} className="text-sm font-bold text-primary-600 hover:underline">
-                    Return to Login
-                </button>
-            </div>
-        ) : (
-            <>
+        <>
                 <div className="px-8 pt-10 pb-2 text-center shrink-0">
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">
                         {view === 'login' && 'Welcome Back'}
@@ -626,8 +604,7 @@ export const AuthModal: React.FC = () => {
                     </>
                     )}
                 </div>
-            </>
-        )}
+        </>
       </div>
     </div>,
     document.body

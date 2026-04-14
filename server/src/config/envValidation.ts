@@ -26,7 +26,13 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL').optional(),
 
   /** Comma-separated extra browser origins allowed by CORS (e.g. preview deploy URL). FRONTEND_URL is always included when set. */
-  CORS_ALLOWED_ORIGINS: z.string().optional(),
+  CORS_ALLOWED_ORIGINS: z.string().optional().refine((val) => {
+    if (!val) return true;
+    return val.split(',').every((s) => {
+      const trimmed = s.trim();
+      return trimmed === '' || /^https?:\/\//.test(trimmed);
+    });
+  }, { message: 'Each CORS_ALLOWED_ORIGINS entry must start with http:// or https://' }),
   
   // Support MONGODB_URI as alias (for compatibility)
   MONGODB_URI: z.string().optional(),
@@ -43,6 +49,7 @@ const envSchema = z.object({
   // Email (Resend) – optional; when set, verification and password-reset emails are sent
   RESEND_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(1).optional(),
+  ENABLE_EMAIL_VERIFICATION: z.string().transform((val) => val === 'true').optional().default('false'),
 
   // Redis configuration (optional)
   REDIS_URL: z.string().url('REDIS_URL must be a valid URL').optional(),
@@ -100,15 +107,17 @@ export function validateEnv(): ValidatedEnv {
       console.error('Please set FRONTEND_URL in your .env file.\n');
       process.exit(1);
     }
-    if (!result.data.RESEND_API_KEY?.trim()) {
-      console.error('\n❌ PRODUCTION CONFIGURATION ERROR\n');
-      console.error('RESEND_API_KEY is required in production for verification and password-reset emails.\n');
-      process.exit(1);
-    }
-    if (!result.data.EMAIL_FROM?.trim()) {
-      console.error('\n❌ PRODUCTION CONFIGURATION ERROR\n');
-      console.error('EMAIL_FROM is required in production (verified sender in Resend).\n');
-      process.exit(1);
+    if (result.data.ENABLE_EMAIL_VERIFICATION) {
+      if (!result.data.RESEND_API_KEY?.trim()) {
+        console.error('\n❌ PRODUCTION CONFIGURATION ERROR\n');
+        console.error('RESEND_API_KEY is required in production when ENABLE_EMAIL_VERIFICATION=true.\n');
+        process.exit(1);
+      }
+      if (!result.data.EMAIL_FROM?.trim()) {
+        console.error('\n❌ PRODUCTION CONFIGURATION ERROR\n');
+        console.error('EMAIL_FROM is required in production when ENABLE_EMAIL_VERIFICATION=true.\n');
+        process.exit(1);
+      }
     }
   }
 
@@ -142,12 +151,29 @@ export function getCorsAllowedOrigins(): string[] {
   const env = getEnv();
   const fromList = (env.CORS_ALLOWED_ORIGINS ?? '')
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => normalizeOrigin(s))
     .filter((s) => s.length > 0);
   const set = new Set<string>(fromList);
   if (env.FRONTEND_URL) {
-    set.add(env.FRONTEND_URL);
+    set.add(normalizeOrigin(env.FRONTEND_URL));
   }
   return Array.from(set);
+}
+
+/**
+ * Normalize an origin-like URL value to protocol+host+port only.
+ * Example: "https://www.nuggetnews.app/" -> "https://www.nuggetnews.app"
+ */
+export function normalizeOrigin(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed.replace(/\/+$/, '');
+  }
 }
 

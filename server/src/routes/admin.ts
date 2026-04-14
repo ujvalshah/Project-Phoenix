@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticateToken } from '../middleware/authenticateToken.js';
-import { requireAdmin } from '../middleware/requireAdmin.js';
+import { requireAdminRole } from '../middleware/requireAdminRole.js';
 import {
   getAdminStats,
   verifyUserEmail,
@@ -19,25 +19,25 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 router.get('/stats', authenticateToken, getAdminStats);
 
 // PATCH /api/admin/users/:userId/verify-email - Manually verify a user's email
-router.patch('/users/:userId/verify-email', requireAdmin, verifyUserEmail);
+router.patch('/users/:userId/verify-email', authenticateToken, requireAdminRole, verifyUserEmail);
 
 // GET /api/admin/settings/media-limits - Get current media quota limits (admin only)
-router.get('/settings/media-limits', authenticateToken, requireAdmin, getMediaLimits);
+router.get('/settings/media-limits', authenticateToken, requireAdminRole, getMediaLimits);
 
 // PATCH /api/admin/settings/media-limits - Update media quota limits (admin only)
-router.patch('/settings/media-limits', authenticateToken, requireAdmin, updateMediaLimits);
+router.patch('/settings/media-limits', authenticateToken, requireAdminRole, updateMediaLimits);
 
 // GET /api/admin/settings/disclaimer - Get current disclaimer config (admin only)
-router.get('/settings/disclaimer', authenticateToken, requireAdmin, getDisclaimerSettings);
+router.get('/settings/disclaimer', authenticateToken, requireAdminRole, getDisclaimerSettings);
 
 // PATCH /api/admin/settings/disclaimer - Update disclaimer config (admin only)
-router.patch('/settings/disclaimer', authenticateToken, requireAdmin, updateDisclaimerSettings);
+router.patch('/settings/disclaimer', authenticateToken, requireAdminRole, updateDisclaimerSettings);
 
 // ── Bulk tag export/import (two-axis taxonomy) ─────────────────────────────
 // GET  /api/admin/tagging/export  - Download XLSX with current + suggested tags
 // POST /api/admin/tagging/import  - Upload reviewed XLSX to bulk-update tagIds
-router.get('/tagging/export', authenticateToken, requireAdmin, exportTagMapping);
-router.post('/tagging/import', authenticateToken, requireAdmin, upload.single('file'), importTagMapping);
+router.get('/tagging/export', authenticateToken, requireAdminRole, exportTagMapping);
+router.post('/tagging/import', authenticateToken, requireAdminRole, upload.single('file'), importTagMapping);
 
 export default router;
 

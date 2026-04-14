@@ -17,7 +17,7 @@ import {
   getDisclaimerConfig,
   invalidateDisclaimerCache
 } from '../services/disclaimerConfigService.js';
-import { AdminRequest } from '../middleware/requireAdmin.js';
+import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { getLogger } from '../utils/logger.js';
 
 const updateMediaLimitsSchema = z.object({

@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { authenticateToken } from '../middleware/authenticateToken.js';
-import { requireAdmin } from '../middleware/requireAdmin.js';
+import { requireAdminRole } from '../middleware/requireAdminRole.js';
 import * as legalController from '../controllers/legalController.js';
 
 const router = Router();
 
 // Admin-only routes — requires authentication + admin role
-router.patch('/:slug', authenticateToken, requireAdmin, legalController.updateLegalPage);
+router.patch('/:slug', authenticateToken, requireAdminRole, legalController.updateLegalPage);
 
 export default router;

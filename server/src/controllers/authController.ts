@@ -12,7 +12,9 @@ import {
   TOKEN_CONFIG,
 } from '../utils/jwt.js';
 import { getEnv } from '../config/envValidation.js';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../services/emailService.js';
+import { sendVerificationEmail, sendPasswordResetEmail, sendAccountExistsEmail } from '../services/emailService.js';
+import crypto from 'crypto';
+import { setAuthCookies, clearAuthCookies, setCsrfCookie } from '../utils/authCookies.js';
 import {
   generateRefreshToken,
   storeRefreshToken,
@@ -48,12 +50,27 @@ const loginSchema = z.object({
 
 // Generic login failure message to prevent user enumeration
 const LOGIN_FAILURE_MSG = 'Invalid email or password';
+const isEmailVerificationEnabled = (): boolean => getEnv().ENABLE_EMAIL_VERIFICATION;
+
+function getZodIssues(error: z.ZodError): z.ZodIssue[] {
+  const issuesFromV4 = (error as any).issues;
+  if (Array.isArray(issuesFromV4)) {
+    return issuesFromV4;
+  }
+
+  const issuesFromLegacy = (error as any).errors;
+  if (Array.isArray(issuesFromLegacy)) {
+    return issuesFromLegacy;
+  }
+
+  return [];
+}
 
 // Helper function to format validation errors into user-friendly messages
-function formatValidationErrors(errors: z.ZodError['errors']): string {
+function formatValidationErrors(errors: z.ZodIssue[] | undefined): string {
   const errorMessages: string[] = [];
   
-  errors.forEach((error) => {
+  (errors ?? []).forEach((error) => {
     const field = error.path.join('.');
     let message = error.message;
     
@@ -117,8 +134,9 @@ export const login = async (req: Request, res: Response) => {
     // Validate input
     const validationResult = loginSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const formattedMessage = formatValidationErrors(validationResult.error.errors);
-      const errors = validationResult.error.errors.map(err => ({
+      const issues = getZodIssues(validationResult.error);
+      const formattedMessage = formatValidationErrors(issues);
+      const errors = issues.map(err => ({
         path: err.path,
         message: err.message,
         code: err.code
@@ -222,11 +240,17 @@ export const login = async (req: Request, res: Response) => {
     // Return user data (without password) and tokens
     const userData = normalizeDoc(user);
 
+    // Set HttpOnly auth cookies (primary auth mechanism)
+    setAuthCookies(res, accessToken, refreshToken);
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+    setCsrfCookie(res, csrfToken);
+
     res.json({
       user: userData,
       token: accessToken, // Legacy field name for backward compatibility
       accessToken,
       refreshToken, // Only present if Redis available
+      csrfToken, // For double-submit CSRF pattern
       expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_SECONDS, // Seconds until access token expires
     });
   } catch (error: any) {
@@ -253,8 +277,9 @@ export const signup = async (req: Request, res: Response) => {
     // Validate input
     const validationResult = signupSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const formattedMessage = formatValidationErrors(validationResult.error.errors);
-      const errors = validationResult.error.errors.map(err => ({
+      const issues = getZodIssues(validationResult.error);
+      const formattedMessage = formatValidationErrors(issues);
+      const errors = issues.map(err => ({
         path: err.path,
         message: err.message,
         code: err.code
@@ -273,10 +298,22 @@ export const signup = async (req: Request, res: Response) => {
     normalizedEmail = data.email;
     normalizedUsername = data.username;
 
-    // Check if email already exists
+    // Check if email already exists — return identical 201 to prevent enumeration
     existingUser = await User.findOne({ 'auth.email': normalizedEmail });
     if (existingUser) {
-      return sendConflictError(res, 'Email already registered', 'EMAIL_ALREADY_EXISTS');
+      // Send "account already exists" email (fire-and-forget) so the user knows
+      const baseUrl = getEnv().FRONTEND_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+      const loginUrl = `${baseUrl.replace(/\/$/, '')}/login`;
+      sendAccountExistsEmail(normalizedEmail, loginUrl).catch((err: Error) => {
+        createRequestLogger((req as any).id || 'unknown', undefined, req.path).warn({
+          msg: 'Failed to send account-exists email',
+          err: { message: err.message, name: err.name }
+        });
+      });
+      // Return same status + shape as successful signup (without tokens)
+      return res.status(201).json({
+        message: 'Account created. You can now sign in.',
+      });
     }
 
     // Check if username already exists (case-insensitive)
@@ -298,7 +335,7 @@ export const signup = async (req: Request, res: Response) => {
       password: hashedPassword,
       auth: {
         email: data.email,
-        emailVerified: false,
+        emailVerified: !isEmailVerificationEnabled(),
         provider: 'email',
         createdAt: now,
         updatedAt: now
@@ -332,8 +369,8 @@ export const signup = async (req: Request, res: Response) => {
 
     await newUser.save();
 
-    // Send verification email when Resend is configured (fire-and-forget; do not block signup)
-    if (process.env.RESEND_API_KEY && newUser.auth.provider === 'email') {
+    // Send verification email only when explicitly enabled (fire-and-forget; do not block signup)
+    if (isEmailVerificationEnabled() && process.env.RESEND_API_KEY && newUser.auth.provider === 'email') {
       const baseUrl = getEnv().FRONTEND_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
       const verificationToken = generateEmailVerificationToken(newUser._id.toString(), newUser.auth.email);
       const verificationUrl = `${baseUrl.replace(/\/$/, '')}/verify-email?token=${encodeURIComponent(verificationToken)}`;
@@ -359,11 +396,19 @@ export const signup = async (req: Request, res: Response) => {
 
     // Return user data (without password) and tokens
     const userData = normalizeDoc(newUser);
+
+    // Set HttpOnly auth cookies (primary auth mechanism)
+    setAuthCookies(res, accessToken, refreshToken);
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+    setCsrfCookie(res, csrfToken);
+
     res.status(201).json({
+      message: 'Account created. You can now sign in.',
       user: userData,
       token: accessToken, // Legacy field name for backward compatibility
       accessToken,
       refreshToken, // Only present if Redis available
+      csrfToken, // For double-submit CSRF pattern
       expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_SECONDS,
     });
   } catch (error: any) {
@@ -373,21 +418,25 @@ export const signup = async (req: Request, res: Response) => {
     // 2. Stale index entries from deleted users (index not cleaned up)
     if (error.code === 11000) {
       const keyPattern = error.keyPattern || {};
-      const handled = handleDuplicateKeyError(res, error, {
-        'auth.email': { message: 'Email already registered', code: 'EMAIL_ALREADY_EXISTS' },
-        'profile.username': { message: 'Username already taken', code: 'USERNAME_ALREADY_EXISTS' }
-      });
-      if (handled) {
-        // Log only field names for stale-index diagnostics; no PII
-        if (keyPattern['auth.email']) {
-          const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
-          requestLogger.warn({ msg: 'Signup duplicate key: auth.email. If unexpected, run: npm run fix-indexes' });
+      // Email race condition: return uniform 201 to prevent enumeration
+      if (keyPattern['auth.email']) {
+        const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+        requestLogger.warn({ msg: 'Signup duplicate key race: auth.email. If unexpected, run: npm run fix-indexes' });
+        // Send account-exists email (fire-and-forget)
+        if (normalizedEmail) {
+          const baseUrl = getEnv().FRONTEND_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+          const loginUrl = `${baseUrl.replace(/\/$/, '')}/login`;
+          sendAccountExistsEmail(normalizedEmail, loginUrl).catch(() => {});
         }
-        if (keyPattern['profile.username']) {
-          const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
-          requestLogger.warn({ msg: 'Signup duplicate key: profile.username. If unexpected, run: npm run fix-indexes' });
-        }
-        return;
+        return res.status(201).json({
+          message: 'Account created. You can now sign in.',
+        });
+      }
+      // Username collision is fine to expose (usernames are public)
+      if (keyPattern['profile.username']) {
+        const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+        requestLogger.warn({ msg: 'Signup duplicate key: profile.username. If unexpected, run: npm run fix-indexes' });
+        return sendConflictError(res, 'Username already taken', 'USERNAME_ALREADY_EXISTS');
       }
     }
 
@@ -439,6 +488,10 @@ const resendVerificationSchema = z.object({
  */
 export const verifyEmail = async (req: Request, res: Response) => {
   try {
+    if (!isEmailVerificationEnabled()) {
+      return res.status(200).json({ message: 'Email verification is currently disabled.' });
+    }
+
     const token = typeof req.query.token === 'string' ? req.query.token : undefined;
     if (!token) {
       return sendErrorResponse(res, 400, 'Verification token is required.', 'MISSING_TOKEN');
@@ -485,10 +538,15 @@ export const verifyEmail = async (req: Request, res: Response) => {
  */
 export const resendVerification = async (req: Request, res: Response) => {
   try {
+    if (!isEmailVerificationEnabled()) {
+      return res.status(200).json({ message: 'Email verification is currently disabled.' });
+    }
+
     const validationResult = resendVerificationSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const formattedMessage = validationResult.error.errors.map((e) => e.message).join('. ');
-      return sendValidationError(res, formattedMessage, validationResult.error.errors.map((err) => ({
+      const issues = getZodIssues(validationResult.error);
+      const formattedMessage = issues.map((e) => e.message).join('. ');
+      return sendValidationError(res, formattedMessage, issues.map((err) => ({
         path: err.path,
         message: err.message,
         code: err.code
@@ -555,25 +613,30 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
       return sendErrorResponse(res, 503, 'Token refresh service unavailable', 'SERVICE_UNAVAILABLE');
     }
 
-    // Validate input
-    const validationResult = refreshTokenSchema.safeParse(req.body);
-    if (!validationResult.success) {
-      return sendValidationError(res, 'Refresh token is required', validationResult.error.errors.map(err => ({
-        path: err.path,
-        message: err.message,
-        code: err.code,
-      })));
+    // Validate input — accept refresh token from body or HttpOnly cookie
+    const bodyToken = req.body?.refreshToken;
+    const cookieRefreshToken = (req as any).cookies?.refresh_token as string | undefined;
+    const refreshTokenInput = bodyToken || cookieRefreshToken;
+
+    if (!refreshTokenInput || typeof refreshTokenInput !== 'string' || refreshTokenInput.length === 0) {
+      return sendValidationError(res, 'Refresh token is required', [{
+        path: ['refreshToken'],
+        message: 'Refresh token is required',
+        code: 'too_small' as const,
+      }]);
     }
 
-    const { refreshToken: oldRefreshToken } = validationResult.data;
+    const oldRefreshToken = refreshTokenInput;
 
     // We need to find the user associated with this refresh token
     // The refresh token contains userId in Redis, but we need to extract it
     // For security, we'll require userId in the request or extract from a still-valid access token
 
-    // Check for Authorization header with expired access token
+    // Check for expired access token — from Authorization header or HttpOnly cookie
     const authHeader = req.headers['authorization'];
-    const expiredAccessToken = authHeader && authHeader.split(' ')[1];
+    const headerAccessToken = authHeader && authHeader.split(' ')[1];
+    const cookieAccessToken = (req as any).cookies?.access_token as string | undefined;
+    const expiredAccessToken = headerAccessToken || cookieAccessToken;
 
     if (!expiredAccessToken) {
       return sendErrorResponse(res, 400, 'Access token required for refresh', 'ACCESS_TOKEN_REQUIRED');
@@ -675,10 +738,16 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 
     requestLogger.info({ msg: 'Token refreshed successfully', userId });
 
+    // Set HttpOnly auth cookies with refreshed tokens
+    setAuthCookies(res, accessToken, newRefreshToken);
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+    setCsrfCookie(res, csrfToken);
+
     res.json({
       token: accessToken, // Legacy field
       accessToken,
       refreshToken: newRefreshToken,
+      csrfToken,
       expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_SECONDS,
     });
   } catch (error: any) {
@@ -714,14 +783,17 @@ export const logout = async (req: Request, res: Response) => {
       await blacklistToken(currentToken, remainingSeconds);
     }
 
-    // Revoke refresh token if provided
-    const { refreshToken } = req.body || {};
-    if (refreshToken && typeof refreshToken === 'string') {
+    // Revoke refresh token — from body or HttpOnly cookie
+    const bodyRefreshToken = req.body?.refreshToken;
+    const cookieRefreshToken = (req as any).cookies?.refresh_token as string | undefined;
+    const refreshToken = (typeof bodyRefreshToken === 'string' && bodyRefreshToken) || cookieRefreshToken;
+    if (refreshToken) {
       await revokeRefreshToken(userId, refreshToken);
     }
 
     requestLogger.info({ msg: 'User logged out', userId });
 
+    clearAuthCookies(res);
     res.json({
       message: 'Logged out successfully',
     });
@@ -731,6 +803,7 @@ export const logout = async (req: Request, res: Response) => {
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) },
     });
     // Still return success - logout should be idempotent
+    clearAuthCookies(res);
     res.json({
       message: 'Logged out successfully',
     });
@@ -765,6 +838,7 @@ export const logoutAll = async (req: Request, res: Response) => {
 
     requestLogger.info({ msg: 'User logged out from all devices', userId });
 
+    clearAuthCookies(res);
     res.json({
       message: 'Logged out from all devices successfully',
     });
@@ -774,6 +848,7 @@ export const logoutAll = async (req: Request, res: Response) => {
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) },
     });
     // Still return success
+    clearAuthCookies(res);
     res.json({
       message: 'Logged out from all devices successfully',
     });
@@ -916,8 +991,9 @@ export const resetPassword = async (req: Request, res: Response) => {
     // Validate input
     const validationResult = resetPasswordSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const formattedMessage = formatValidationErrors(validationResult.error.errors);
-      return sendValidationError(res, formattedMessage, validationResult.error.errors.map(err => ({
+      const issues = getZodIssues(validationResult.error);
+      const formattedMessage = formatValidationErrors(issues);
+      return sendValidationError(res, formattedMessage, issues.map(err => ({
         path: err.path,
         message: err.message,
         code: err.code,

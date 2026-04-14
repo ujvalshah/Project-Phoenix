@@ -4,6 +4,7 @@ import { User as LegacyUser } from '@/types';
 import { User as ModularUser } from '@/types/user';
 import { LoginPayload, SignupPayload, AuthProvider as AuthProviderType } from '@/types/auth';
 import { authService } from '@/services/authService';
+import { apiClient } from '@/services/apiClient';
 import { FeatureFlags, SignupConfig } from '@/admin/types/admin';
 import { adminConfigService } from '@/admin/services/adminConfigService';
 import { isTransientAuthMeError } from '@/utils/authBootstrapErrors';
@@ -17,7 +18,7 @@ interface AuthContextType {
   featureFlags: FeatureFlags | null;
   signupConfig: SignupConfig | null;
   login: (payload: LoginPayload) => Promise<void>;
-  signup: (payload: SignupPayload) => Promise<void>;
+  signup: (payload: SignupPayload) => Promise<{ needsVerification: boolean }>;
   socialLogin: (provider: AuthProviderType) => Promise<void>;
   logout: () => Promise<void>;
   isAuthModalOpen: boolean;
@@ -28,87 +29,52 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// SECURITY: Token in localStorage is vulnerable to XSS. Prefer HttpOnly cookies for production.
-// Migration: backend sets Set-Cookie on login/signup; apiClient uses credentials: 'include'; remove Authorization header.
-const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2'; // Bumped version for schema change
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [modularUser, setModularUser] = useState<ModularUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags | null>(null);
   const [signupConfig, setSignupConfig] = useState<SignupConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Modal State
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState<'login' | 'signup'>('login');
 
-  const persistAuth = useCallback(
-    (u: ModularUser, t: string, refreshTkn?: string, expiresIn?: number) => {
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          localStorage.setItem(
-            AUTH_STORAGE_KEY,
-            JSON.stringify({
-              user: u,
-              token: t,
-              accessToken: t,
-              refreshToken: refreshTkn,
-              expiresIn: expiresIn,
-              refreshedAt: Date.now(),
-            })
-          );
-        }
-      } catch (e) {
-        console.warn('Failed to persist auth to storage:', e);
+  // Clear legacy localStorage data from previous versions
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.removeItem('nuggets_auth_data_v2');
       }
-      setModularUser(u);
-      setToken(t);
-    },
-    []
-  );
+    } catch {
+      // Ignore
+    }
+  }, []);
 
-  // Hydrate from storage & Load Flags
+  // Register session-expired callback with apiClient
+  useEffect(() => {
+    apiClient.onSessionExpired(() => {
+      setModularUser(null);
+      setToken(null);
+    });
+  }, []);
+
+  // Hydrate session from HttpOnly cookies via GET /auth/me
   useEffect(() => {
     const init = async () => {
       try {
-        // 1. Load Auth — validate token with server when present
-        if (typeof window !== 'undefined' && window.localStorage) {
-          try {
-            const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-            if (stored) {
-              const parsed = JSON.parse(stored) as {
-                user?: ModularUser;
-                token?: string;
-                refreshToken?: string;
-                expiresIn?: number;
-              };
-              const storedToken = parsed.token;
-              if (!storedToken) {
-                localStorage.removeItem(AUTH_STORAGE_KEY);
-              } else {
-                try {
-                  const freshUser = await authService.getCurrentUser();
-                  persistAuth(freshUser, storedToken, parsed.refreshToken, parsed.expiresIn);
-                } catch (bootstrapErr: unknown) {
-                  if (isTransientAuthMeError(bootstrapErr)) {
-                    if (parsed.user) {
-                      setModularUser(parsed.user);
-                    }
-                    setToken(storedToken);
-                  } else {
-                    localStorage.removeItem(AUTH_STORAGE_KEY);
-                    setModularUser(null);
-                    setToken(null);
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to load auth from storage', e);
-            if (typeof window !== 'undefined' && window.localStorage) {
-              localStorage.removeItem(AUTH_STORAGE_KEY);
-            }
+        // 1. Validate session — HttpOnly cookie sent automatically via credentials: 'include'
+        try {
+          const freshUser = await authService.getCurrentUser();
+          setModularUser(freshUser);
+          setToken('cookie'); // Sentinel value — actual token is in HttpOnly cookie
+        } catch (bootstrapErr: unknown) {
+          if (isTransientAuthMeError(bootstrapErr)) {
+            // Network/server error — don't clear session, user may still be authenticated
+          } else {
+            // 401 or other auth error — user is not authenticated
+            setModularUser(null);
+            setToken(null);
           }
         }
 
@@ -126,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
     init();
-  }, [persistAuth]);
+  }, []);
 
   // --- ADAPTER: Modular -> Legacy ---
   const legacyUser: LegacyUser | null = useMemo(() => {
@@ -152,51 +118,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (payload: LoginPayload) => {
     const response = await authService.loginWithEmail(payload);
-    persistAuth(response.user, response.token, response.refreshToken, response.expiresIn);
+    // Backend sets HttpOnly cookies; we just store user state in memory
+    setModularUser(response.user);
+    setToken('cookie');
     closeAuthModal();
   };
 
-  const signup = async (payload: SignupPayload) => {
+  const signup = async (payload: SignupPayload): Promise<{ needsVerification: boolean }> => {
     const response = await authService.signupWithEmail(payload);
-    persistAuth(response.user, response.token, response.refreshToken, response.expiresIn);
+    // Anti-enumeration: backend returns 201 without tokens when email already exists
+    if (!response.token && !response.accessToken) {
+      closeAuthModal();
+      return { needsVerification: false };
+    }
+    if (response.user) {
+      setModularUser(response.user);
+      setToken('cookie');
+    }
     closeAuthModal();
+    return { needsVerification: false };
   };
 
   const socialLogin = async (provider: AuthProviderType) => {
     const response = await authService.loginWithProvider(provider);
-    persistAuth(response.user, response.token);
+    setModularUser(response.user);
+    setToken('cookie');
     closeAuthModal();
   };
 
   const logout = async () => {
-    // Get refresh token before clearing storage
-    let refreshTkn: string | undefined;
+    // Call backend to invalidate tokens and clear HttpOnly cookies
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          refreshTkn = parsed.refreshToken;
-        }
-      }
-    } catch {
-      // Ignore parsing errors
-    }
-
-    // Call backend to invalidate tokens
-    try {
-      await authService.logoutApi(refreshTkn);
+      await authService.logoutApi();
     } catch (e) {
       console.error('Logout API failed', e);
-    }
-
-    // Clear local storage
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
-      }
-    } catch (e) {
-      console.warn('Failed to remove auth from storage:', e);
     }
     setModularUser(null);
     setToken(null);

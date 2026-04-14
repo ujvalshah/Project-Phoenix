@@ -1,30 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { getNormalizedApiBase } from '@/utils/urlUtils';
 
-const AUTH_STORAGE_KEY = 'nuggets_auth_data_v2';
-
-/**
- * Get auth token from localStorage
- */
-function getAuthToken(): string | null {
-  try {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-    // #region agent log
-    fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H1',location:'src/hooks/useMediaUpload.ts:getAuthToken',message:'Read auth storage',data:{hasStored:!!stored},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    if (stored) {
-      const { token } = JSON.parse(stored);
-      // #region agent log
-      fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H1',location:'src/hooks/useMediaUpload.ts:getAuthToken',message:'Parsed auth token metadata',data:{hasToken:!!token,tokenLength:token?token.length:0},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      return token || null;
-    }
-  } catch (e) {
-    console.warn('Failed to get auth token:', e);
-  }
-  return null;
-}
-
 export interface MediaUploadResult {
   mediaId: string;
   secureUrl: string;
@@ -52,10 +28,10 @@ export interface UseMediaUploadReturn {
 
 /**
  * Unified media upload hook for Cloudinary
- * 
+ *
  * CRITICAL: All media must be uploaded to Cloudinary and tracked via MongoDB Media records.
  * Base64 storage is FORBIDDEN beyond temporary previews.
- * 
+ *
  * @param options - Upload options including purpose, entityType, entityId
  * @returns Upload function and state
  */
@@ -142,30 +118,18 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
         formData.append('entityId', options.entityId);
       }
 
-      // Get auth token for request
-      const token = getAuthToken();
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
       const apiBase = getNormalizedApiBase();
-      // #region agent log
-      fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H2',location:'src/hooks/useMediaUpload.ts:upload',message:'Preparing upload request',data:{apiBase,purpose:options.purpose||null,hasAuthHeader:!!headers.Authorization,fileType:file.type,fileSize:file.size},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
-      // Upload to backend
+      // Upload to backend — auth via HttpOnly cookies
       const response = await fetch(`${apiBase}/media/upload/cloudinary`, {
         method: 'POST',
         body: formData,
-        headers,
+        credentials: 'include',
         signal,
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Upload failed' }));
-        // #region agent log
-        fetch('http://127.0.0.1:7505/ingest/644d3f65-7d10-49bb-9448-a6d17f7f61c0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'44457b'},body:JSON.stringify({sessionId:'44457b',runId:'initial',hypothesisId:'H3',location:'src/hooks/useMediaUpload.ts:upload',message:'Upload request failed',data:{status:response.status,statusText:response.statusText,errorCode:errorData?.code||null,errorMessage:errorData?.message||null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         throw new Error(errorData.message || `Upload failed: ${response.statusText}`);
       }
 
@@ -197,33 +161,25 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
     files: File[]
   ): Promise<MediaUploadResult[]> => {
     const results: MediaUploadResult[] = [];
-    
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (options.onProgress) {
         options.onProgress((i / files.length) * 100);
       }
-      
+
       const result = await upload(file);
       if (result) {
         results.push(result);
       }
     }
-    
+
     if (options.onProgress) {
       options.onProgress(100);
     }
-    
+
     return results;
   }, [upload, options.onProgress]);
-
-  // Cleanup on unmount
-  const cleanup = useCallback(() => {
-    abort();
-  }, [abort]);
-
-  // Note: We can't use useEffect cleanup here because this is a hook
-  // The component using this hook should handle cleanup if needed
 
   return {
     upload,
@@ -234,4 +190,3 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
     abort,
   };
 }
-

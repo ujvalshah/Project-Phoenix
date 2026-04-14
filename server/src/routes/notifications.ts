@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticateToken } from '../middleware/authenticateToken.js';
-import { requireAdmin } from '../middleware/requireAdmin.js';
+import { requireAdminRole } from '../middleware/requireAdminRole.js';
 import {
   getVapidKey,
   subscribe,
@@ -34,8 +34,8 @@ router.get('/unread-count', authenticateToken, getUnreadCount);
 router.patch('/:id/read', authenticateToken, markAsRead);
 router.post('/read-all', authenticateToken, markAllAsRead);
 
-// Admin kill switch — requires admin role
-router.get('/admin/status', requireAdmin, getNotificationStatus);
-router.put('/admin/toggle', requireAdmin, toggleNotifications);
+// Admin kill switch — requires admin role (authenticateToken first for blacklist check)
+router.get('/admin/status', authenticateToken, requireAdminRole, getNotificationStatus);
+router.put('/admin/toggle', authenticateToken, requireAdminRole, toggleNotifications);
 
 export default router;

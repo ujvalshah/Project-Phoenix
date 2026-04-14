@@ -17,6 +17,7 @@ import { Request, Response, NextFunction } from 'express';
 import { User } from '../models/User.js';
 import { sendForbiddenError } from '../utils/errorResponse.js';
 import { createRequestLogger } from '../utils/logger.js';
+import { getEnv } from '../config/envValidation.js';
 
 /**
  * Middleware that requires email verification for the current user
@@ -27,6 +28,12 @@ export async function requireEmailVerified(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  // Launch mode: email verification enforcement is intentionally disabled by env flag.
+  if (!getEnv().ENABLE_EMAIL_VERIFICATION) {
+    next();
+    return;
+  }
+
   const userId = (req as any).user?.userId;
   const tokenRole = (req as any).user?.role;
 

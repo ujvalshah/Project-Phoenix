@@ -4,7 +4,7 @@ import { ModerationAuditLog } from '../models/ModerationAuditLog.js';
 import { normalizeDoc, normalizeDocs } from '../utils/db.js';
 import { z } from 'zod';
 import { buildModerationQuery } from '../services/moderationService.js';
-import { AdminRequest } from '../middleware/requireAdmin.js';
+import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { Article } from '../models/Article.js';
 import { Collection } from '../models/Collection.js';
 import { User } from '../models/User.js';

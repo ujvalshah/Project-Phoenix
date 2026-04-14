@@ -45,6 +45,34 @@ export async function sendVerificationEmail(to: string, verificationUrl: string)
  * Send a password reset email with a link to reset the user's password.
  * No-op if RESEND_API_KEY is not set.
  */
+/**
+ * Send an email to an existing user when someone tries to sign up with their email.
+ * Prevents email enumeration by making the signup response identical for new and existing emails.
+ * No-op if RESEND_API_KEY is not set.
+ */
+export async function sendAccountExistsEmail(to: string, loginUrl: string): Promise<void> {
+  if (!resendClient) {
+    if (process.env.NODE_ENV === 'development' && !RESEND_API_KEY) {
+      // eslint-disable-next-line no-console
+      console.warn('[emailService] RESEND_API_KEY not set; skipping account-exists email.');
+    }
+    return;
+  }
+
+  await resendClient.emails.send({
+    from: EMAIL_FROM,
+    to: [to],
+    subject: 'Sign-in attempt for your Nuggets account',
+    html: `
+      <p>Someone tried to create a new account using this email address.</p>
+      <p>If this was you, you already have an account. You can sign in here:</p>
+      <p><a href="${loginUrl}" style="color:#0ea5e9;text-decoration:underline;">Sign in to Nuggets</a></p>
+      <p>If you didn't request this, you can safely ignore this email. Your account is secure.</p>
+      <p>— The Nuggets team</p>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
   if (!resendClient) {
     if (process.env.NODE_ENV === 'development' && !RESEND_API_KEY) {

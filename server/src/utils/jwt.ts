@@ -1,5 +1,19 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { getEnv } from '../config/envValidation.js';
+
+// JWT audience and issuer — prevents token confusion across services
+const JWT_ISSUER = 'nuggets-api';
+const JWT_AUDIENCE = 'nuggets-app';
+
+/**
+ * Derive a purpose-specific signing key from the base JWT_SECRET using HMAC.
+ * Even if one derived key leaks, other token types remain safe.
+ * Each purpose gets a cryptographically distinct key.
+ */
+function deriveKey(purpose: 'access' | 'email_verification' | 'password_reset'): string {
+  return crypto.createHmac('sha256', getJwtSecret()).update(purpose).digest('hex');
+}
 
 /**
  * JWT token payload structure
@@ -20,9 +34,9 @@ export interface JWTPayload {
  * Refresh tokens: longer-lived for convenience
  */
 export const TOKEN_CONFIG = {
-  ACCESS_TOKEN_EXPIRY: '1h',     // 1 hour
-  REFRESH_TOKEN_EXPIRY: '7d',    // 7 days
-  ACCESS_TOKEN_SECONDS: 60 * 60, // For Redis TTL
+  ACCESS_TOKEN_EXPIRY: '15m',     // 15 minutes — short-lived to limit stolen-token window
+  REFRESH_TOKEN_EXPIRY: '7d',     // 7 days
+  ACCESS_TOKEN_SECONDS: 15 * 60,  // 900s — for Redis TTL and client expiresIn
   REFRESH_TOKEN_SECONDS: 7 * 24 * 60 * 60,
 } as const;
 
@@ -59,10 +73,12 @@ export function generateAccessToken(
     payload.email = email;
   }
 
-  const secret = getJwtSecret();
+  const secret = deriveKey('access');
   return jwt.sign(payload, secret, {
     expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_EXPIRY,
     algorithm: 'HS256',
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
   });
 }
 
@@ -93,8 +109,13 @@ export function generateToken(
     payload.email = email;
   }
 
-  const secret = getJwtSecret();
-  return jwt.sign(payload, secret, { expiresIn, algorithm: 'HS256' });
+  const secret = deriveKey('access');
+  return jwt.sign(payload, secret, {
+    expiresIn,
+    algorithm: 'HS256',
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+  });
 }
 
 /**
@@ -105,8 +126,12 @@ export function generateToken(
  * @throws If token is invalid or expired
  */
 export function verifyToken(token: string): JWTPayload {
-  const secret = getJwtSecret();
-  const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as JWTPayload;
+  const secret = deriveKey('access');
+  const decoded = jwt.verify(token, secret, {
+    algorithms: ['HS256'],
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+  }) as JWTPayload;
 
   // Ensure required fields exist
   if (!decoded.userId || !decoded.role) {
@@ -154,7 +179,7 @@ export interface EmailVerificationPayload {
  * Expires in 24 hours. Do not use for auth; verify with verifyEmailVerificationToken.
  */
 export function generateEmailVerificationToken(userId: string, email: string): string {
-  const secret = getJwtSecret();
+  const secret = deriveKey('email_verification');
   const payload: EmailVerificationPayload = { purpose: 'email_verification', userId, email };
   return jwt.sign(payload, secret, { expiresIn: '24h', algorithm: 'HS256' });
 }
@@ -164,7 +189,7 @@ export function generateEmailVerificationToken(userId: string, email: string): s
  * @throws If token is invalid, expired, or has wrong purpose
  */
 export function verifyEmailVerificationToken(token: string): { userId: string; email: string } {
-  const secret = getJwtSecret();
+  const secret = deriveKey('email_verification');
   const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as EmailVerificationPayload & { purpose?: string };
   if (decoded.purpose !== 'email_verification' || !decoded.userId || !decoded.email) {
     throw new Error('Invalid verification token');
@@ -185,7 +210,7 @@ export interface PasswordResetPayload {
  * Expires in 1 hour for security.
  */
 export function generatePasswordResetToken(userId: string, email: string): string {
-  const secret = getJwtSecret();
+  const secret = deriveKey('password_reset');
   const payload: PasswordResetPayload = { purpose: 'password_reset', userId, email };
   return jwt.sign(payload, secret, { expiresIn: '1h', algorithm: 'HS256' });
 }
@@ -195,7 +220,7 @@ export function generatePasswordResetToken(userId: string, email: string): strin
  * @throws If token is invalid, expired, or has wrong purpose
  */
 export function verifyPasswordResetToken(token: string): { userId: string; email: string } {
-  const secret = getJwtSecret();
+  const secret = deriveKey('password_reset');
   const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as PasswordResetPayload & { purpose?: string };
   if (decoded.purpose !== 'password_reset' || !decoded.userId || !decoded.email) {
     throw new Error('Invalid password reset token');

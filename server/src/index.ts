@@ -4,7 +4,7 @@ import './loadEnv.js';
 
 // CRITICAL: Validate environment variables BEFORE any other imports
 // This ensures the server fails fast on misconfiguration
-import { validateEnv, getEnv, getCorsAllowedOrigins } from './config/envValidation.js';
+import { validateEnv, getEnv, getCorsAllowedOrigins, normalizeOrigin } from './config/envValidation.js';
 validateEnv();
 
 // Initialize Logger early (after validateEnv, before other imports that might log)
@@ -16,7 +16,8 @@ import { initSentry, captureException, isSentryEnabled } from './utils/sentry.js
 initSentry();
 
 import express from 'express';
-import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import cors, { CorsOptions } from 'cors';
 import path from 'path';
 import morgan from 'morgan'; // Request logger
 import helmet from 'helmet';
@@ -42,7 +43,7 @@ import { clearDatabase } from './utils/clearDatabase.js';
 // Token Service (Redis-based token management)
 import { initTokenService, closeTokenService } from './services/tokenService.js';
 // Shared Redis Client
-import { initRedisClient, closeRedisClient } from './utils/redisClient.js';
+import { initRedisClient, closeRedisClient, isRedisAvailable, getRedisClientOrFallback } from './utils/redisClient.js';
 
 // Cloudinary
 import { initializeCloudinary } from './services/cloudinaryService.js';
@@ -66,8 +67,14 @@ import legalRouter from './routes/legal.js';
 import adminLegalRouter from './routes/adminLegal.js';
 import contactRouter from './routes/contact.js';
 import { ogMiddleware } from './middleware/ogMiddleware.js';
+import { authenticateToken as clearDbAuth } from './middleware/authenticateToken.js';
+import { requireAdminRole as clearDbAdmin } from './middleware/requireAdminRole.js';
 
 const app = express();
+// SECURITY: Trust first proxy (Render/Cloudflare/Vercel/Nginx) so req.ip returns
+// the real client IP. Without this, rate limiters and account lockout track
+// the proxy IP instead of the attacker IP.
+app.set('trust proxy', 1);
 const env = getEnv();
 const PORT = parseInt(env.PORT, 10) || 5000;
 
@@ -89,7 +96,21 @@ app.use(compression({
 app.use(helmet());
 
 // CORS allowlist: FRONTEND_URL + CORS_ALLOWED_ORIGINS (see envValidation.getCorsAllowedOrigins)
-const allowedOrigins: string[] = getCorsAllowedOrigins();
+const configOrigins = getCorsAllowedOrigins();
+const devOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+];
+const allowedOrigins: string[] = Array.from(
+  new Set(
+    [
+      ...configOrigins,
+      ...(env.NODE_ENV === 'development' ? devOrigins : []),
+    ].map((origin) => normalizeOrigin(origin)).filter(Boolean)
+  )
+);
 
 // Diagnostic middleware to log request details before CORS check
 app.use((req, res, next) => {
@@ -108,64 +129,82 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors({
+const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
-    // Diagnostic logging for origin validation
     const logger = getLogger();
-    const hasOrigin = !!origin;
-    
-    // Allow requests without origin (same-origin requests)
+
+    // Allow same-origin and non-browser requests (no Origin header).
     if (!origin) {
       logger.info({
         msg: '[CORS-DIAG] Origin validation',
         origin: '(no origin)',
         hasOrigin: false,
-        allowedOrigins: allowedOrigins,
-        matchFound: 'no-origin-checked',
+        allowedOrigins,
         isAllowed: true,
         validationRule: '!origin',
         environment: env.NODE_ENV,
       });
       return callback(null, true);
     }
-    
-    // Check against production allow-list
-    const isInAllowedList = allowedOrigins.includes(origin);
-    
-    // In development mode, also allow localhost and 127.0.0.1 origins
-    let isAllowed = isInAllowedList;
-    let matchFound = isInAllowedList;
-    const isLocalhost = origin.startsWith('http://localhost:') || 
-                        origin.startsWith('http://127.0.0.1:') ||
-                        origin === 'http://localhost' ||
-                        origin === 'http://127.0.0.1';
-    
-    if (env.NODE_ENV === 'development' && isLocalhost) {
-      isAllowed = true;
-      matchFound = 'localhost-allowed-in-dev';
-    }
-    
+
+    const normalizedOrigin = normalizeOrigin(origin);
+    const isAllowed = allowedOrigins.includes(normalizedOrigin);
+
     logger.info({
       msg: '[CORS-DIAG] Origin validation',
-      origin: origin,
+      origin,
+      normalizedOrigin,
       hasOrigin: true,
-      allowedOrigins: allowedOrigins,
-      matchFound: matchFound,
-      isAllowed: isAllowed,
+      allowedOrigins,
+      isAllowed,
       environment: env.NODE_ENV,
-      isLocalhost: isLocalhost,
-      validationRule: env.NODE_ENV === 'development' ? 'allowedOrigins.includes(origin) || isLocalhost' : 'allowedOrigins.includes(origin)',
+      validationRule: 'allowedOrigins.includes(normalizeOrigin(origin))',
     });
-    
+
     if (isAllowed) {
       return callback(null, true);
     }
-    return callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true
-}));
 
-app.options(/.*/, cors());
+    logger.warn({
+      msg: '[CORS-DIAG] Origin blocked',
+      origin,
+      normalizedOrigin,
+      method: 'origin-callback',
+      allowedOrigins,
+    });
+    return callback(new Error(`CORS blocked for origin: ${normalizedOrigin || origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+  optionsSuccessStatus: 204,
+  maxAge: 86400,
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
+
+// Log completed OPTIONS requests so preflight behavior is visible in production logs.
+app.use((req, res, next) => {
+  if (req.method !== 'OPTIONS') {
+    return next();
+  }
+  res.on('finish', () => {
+    const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
+    requestLogger.info({
+      msg: '[CORS-DIAG] Preflight response sent',
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      origin: req.headers.origin || '(no origin header)',
+      allowOrigin: res.getHeader('access-control-allow-origin') || '(not set)',
+      allowCredentials: res.getHeader('access-control-allow-credentials') || '(not set)',
+      allowMethods: res.getHeader('access-control-allow-methods') || '(not set)',
+      allowHeaders: res.getHeader('access-control-allow-headers') || '(not set)',
+    });
+  });
+  return next();
+});
 
 // Request ID Middleware - MUST be early to ensure all logs have request ID
 app.use(requestIdMiddleware);
@@ -173,8 +212,16 @@ app.use(requestIdMiddleware);
 // Sentry Request Handler - MUST be before routes (only if Sentry is enabled)
 
 
+// Cookie Parsing (required for HttpOnly auth cookie reads)
+app.use(cookieParser());
+
 // Body Parsing
 app.use(express.json({ limit: '10mb' }));
+
+// CSRF Protection — double-submit cookie pattern for cookie-based auth
+// Must come after cookieParser and body parsing
+import { csrfProtection } from './middleware/csrf.js';
+app.use('/api', csrfProtection);
 
 // Request Logging - Use structured logger instead of morgan in production
 if (env.NODE_ENV === 'development') {
@@ -259,26 +306,19 @@ app.get('/api/health', async (req, res) => {
     const dbConnected = isMongoConnected();
     const dbStatus = dbConnected ? 'connected' : 'disconnected';
     
-    // Audit Phase-2 Fix: Check Redis health if configured (optional service)
+    // Check Redis health using shared client (no per-request connection leak)
     let redisHealthy = true; // Default to true if Redis not configured
-    if (process.env.REDIS_URL) {
+    if (isRedisAvailable()) {
       try {
-        // Use dynamic import to avoid requiring redis package if not installed
-        const { createClient } = await import('redis');
-        const client = createClient({ url: process.env.REDIS_URL });
-        await client.connect();
-        await client.ping();
-        await client.quit();
+        const client = getRedisClientOrFallback();
+        await (client as any).ping();
         redisHealthy = true;
       } catch (redisError: any) {
         redisHealthy = false;
-        // Log but don't fail health check - Redis is optional
         const logger = getLogger();
         logger.warn({
           msg: 'Redis health check failed',
-          error: {
-            message: redisError.message,
-          },
+          error: { message: redisError.message },
         });
       }
     }
@@ -351,33 +391,36 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Clear Database Endpoint (for development/admin use)
-app.post('/api/clear-db', async (req, res) => {
-  try {
-    await clearDatabase();
-    res.json({ 
-      success: true, 
-      message: 'Database cleared successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', undefined, '/api/clear-db');
-    requestLogger.error({
-      msg: 'Clear DB error',
-      error: {
-        message: error.message,
-        stack: error.stack,
-      },
-    });
-    captureException(error, { requestId: req.id, route: '/api/clear-db' });
-    res.status(500).json({ 
-      success: false,
-      message: 'Failed to clear database',
-      error: error.message,
-      requestId: req.id,
-    });
-  }
-});
+// Clear Database Endpoint (development only, admin-authenticated)
+// SECURITY: Never register in production; require auth + admin role even in dev
+if (env.NODE_ENV !== 'production') {
+  app.post('/api/clear-db', clearDbAuth, clearDbAdmin, async (req, res) => {
+    try {
+      await clearDatabase();
+      res.json({
+        success: true,
+        message: 'Database cleared successfully',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      const requestLogger = createRequestLogger(req.id || 'unknown', undefined, '/api/clear-db');
+      requestLogger.error({
+        msg: 'Clear DB error',
+        error: {
+          message: error.message,
+          stack: error.stack,
+        },
+      });
+      captureException(error, { requestId: req.id, route: '/api/clear-db' });
+      res.status(500).json({
+        success: false,
+        message: 'Failed to clear database',
+        error: error.message,
+        requestId: req.id,
+      });
+    }
+  });
+}
 
 // API 404 Handler - MUST come before React static file handler
 // Prevents API requests from falling through to index.html
@@ -460,6 +503,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       ? { method: req.method }
       : { method: req.method, body: req.body, query: req.query },
   });
+
+  // Preserve CORS headers on error responses for allowed origins.
+  // This prevents browser-side "No Access-Control-Allow-Origin header" masking real server errors.
+  const requestOriginHeader = req.headers.origin;
+  const normalizedRequestOrigin = requestOriginHeader ? normalizeOrigin(requestOriginHeader) : '';
+  if (normalizedRequestOrigin && allowedOrigins.includes(normalizedRequestOrigin)) {
+    res.header('Access-Control-Allow-Origin', normalizedRequestOrigin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Vary', 'Origin');
+  }
 
   // Send error response
   res.status(err.status || 500).json({
