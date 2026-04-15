@@ -103,12 +103,33 @@ const devOrigins = [
   'http://127.0.0.1:3000',
   'http://127.0.0.1:5173',
 ];
+
+const withWwwVariant = (origin: string): string[] => {
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) return [];
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname;
+    // Production users often hit both apex and www domains; keep both allowed
+    // when either one is explicitly configured.
+    if (host.startsWith('www.')) {
+      return [normalized, `${url.protocol}//${host.replace(/^www\./, '')}${url.port ? `:${url.port}` : ''}`];
+    }
+    return [normalized, `${url.protocol}//www.${host}${url.port ? `:${url.port}` : ''}`];
+  } catch {
+    return [normalized];
+  }
+};
+
 const allowedOrigins: string[] = Array.from(
   new Set(
     [
       ...configOrigins,
       ...(env.NODE_ENV === 'development' ? devOrigins : []),
-    ].map((origin) => normalizeOrigin(origin)).filter(Boolean)
+    ]
+      .flatMap((origin) => withWwwVariant(origin))
+      .map((origin) => normalizeOrigin(origin))
+      .filter(Boolean)
   )
 );
 
@@ -176,7 +197,9 @@ const corsOptions: CorsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+  // Let `cors` reflect Access-Control-Request-Headers. A strict static list can
+  // reject valid browser-generated headers and break preflight in production.
+  allowedHeaders: undefined,
   optionsSuccessStatus: 204,
   maxAge: 86400,
 };
