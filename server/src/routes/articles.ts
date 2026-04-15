@@ -11,9 +11,13 @@ router.get('/', articlesController.getArticles);
 // NOTE: This route must come BEFORE /:id route to ensure proper matching
 router.get('/my/counts', authenticateToken, articlesController.getMyArticleCounts);
 
-// GET /api/articles/pulse/today-count - Get count of Market Pulse nuggets added today
-// NOTE: This route must come BEFORE /:id route to ensure proper matching
-router.get('/pulse/today-count', articlesController.getPulseTodayCount);
+// GET /api/articles/pulse/unseen-count - Count of Pulse nuggets the user hasn't seen yet
+// POST /api/articles/pulse/mark-seen - Reset that counter by bumping lastSeenPulseAt
+// NOTE: These routes must come BEFORE /:id route to ensure proper matching
+router.get('/pulse/unseen-count', authenticateToken, articlesController.getPulseUnseenCount);
+router.post('/pulse/mark-seen', authenticateToken, articlesController.markPulseSeen);
+router.get('/standard/unseen-count', authenticateToken, articlesController.getStandardUnseenCount);
+router.post('/standard/mark-seen', authenticateToken, articlesController.markStandardSeen);
 
 // GET /api/articles/:id - Get specific article
 router.get('/:id', articlesController.getArticleById);

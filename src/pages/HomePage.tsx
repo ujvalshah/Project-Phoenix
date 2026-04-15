@@ -42,6 +42,7 @@ import { useSearchParams } from 'react-router-dom';
 import { articleService } from '@/services/articleService';
 import { useFilters } from '@/context/FilterStateContext';
 import { useFilterResults } from '@/context/FilterResultsContext';
+import { useMarkPulseSeen, useMarkStandardSeen } from '@/hooks/usePulseUnseen';
 
 const VALUEPROP_DISMISSED_KEY = 'nuggets_valueprop_dismissed';
 const PULSE_INTRO_DISMISSED_KEY = 'market_pulse_intro_dismissed';
@@ -154,7 +155,19 @@ export const HomePage: React.FC<HomePageProps> = ({
   const isLg = useMediaQuery('(min-width: 1024px)');
   const { setInlineDesktopFiltersActive } = useDesktopFilterSidebar();
 
-  const { currentUserId } = useAuth();
+  const { currentUserId, isAuthenticated } = useAuth();
+  const markPulseSeen = useMarkPulseSeen();
+  const markStandardSeen = useMarkStandardSeen();
+
+  // Clear the matching unseen badge when an authenticated user lands on that
+  // stream. Guarded by isAuthenticated to avoid 401s on anonymous visits;
+  // re-runs each time contentStream changes so switching streams re-marks once.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (contentStream === 'pulse') markPulseSeen.mutate();
+    else if (contentStream === 'standard') markStandardSeen.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentStream, isAuthenticated]);
 
   useEffect(() => {
     setInlineDesktopFiltersActive(isLg);

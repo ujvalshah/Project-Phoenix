@@ -102,8 +102,20 @@ export class RestAdapter implements IAdapter {
     return apiClient.get<Article>(`/articles/${id}`).catch(() => undefined);
   }
 
-  getPulseTodayCount(): Promise<number> {
-    return apiClient.get<{ count: number }>('/articles/pulse/today-count').then(r => r.count);
+  getPulseUnseenCount(): Promise<number> {
+    return apiClient.get<{ count: number }>('/articles/pulse/unseen-count').then(r => r.count);
+  }
+
+  markPulseSeen(): Promise<void> {
+    return apiClient.post<void>('/articles/pulse/mark-seen', {});
+  }
+
+  getStandardUnseenCount(): Promise<number> {
+    return apiClient.get<{ count: number }>('/articles/standard/unseen-count').then(r => r.count);
+  }
+
+  markStandardSeen(): Promise<void> {
+    return apiClient.post<void>('/articles/standard/mark-seen', {});
   }
 
   getArticlesByAuthor(authorId: string): Promise<Article[]> {

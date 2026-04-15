@@ -7,7 +7,7 @@ import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { LAYOUT } from '@/constants/layout';
 import { Z_INDEX } from '@/constants/zIndex';
-import { usePulseTodayCount } from '@/hooks/usePulseTodayCount';
+import { usePulseUnseenCount, useStandardUnseenCount } from '@/hooks/usePulseUnseen';
 
 const NAV_LABEL_CLASS = 'text-[11px] font-medium leading-tight tracking-[0.01em]';
 
@@ -93,7 +93,8 @@ export const MobileBottomNav: React.FC = () => {
   const filters = useFilters();
   const { isViewportNarrow, narrowHeaderHidden, setChromeInteractionActive } = useAppChromeScroll();
   const prefersReducedMotion = usePrefersReducedMotion();
-  const { data: pulseTodayCount } = usePulseTodayCount();
+  const { data: pulseUnseenCount } = usePulseUnseenCount();
+  const { data: standardUnseenCount } = useStandardUnseenCount();
   const pulseEnabled = isFeatureEnabled('MARKET_PULSE');
 
   const showShell =
@@ -126,13 +127,23 @@ export const MobileBottomNav: React.FC = () => {
   const isPulse = isHome && filters.contentStream === 'pulse';
 
   const gridCols = pulseEnabled ? 'grid-cols-3' : 'grid-cols-2';
-  const pulseHasUpdates = (pulseTodayCount ?? 0) > 0;
+  // Mobile bottom nav uses a dot (presence indicator) rather than a number:
+  // follows Material 3 / Instagram / X convention for feed-style destinations
+  // where quantity isn't actionable. The exact count lives on the desktop header.
+  const pulseHasUpdates = (pulseUnseenCount ?? 0) > 0;
   const pulseBadgeLabel = useMemo(() => {
     if (!pulseHasUpdates) return '';
-    return pulseTodayCount != null && pulseTodayCount > 99
-      ? '99+ updates in Market Pulse today'
-      : `${pulseTodayCount ?? 0} updates in Market Pulse today`;
-  }, [pulseHasUpdates, pulseTodayCount]);
+    return pulseUnseenCount != null && pulseUnseenCount > 99
+      ? '99+ unseen Market Pulse updates'
+      : `${pulseUnseenCount ?? 0} unseen Market Pulse updates`;
+  }, [pulseHasUpdates, pulseUnseenCount]);
+  const standardHasUpdates = (standardUnseenCount ?? 0) > 0;
+  const standardBadgeLabel = useMemo(() => {
+    if (!standardHasUpdates) return '';
+    return standardUnseenCount != null && standardUnseenCount > 99
+      ? '99+ unseen Home updates'
+      : `${standardUnseenCount ?? 0} unseen Home updates`;
+  }, [standardHasUpdates, standardUnseenCount]);
 
   return (
     <nav
@@ -159,6 +170,15 @@ export const MobileBottomNav: React.FC = () => {
             filters.setContentStream('standard');
             if (isStandard) window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
+          indicator={standardHasUpdates ? (
+            <span
+              className="absolute right-3 top-2.5 flex h-2.5 w-2.5 items-center justify-center rounded-full border border-white bg-primary-500 dark:border-slate-950"
+              aria-label={standardBadgeLabel}
+              title={standardBadgeLabel}
+            >
+              <span className="sr-only">{standardBadgeLabel}</span>
+            </span>
+          ) : undefined}
         />
 
         {pulseEnabled && (

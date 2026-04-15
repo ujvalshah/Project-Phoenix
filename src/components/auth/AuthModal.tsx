@@ -66,12 +66,6 @@ export const AuthModal: React.FC = () => {
     setFullName('');
   }, [isAuthModalOpen, authModalView]);
 
-  useEffect(() => {
-    if (isAuthModalOpen) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = 'unset';
-    return () => { document.body.style.overflow = 'unset'; };
-  }, [isAuthModalOpen]);
-
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
       setEmail(val);
@@ -161,12 +155,12 @@ export const AuthModal: React.FC = () => {
   return (
     <ModalShell isOpen={isAuthModalOpen} onClose={closeAuthModal}>
       <div className="
-        relative w-full max-w-md 
-        bg-white/90 dark:bg-slate-950/80 backdrop-blur-xl 
-        rounded-2xl shadow-2xl 
-        border border-white/20 dark:border-white/10
-        flex flex-col overflow-hidden 
-        animate-in zoom-in-95 fade-in slide-in-from-bottom-4 duration-300
+        relative w-full max-w-md
+        bg-white dark:bg-slate-950
+        rounded-2xl shadow-2xl
+        border border-slate-200/70 dark:border-white/10
+        flex flex-col overflow-hidden
+        animate-in fade-in zoom-in-95 duration-150
         max-h-[90vh]
       ">
         

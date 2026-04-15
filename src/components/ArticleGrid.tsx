@@ -115,9 +115,13 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   onRetry,
 }) => {
   const { expandedId, toggleExpansion, registerCard } = useRowExpansion();
-  const [shouldAnimate, setShouldAnimate] = useState(false);
+  // Default to animated-visible when we already have data at mount so cards
+  // never get stuck at opacity-0 if the loading transition is missed (e.g.
+  // cached React Query hydration, back/forward nav, tab restore). The
+  // entrance animation is cosmetic — content visibility is the invariant.
+  const [shouldAnimate, setShouldAnimate] = useState(() => articles.length > 0 && !isLoading);
   const prevLoadingRef = useRef(isLoading);
-  const hasInitializedRef = useRef(false);
+  const hasInitializedRef = useRef(articles.length > 0 && !isLoading);
   
   // URL state synchronization
   const [searchParams, setSearchParams] = useSearchParams();
@@ -482,7 +486,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
             <div
               className={`
                 h-full
-                ${shouldAnimate ? 'animate-fade-in-up' : 'opacity-0'}
+                ${shouldAnimate ? 'animate-fade-in-up' : ''}
                 motion-reduce:animate-none motion-reduce:opacity-100
               `}
               style={{

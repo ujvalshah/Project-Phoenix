@@ -23,7 +23,7 @@ import { DropdownPortal } from './UI/DropdownPortal';
 import { useFilters } from '@/context/FilterStateContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { useLegalPages } from '@/hooks/useLegalPages';
-import { usePulseTodayCount } from '@/hooks/usePulseTodayCount';
+import { usePulseUnseenCount, useStandardUnseenCount } from '@/hooks/usePulseUnseen';
 import { twMerge } from 'tailwind-merge';
 import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { setNarrowHeaderHidden } from '@/constants/layoutScrollBridge';
@@ -91,7 +91,8 @@ export const Header: React.FC<HeaderProps> = ({
   // Consume filter state from context — no prop drilling required
   const filters = useFilters();
   const { searchInputValue: searchQuery, setSearchInput: setSearchQuery, sortOrder, setSortOrder } = filters;
-  const { data: pulseTodayCount } = usePulseTodayCount();
+  const { data: pulseUnseenCount } = usePulseUnseenCount();
+  const { data: standardUnseenCount } = useStandardUnseenCount();
   const { narrowHeaderHidden } = useAppChromeScroll();
   const { resultCount } = useFilterResults();
 
@@ -324,7 +325,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Link
                 to="/"
                 onClick={() => filters.setContentStream('standard')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
+                className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 ${
                   isHome && filters.contentStream === 'standard'
                     ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
                     : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
@@ -332,6 +333,14 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-current={isHome && filters.contentStream === 'standard' ? 'page' : undefined}
               >
                 Home
+                {standardUnseenCount != null && standardUnseenCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-primary-500 text-gray-900 text-[10px] font-normal leading-none"
+                    aria-label={`${standardUnseenCount > 99 ? '99+' : standardUnseenCount} unseen Home updates`}
+                  >
+                    {standardUnseenCount > 99 ? '99+' : standardUnseenCount}
+                  </span>
+                )}
               </Link>
               {isFeatureEnabled('MARKET_PULSE') && (
                 <Link
@@ -345,9 +354,12 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-current={isHome && filters.contentStream === 'pulse' ? 'page' : undefined}
                 >
                   Market Pulse
-                  {pulseTodayCount != null && pulseTodayCount > 0 && (
-                    <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-normal leading-none">
-                      {pulseTodayCount}
+                  {pulseUnseenCount != null && pulseUnseenCount > 0 && (
+                    <span
+                      className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-normal leading-none"
+                      aria-label={`${pulseUnseenCount > 99 ? '99+' : pulseUnseenCount} unseen Market Pulse updates`}
+                    >
+                      {pulseUnseenCount > 99 ? '99+' : pulseUnseenCount}
                     </span>
                   )}
                 </Link>

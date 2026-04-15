@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Article } from '../models/Article.js';
 import { Collection } from '../models/Collection.js';
 import { Tag } from '../models/Tag.js';
+import { User } from '../models/User.js';
 import { normalizeDoc, normalizeDocs, normalizeArticleDoc, normalizeArticleDocs } from '../utils/db.js';
 import { createArticleSchema, updateArticleSchema } from '../utils/validation.js';
 import { validateDimensionTagIds } from '../utils/validateDimensionTagIds.js';
@@ -1244,27 +1245,102 @@ export const getMyArticleCounts = async (req: Request, res: Response) => {
   }
 };
 
+// Both feeds share the same "unseen since lastSeen<Stream>At" logic. The only
+// differences are the User field we read/write and the contentStream values
+// that count toward each feed. 'both' articles appear in Home and Pulse, so
+// they count against both badges.
+type StreamKey = 'pulse' | 'standard';
+
+const STREAM_CONFIG: Record<StreamKey, { field: 'lastSeenPulseAt' | 'lastSeenStandardAt'; streams: string[] }> = {
+  pulse: { field: 'lastSeenPulseAt', streams: ['pulse', 'both'] },
+  standard: { field: 'lastSeenStandardAt', streams: ['standard', 'both'] },
+};
+
+async function getUnseenCountForStream(userId: string, key: StreamKey): Promise<number> {
+  const { field, streams } = STREAM_CONFIG[key];
+  const selector = `appState.${field}`;
+  const user = await User.findById(userId).select(selector).lean();
+  const lastSeenIso = user?.appState?.[field];
+
+  // First read ever: seed the timestamp to now and return 0. Prevents the
+  // badge from showing the entire backlog at feature-ship time.
+  if (!lastSeenIso) {
+    const nowIso = new Date().toISOString();
+    await User.updateOne({ _id: userId }, { $set: { [selector]: nowIso } });
+    return 0;
+  }
+
+  return Article.countDocuments({
+    contentStream: { $in: streams },
+    createdAt: { $gt: new Date(lastSeenIso) },
+    visibility: { $ne: 'private' },
+  });
+}
+
+async function markStreamSeen(userId: string, key: StreamKey): Promise<string> {
+  const { field } = STREAM_CONFIG[key];
+  const nowIso = new Date().toISOString();
+  await User.updateOne({ _id: userId }, { $set: { [`appState.${field}`]: nowIso } });
+  return nowIso;
+}
+
 /**
- * Get count of Market Pulse articles created today (UTC)
- *
- * GET /api/articles/pulse/today-count
- * Public endpoint — no authentication required
+ * GET /api/articles/pulse/unseen-count — authenticated.
  */
-export const getPulseTodayCount = async (_req: Request, res: Response) => {
+export const getPulseUnseenCount = async (req: Request, res: Response) => {
   try {
-    const now = new Date();
-    const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-
-    const count = await Article.countDocuments({
-      contentStream: { $in: ['pulse', 'both'] },
-      createdAt: { $gte: startOfDay },
-      visibility: { $ne: 'private' },
-    });
-
+    const userId = (req as any).user?.userId;
+    if (!userId) return res.status(401).json({ error: true, message: 'Unauthorized' });
+    const count = await getUnseenCountForStream(userId, 'pulse');
     res.json({ count });
   } catch (error: unknown) {
-    const logger = createRequestLogger(_req);
-    logger.error({ error }, '[Articles] Get pulse today count error');
+    createRequestLogger(req).error({ error }, '[Articles] Get pulse unseen count error');
+    sendInternalError(res);
+  }
+};
+
+/**
+ * POST /api/articles/pulse/mark-seen — authenticated.
+ */
+export const markPulseSeen = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    if (!userId) return res.status(401).json({ error: true, message: 'Unauthorized' });
+    const lastSeenPulseAt = await markStreamSeen(userId, 'pulse');
+    res.json({ lastSeenPulseAt });
+  } catch (error: unknown) {
+    createRequestLogger(req).error({ error }, '[Articles] Mark pulse seen error');
+    sendInternalError(res);
+  }
+};
+
+/**
+ * GET /api/articles/standard/unseen-count — authenticated.
+ * Same semantics as the Pulse counterpart but for the Home (standard) feed.
+ */
+export const getStandardUnseenCount = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    if (!userId) return res.status(401).json({ error: true, message: 'Unauthorized' });
+    const count = await getUnseenCountForStream(userId, 'standard');
+    res.json({ count });
+  } catch (error: unknown) {
+    createRequestLogger(req).error({ error }, '[Articles] Get standard unseen count error');
+    sendInternalError(res);
+  }
+};
+
+/**
+ * POST /api/articles/standard/mark-seen — authenticated.
+ */
+export const markStandardSeen = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    if (!userId) return res.status(401).json({ error: true, message: 'Unauthorized' });
+    const lastSeenStandardAt = await markStreamSeen(userId, 'standard');
+    res.json({ lastSeenStandardAt });
+  } catch (error: unknown) {
+    createRequestLogger(req).error({ error }, '[Articles] Mark standard seen error');
     sendInternalError(res);
   }
 };

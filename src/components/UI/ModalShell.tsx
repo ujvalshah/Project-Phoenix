@@ -100,7 +100,7 @@ export const ModalShell: React.FC<ModalShellProps> = ({
       {!noBackdrop && (
         <div
           className={twMerge(
-            'absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200',
+            'absolute inset-0 bg-slate-900/60 animate-in fade-in duration-150',
             backdropClassName ?? '',
           )}
           onClick={handleBackdrop}

@@ -57,6 +57,8 @@ export interface IUserPreferences {
 
 export interface IUserAppState {
   lastLoginAt?: string;
+  lastSeenPulseAt?: string;
+  lastSeenStandardAt?: string;
   onboardingCompleted: boolean;
   featureFlags?: Record<string, boolean>;
 }
@@ -133,6 +135,8 @@ const UserPreferencesSchema = new Schema<IUserPreferences>({
 
 const UserAppStateSchema = new Schema<IUserAppState>({
   lastLoginAt: { type: String },
+  lastSeenPulseAt: { type: String },
+  lastSeenStandardAt: { type: String },
   onboardingCompleted: { type: Boolean, default: false },
   featureFlags: { type: Schema.Types.Mixed, default: {} }
 }, { _id: false });

@@ -183,7 +183,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       {/* Header */}
       <div
         className={`shrink-0 border-b border-slate-200/70 dark:border-slate-800/80 ${shellPad} ${
-          layout === 'sidebar' ? 'bg-white/90 backdrop-blur-sm dark:bg-slate-950/90' : ''
+          layout === 'sidebar' ? 'bg-white dark:bg-slate-950' : ''
         }`}
       >
         <div className="flex items-start justify-between gap-2">
@@ -413,7 +413,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       {!isLoading && (
         <div
           className={`shrink-0 border-t border-slate-200/70 px-3 py-2 dark:border-slate-800/80 ${
-            layout === 'sidebar' ? 'bg-white/80 dark:bg-slate-950/80' : ''
+            layout === 'sidebar' ? 'bg-white dark:bg-slate-950' : ''
           }`}
         >
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
