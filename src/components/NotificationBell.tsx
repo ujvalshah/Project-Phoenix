@@ -15,7 +15,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { twMerge } from 'tailwind-merge';
-import { Z_INDEX } from '@/constants/zIndex';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import { articleService } from '@/services/articleService';
 import { ArticleModal } from './ArticleModal';
 import { NotificationBadge } from './NotificationBadge';
@@ -478,11 +478,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
       {isOpen && position && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed w-80 sm:w-96 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden"
+          className="fixed pointer-events-auto w-80 sm:w-96 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden"
           style={{
             top: position.top,
             right: position.right,
-            zIndex: Z_INDEX.HEADER_OVERLAY,
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -584,7 +583,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             </div>
           )}
         </div>,
-        document.body
+        getOverlayHost('dropdown'),
       )}
 
       {/* Article detail modal — opened from notification click */}

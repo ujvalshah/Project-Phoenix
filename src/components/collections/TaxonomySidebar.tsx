@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, FolderTree, X } from 'lucide-react';
-import { Z_INDEX } from '@/constants/zIndex';
+import { getOverlayHost } from '@/utils/overlayHosts';
 
 export interface TaxonomyNode {
   id: string;
@@ -251,8 +251,7 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
       {shouldRenderSheet && typeof document !== 'undefined' &&
         createPortal(
           <div
-            className={`fixed inset-0 bg-slate-900/45 transition-opacity duration-200 lg:hidden ${isVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
-            style={{ zIndex: Z_INDEX.MODAL }}
+            className={`fixed inset-0 bg-slate-900/45 transition-opacity duration-200 lg:hidden ${isVisible ? 'opacity-100 pointer-events-auto' : 'pointer-events-none opacity-0'}`}
             onClick={onCloseMobile}
             role="presentation"
           >
@@ -323,7 +322,7 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
               </div>
             </div>
           </div>,
-          document.body,
+          getOverlayHost('drawer'),
         )}
     </>
   );

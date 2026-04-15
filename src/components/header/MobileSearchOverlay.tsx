@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X, Clock } from 'lucide-react';
 import { SearchInput, SearchInputHandle } from './SearchInput';
-import { Z_INDEX } from '@/constants/zIndex';
+import { getOverlayHost } from '@/utils/overlayHosts';
 
 interface MobileSearchOverlayProps {
   isOpen: boolean;
@@ -63,8 +63,7 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
 
   return createPortal(
     <div
-      className="fixed inset-0 bg-white z-50 flex flex-col"
-      style={{ zIndex: Z_INDEX.HEADER_OVERLAY }}
+      className="fixed inset-0 pointer-events-auto bg-white flex flex-col"
       role="dialog"
       aria-modal="true"
       aria-label="Search"
@@ -126,7 +125,7 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
         </div>
       )}
     </div>,
-    document.body
+    getOverlayHost('drawer'),
   );
 });
 

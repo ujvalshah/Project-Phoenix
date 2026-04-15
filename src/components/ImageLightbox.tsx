@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, Minimize2, ExternalLink } from 'lucide-react';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import { Image } from '@/components/Image';
 import type { MasonrySourceLink } from '@/utils/masonryMediaHelper';
 
@@ -496,7 +497,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
 
   return createPortal(
     <div 
-      className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 pointer-events-auto bg-black/95 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={isFullscreen ? handleClose : undefined}
       style={{ 
         paddingTop: 'env(safe-area-inset-top)', 
@@ -689,6 +690,6 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
         </div>
       )}
     </div>,
-    document.body
+    getOverlayHost('modal'),
   );
 };

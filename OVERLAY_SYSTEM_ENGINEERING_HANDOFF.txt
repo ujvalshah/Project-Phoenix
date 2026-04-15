@@ -1,0 +1,191 @@
+================================================================================
+ENGINEERING HANDOFF: OVERLAY SYSTEM COMPLETION & RESIDUE SWEEP
+================================================================================
+Project: Project-Phoenix (React 19 + Vite)
+
+Theme: Centralized overlay hosts (#dropdown-root, #popover-root, #tooltip-root,
+#modal-root, etc.), Z_INDEX in src/constants/zIndex.ts, mountOverlayHostStack() /
+getOverlayHost() in src/utils/overlayHosts.ts.
+
+This report summarizes overlay-related work (completion pass + residue sweep) so
+reviewers can trace what changed, why, and what stayed local on purpose.
+
+--------------------------------------------------------------------------------
+1. GOALS
+--------------------------------------------------------------------------------
+- Stop clipping / wrong stacking for menus, popovers, tooltips, and comboboxes
+  inside cards, masonry, scroll areas, and overflow-* / transform ancestors.
+- No ad-hoc z-[9999] or "raise z-index until it works."
+- Prefer portaling to named hosts + existing primitives: DropdownPortal,
+  ModalShell, getOverlayHost, shared Tooltip where appropriate.
+- Preserve a11y (roles, keyboard, focus) and outside-click / Escape behavior.
+
+--------------------------------------------------------------------------------
+2. ARCHITECTURE (unchanged intent)
+--------------------------------------------------------------------------------
+- index.html: sibling roots for overlays (dropdown-root, popover-root,
+  tooltip-root, drawer-root, modal-root, ...).
+- mountOverlayHostStack() (app bootstrap): applies position: fixed; inset: 0;
+  pointer-events: none and z-index from Z_INDEX.
+- Floating content sets pointer-events: auto where it handles input.
+
+Host choice (documented in overlayHosts.ts):
+
+  dropdown  - Action menus, column pickers, card "more" menus
+  popover   - Richer anchored panels (+N tags, bookmark menu)
+  tooltip   - Hints + interactive bubbles that must escape clipping (e.g. author popover)
+  modal     - Dialogs via ModalShell; combobox list inside an open modal uses
+              DropdownPortal host="modal" so the list stacks above the modal body
+
+--------------------------------------------------------------------------------
+3. DropdownPortal API enhancements
+--------------------------------------------------------------------------------
+File: src/components/UI/DropdownPortal.tsx
+
+- placement: 'below' | 'above' (e.g. masonry HUD "more" above anchor).
+- host: 'dropdown' | 'popover' | 'modal' (typed as AnchoredOverlayHost).
+- matchAnchorWidth: combobox-style width alignment.
+- overlayRootProps: optional HTML attrs on the portaled root (e.g. listbox id,
+  role, aria-label), with onClick chained so stopPropagation is preserved.
+
+Docstring points engineers to overlayHosts.ts for layering rules.
+
+--------------------------------------------------------------------------------
+4. MIGRATIONS & BEHAVIOR FIXES (completion pass)
+--------------------------------------------------------------------------------
+Area                          Change
+--------------------------------------------------------------------------------
+ActionHUD                     "More" menu -> DropdownPortal (placement=above,
+                              align=right); onMenuClose for outside / Escape.
+MasonryAtom                   Removed document mousedown that closed the menu
+                              (portaled panel outside old ref); wires onMenuClose
+                              into ActionHUD.
+CardTags (+N tags)            DropdownPortal -> popover-root; onCloseTagPopover
+                              on NewsCardHandlers / useNewsCard; removed tag
+                              popover from global mousedown in useNewsCard.
+DetailTopBar                  Menu -> DropdownPortal; ShareMenu meta fixed to
+                              typed { text } only.
+CollectionsToolbar + Page   Bulk Actions -> DropdownPortal + onCloseActionMenu;
+                              removed actionMenuRef + mousedown outside effect.
+MySpacePage                   Same pattern for bulk Actions.
+SelectableDropdown            List -> DropdownPortal host=modal +
+                              matchAnchorWidth; removed fixed inset-0 z-[-1] scrim;
+                              overlayRootProps for listbox a11y.
+Admin column menus            AdminUsersPage, AdminNuggetsPage: DropdownPortal
+                              instead of fixed scrim + absolute panel.
+Admin modals                  AdminLegalPagesPage (EditorModal), AdminTaggingPage
+                              (TagEditorModal) -> ModalShell; duplicate Escape
+                              removed where ModalShell owns it.
+overlayHosts.ts               Expanded guardrail comment (host choice, clipping
+                              pitfalls, modal combobox -> host=modal).
+
+Supporting: NewsCard / variants dropped tagPopoverRef; CardTags uses internal
+anchor ref for the +N button.
+
+--------------------------------------------------------------------------------
+5. RESIDUE SWEEP (final pass)
+--------------------------------------------------------------------------------
+Item                          Change
+--------------------------------------------------------------------------------
+CardMeta                      Author name + dismiss bubble portaled to
+                              tooltip-root with scroll/resize repositioning;
+                              removes in-card z-50 tooltip. Caret remains
+                              absolute inside the portaled bubble.
+CardActions + ShareMenu       meta uses single text string (author + excerpt),
+                              matching ShareMenu type.
+BookmarkMenu (BookmarkButton) DropdownPortal (popover, align=right); removed
+                              full-viewport fixed inset-0 backdrop and manual
+                              mousedown / Escape (DropdownPortal covers).
+NewsCard YouTube Suspense     Portaled to modal-root; removed raw fixed z-50.
+YouTubeModal                  Close button: z-[60] -> z-10 (inside modal vs iframe).
+Tooltip.tsx / overlayHosts    Notes: string tooltips vs rich/interactive bubbles
+                              on tooltip-root (see CardMeta).
+
+--------------------------------------------------------------------------------
+6. INTENTIONALLY NOT PORTALED (by design)
+--------------------------------------------------------------------------------
+- Full-screen / modal-internal UI: ImageLightbox, controls inside YouTubeModal /
+  ModalShell children -- absolute + local z-* is acceptable within that surface.
+- Card/media chrome: selection chips, HUD on thumbnails, gradients -- not global
+  menus; in-layout is OK if they do not escape the card.
+- Drawers / mobile sheets / admin mobile sidebar -- separate from dropdown hosts.
+- src/_archive/** -- legacy experiments; not part of production overlay migration.
+
+--------------------------------------------------------------------------------
+7. menuRef + useNewsCard mousedown (still there)
+--------------------------------------------------------------------------------
+CardActions keeps a wrapper ref (menuRef) because:
+- MenuDropdown is portaled but tagged data-card-actions-menu="true".
+- useNewsCard outside-click logic ignores clicks inside that panel while still
+  treating the trigger area as part of the card menu flow.
+
+This is architectural, not a z-index hack.
+
+--------------------------------------------------------------------------------
+8. VERIFICATION PERFORMED
+--------------------------------------------------------------------------------
+- npm run build -- succeeded after the listed changes.
+- SelectableDropdown tests -- vitest on SelectableDropdown.test.tsx passed
+  (28 tests) after portal migration.
+- npm run typecheck -- repo still has many pre-existing TS issues; DetailTopBar /
+  ShareMenu meta issue was fixed during overlay work by aligning meta to { text?: string }.
+
+--------------------------------------------------------------------------------
+9. FILE LIST (for reviewers)
+--------------------------------------------------------------------------------
+Core overlay / primitives:
+  src/components/UI/DropdownPortal.tsx
+  src/utils/overlayHosts.ts
+  src/components/UI/ModalShell.tsx (referenced; admin/legal/tagging consumers)
+  src/components/UI/Tooltip.tsx (comment only in residue sweep)
+
+Cards / feed / masonry:
+  src/hooks/useNewsCard.ts
+  src/components/NewsCard.tsx
+  src/components/card/atoms/CardTags.tsx
+  src/components/card/atoms/CardMeta.tsx
+  src/components/card/atoms/CardActions.tsx
+  src/components/card/variants/FeedVariant.tsx, GridVariant.tsx, MasonryVariant.tsx
+  src/components/masonry/ActionHUD.tsx
+  src/components/masonry/MasonryAtom.tsx (if present in branch)
+
+Shared / pages:
+  src/components/shared/DetailTopBar.tsx
+  src/components/collections/CollectionsToolbar.tsx
+  src/pages/CollectionsPage.tsx
+  src/pages/MySpacePage.tsx
+
+Create nugget / modals:
+  src/components/CreateNuggetModal/SelectableDropdown.tsx
+  src/components/YouTubeModal.tsx
+
+Bookmarks:
+  src/components/bookmarks/BookmarkButton.tsx
+
+Admin:
+  src/admin/pages/AdminUsersPage.tsx
+  src/admin/pages/AdminNuggetsPage.tsx
+  src/admin/pages/AdminLegalPagesPage.tsx
+  src/admin/pages/AdminTaggingPage.tsx
+
+--------------------------------------------------------------------------------
+10. SUGGESTED FOLLOW-UPS FOR THE TEAM
+--------------------------------------------------------------------------------
+1. npm run typecheck cleanup (unrelated backlog) so CI can gate merges.
+2. Optional: BookmarkMenu "flip above when no room below" -- old code had rough
+   flip logic; DropdownPortal today is placement-fixed; revisit if UX reports
+   clipping at viewport bottom.
+3. Optional: extract useAnchoredOverlayPosition if more components duplicate
+   scroll/resize positioning (e.g. CardMeta vs DropdownPortal).
+
+--------------------------------------------------------------------------------
+11. ONE-LINE SUMMARY FOR LEADERSHIP
+--------------------------------------------------------------------------------
+Floating menus, tag popovers, comboboxes in modals, bulk action menus, admin
+pickers, and the card author bubble now consistently use shared overlay hosts
+and documented layering rules, eliminating the main class of header/scroll/
+overflow clipping bugs without reintroducing arbitrary global z-index hacks.
+
+================================================================================
+END OF REPORT
+================================================================================

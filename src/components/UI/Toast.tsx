@@ -2,10 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useToastContext, Toast as ToastType } from '@/context/ToastContext';
 import { CheckCircle2, AlertCircle, Info, X, AlertTriangle } from 'lucide-react';
-
-/** Prefer dedicated #toast-root from index.html; fallback to body. */
-const getToastHost = (): HTMLElement =>
-  document.getElementById('toast-root') ?? document.body;
+import { getOverlayHost } from '@/utils/overlayHosts';
 
 const ToastItem: React.FC<{ toast: ToastType; onRemove: (id: string) => void }> = ({ toast, onRemove }) => {
   const [isPaused, setIsPaused] = useState(false);
@@ -142,7 +139,7 @@ export const ToastContainer: React.FC = () => {
         <ToastItem key={toast.id} toast={toast} onRemove={removeToast} />
       ))}
     </div>,
-    getToastHost()
+    getOverlayHost('toast'),
   );
 };
 

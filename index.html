@@ -30,15 +30,17 @@
   <body class="bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
     <div id="root"></div>
     <!--
-      Overlay roots. Siblings of #root so they sit in body's root stacking context,
-      painted AFTER #root, and their z-index is authoritative regardless of what
-      transform/contain/isolation rules are applied inside #root.
-      Consumers (ModalShell, CollectionPopover, ToastContainer) should portal here.
-      pointer-events: none on the host; children opt back in with pointer-events: auto.
+      Overlay roots — siblings of #root (see src/utils/overlayHosts.ts + src/constants/zIndex.ts).
+      `mountOverlayHostStack()` in main.tsx assigns z-index from Z_INDEX so layers stay consistent.
+      pointer-events: none on hosts; portaled children use pointer-events: auto where needed.
     -->
-    <div id="modal-root"   style="position:fixed;inset:0;z-index:1010;pointer-events:none;"></div>
-    <div id="popover-root" style="position:fixed;inset:0;z-index:1020;pointer-events:none;"></div>
-    <div id="toast-root"   style="position:fixed;inset:0;z-index:1100;pointer-events:none;"></div>
+    <div id="dropdown-root"></div>
+    <div id="popover-root"></div>
+    <div id="tooltip-root"></div>
+    <div id="drawer-root"></div>
+    <div id="modal-root"></div>
+    <div id="pip-root"></div>
+    <div id="toast-root"></div>
     <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

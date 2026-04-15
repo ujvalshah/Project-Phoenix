@@ -16,7 +16,6 @@ interface MasonryVariantProps {
   showTagPopover: boolean;
   showMenu: boolean;
   menuRef: React.RefObject<HTMLDivElement | null>;
-  tagPopoverRef: React.RefObject<HTMLDivElement | null>;
   isOwner: boolean;
   isAdmin: boolean;
   isPreview?: boolean;
@@ -27,7 +26,6 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
   showTagPopover,
   showMenu,
   menuRef,
-  tagPopoverRef,
   isOwner,
   isAdmin,
   isPreview = false,
@@ -178,7 +176,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
                 onTagClick={handlers.onTagClick}
                 showTagPopover={showTagPopover}
                 onToggleTagPopover={handlers.onToggleTagPopover}
-                tagPopoverRef={tagPopoverRef}
+                onCloseTagPopover={handlers.onCloseTagPopover}
                 className="mb-2"
               />
 

@@ -1,5 +1,4 @@
 import React, { useState, useCallback, memo, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { Bookmark, BookmarkCheck, Trash2, FolderOpen, Loader2 } from 'lucide-react';
 import { useToggleBookmark } from '@/hooks/useBookmarks';
 import { useToast } from '@/hooks/useToast';
@@ -9,6 +8,7 @@ import type { BookmarkItemType } from '@/services/bookmarkService';
 import { bookmarkService } from '@/services/bookmarkService';
 import { twMerge } from 'tailwind-merge';
 import { CollectionSelector } from './CollectionSelector';
+import { DropdownPortal } from '@/components/UI/DropdownPortal';
 
 /**
  * BookmarkButton Component
@@ -310,114 +310,28 @@ function BookmarkMenu({
   onRemove,
   onChangeCollection,
   isLoading = false,
-  anchorRef
+  anchorRef,
 }: BookmarkMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
+  if (!anchorRef) return null;
 
-  // Handle click outside
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(event.target as Node) &&
-        anchorRef?.current &&
-        !anchorRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
-
-    // Small delay to prevent immediate close from the same click
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside);
-    }, 10);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen, onClose, anchorRef]);
-
-  // Handle escape key
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  // Calculate position
-  const getPosition = useCallback(() => {
-    if (!anchorRef?.current) {
-      return { top: 100, left: 100 };
-    }
-    const rect = anchorRef.current.getBoundingClientRect();
-    const menuWidth = 180;
-
-    let left = rect.right - menuWidth;
-    let top = rect.bottom + 4;
-
-    // Ensure it doesn't go off-screen on the left
-    if (left < 8) {
-      left = 8;
-    }
-
-    // Ensure it doesn't go off-screen on the right
-    if (left + menuWidth > window.innerWidth - 8) {
-      left = window.innerWidth - menuWidth - 8;
-    }
-
-    // If not enough space below, position above
-    const menuHeight = 100;
-    if (top + menuHeight > window.innerHeight - 8) {
-      top = rect.top - menuHeight - 4;
-      if (top < 8) {
-        top = 8;
-      }
-    }
-
-    return { top, left };
-  }, [anchorRef]);
-
-  if (!isOpen) return null;
-
-  const position = getPosition();
-
-  return createPortal(
-    <>
-      {/* Backdrop (transparent, just for click handling) */}
-      <div
-        className="fixed inset-0 z-40"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Menu */}
-      <div
-        ref={menuRef}
-        className={twMerge(
-          'fixed z-50 w-44 bg-white dark:bg-gray-900 rounded-lg shadow-xl',
-          'border border-gray-200 dark:border-gray-700',
-          'animate-in fade-in-0 zoom-in-95 duration-150',
-          'py-1'
-        )}
-        style={{
-          top: position.top,
-          left: position.left
-        }}
-        role="menu"
-        aria-label="Bookmark options"
-      >
-        {/* Change Folder option */}
+  return (
+    <DropdownPortal
+      isOpen={isOpen}
+      anchorRef={anchorRef}
+      align="right"
+      host="popover"
+      offsetY={4}
+      onClickOutside={onClose}
+      className={twMerge(
+        'w-44 bg-white dark:bg-gray-900 rounded-lg shadow-xl',
+        'border border-gray-200 dark:border-gray-700',
+        'animate-in fade-in-0 zoom-in-95 duration-150',
+        'py-1 overflow-hidden',
+      )}
+    >
+      <div role="menu" aria-label="Bookmark options">
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onChangeCollection();
@@ -428,7 +342,7 @@ function BookmarkMenu({
             'text-sm text-gray-700 dark:text-gray-200',
             'hover:bg-gray-100 dark:hover:bg-gray-800',
             'transition-colors duration-150',
-            'disabled:opacity-50 disabled:cursor-not-allowed'
+            'disabled:opacity-50 disabled:cursor-not-allowed',
           )}
           role="menuitem"
         >
@@ -440,11 +354,10 @@ function BookmarkMenu({
           <span>Change Folder</span>
         </button>
 
-        {/* Divider */}
         <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
 
-        {/* Remove option */}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
@@ -453,7 +366,7 @@ function BookmarkMenu({
             'w-full flex items-center gap-2.5 px-3 py-2.5 text-left',
             'text-sm text-red-600 dark:text-red-400',
             'hover:bg-red-50 dark:hover:bg-red-900/20',
-            'transition-colors duration-150'
+            'transition-colors duration-150',
           )}
           role="menuitem"
         >
@@ -461,8 +374,7 @@ function BookmarkMenu({
           <span>Remove Bookmark</span>
         </button>
       </div>
-    </>,
-    document.body
+    </DropdownPortal>
   );
 }
 

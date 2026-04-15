@@ -2,6 +2,7 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { getOverlayHost } from '@/utils/overlayHosts';
 
 interface AdminDrawerProps {
   isOpen: boolean;
@@ -41,7 +42,7 @@ export const AdminDrawer: React.FC<AdminDrawerProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex justify-end">
+    <div className="fixed inset-0 flex justify-end pointer-events-auto">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-300"
@@ -79,6 +80,6 @@ export const AdminDrawer: React.FC<AdminDrawerProps> = ({
         )}
       </div>
     </div>,
-    document.body
+    getOverlayHost('drawer'),
   );
 };

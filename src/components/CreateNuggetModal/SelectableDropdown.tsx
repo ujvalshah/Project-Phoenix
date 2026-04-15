@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown, Check, Loader2 } from 'lucide-react';
 import { Badge } from '../UI/Badge';
+import { DropdownPortal } from '../UI/DropdownPortal';
 import { tagsInclude } from '@/utils/tagUtils';
 
 export interface SelectableDropdownOption {
@@ -378,24 +379,25 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
         </div>
       )}
       
-      {isOpen && (
-        <div
-          id={`${id}-listbox`}
-          ref={listboxRef}
-          role="listbox"
-          aria-label={label}
-          className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 p-2 z-30"
-        >
-          {/* Backdrop to close dropdown when clicking outside */}
-          <div
-            className="fixed inset-0 z-[-1]"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsOpen(false);
-              setFocusedIndex(-1);
-            }}
-            aria-hidden="true"
-          />
+      <DropdownPortal
+        isOpen={isOpen}
+        anchorRef={comboboxRef}
+        dropdownRef={listboxRef}
+        matchAnchorWidth
+        host="modal"
+        offsetY={4}
+        onClickOutside={() => {
+          setIsOpen(false);
+          setFocusedIndex(-1);
+          comboboxRef.current?.focus();
+        }}
+        className="bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 p-2"
+        overlayRootProps={{
+          id: `${id}-listbox`,
+          role: 'listbox',
+          'aria-label': label,
+        }}
+      >
           <input
             ref={inputRef}
             autoFocus
@@ -520,8 +522,7 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
               </button>
             )}
           </div>
-        </div>
-      )}
+      </DropdownPortal>
     </div>
   );
 }

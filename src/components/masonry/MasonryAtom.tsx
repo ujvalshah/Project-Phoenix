@@ -78,19 +78,6 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
 
   const sourceLink = resolveMasonrySourceLink(article, currentTileItem);
 
-  // Handle more menu click outside
-  React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-        setShowMoreMenu(false);
-      }
-    };
-    if (showMoreMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMoreMenu]);
-
   const handleReport = async (payload: ReportPayload) => {
     try {
       const normalizedComment = payload.comment?.trim() || undefined;
@@ -210,6 +197,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
               showMenuButton={true}
               showMoreMenu={showMoreMenu}
               moreMenuRef={moreMenuRef}
+              onMenuClose={() => setShowMoreMenu(false)}
               isOwner={isOwner}
               isAdmin={isAdmin}
               onReport={() => setShowReportModal(true)}

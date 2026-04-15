@@ -12,6 +12,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import { X } from 'lucide-react';
 import { useVideoPlayer } from '@/context/VideoPlayerContext';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
@@ -90,7 +91,7 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => 
 
   return createPortal(
     <div
-      className="fixed z-[9999] overflow-hidden rounded-xl bg-black shadow-2xl transition-[transform,opacity] duration-300 ease-out
+      className="fixed pointer-events-auto overflow-hidden rounded-xl bg-black shadow-2xl transition-[transform,opacity] duration-300 ease-out
         w-[min(280px,calc(100vw-32px))] md:w-[min(400px,min(38vw,560px))] aspect-video
         bottom-[calc(16px+env(safe-area-inset-bottom,0px))] right-[calc(16px+env(safe-area-inset-right,0px))] left-auto"
       style={{
@@ -130,6 +131,6 @@ export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => 
         />
       </div>
     </div>,
-    document.body
+    getOverlayHost('pip'),
   );
 };

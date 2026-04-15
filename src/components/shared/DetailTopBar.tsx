@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { X, FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'lucide-react';
 import { Article } from '@/types';
 import { BookmarkButton } from '../bookmarks';
 import { Avatar } from './Avatar';
 import { ShareMenu } from './ShareMenu';
+import { DropdownPortal } from '@/components/UI/DropdownPortal';
 
 interface DetailTopBarProps {
   authorName: string;
@@ -33,17 +34,7 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
   showAuthorName = true,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const menuAnchorRef = useRef<HTMLButtonElement>(null);
 
   const handleToggleMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -70,7 +61,9 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
             title: article?.title ?? 'Untitled',
             shareUrl: `${window.location.origin}/article/${article?.id ?? ''}`,
           }}
-          meta={{ author: authorName, text: article?.excerpt ?? '' }}
+          meta={{
+            text: [authorName, article?.excerpt ?? ''].filter(Boolean).join('\n'),
+          }}
           className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
         />
         <BookmarkButton
@@ -79,18 +72,32 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
           size="md"
           className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
         />
-        <div className="relative" ref={menuRef}>
+        <div className="relative inline-flex">
           <button
+            ref={menuAnchorRef}
+            type="button"
             onClick={handleToggleMenu}
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
             title="More options"
+            aria-expanded={showMenu}
+            aria-haspopup="menu"
           >
             <MoreVertical size={20} />
           </button>
-          {showMenu && (
-            <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-30 overflow-hidden">
+          <DropdownPortal
+            isOpen={showMenu}
+            anchorRef={menuAnchorRef}
+            align="right"
+            host="dropdown"
+            offsetY={4}
+            onClickOutside={() => setShowMenu(false)}
+            className="w-40 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl py-1 overflow-hidden"
+          >
+            <div role="menu">
               {(isOwner || isAdmin) && onEdit && (
                 <button
+                  type="button"
+                  role="menuitem"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMenu(false);
@@ -103,6 +110,8 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
               )}
               {isOwner && onToggleVisibility && (
                 <button
+                  type="button"
+                  role="menuitem"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMenu(false);
@@ -122,6 +131,8 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
                 </button>
               )}
               <button
+                type="button"
+                role="menuitem"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowMenu(false);
@@ -132,6 +143,8 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
                 <FolderPlus size={12} /> Add to collection
               </button>
               <button
+                type="button"
+                role="menuitem"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowMenu(false);
@@ -143,6 +156,8 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
               </button>
               {(isOwner || isAdmin) && onDelete && (
                 <button
+                  type="button"
+                  role="menuitem"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMenu(false);
@@ -154,10 +169,11 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
                 </button>
               )}
             </div>
-          )}
+          </DropdownPortal>
         </div>
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
           >

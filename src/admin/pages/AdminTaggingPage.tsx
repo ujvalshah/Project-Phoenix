@@ -7,6 +7,7 @@ import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 import { apiClient } from '@/services/apiClient';
 import { getNormalizedApiBase } from '@/utils/urlUtils';
 import { getCsrfHeaders } from '@/utils/csrf';
+import { ModalShell } from '@/components/UI/ModalShell';
 import type { TaxonomyTag } from '@/types';
 
 type Dimension = 'format' | 'domain' | 'subtopic';
@@ -597,11 +598,8 @@ const TagEditorModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-700"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalShell isOpen onClose={onClose} wrapperClassName="p-4" backdropClassName="bg-black/50">
+      <div className="relative z-10 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-700">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
           <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
             {state.mode === 'create' ? `Add ${dimensionLabel} Tag` : `Edit ${dimensionLabel} Tag`}
@@ -676,7 +674,7 @@ const TagEditorModal: React.FC<{
           </div>
         </form>
       </div>
-    </div>
+    </ModalShell>
   );
 };
 

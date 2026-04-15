@@ -18,6 +18,7 @@ import { Loader2 } from 'lucide-react';
 import { adminFeedbackService } from '@/admin/services/adminFeedbackService';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import { DropdownPortal } from './UI/DropdownPortal';
 import { useFilters } from '@/context/FilterStateContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
@@ -1024,7 +1025,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0" style={{ zIndex: Z_INDEX.HEADER_OVERLAY }}>
+    <div className="fixed inset-0 pointer-events-auto">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={onClose} />
       <div className="absolute bottom-0 left-0 top-0 flex w-[280px] flex-col border-r border-gray-200 bg-white shadow-2xl animate-in slide-in-from-left duration-300 dark:border-slate-700 dark:bg-slate-900">
         
@@ -1150,7 +1151,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
         </div>
       </div>
     </div>,
-    document.body
+    getOverlayHost('drawer')
   );
 };
 

@@ -16,7 +16,6 @@ interface FeedVariantProps {
   showTagPopover: boolean;
   showMenu: boolean;
   menuRef: React.RefObject<HTMLDivElement | null>;
-  tagPopoverRef: React.RefObject<HTMLDivElement | null>;
   isOwner: boolean;
   isAdmin: boolean;
   isPreview?: boolean;
@@ -27,7 +26,6 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
   showTagPopover,
   showMenu,
   menuRef,
-  tagPopoverRef,
   isOwner,
   isAdmin,
   isPreview = false,
@@ -175,7 +173,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
                   onTagClick={handlers.onTagClick}
                   showTagPopover={showTagPopover}
                   onToggleTagPopover={handlers.onToggleTagPopover}
-                  tagPopoverRef={tagPopoverRef}
+                  onCloseTagPopover={handlers.onCloseTagPopover}
                   variant="feed"
                 />
               </div>

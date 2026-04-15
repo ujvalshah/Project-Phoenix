@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import {
   ArrowDown,
   ArrowUp,
@@ -32,6 +33,7 @@ interface CollectionsToolbarProps {
   onToggleSelection: () => void;
   onOpenCreate: () => void;
   onOpenActions: () => void;
+  onCloseActionMenu: () => void;
   isActionMenuOpen: boolean;
   actionMenu: React.ReactNode;
   onOpenFiltersMobile: () => void;
@@ -54,11 +56,14 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
   onToggleSelection,
   onOpenCreate,
   onOpenActions,
+  onCloseActionMenu,
   isActionMenuOpen,
   actionMenu,
   onOpenFiltersMobile,
   mobileFilterCount = 0,
 }) => {
+  const actionsAnchorRef = useRef<HTMLButtonElement>(null);
+
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       <div className="relative flex-1 sm:min-w-[260px] sm:max-w-xl">
@@ -160,16 +165,30 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
         )}
 
         {selectionMode && (
-          <div className="relative">
+          <div className="relative inline-flex">
             <button
+              ref={actionsAnchorRef}
+              type="button"
               onClick={onOpenActions}
               disabled={selectedCount === 0}
               className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] font-medium text-slate-700 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              aria-expanded={isActionMenuOpen}
+              aria-haspopup="menu"
             >
               Actions
               <ChevronDown size={13} />
             </button>
-            {isActionMenuOpen && actionMenu}
+            <DropdownPortal
+              isOpen={isActionMenuOpen}
+              anchorRef={actionsAnchorRef}
+              align="right"
+              host="dropdown"
+              offsetY={6}
+              onClickOutside={onCloseActionMenu}
+              className="w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150 dark:border-slate-700 dark:bg-slate-900"
+            >
+              {actionMenu}
+            </DropdownPortal>
           </div>
         )}
 

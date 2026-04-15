@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { getOverlayHost } from '@/utils/overlayHosts';
+import { Z_INDEX } from '@/constants/zIndex';
 import { MessageSquare, X, Send, Loader2, Check } from 'lucide-react';
 import { adminFeedbackService } from '@/admin/services/adminFeedbackService';
 import { useAuth } from '@/hooks/useAuth';
@@ -66,7 +68,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[105] flex items-center justify-center p-4">
+    <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-auto">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px] animate-in fade-in duration-300" 
@@ -74,7 +76,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
       />
 
       {/* Glassy Modal */}
-      <div className="relative w-full max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl rounded-2xl p-6 animate-in zoom-in-95 slide-in-from-bottom-2 duration-300">
+      <div className="relative z-10 w-full max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl rounded-2xl p-6 animate-in zoom-in-95 slide-in-from-bottom-2 duration-300">
         
         {/* Close Button */}
         <button 
@@ -144,7 +146,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
         )}
       </div>
     </div>,
-    document.body
+    getOverlayHost('modal'),
   );
 };
 
@@ -154,9 +156,11 @@ export const FeedbackButton: React.FC = () => {
   return (
     <>
       <button
+        type="button"
         onClick={() => setIsOpen(true)}
+        style={{ zIndex: Z_INDEX.CHROME_WIDGET }}
         className="
-            fixed right-0 top-1/2 -translate-y-1/2 z-[90] 
+            fixed right-0 top-1/2 -translate-y-1/2
             group flex items-center gap-2 
             pl-3 pr-4 py-3 
             bg-white/80 dark:bg-slate-900/80 backdrop-blur-md 

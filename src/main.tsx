@@ -8,6 +8,7 @@ import { queryClient } from '@/queryClient';
 import { initSentry } from './utils/sentry';
 
 import { registerServiceWorker } from './utils/serviceWorkerRegistration';
+import { mountOverlayHostStack } from './utils/overlayHosts';
 
 // Initialize Sentry early
 initSentry();
@@ -16,6 +17,7 @@ initSentry();
 registerServiceWorker();
 
 const renderApp = () => {
+  mountOverlayHostStack();
   const container = document.getElementById('root');
   
   if (container) {

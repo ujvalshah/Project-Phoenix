@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Tooltip } from '@/components/UI/Tooltip';
+import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { twMerge } from 'tailwind-merge';
 
 interface TagPillProps {
@@ -45,7 +46,7 @@ interface CardTagsProps {
   onTagClick: (tag: string) => void;
   showTagPopover?: boolean;
   onToggleTagPopover?: (e: React.MouseEvent) => void;
-  tagPopoverRef?: React.RefObject<HTMLDivElement | null>;
+  onCloseTagPopover?: () => void;
   className?: string;
   variant?: 'default' | 'grid' | 'feed';
 }
@@ -55,10 +56,12 @@ export const CardTags: React.FC<CardTagsProps> = ({
   onTagClick,
   showTagPopover,
   onToggleTagPopover,
-  tagPopoverRef,
+  onCloseTagPopover,
   className,
   variant = 'default',
 }) => {
+  const moreTagsAnchorRef = useRef<HTMLButtonElement>(null);
+
   if (!tags || tags.length === 0) return null;
 
   // PHASE 1: Max 3 visible tags per card spec
@@ -87,8 +90,10 @@ export const CardTags: React.FC<CardTagsProps> = ({
         />
       ))}
       {remainingCount > 0 && (
-        <div className="relative" ref={tagPopoverRef}>
+        <div className="relative inline-flex">
           <button
+            ref={moreTagsAnchorRef}
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               if (onToggleTagPopover) {
@@ -102,30 +107,35 @@ export const CardTags: React.FC<CardTagsProps> = ({
           >
             +{remainingCount}
           </button>
-          {showTagPopover && tags.length > 3 && (
-            <div className="absolute top-full left-0 mt-1 w-40 z-30 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl p-2 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex flex-col gap-1">
-                {tags.slice(3).map((tag) => (
-                  <button
-                    key={tag}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTagClick(tag);
-                      if (onToggleTagPopover) {
-                        onToggleTagPopover(e);
-                      }
-                    }}
-                    className="text-left text-xs px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
+          <DropdownPortal
+            isOpen={!!showTagPopover && tags.length > 3}
+            anchorRef={moreTagsAnchorRef}
+            align="left"
+            host="popover"
+            offsetY={4}
+            onClickOutside={onCloseTagPopover}
+            className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl p-2 w-40"
+          >
+            <div className="flex flex-col gap-1 max-h-56 overflow-y-auto custom-scrollbar" role="menu">
+              {tags.slice(3).map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  role="menuitem"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTagClick(tag);
+                    onCloseTagPopover?.();
+                  }}
+                  className="text-left text-xs px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  {tag}
+                </button>
+              ))}
             </div>
-          )}
+          </DropdownPortal>
         </div>
       )}
     </div>
   );
 };
-

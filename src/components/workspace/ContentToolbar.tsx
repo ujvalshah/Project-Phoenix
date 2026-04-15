@@ -1,4 +1,5 @@
 import React from 'react';
+import { Z_INDEX } from '@/constants/zIndex';
 import { ArrowDownAZ, ArrowUpAZ, LayoutGrid, List, Rows3, Search, Sparkles } from 'lucide-react';
 
 export type ContentSort = 'published-desc' | 'published-asc' | 'updated-desc' | 'updated-asc';
@@ -62,7 +63,8 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
 
   return (
     <div
-      className="sticky top-14 z-[100] -mx-px border-y border-slate-200/50 bg-slate-50/90 py-2.5 backdrop-blur-md dark:border-slate-800/60 dark:bg-slate-950/92 lg:top-16"
+      className="sticky top-14 -mx-px border-y border-slate-200/50 bg-slate-50/90 py-2.5 backdrop-blur-md dark:border-slate-800/60 dark:bg-slate-950/92 lg:top-16"
+      style={{ zIndex: Z_INDEX.STICKY_SUBHEADER }}
       role="search"
     >
       <div className="flex flex-col gap-2.5">

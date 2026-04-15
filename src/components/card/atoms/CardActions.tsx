@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import { FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'lucide-react';
 import { ShareMenu } from '@/components/shared/ShareMenu';
 import { BookmarkButton } from '@/components/bookmarks';
@@ -68,8 +69,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
             shareUrl: `${window.location.origin}/article/${articleId}`,
           }}
           meta={{
-            author: authorName,
-            text: articleExcerpt,
+            text: [authorName, articleExcerpt].filter(Boolean).join('\n'),
           }}
         />
       )}
@@ -358,7 +358,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
       role="menu"
       aria-label="Article actions"
       data-card-actions-menu="true"
-      className="fixed w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-[1000] overflow-hidden"
+      className="fixed pointer-events-auto w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 overflow-hidden"
       style={{ top: `${position.top}px`, left: `${position.left}px` }}
       onKeyDown={(e) => {
         // Prevent default arrow key behavior
@@ -388,7 +388,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
         </button>
       ))}
     </div>,
-    document.body
+    getOverlayHost('dropdown'),
   );
 };
 

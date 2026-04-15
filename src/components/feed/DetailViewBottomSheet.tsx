@@ -31,6 +31,7 @@ import { DetailHeader } from './DetailHeader';
 import { ActionDock } from './ActionDock';
 import { twMerge } from 'tailwind-merge';
 import { getThumbnailUrl } from '@/utils/mediaClassifier';
+import { getOverlayHost } from '@/utils/overlayHosts';
 
 export interface DetailViewBottomSheetProps {
   /** Article to display */
@@ -300,7 +301,7 @@ export const DetailViewBottomSheet: React.FC<DetailViewBottomSheetProps> = ({
   
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex flex-col"
+      className="fixed inset-0 flex flex-col pointer-events-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="detail-view-title"
@@ -397,7 +398,7 @@ export const DetailViewBottomSheet: React.FC<DetailViewBottomSheetProps> = ({
         )}
       </div>
     </div>,
-    document.body
+    getOverlayHost('drawer'),
   );
 };
 

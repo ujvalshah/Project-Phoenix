@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { storageService } from '@/services/storageService';
 import { Collection, TaxonomyTag } from '@/types';
 import type { FilterState } from './filterTypes';
-import { Z_INDEX } from '@/constants/zIndex';
+import { getOverlayHost } from '@/utils/overlayHosts';
 
 interface MobileFilterSheetProps {
   isOpen: boolean;
@@ -373,8 +373,7 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 bg-slate-900/40 backdrop-blur-[1px] transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-      style={{ zIndex: Z_INDEX.MODAL }}
+      className={`fixed inset-0 pointer-events-auto bg-slate-900/40 backdrop-blur-[1px] transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
       onClick={onClose}
       role="presentation"
     >
@@ -620,7 +619,7 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
         </div>
       </div>
     </div>,
-    document.body,
+    getOverlayHost('drawer'),
   );
 };
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, lazy, Suspense, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Article } from '@/types';
+import { getOverlayHost } from '@/utils/overlayHosts';
 
 // Lazy load ArticleDetail - only loads when drawer opens
 const ArticleDetailLazy = lazy(() => 
@@ -164,7 +165,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex justify-end isolation-auto"
+      className="fixed inset-0 flex justify-end isolation-auto pointer-events-auto"
       role="dialog"
       aria-modal="true"
       aria-label="Article details drawer"
@@ -223,6 +224,6 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
         </div>
       </div>
     </div>,
-    document.body
+    getOverlayHost('drawer'),
   );
 };

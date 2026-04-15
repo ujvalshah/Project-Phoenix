@@ -1,4 +1,6 @@
 import { forwardRef, Suspense, lazy, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import { Article } from '@/types';
 import { useNewsCard } from '@/hooks/useNewsCard';
 import { GridVariant } from './card/variants/GridVariant';
@@ -87,7 +89,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             showTagPopover={modals.showTagPopover}
             showMenu={modals.showMenu}
             menuRef={refs.menuRef}
-            tagPopoverRef={refs.tagPopoverRef}
             isOwner={isOwner}
             isAdmin={isAdmin}
             isPreview={isPreview}
@@ -105,7 +106,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             showTagPopover={modals.showTagPopover}
             showMenu={modals.showMenu}
             menuRef={refs.menuRef}
-            tagPopoverRef={refs.tagPopoverRef}
             isOwner={isOwner}
             isAdmin={isAdmin}
             isPreview={isPreview}
@@ -119,7 +119,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             showTagPopover={modals.showTagPopover}
             showMenu={modals.showMenu}
             menuRef={refs.menuRef}
-            tagPopoverRef={refs.tagPopoverRef}
             isOwner={isOwner}
             isAdmin={isAdmin}
             isPreview={isPreview}
@@ -133,7 +132,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             showTagPopover={modals.showTagPopover}
             showMenu={modals.showMenu}
             menuRef={refs.menuRef}
-            tagPopoverRef={refs.tagPopoverRef}
             isOwner={isOwner}
             isAdmin={isAdmin}
             isPreview={isPreview}
@@ -284,11 +282,18 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
           if (!videoUrl) return null;
           
           return (
-            <Suspense fallback={
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90">
-                <div className="text-white">Loading video player...</div>
-              </div>
-            }>
+            <Suspense
+              fallback={
+                typeof document !== 'undefined'
+                  ? createPortal(
+                      <div className="fixed inset-0 flex items-center justify-center bg-black/90 pointer-events-auto">
+                        <div className="text-white text-sm">Loading video player...</div>
+                      </div>,
+                      getOverlayHost('modal'),
+                    )
+                  : null
+              }
+            >
               <YouTubeModal
                 isOpen={modals.showYouTubeModal}
                 onClose={(e) => {

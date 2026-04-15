@@ -69,7 +69,7 @@ export const YouTubeModal: React.FC<YouTubeModalProps> = ({
       {/* Close Button - Moved to top-left to avoid YouTube controls overlay */}
       <button
         onClick={handleClose}
-        className="absolute top-2 left-2 sm:top-4 sm:left-4 z-[60] w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-black/80 hover:bg-black/90 text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-white/50 backdrop-blur-sm"
+        className="absolute top-2 left-2 z-10 sm:top-4 sm:left-4 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-black/80 hover:bg-black/90 text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-white/50 backdrop-blur-sm"
         aria-label="Close video"
       >
         <X size={18} className="sm:w-5 sm:h-5" />

@@ -8,6 +8,7 @@ import {
 } from '@/hooks/useBookmarks';
 import { useToast } from '@/hooks/useToast';
 import { twMerge } from 'tailwind-merge';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import type { BookmarkCollection } from '@/services/bookmarkService';
 
 /**
@@ -225,7 +226,7 @@ export function CollectionSelector({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40"
+        className="fixed inset-0 pointer-events-auto"
         onClick={() => handleSave()}
         aria-hidden="true"
       />
@@ -234,7 +235,7 @@ export function CollectionSelector({
       <div
         ref={containerRef}
         className={twMerge(
-          'fixed z-50 w-72 bg-white dark:bg-gray-900 rounded-lg shadow-xl',
+          'fixed pointer-events-auto w-72 bg-white dark:bg-gray-900 rounded-lg shadow-xl',
           'border border-gray-200 dark:border-gray-700',
           'animate-in fade-in-0 zoom-in-95 duration-200'
         )}
@@ -372,7 +373,7 @@ export function CollectionSelector({
       </div>
       </div>
     </>,
-    document.body
+    getOverlayHost('popover'),
   );
 }
 

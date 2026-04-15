@@ -13,6 +13,7 @@ import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { PaginatedArticlesResponse } from '@/services/adapters/IAdapter';
 import { apiClient } from '@/services/apiClient';
+import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
 import { MetricsStrip, type LibraryMetric } from '@/components/workspace/MetricsStrip';
 import { ContentTabs, type ContentTabItem } from '@/components/workspace/ContentTabs';
@@ -131,7 +132,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAddToCollection, setShowAddToCollection] = useState(false);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
-  const actionMenuRef = useRef<HTMLDivElement>(null);
+  const mySpaceActionsAnchorRef = useRef<HTMLButtonElement>(null);
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -222,17 +223,6 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     setSelectedIds([]);
     setIsActionMenuOpen(false);
   }, [activeTab, nuggetListVisibility]);
-
-  // Click outside listener for dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
-        setIsActionMenuOpen(false);
-      }
-    };
-    if (isActionMenuOpen) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isActionMenuOpen]);
 
   // Helper function to refresh counts independently
   const refreshCounts = async () => {
@@ -709,12 +699,15 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                     <span className="px-1 text-xs font-medium text-slate-600 dark:text-slate-400">
                       {selectedIds.length} selected
                     </span>
-                    <div className="relative" ref={actionMenuRef}>
+                    <div className="relative inline-flex">
                       <button
+                        ref={mySpaceActionsAnchorRef}
                         type="button"
                         onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
                         disabled={selectedIds.length === 0 || isUpdatingVisibility}
                         className="inline-flex h-8 items-center gap-1.5 rounded-md bg-slate-900 px-3 text-xs font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+                        aria-expanded={isActionMenuOpen}
+                        aria-haspopup="menu"
                       >
                         {isUpdatingVisibility ? (
                           <>
@@ -726,12 +719,21 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                           </>
                         )}
                       </button>
-                      {isActionMenuOpen && (
-                        <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                      <DropdownPortal
+                        isOpen={isActionMenuOpen}
+                        anchorRef={mySpaceActionsAnchorRef}
+                        align="right"
+                        host="dropdown"
+                        offsetY={4}
+                        onClickOutside={() => setIsActionMenuOpen(false)}
+                        className="w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                      >
+                        <div role="menu">
                           {showNuggets && (
                             <>
                               <button
                                 type="button"
+                                role="menuitem"
                                 onClick={() => {
                                   void handleBulkVisibility('public');
                                   setIsActionMenuOpen(false);
@@ -743,6 +745,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                               </button>
                               <button
                                 type="button"
+                                role="menuitem"
                                 onClick={() => {
                                   void handleBulkVisibility('private');
                                   setIsActionMenuOpen(false);
@@ -754,6 +757,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                               </button>
                               <button
                                 type="button"
+                                role="menuitem"
                                 onClick={() => {
                                   setShowAddToCollection(true);
                                   setIsActionMenuOpen(false);
@@ -769,6 +773,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                             <>
                               <button
                                 type="button"
+                                role="menuitem"
                                 onClick={() => {
                                   void handleBulkFollow('follow');
                                   setIsActionMenuOpen(false);
@@ -779,6 +784,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                               </button>
                               <button
                                 type="button"
+                                role="menuitem"
                                 onClick={() => {
                                   void handleBulkFollow('unfollow');
                                   setIsActionMenuOpen(false);
@@ -792,6 +798,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                           )}
                           <button
                             type="button"
+                            role="menuitem"
                             onClick={() => {
                               setShowDeleteConfirm(true);
                               setIsActionMenuOpen(false);
@@ -801,7 +808,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                             <Trash2 size={14} /> Delete…
                           </button>
                         </div>
-                      )}
+                      </DropdownPortal>
                     </div>
                     <button
                       type="button"

@@ -5,6 +5,28 @@
  */
 
 import { vi } from 'vitest';
+import { mountOverlayHostStack } from '@/utils/overlayHosts';
+
+/** Mirror `index.html` overlay siblings so portal targets exist in jsdom. */
+if (typeof document !== 'undefined') {
+  const OVERLAY_IDS = [
+    'dropdown-root',
+    'popover-root',
+    'tooltip-root',
+    'drawer-root',
+    'modal-root',
+    'pip-root',
+    'toast-root',
+  ] as const;
+  for (const id of OVERLAY_IDS) {
+    if (!document.getElementById(id)) {
+      const el = document.createElement('div');
+      el.id = id;
+      document.body.appendChild(el);
+    }
+  }
+  mountOverlayHostStack();
+}
 
 // Only import jest-dom if in jsdom environment
 try {

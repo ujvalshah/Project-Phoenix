@@ -62,6 +62,7 @@ export interface NewsCardHandlers {
   onAuthorClick: ((authorId: string) => void) | undefined;
   onToggleMenu: (e: React.MouseEvent) => void;
   onToggleTagPopover: (e: React.MouseEvent) => void;
+  onCloseTagPopover: () => void;
   onReadMore: () => void;
 }
 
@@ -115,7 +116,6 @@ export const useNewsCard = ({
   const [collectionAnchor, setCollectionAnchor] = useState<DOMRect | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
-  const tagPopoverRef = useRef<HTMLDivElement>(null);
 
   // ────────────────────────────────────────
   // CLICK OUTSIDE HANDLER
@@ -127,15 +127,12 @@ export const useNewsCard = ({
       if (menuRef.current && !menuRef.current.contains(event.target as Node) && !clickedMenuPanel) {
         setShowMenu(false);
       }
-      if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
-        setShowTagPopover(false);
-      }
     };
-    if (showMenu || showTagPopover) {
+    if (showMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMenu, showTagPopover]);
+  }, [showMenu]);
 
   // ────────────────────────────────────────
   // COMPUTED VALUES / DERIVED DATA
@@ -807,6 +804,10 @@ export const useNewsCard = ({
     setShowTagPopover(!showTagPopover);
   };
 
+  const handleCloseTagPopover = useCallback(() => {
+    setShowTagPopover(false);
+  }, []);
+
   // When in preview mode, disable all mutation handlers to prevent API calls
   const handlers: NewsCardHandlers = isPreview
     ? {
@@ -823,6 +824,7 @@ export const useNewsCard = ({
         onAuthorClick: undefined,
         onToggleMenu: handleToggleMenu, // Allow menu toggle (UI only)
         onToggleTagPopover: handleToggleTagPopover, // Allow tag popover (UI only)
+        onCloseTagPopover: handleCloseTagPopover,
         onReadMore: () => setShowFullModal(true), // Allow read more (modal only)
       }
     : {
@@ -839,6 +841,7 @@ export const useNewsCard = ({
         onAuthorClick: handleAuthorClick,
         onToggleMenu: handleToggleMenu,
         onToggleTagPopover: handleToggleTagPopover,
+        onCloseTagPopover: handleCloseTagPopover,
         onReadMore: () => setShowFullModal(true),
       };
 
@@ -889,7 +892,6 @@ export const useNewsCard = ({
     },
     refs: {
       menuRef,
-      tagPopoverRef,
     },
     article, // Original article for modals
     isOwner,

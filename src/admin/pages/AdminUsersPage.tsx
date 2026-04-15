@@ -1,5 +1,6 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
@@ -35,6 +36,7 @@ export const AdminUsersPage: React.FC = () => {
     'user', 'fullName', 'role', 'status', 'emailVerified', 'nuggets', 'joinedDate', 'joinedTime', 'lastLoginDate', 'actions'
   ]);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const columnMenuAnchorRef = useRef<HTMLButtonElement>(null);
 
   // Actions State
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
@@ -416,34 +418,41 @@ export const AdminUsersPage: React.FC = () => {
       </div>
 
       {/* Columns Toggle */}
-      <div className="relative">
-        <button 
+      <div className="relative inline-flex">
+        <button
+            ref={columnMenuAnchorRef}
+            type="button"
             onClick={() => setShowColumnMenu(!showColumnMenu)}
             className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+            aria-expanded={showColumnMenu}
+            aria-haspopup="menu"
         >
             <Layout size={12} /> Columns
         </button>
-        {showColumnMenu && (
-            <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowColumnMenu(false)} />
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 p-2 max-h-64 overflow-y-auto custom-scrollbar">
-                    {allColumns.filter(c => c.key !== 'user' && c.key !== 'actions').map(col => (
-                        <label key={col.key} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={visibleColumns.includes(col.key)}
-                                onChange={(e) => {
-                                    if (e.target.checked) setVisibleColumns([...visibleColumns, col.key]);
-                                    else setVisibleColumns(visibleColumns.filter(k => k !== col.key));
-                                }}
-                                className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                            />
-                            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{col.header}</span>
-                        </label>
-                    ))}
-                </div>
-            </>
-        )}
+        <DropdownPortal
+            isOpen={showColumnMenu}
+            anchorRef={columnMenuAnchorRef}
+            align="right"
+            host="dropdown"
+            offsetY={8}
+            onClickOutside={() => setShowColumnMenu(false)}
+            className="w-48 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-2 max-h-64 overflow-y-auto custom-scrollbar"
+        >
+            {allColumns.filter(c => c.key !== 'user' && c.key !== 'actions').map(col => (
+                <label key={col.key} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer">
+                    <input 
+                        type="checkbox" 
+                        checked={visibleColumns.includes(col.key)}
+                        onChange={(e) => {
+                            if (e.target.checked) setVisibleColumns([...visibleColumns, col.key]);
+                            else setVisibleColumns(visibleColumns.filter(k => k !== col.key));
+                        }}
+                        className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{col.header}</span>
+                </label>
+            ))}
+        </DropdownPortal>
       </div>
     </div>
   );

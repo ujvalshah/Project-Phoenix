@@ -14,8 +14,8 @@ import {
 } from '@/components/collections/AppliedFiltersBar';
 import { TaxonomySidebar, TaxonomyNode } from '@/components/collections/TaxonomySidebar';
 import { CollectionsSkeletonState } from '@/components/collections/CollectionsSkeletonState';
-import { createPortal } from 'react-dom';
 import { useToast } from '@/hooks/useToast';
+import { ModalShell } from '@/components/UI/ModalShell';
 import { useAuth } from '@/hooks/useAuth';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { LAYOUT_CLASSES } from '@/constants/layout';
@@ -26,37 +26,34 @@ type SortField = 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
 type SortDirection = 'asc' | 'desc';
 
 // -- Internal Instruction Modal --
-const CreateCollectionInstructionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  if (!isOpen) return null;
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 animate-in zoom-in-95">
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-          <X size={20} />
-        </button>
-        
-        <div className="flex flex-col items-center text-center">
-          <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-full flex items-center justify-center mb-4">
-            <Folder size={24} />
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">How to create a Collection</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
-            Collections must start with at least one nugget. <br/>
-            To create a new one, find any nugget in your feed, click the <strong>Folder Icon</strong>, and select <strong>"Create new public collection"</strong>.
-          </p>
-          <button 
-            onClick={onClose}
-            className="w-full py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
-          >
-            Got it
-          </button>
+const CreateCollectionInstructionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => (
+  <ModalShell isOpen={isOpen} onClose={onClose} wrapperClassName="p-4">
+    <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 animate-in zoom-in-95 z-10">
+      <button type="button" onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+        <X size={20} />
+      </button>
+
+      <div className="flex flex-col items-center text-center">
+        <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-full flex items-center justify-center mb-4">
+          <Folder size={24} />
         </div>
+        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">How to create a Collection</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+          Collections must start with at least one nugget. <br />
+          To create a new one, find any nugget in your feed, click the <strong>Folder Icon</strong>, and select{' '}
+          <strong>&quot;Create new public collection&quot;</strong>.
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
+        >
+          Got it
+        </button>
       </div>
-    </div>,
-    document.body
-  );
-};
+    </div>
+  </ModalShell>
+);
 
 export const CollectionsPage: React.FC = () => {
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -79,7 +76,6 @@ export const CollectionsPage: React.FC = () => {
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
-  const actionMenuRef = useRef<HTMLDivElement>(null);
 
   // Table layout can't breathe on narrow screens; force grid without clobbering the user's
   // explicit desktop preference.
@@ -114,17 +110,6 @@ export const CollectionsPage: React.FC = () => {
   useEffect(() => {
     loadCollections();
   }, [searchQuery, sortField, sortDirection]);
-
-  // Close dropdown on click outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
-        setIsActionMenuOpen(false);
-      }
-    };
-    if (isActionMenuOpen) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isActionMenuOpen]);
 
   const loadCollections = async () => {
     setIsLoading(true);
@@ -437,25 +422,31 @@ export const CollectionsPage: React.FC = () => {
               onToggleSelection={toggleSelectionMode}
               onOpenCreate={() => setShowInstruction(true)}
               onOpenActions={() => setIsActionMenuOpen((previous) => !previous)}
+              onCloseActionMenu={() => setIsActionMenuOpen(false)}
               isActionMenuOpen={isActionMenuOpen}
               actionMenu={
-                <div
-                  ref={actionMenuRef}
-                  className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150 dark:border-slate-700 dark:bg-slate-900"
-                >
+                <>
                   <button
-                    onClick={() => handleBulkFollow('follow')}
+                    type="button"
+                    onClick={() => {
+                      handleBulkFollow('follow');
+                      setIsActionMenuOpen(false);
+                    }}
                     className="w-full px-3 py-2 text-left text-xs font-semibold text-green-600 transition-colors hover:bg-green-50 dark:hover:bg-green-900/10"
                   >
                     Follow selected
                   </button>
                   <button
-                    onClick={() => handleBulkFollow('unfollow')}
+                    type="button"
+                    onClick={() => {
+                      handleBulkFollow('unfollow');
+                      setIsActionMenuOpen(false);
+                    }}
                     className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:hover:bg-red-900/10"
                   >
                     Unfollow selected
                   </button>
-                </div>
+                </>
               }
               onOpenFiltersMobile={() => setIsMobileFiltersOpen(true)}
               mobileFilterCount={(selectedParentId ? 1 : 0) + (selectedChildId ? 1 : 0)}

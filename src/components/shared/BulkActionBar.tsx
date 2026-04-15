@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import { X, Bookmark, Trash2, CheckSquare } from 'lucide-react';
 
 interface BulkActionBarProps {
@@ -26,7 +27,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
   const allSelected = selectedCount === totalCount;
 
   return createPortal(
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 pointer-events-auto animate-in slide-in-from-bottom-4 fade-in duration-200">
       <div className="flex items-center gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl shadow-2xl px-4 py-2.5 border border-slate-700 dark:border-slate-200">
         {/* Count & Select All/None */}
         <button
@@ -70,6 +71,6 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
         </button>
       </div>
     </div>,
-    document.body
+    getOverlayHost('popover'),
   );
 };

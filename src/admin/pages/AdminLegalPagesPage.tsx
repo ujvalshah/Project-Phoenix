@@ -20,6 +20,7 @@ import { ExternalLink, Pencil, GripVertical, X, Eye } from 'lucide-react';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useLegalPages, useLegalPageFull, useUpdateLegalPage } from '@/hooks/useLegalPages';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { ModalShell } from '@/components/UI/ModalShell';
 import type { LegalPageConfig } from '@/services/legalService';
 
 /** Toggle switch component */
@@ -97,22 +98,9 @@ const EditorModal: React.FC<{
     setHasChanges(true);
   };
 
-  // Close on Escape
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Modal */}
-      <div className="relative w-full max-w-5xl mx-4 max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <ModalShell isOpen onClose={onClose} wrapperClassName="p-4" backdropClassName="bg-black/50 backdrop-blur-sm">
+      <div className="relative z-10 w-full max-w-5xl mx-auto max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div>
@@ -204,7 +192,7 @@ const EditorModal: React.FC<{
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };
 

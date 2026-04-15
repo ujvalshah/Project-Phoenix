@@ -17,7 +17,6 @@ interface GridVariantProps {
   showTagPopover: boolean;
   showMenu: boolean;
   menuRef: React.RefObject<HTMLDivElement | null>;
-  tagPopoverRef: React.RefObject<HTMLDivElement | null>;
   isOwner: boolean;
   isAdmin: boolean;
   isPreview?: boolean;
@@ -32,7 +31,6 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   showTagPopover,
   showMenu,
   menuRef,
-  tagPopoverRef,
   isOwner,
   isAdmin,
   isPreview = false,
@@ -395,7 +393,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 onTagClick={handlers.onTagClick}
                 showTagPopover={showTagPopover}
                 onToggleTagPopover={handlers.onToggleTagPopover}
-                tagPopoverRef={tagPopoverRef}
+                onCloseTagPopover={handlers.onCloseTagPopover}
                 variant="grid"
               />
             )}

@@ -1,16 +1,7 @@
 import React, { useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { twMerge } from 'tailwind-merge';
-
-/**
- * Resolve the modal portal host. Prefer the dedicated #modal-root declared in
- * index.html (sibling of #root — guaranteed above the app's stacking context).
- * Fallback to document.body if missing, so dev tooling / tests still work.
- */
-const getModalHost = (): HTMLElement => {
-  if (typeof document === 'undefined') return null as unknown as HTMLElement;
-  return document.getElementById('modal-root') ?? document.body;
-};
+import { getOverlayHost } from '@/utils/overlayHosts';
 
 interface ModalShellProps {
   isOpen: boolean;
@@ -36,8 +27,7 @@ interface ModalShellProps {
  * ModalShell — single source of truth for overlay positioning.
  *
  * Owns:
- *  - Portal to document.body
- *  - Z-index (Z_INDEX.MODAL) on the fixed wrapper
+ *  - Portal to #modal-root (z-index Z_INDEX.MODAL via mountOverlayHostStack)
  *  - Backdrop + click-to-close
  *  - Escape-to-close
  *  - Body scroll lock
@@ -98,8 +88,7 @@ export const ModalShell: React.FC<ModalShellProps> = ({
     <div
       className={twMerge('fixed inset-0 flex', alignmentClass, wrapperClassName ?? '')}
       style={{
-        // z-index is OWNED BY #modal-root in index.html — do not set it here.
-        // pointerEvents re-enabled because #modal-root is pointer-events:none.
+        // z-index is owned by #modal-root (mountOverlayHostStack). Host is pointer-events:none.
         pointerEvents: 'auto',
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
@@ -120,6 +109,6 @@ export const ModalShell: React.FC<ModalShellProps> = ({
       )}
       {children}
     </div>,
-    getModalHost(),
+    getOverlayHost('modal'),
   );
 };

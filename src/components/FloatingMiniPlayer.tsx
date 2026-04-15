@@ -23,6 +23,7 @@
 
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { getOverlayHost } from '@/utils/overlayHosts';
 import { X, Maximize2, Play, Pause } from 'lucide-react';
 import { useVideoPlayer } from '@/context/VideoPlayerContext';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
@@ -155,7 +156,7 @@ export const FloatingMiniPlayer: React.FC<FloatingMiniPlayerProps> = ({ onExpand
   return createPortal(
     <div
       ref={containerRef}
-      className="fixed z-[9999] transition-all duration-300 ease-out"
+      className="fixed pointer-events-auto transition-all duration-300 ease-out"
       style={{
         // Desktop: bottom-right, Mobile: bottom-center
         bottom: 'calc(env(safe-area-inset-bottom) + 16px)',
@@ -244,6 +245,6 @@ export const FloatingMiniPlayer: React.FC<FloatingMiniPlayerProps> = ({ onExpand
         </div>
       </div>
     </div>,
-    document.body
+    getOverlayHost('pip'),
   );
 };

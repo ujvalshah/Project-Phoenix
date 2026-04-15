@@ -6,12 +6,10 @@ import { Collection } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { getOverlayHost } from '@/utils/overlayHosts';
+
 /** Top inset the popover should avoid (fixed header region). Keep in sync with header height. */
 const HEADER_SAFE_INSET = 72;
-
-/** Prefer dedicated overlay host (sibling of #root in index.html). Falls back to body. */
-const getPopoverHost = (): HTMLElement =>
-  document.getElementById('popover-root') ?? document.body;
 
 interface CollectionPopoverProps {
   isOpen: boolean;
@@ -270,7 +268,7 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
       ref={modalRef}
       role="dialog"
       aria-label={headerText}
-      className="fixed bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-in zoom-in-95 fade-in duration-200"
+      className="fixed pointer-events-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-in zoom-in-95 fade-in duration-200"
       style={{ ...style, pointerEvents: 'auto' }}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
@@ -373,6 +371,6 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
         )}
       </div>
     </div>,
-    getPopoverHost()
+    getOverlayHost('popover'),
   );
 };
