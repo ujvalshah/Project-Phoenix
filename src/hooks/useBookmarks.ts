@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { bookmarkService } from '@/services/bookmarkService';
+import { useAuthSelector } from '@/context/AuthContext';
 import type {
   BookmarkStatus,
   BookmarkFilters,
@@ -38,11 +39,12 @@ export const bookmarkKeys = {
  * Hook to get bookmark status for a specific item.
  */
 export function useBookmarkStatus(itemId: string, itemType: BookmarkItemType = 'nugget') {
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: bookmarkKeys.status(itemId, itemType),
     queryFn: () => bookmarkService.getStatus(itemId, itemType),
     staleTime: 1000 * 60 * 5, // 5 minutes
-    enabled: !!itemId
+    enabled: isAuthenticated && !!itemId
   });
 }
 
@@ -54,11 +56,12 @@ export function useBatchBookmarkStatus(
   itemIds: string[],
   itemType: BookmarkItemType = 'nugget'
 ) {
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: bookmarkKeys.batchStatus(itemIds),
     queryFn: () => bookmarkService.getBatchStatus(itemIds, itemType),
     staleTime: 1000 * 60 * 5, // 5 minutes
-    enabled: itemIds.length > 0
+    enabled: isAuthenticated && itemIds.length > 0
   });
 }
 
@@ -138,11 +141,13 @@ export function useToggleBookmark() {
  * Hook to get user's bookmarks with pagination.
  */
 export function useBookmarks(filters?: BookmarkFilters) {
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: bookmarkKeys.list(filters),
     queryFn: () => bookmarkService.getBookmarks(filters),
     staleTime: 1000 * 60 * 2, // 2 minutes
-    placeholderData: (previousData) => previousData
+    placeholderData: (previousData) => previousData,
+    enabled: isAuthenticated,
   });
 }
 
@@ -150,6 +155,7 @@ export function useBookmarks(filters?: BookmarkFilters) {
  * Hook for infinite scroll bookmark list.
  */
 export function useInfiniteBookmarks(filters?: Omit<BookmarkFilters, 'page'>) {
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useInfiniteQuery({
     queryKey: bookmarkKeys.infinite(filters),
     queryFn: ({ pageParam = 1 }) =>
@@ -157,7 +163,8 @@ export function useInfiniteBookmarks(filters?: Omit<BookmarkFilters, 'page'>) {
     getNextPageParam: (lastPage) =>
       lastPage.meta.hasMore ? lastPage.meta.page + 1 : undefined,
     initialPageParam: 1,
-    staleTime: 1000 * 60 * 2 // 2 minutes
+    staleTime: 1000 * 60 * 2, // 2 minutes
+    enabled: isAuthenticated,
   });
 }
 
@@ -165,10 +172,12 @@ export function useInfiniteBookmarks(filters?: Omit<BookmarkFilters, 'page'>) {
  * Hook to get user's bookmark collections.
  */
 export function useBookmarkCollections() {
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: bookmarkKeys.collections,
     queryFn: () => bookmarkService.getCollections(),
-    staleTime: 1000 * 60 * 10 // 10 minutes
+    staleTime: 1000 * 60 * 10, // 10 minutes
+    enabled: isAuthenticated,
   });
 }
 
@@ -176,11 +185,12 @@ export function useBookmarkCollections() {
  * Hook to get a specific bookmark collection.
  */
 export function useBookmarkCollection(collectionId: string) {
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: bookmarkKeys.collection(collectionId),
     queryFn: () => bookmarkService.getCollectionById(collectionId),
     staleTime: 1000 * 60 * 5, // 5 minutes
-    enabled: !!collectionId
+    enabled: isAuthenticated && !!collectionId
   });
 }
 
@@ -412,11 +422,12 @@ export function useSearchBookmarks(
   query: string,
   filters?: Omit<BookmarkFilters, 'q'>
 ) {
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: [...bookmarkKeys.list({ ...filters, q: query })],
     queryFn: () => bookmarkService.getBookmarks({ ...filters, q: query }),
     staleTime: 1000 * 60 * 2, // 2 minutes
-    enabled: query.length > 0
+    enabled: isAuthenticated && query.length > 0
   });
 }
 
