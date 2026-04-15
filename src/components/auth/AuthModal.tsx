@@ -254,25 +254,18 @@ export const AuthModal: React.FC = () => {
 
                                 <div>
                                     <label className={labelClass}>Password</label>
-                                    <div className="relative">
-                                      <Input 
-                                          type={isPasswordVisible ? 'text' : 'password'}
-                                          placeholder="••••••••" 
-                                          value={password} 
-                                          onChange={handlePasswordChange} 
-                                          required 
-                                          className={`${inputClass} pr-14 ${fieldErrors.password ? 'border-red-300 dark:border-red-700' : ''}`} 
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => setIsPasswordVisible((prev) => !prev)}
-                                        aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
-                                        aria-pressed={isPasswordVisible}
-                                        className="absolute inset-y-0 right-0 mr-3 flex items-center text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-                                      >
-                                        {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                                      </button>
-                                    </div>
+                                    <Input 
+                                        type={isPasswordVisible ? 'text' : 'password'}
+                                        placeholder="••••••••" 
+                                        value={password} 
+                                        onChange={handlePasswordChange} 
+                                        required 
+                                        rightIcon={isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        onRightIconClick={() => setIsPasswordVisible((prev) => !prev)}
+                                        rightIconAriaLabel={isPasswordVisible ? 'Hide password' : 'Show password'}
+                                        rightIconAriaPressed={isPasswordVisible}
+                                        className={`${inputClass} pr-14 ${fieldErrors.password ? 'border-red-300 dark:border-red-700' : ''}`} 
+                                    />
                                     {fieldErrors.password && (
                                         <p className="mt-1 text-xs text-red-600 dark:text-red-400 ml-1">{fieldErrors.password}</p>
                                     )}
@@ -334,7 +327,7 @@ export const AuthModal: React.FC = () => {
                                         <p className="mt-1 text-xs text-red-600 dark:text-red-400 ml-1">{fieldErrors.email}</p>
                                     )}
                                 </div>
-                                <div className="relative">
+                                <div>
                                     <div className="flex justify-between items-center mb-1.5 ml-1">
                                         <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Password</label>
                                     </div>
@@ -345,17 +338,12 @@ export const AuthModal: React.FC = () => {
                                         value={password} 
                                         onChange={handlePasswordChange} 
                                         required 
+                                        rightIcon={isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        onRightIconClick={() => setIsPasswordVisible((prev) => !prev)}
+                                        rightIconAriaLabel={isPasswordVisible ? 'Hide password' : 'Show password'}
+                                        rightIconAriaPressed={isPasswordVisible}
                                         className={`${inputClass} pr-14`} 
                                     />
-                                    <button
-                                      type="button"
-                                      onClick={() => setIsPasswordVisible((prev) => !prev)}
-                                      aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
-                                      aria-pressed={isPasswordVisible}
-                                      className="absolute inset-y-0 right-0 mr-3 flex items-center text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-                                    >
-                                      {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <label className="flex items-center gap-2 cursor-pointer group">

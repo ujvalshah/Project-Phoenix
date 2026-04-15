@@ -5,6 +5,8 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   leftIcon?: ReactNode;
   rightIcon?: ReactNode;
   onRightIconClick?: () => void;
+  rightIconAriaLabel?: string;
+  rightIconAriaPressed?: boolean;
   error?: string;
   containerClassName?: string;
 }
@@ -14,6 +16,8 @@ export const Input: React.FC<InputProps> = ({
   leftIcon,
   rightIcon,
   onRightIconClick,
+  rightIconAriaLabel,
+  rightIconAriaPressed,
   error,
   containerClassName = '',
   className = '',
@@ -49,12 +53,21 @@ export const Input: React.FC<InputProps> = ({
           {...props}
         />
         {rightIcon && (
-          <div 
-            className={`absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 ${onRightIconClick ? 'cursor-pointer hover:text-slate-600 dark:hover:text-slate-300' : 'pointer-events-none'}`}
-            onClick={onRightIconClick}
-          >
-            {rightIcon}
-          </div>
+          onRightIconClick ? (
+            <button
+              type="button"
+              aria-label={rightIconAriaLabel || 'Input action'}
+              aria-pressed={rightIconAriaPressed}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              onClick={onRightIconClick}
+            >
+              {rightIcon}
+            </button>
+          ) : (
+            <div className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 pointer-events-none">
+              {rightIcon}
+            </div>
+          )
         )}
       </div>
       {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
