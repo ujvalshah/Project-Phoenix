@@ -7,6 +7,8 @@ interface ModalShellProps {
   isOpen: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  /** Keep mounted and toggle visibility for snappier re-open UX. */
+  keepMounted?: boolean;
   /** Flex alignment of the panel inside the wrapper. Default: centered. */
   align?: 'center' | 'end' | 'bottom-sheet';
   /** Extra classes on the wrapper (padding, flex overrides). */
@@ -40,6 +42,7 @@ export const ModalShell: React.FC<ModalShellProps> = ({
   isOpen,
   onClose,
   children,
+  keepMounted = false,
   align = 'center',
   wrapperClassName,
   backdropClassName,
@@ -75,7 +78,7 @@ export const ModalShell: React.FC<ModalShellProps> = ({
     [disableBackdropClose, onClose],
   );
 
-  if (!isOpen) return null;
+  if (!isOpen && !keepMounted) return null;
 
   const alignmentClass =
     align === 'end'
@@ -86,10 +89,15 @@ export const ModalShell: React.FC<ModalShellProps> = ({
 
   return createPortal(
     <div
-      className={twMerge('fixed inset-0 flex', alignmentClass, wrapperClassName ?? '')}
+      className={twMerge(
+        'fixed inset-0 flex transition-opacity duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none',
+        alignmentClass,
+        isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+        wrapperClassName ?? '',
+      )}
       style={{
         // z-index is owned by #modal-root (mountOverlayHostStack). Host is pointer-events:none.
-        pointerEvents: 'auto',
+        // Do not force pointer events here; closed keepMounted shells must stay click-through.
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
         paddingLeft: 'env(safe-area-inset-left)',
@@ -100,7 +108,8 @@ export const ModalShell: React.FC<ModalShellProps> = ({
       {!noBackdrop && (
         <div
           className={twMerge(
-            'absolute inset-0 bg-slate-900/60 animate-in fade-in duration-150',
+            'absolute inset-0 bg-slate-900/60 transition-opacity duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none',
+            isOpen ? 'opacity-100' : 'opacity-0',
             backdropClassName ?? '',
           )}
           onClick={handleBackdrop}

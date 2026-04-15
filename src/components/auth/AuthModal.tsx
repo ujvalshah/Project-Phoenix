@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Mail, Lock, ArrowRight, Loader2, Chrome, ChevronLeft } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { Input } from '../UI/Input';
 import { ENABLED_SOCIAL_PROVIDERS } from '@/types/auth';
 import type { SignupPayload } from '@/types/auth';
@@ -33,7 +33,16 @@ const checkPasswordRequirements = (password: string) => {
 };
 
 export const AuthModal: React.FC = () => {
-  const { isAuthModalOpen, closeAuthModal, authModalView, login, signup } = useAuth();
+  const { isAuthModalOpen, closeAuthModal, authModalView, login, signup } = useAuthSelector(
+    (a) => ({
+      isAuthModalOpen: a.isAuthModalOpen,
+      closeAuthModal: a.closeAuthModal,
+      authModalView: a.authModalView,
+      login: a.login,
+      signup: a.signup,
+    }),
+    shallowEqualAuth,
+  );
 
   const [view, setView] = useState<'login' | 'signup' | 'forgot'>(authModalView);
   const [isLoading, setIsLoading] = useState(false);
@@ -153,14 +162,20 @@ export const AuthModal: React.FC = () => {
   const labelClass = "block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 ml-1 uppercase tracking-wider";
 
   return (
-    <ModalShell isOpen={isAuthModalOpen} onClose={closeAuthModal}>
-      <div className="
+    <ModalShell isOpen={isAuthModalOpen} onClose={closeAuthModal} keepMounted>
+      <div
+        data-state={isAuthModalOpen ? 'open' : 'closed'}
+        className="
         relative w-full max-w-md
         bg-white dark:bg-slate-950
         rounded-2xl shadow-2xl
         border border-slate-200/70 dark:border-white/10
         flex flex-col overflow-hidden
-        animate-in fade-in zoom-in-95 duration-150
+        transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none
+        will-change-transform
+        data-[state=closed]:translate-y-2 data-[state=closed]:scale-[0.985]
+        data-[state=closed]:opacity-0 data-[state=open]:translate-y-0
+        data-[state=open]:scale-100 data-[state=open]:opacity-100
         max-h-[90vh]
       ">
         

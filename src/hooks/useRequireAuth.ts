@@ -1,10 +1,17 @@
 
 import { useCallback } from 'react';
-import { useAuthContext } from '../context/AuthContext';
+import { shallowEqualAuth, useAuthSelector } from '../context/AuthContext';
 import { FeatureFlags } from '../admin/types/admin';
 
 export const useRequireAuth = () => {
-  const { isAuthenticated, openAuthModal, featureFlags } = useAuthContext();
+  const { isAuthenticated, openAuthModal, featureFlags } = useAuthSelector(
+    (a) => ({
+      isAuthenticated: a.isAuthenticated,
+      openAuthModal: a.openAuthModal,
+      featureFlags: a.featureFlags,
+    }),
+    shallowEqualAuth,
+  );
 
   const withAuth = useCallback((callback: (...args: any[]) => void, featureKey?: keyof FeatureFlags) => {
     return (...args: any[]) => {

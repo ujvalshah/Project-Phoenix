@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Article } from '@/types';
 import { useToast } from './useToast';
-import { useAuth } from './useAuth';
 import { useRequireAuth } from './useRequireAuth';
 import { storageService } from '@/services/storageService';
 import { queryClient } from '@/queryClient';
@@ -10,6 +9,7 @@ import { sanitizeArticle, hasValidAuthor, logError } from '@/utils/errorHandler'
 import { getAllImageUrls, getGridImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 import { useVideoPlayer } from '@/context/VideoPlayerContext';
+import { useAuthSelector } from '@/context/AuthContext';
 // formatDate removed - using relative time formatting in CardMeta instead
 
 // ────────────────────────────────────────
@@ -92,7 +92,7 @@ export const useNewsCard = ({
 }: UseNewsCardProps) => {
   const navigate = useNavigate();
   const toast = useToast();
-  const { isAdmin = false } = useAuth(); // Phase 3: Default to false to ensure boolean type
+  const isAdmin = useAuthSelector((a) => a.user?.role === 'admin');
   const { withAuth } = useRequireAuth();
 
   // ────────────────────────────────────────

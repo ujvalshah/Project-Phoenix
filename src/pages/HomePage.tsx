@@ -37,10 +37,11 @@ import { DesktopFilterSidebar } from '@/components/header/DesktopFilterSidebar';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
 import { CategoryToolbar, type ActiveFilterChip } from '@/components/CategoryToolbar';
-import { useAuth } from '@/hooks/useAuth';
-import { useSearchParams } from 'react-router-dom';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { markRouteContentReady } from '@/utils/routeProfiling';
 import { articleService } from '@/services/articleService';
-import { useFilters } from '@/context/FilterStateContext';
+import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import { useFilterResults } from '@/context/FilterResultsContext';
 import { useMarkPulseSeen, useMarkStandardSeen } from '@/hooks/usePulseUnseen';
 
@@ -124,6 +125,7 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({
   viewMode,
 }) => {
+  const firstContentMarkedRef = useRef(false);
   // Consume filter state from context — no prop drilling required
   const {
     searchQuery,
@@ -144,7 +146,29 @@ export const HomePage: React.FC<HomePageProps> = ({
     toggleDomainTag,
     toggleSubtopicTag,
     contentStream,
-  } = useFilters();
+  } = useFilterSelector(
+    (s) => ({
+      searchQuery: s.searchQuery,
+      selectedCategories: s.selectedCategories,
+      setSelectedCategories: s.setSelectedCategories,
+      selectedTag: s.selectedTag,
+      setSelectedTag: s.setSelectedTag,
+      sortOrder: s.sortOrder,
+      collectionId: s.collectionId,
+      favorites: s.favorites,
+      unread: s.unread,
+      formats: s.formats,
+      timeRange: s.timeRange,
+      formatTagIds: s.formatTagIds,
+      domainTagIds: s.domainTagIds,
+      subtopicTagIds: s.subtopicTagIds,
+      toggleFormatTag: s.toggleFormatTag,
+      toggleDomainTag: s.toggleDomainTag,
+      toggleSubtopicTag: s.toggleSubtopicTag,
+      contentStream: s.contentStream,
+    }),
+    shallowEqual,
+  );
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [pullY, setPullY] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -155,7 +179,13 @@ export const HomePage: React.FC<HomePageProps> = ({
   const isLg = useMediaQuery('(min-width: 1024px)');
   const { setInlineDesktopFiltersActive } = useDesktopFilterSidebar();
 
-  const { currentUserId, isAuthenticated } = useAuth();
+  const { currentUserId, isAuthenticated } = useAuthSelector(
+    (a) => ({
+      currentUserId: a.user?.id || '',
+      isAuthenticated: a.isAuthenticated,
+    }),
+    shallowEqualAuth,
+  );
   const markPulseSeen = useMarkPulseSeen();
   const markStandardSeen = useMarkStandardSeen();
 
@@ -229,6 +259,35 @@ export const HomePage: React.FC<HomePageProps> = ({
     subtopicTagIds,
     contentStream,
   });
+
+  useEffect(() => {
+    performance.mark('home:feed:query-state');
+  }, [isLoadingArticles, isFilterRefetching, contentStream]);
+
+  const routeContentMarkedRef = useRef<string | null>(null);
+  const pathname = useLocation().pathname;
+  useEffect(() => {
+    if (articles.length === 0) return;
+    // Initial-boot measurement (first ever paint of feed).
+    if (!firstContentMarkedRef.current) {
+      firstContentMarkedRef.current = true;
+      performance.mark('home:feed:first-content');
+      try {
+        performance.measure(
+          'home:feed:first-content-visible',
+          'app:boot:start',
+          'home:feed:first-content',
+        );
+      } catch {
+        // app:boot:start only exists on initial load.
+      }
+    }
+    // Per-route measurement: closes the window opened by RouteTransitionProfiler.
+    if (routeContentMarkedRef.current !== pathname) {
+      routeContentMarkedRef.current = pathname;
+      markRouteContentReady(pathname);
+    }
+  }, [articles.length, pathname]);
 
   useEffect(() => {
     setResultCount(totalCount);

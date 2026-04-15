@@ -12,7 +12,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
-import { useAuth } from '@/hooks/useAuth';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { twMerge } from 'tailwind-merge';
 import { getOverlayHost } from '@/utils/overlayHosts';
@@ -346,7 +346,13 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   buttonClassName,
   bellIconSize = 18,
 }) => {
-  const { isAuthenticated, openAuthModal } = useAuth();
+  const { isAuthenticated, openAuthModal } = useAuthSelector(
+    (a) => ({
+      isAuthenticated: a.isAuthenticated,
+      openAuthModal: a.openAuthModal,
+    }),
+    shallowEqualAuth,
+  );
   const { unreadCount, useNotificationList, markAsRead, markAllAsRead } =
     useNotifications();
   const [isOpen, setIsOpen] = useState(false);

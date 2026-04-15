@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Activity, Home, Layers } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
-import { useFilters } from '@/context/FilterStateContext';
+import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { LAYOUT } from '@/constants/layout';
@@ -90,7 +90,13 @@ function usePrefersReducedMotion(): boolean {
  */
 export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
-  const filters = useFilters();
+  const filters = useFilterSelector(
+    (s) => ({
+      contentStream: s.contentStream,
+      setContentStream: s.setContentStream,
+    }),
+    shallowEqual,
+  );
   const { isViewportNarrow, narrowHeaderHidden, setChromeInteractionActive } = useAppChromeScroll();
   const prefersReducedMotion = usePrefersReducedMotion();
   const { data: pulseUnseenCount } = usePulseUnseenCount();

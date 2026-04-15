@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { useFilters } from '@/context/FilterStateContext';
+import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import type { FilterState } from '@/components/header/filterTypes';
 
 /**
@@ -16,14 +16,17 @@ export function useFilterPanelHandlers(): {
     formatTagIds,
     domainTagIds,
     subtopicTagIds,
-    setCollectionId,
-    toggleFormatTag,
-    toggleDomainTag,
-    toggleSubtopicTag,
-    clearFormatTags,
-    clearDomainTags,
-    clearSubtopicTags,
-  } = useFilters();
+    setFilterPanelState,
+  } = useFilterSelector(
+    (s) => ({
+      collectionId: s.collectionId,
+      formatTagIds: s.formatTagIds,
+      domainTagIds: s.domainTagIds,
+      subtopicTagIds: s.subtopicTagIds,
+      setFilterPanelState: s.setFilterPanelState,
+    }),
+    shallowEqual,
+  );
 
   const filterState: FilterState = useMemo(
     () => ({
@@ -37,36 +40,24 @@ export function useFilterPanelHandlers(): {
 
   const handleFilterChange = useCallback(
     (newFilters: FilterState) => {
-      setCollectionId(newFilters.collectionId);
-      const syncDimension = (prev: string[], next: string[], toggle: (id: string) => void) => {
-        for (const id of next) {
-          if (!prev.includes(id)) toggle(id);
-        }
-        for (const id of prev) {
-          if (!next.includes(id)) toggle(id);
-        }
-      };
-      syncDimension(formatTagIds, newFilters.formatTagIds || [], toggleFormatTag);
-      syncDimension(domainTagIds, newFilters.domainTagIds || [], toggleDomainTag);
-      syncDimension(subtopicTagIds, newFilters.subtopicTagIds || [], toggleSubtopicTag);
+      setFilterPanelState({
+        collectionId: newFilters.collectionId,
+        formatTagIds: newFilters.formatTagIds || [],
+        domainTagIds: newFilters.domainTagIds || [],
+        subtopicTagIds: newFilters.subtopicTagIds || [],
+      });
     },
-    [
-      setCollectionId,
-      formatTagIds,
-      domainTagIds,
-      subtopicTagIds,
-      toggleFormatTag,
-      toggleDomainTag,
-      toggleSubtopicTag,
-    ],
+    [setFilterPanelState],
   );
 
   const handleFilterClear = useCallback(() => {
-    setCollectionId(null);
-    clearFormatTags();
-    clearDomainTags();
-    clearSubtopicTags();
-  }, [setCollectionId, clearFormatTags, clearDomainTags, clearSubtopicTags]);
+    setFilterPanelState({
+      collectionId: null,
+      formatTagIds: [],
+      domainTagIds: [],
+      subtopicTagIds: [],
+    });
+  }, [setFilterPanelState]);
 
   return { filterState, handleFilterChange, handleFilterClear };
 }

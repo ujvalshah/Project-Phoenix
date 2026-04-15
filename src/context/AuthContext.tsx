@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { User as LegacyUser } from '@/types';
 import { User as ModularUser } from '@/types/user';
 import { LoginPayload, SignupPayload, AuthProvider as AuthProviderType } from '@/types/auth';
@@ -10,6 +10,9 @@ import { adminConfigService } from '@/admin/services/adminConfigService';
 import { isTransientAuthMeError } from '@/utils/authBootstrapErrors';
 import { getSafeUsernameHandle } from '@/utils/userIdentity';
 import { captureException } from '@/utils/sentry';
+import { shallowEqual } from '@/utils/shallowEqual';
+
+export const shallowEqualAuth = shallowEqual;
 
 interface AuthContextType {
   user: LegacyUser | null; // Backward compatibility
@@ -28,7 +31,12 @@ interface AuthContextType {
   authModalView: 'login' | 'signup';
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+interface AuthStore {
+  getSnapshot: () => AuthContextType;
+  subscribe: (listener: () => void) => () => void;
+}
+
+const AuthContext = createContext<AuthStore | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [modularUser, setModularUser] = useState<ModularUser | null>(null);
@@ -62,7 +70,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const init = async () => {
       try {
-        // 1. Validate session — HttpOnly cookie sent automatically via credentials: 'include'
+        // 1) Validate session first. This gates auth UX, so do it on the
+        // critical path and unblock UI as soon as it settles.
         try {
           const freshUser = await authService.getCurrentUser();
           setModularUser(freshUser);
@@ -74,8 +83,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setModularUser(null);
           }
         }
+      } catch (e) {
+        captureException(e instanceof Error ? e : new Error(String(e)), {
+          route: 'AuthContext/init',
+        });
+      }
 
-        // 2. Load Global Config
+      // 2) Load config before unblocking UI so consumers (AuthModal signup
+      // fields, feature-flag gates) never see a null → resolved flicker.
+      try {
         const [flags, sConf] = await Promise.all([
           adminConfigService.getFeatureFlags(),
           adminConfigService.getSignupConfig(),
@@ -84,7 +100,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSignupConfig(sConf);
       } catch (e) {
         captureException(e instanceof Error ? e : new Error(String(e)), {
-          route: 'AuthContext/init',
+          route: 'AuthContext/configInit',
         });
       } finally {
         setIsLoading(false);
@@ -119,14 +135,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [modularUser]);
 
-  const login = async (payload: LoginPayload) => {
+  const openAuthModal = useCallback((view: 'login' | 'signup' = 'login') => {
+      setAuthModalView(view);
+      setIsAuthModalOpen(true);
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+      setIsAuthModalOpen(false);
+  }, []);
+
+  const login = useCallback(async (payload: LoginPayload) => {
     const response = await authService.loginWithEmail(payload);
     // Backend sets HttpOnly cookies; we just store user state in memory
     setModularUser(response.user);
     closeAuthModal();
-  };
+  }, [closeAuthModal]);
 
-  const signup = async (payload: SignupPayload): Promise<{ needsVerification: boolean }> => {
+  const signup = useCallback(async (payload: SignupPayload): Promise<{ needsVerification: boolean }> => {
     const response = await authService.signupWithEmail(payload);
     // Anti-enumeration: backend returns 201 without tokens when email already exists
     if (!response.token && !response.accessToken) {
@@ -145,15 +170,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       response.user.auth?.provider === 'email' &&
       response.user.auth?.emailVerified === false;
     return { needsVerification };
-  };
+  }, [closeAuthModal]);
 
-  const socialLogin = async (provider: AuthProviderType) => {
+  const socialLogin = useCallback(async (provider: AuthProviderType) => {
     const response = await authService.loginWithProvider(provider);
     setModularUser(response.user);
     closeAuthModal();
-  };
+  }, [closeAuthModal]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     // Call backend to invalidate tokens and clear HttpOnly cookies. We must
     // NOT silently swallow errors: HttpOnly cookies can only be cleared by
     // the server (Set-Cookie with Max-Age=0), so if this fails the browser
@@ -174,19 +199,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       document.cookie = 'csrf_token=; Path=/; Max-Age=0; SameSite=Strict';
     }
     setModularUser(null);
-  };
-
-  const openAuthModal = useCallback((view: 'login' | 'signup' = 'login') => {
-      setAuthModalView(view);
-      setIsAuthModalOpen(true);
   }, []);
 
-  const closeAuthModal = useCallback(() => {
-      setIsAuthModalOpen(false);
-  }, []);
-
-  return (
-    <AuthContext.Provider value={{
+  const contextValue = useMemo<AuthContextType>(() => ({
       user: legacyUser, // Expose adapted legacy user
       modularUser,      // Expose new schema
       isAuthenticated: !!modularUser,
@@ -201,14 +216,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       openAuthModal,
       closeAuthModal,
       authModalView
-    }}>
+  }), [
+    legacyUser,
+    modularUser,
+    isLoading,
+    featureFlags,
+    signupConfig,
+    login,
+    signup,
+    socialLogin,
+    logout,
+    isAuthModalOpen,
+    openAuthModal,
+    closeAuthModal,
+    authModalView,
+  ]);
+
+  const snapshotRef = useRef(contextValue);
+  const listenersRef = useRef(new Set<() => void>());
+  useLayoutEffect(() => {
+    snapshotRef.current = contextValue;
+    listenersRef.current.forEach((listener) => listener());
+  }, [contextValue]);
+
+  const store = useMemo<AuthStore>(
+    () => ({
+      getSnapshot: () => snapshotRef.current,
+      subscribe: (listener: () => void) => {
+        listenersRef.current.add(listener);
+        return () => {
+          listenersRef.current.delete(listener);
+        };
+      },
+    }),
+    [],
+  );
+
+  return (
+    <AuthContext.Provider value={store}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuthContext = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuthContext must be used within AuthProvider");
-  return context;
+export function useAuthSelector<T>(
+  selector: (state: AuthContextType) => T,
+  isEqual: (prev: T, next: T) => boolean = Object.is,
+): T {
+  const store = useContext(AuthContext);
+  if (!store) throw new Error('useAuthSelector must be used within AuthProvider');
+
+  const selectorRef = useRef(selector);
+  const isEqualRef = useRef(isEqual);
+  selectorRef.current = selector;
+  isEqualRef.current = isEqual;
+
+  const selectionRef = useRef<{ value: T } | null>(null);
+
+  const getSelection = () => {
+    const next = selectorRef.current(store.getSnapshot());
+    const prev = selectionRef.current;
+    if (prev && isEqualRef.current(prev.value, next)) {
+      return prev.value;
+    }
+    selectionRef.current = { value: next };
+    return next;
+  };
+
+  // getServerSnapshot returns the same selection as getSnapshot — the app is
+  // an SPA with no SSR, but React requires the arg to be defined to avoid a
+  // hydration warning if a server renderer is ever introduced.
+  return useSyncExternalStore(store.subscribe, getSelection, getSelection);
+}
+
+/**
+ * Read the full auth context. Uses shallow equality so legacy callers
+ * (useAuth) only re-render when an actual field changes — not on every
+ * provider commit.
+ */
+export const useAuthContext = (): AuthContextType => {
+  return useAuthSelector((state) => state, shallowEqual);
 };

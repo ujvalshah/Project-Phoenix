@@ -1,13 +1,20 @@
 import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated, isLoading, openAuthModal } = useAuth();
+  const { isAuthenticated, isLoading, openAuthModal } = useAuthSelector(
+    (a) => ({
+      isAuthenticated: a.isAuthenticated,
+      isLoading: a.isLoading,
+      openAuthModal: a.openAuthModal,
+    }),
+    shallowEqualAuth,
+  );
   const location = useLocation();
 
   useEffect(() => {

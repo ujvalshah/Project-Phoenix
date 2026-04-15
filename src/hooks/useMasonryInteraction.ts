@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Article } from '@/types';
 import { useToast } from '@/hooks/useToast';
-import { useAuth } from '@/hooks/useAuth';
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -26,7 +25,6 @@ export const useMasonryInteraction = ({
   currentUserId,
 }: UseMasonryInteractionProps) => {
   const toast = useToast();
-  const { currentUser } = useAuth();
   const queryClient = useQueryClient();
 
   const [showCollectionPopover, setShowCollectionPopover] = useState(false);

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { RestAdapter } from '@/services/adapters/RestAdapter';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthSelector } from '@/context/AuthContext';
 
 const adapter = new RestAdapter();
 
@@ -13,7 +13,7 @@ const STANDARD_KEY = ['standard', 'unseen-count'] as const;
  * can suppress the badge entirely.
  */
 export function usePulseUnseenCount() {
-  const { isAuthenticated } = useAuth();
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: PULSE_KEY,
     queryFn: () => adapter.getPulseUnseenCount(),
@@ -25,7 +25,7 @@ export function usePulseUnseenCount() {
 
 /** Same as usePulseUnseenCount, but for the Home (standard) feed. */
 export function useStandardUnseenCount() {
-  const { isAuthenticated } = useAuth();
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: STANDARD_KEY,
     queryFn: () => adapter.getStandardUnseenCount(),

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { BackToTopButton } from '@/components/UI/BackToTopButton';
 import { ToastContainer } from '@/components/UI/Toast';
@@ -10,9 +10,9 @@ import { FeedScrollStateProvider } from '@/context/FeedScrollStateContext';
 import { VideoPlayerProvider } from '@/context/VideoPlayerContext';
 import { MainLayout } from '@/components/layouts/MainLayout';
 import { FilterStateProvider } from '@/context/FilterStateContext';
-import { Loader2 } from 'lucide-react';
 import { CreateNuggetModal } from '@/components/CreateNuggetModal';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthSelector } from '@/context/AuthContext';
+import { consumePendingNavigation, recordRouteStartMark } from '@/utils/routeProfiling';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
@@ -82,6 +82,65 @@ const LegalPage = lazy(() => import('@/pages/LegalPage').then(module => ({ defau
 const ContactPage = lazy(() => import('@/pages/ContactPage').then(module => ({ default: module.ContactPage })));
 const NotificationsPage = lazy(() => import('@/pages/NotificationsPage').then(module => ({ default: module.NotificationsPage })));
 
+const RouteTransitionProfiler: React.FC = () => {
+  const location = useLocation();
+  const lastPathRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    const path = location.pathname;
+    if (lastPathRef.current === path) return;
+    const fromPath = lastPathRef.current;
+    lastPathRef.current = path;
+    if (fromPath === null) return; // Initial mount — covered by app:boot:* marks.
+
+    const nav = consumePendingNavigation();
+    // Double rAF: the first callback runs before paint; the second runs on
+    // the next frame, which is the earliest we can honestly call "painted."
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        const paintedAt = performance.now();
+        const label = path;
+        if (nav) {
+          try {
+            performance.measure(`route:transition:${nav.fromPath}->${path}`, {
+              start: nav.start,
+              end: paintedAt,
+            });
+          } catch {
+            // ignore
+          }
+          // Seed a start mark so pages can close the window with
+          // markRouteContentReady(label) when their data lands.
+          recordRouteStartMark(label, nav.start);
+        }
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      if (innerRaf) cancelAnimationFrame(innerRaf);
+    };
+  }, [location.pathname]);
+
+  return null;
+};
+
+// Neutral shimmer: a view-mode-agnostic placeholder that does not pre-commit
+// to a grid/feed/masonry shape. Pages render their own shape-matched skeleton
+// once their chunk loads, so this fallback only needs to prove "something is
+// happening" without flashing a conflicting layout.
+const RouteFallbackSkeleton: React.FC = () => (
+  <div className="mx-auto w-full max-w-[1800px] px-4 lg:px-6 pt-20 lg:pt-24 pb-12">
+    <div className="mb-5 h-10 w-64 rounded-xl bg-slate-200/80 dark:bg-slate-800/70 animate-pulse" />
+    <div className="flex flex-col gap-4">
+      <div className="h-24 rounded-2xl bg-slate-200/70 dark:bg-slate-800/60 animate-pulse" />
+      <div className="h-24 rounded-2xl bg-slate-200/60 dark:bg-slate-800/50 animate-pulse" />
+      <div className="h-24 rounded-2xl bg-slate-200/50 dark:bg-slate-800/40 animate-pulse" />
+    </div>
+  </div>
+);
+
 const AppContent: React.FC = () => {
   const [isDark, setIsDark] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -89,7 +148,7 @@ const AppContent: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   // Use Auth hook for user context
-  const { currentUserId } = useAuth();
+  const currentUserId = useAuthSelector((a) => a.user?.id || '');
 
   useEffect(() => {
     if (window.matchMedia('(prefers-color-scheme: dark)').matches) setIsDark(true);
@@ -111,6 +170,7 @@ const AppContent: React.FC = () => {
     <>
       {/* Handle legacy hash URLs (e.g., /#/collections → /collections) */}
       <HashRedirect />
+      <RouteTransitionProfiler />
       
       {/* 
         LAYOUT INVARIANT:
@@ -152,7 +212,7 @@ const AppContent: React.FC = () => {
           Suspense fallback must NOT use min-h-screen to prevent layout shifts.
           It should only provide visual feedback without affecting layout structure.
         */}
-        <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh] pt-20 lg:pt-24 pb-12"><Loader2 className="animate-spin w-8 h-8 text-primary-500" /></div>}>
+        <Suspense fallback={<RouteFallbackSkeleton />}>
           <Routes>
           {/* Feed/Content Areas - Wrapped in Error Boundaries */}
           <Route path="/" element={

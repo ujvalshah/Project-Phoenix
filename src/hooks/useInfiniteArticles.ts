@@ -43,6 +43,89 @@ export interface UseInfiniteArticlesResult {
   refetch: () => void;
 }
 
+export type InfiniteArticlesOptions = Required<
+  Pick<
+    UseInfiniteArticlesOptions,
+    | 'searchQuery'
+    | 'activeCategory'
+    | 'sortOrder'
+    | 'limit'
+    | 'tag'
+    | 'collectionId'
+    | 'favorites'
+    | 'unread'
+    | 'formats'
+    | 'timeRange'
+    | 'formatTagIds'
+    | 'domainTagIds'
+    | 'subtopicTagIds'
+    | 'selectedCategories'
+  >
+> &
+  Pick<UseInfiniteArticlesOptions, 'contentStream'>;
+
+export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptions) => ({
+  queryKey: [
+    'articles',
+    'infinite',
+    options.searchQuery.trim(),
+    options.activeCategory,
+    // Multi-select categories must participate in the key; otherwise changes
+    // to selectedCategories don't refetch when activeCategory happens to
+    // remain the same.
+    options.selectedCategories.join(','),
+    options.sortOrder,
+    options.limit,
+    options.tag ?? '',
+    options.collectionId ?? '',
+    options.favorites,
+    options.unread,
+    options.formats.join(','),
+    options.timeRange,
+    options.formatTagIds.join(','),
+    options.domainTagIds.join(','),
+    options.subtopicTagIds.join(','),
+    options.contentStream ?? '',
+  ],
+  queryFn: async ({ pageParam = 1 }: { pageParam?: unknown }) => {
+    const categoryParam =
+      options.selectedCategories && options.selectedCategories.length > 0
+        ? options.selectedCategories
+        : options.activeCategory === 'All'
+          ? []
+          : [options.activeCategory];
+
+    const filters: FilterState = {
+      query: options.searchQuery.trim(),
+      categories: categoryParam,
+      tag: options.tag || null,
+      sort: options.sortOrder,
+      limit: options.limit,
+      collectionId: options.collectionId || undefined,
+      favorites: options.favorites || undefined,
+      unread: options.unread || undefined,
+      formats: options.formats.length > 0 ? options.formats : undefined,
+      timeRange:
+        options.timeRange !== 'all'
+          ? (options.timeRange as FilterState['timeRange'])
+          : undefined,
+      formatTagIds:
+        options.formatTagIds.length > 0 ? options.formatTagIds : undefined,
+      domainTagIds:
+        options.domainTagIds.length > 0 ? options.domainTagIds : undefined,
+      subtopicTagIds:
+        options.subtopicTagIds.length > 0 ? options.subtopicTagIds : undefined,
+      contentStream: options.contentStream || undefined,
+    };
+
+    return articleService.getArticles(filters, pageParam as number);
+  },
+  getNextPageParam: (lastPage: PaginatedArticlesResponse) =>
+    lastPage?.hasMore ? lastPage.page + 1 : undefined,
+  initialPageParam: 1,
+  staleTime: 1000 * 30,
+});
+
 export const useInfiniteArticles = ({
   searchQuery,
   activeCategory,
@@ -65,47 +148,25 @@ export const useInfiniteArticles = ({
   // - Reset on query key change (category/search/sort/tag/collection changes)
   // - Caching
   // - Race condition protection
-  const query = useInfiniteQuery<PaginatedArticlesResponse>({
-    queryKey: ['articles', 'infinite', searchQuery.trim(), activeCategory, sortOrder, limit, tag ?? '', collectionId ?? '', favorites, unread, formats.join(','), timeRange, formatTagIds.join(','), domainTagIds.join(','), subtopicTagIds.join(','), contentStream ?? ''],
-    queryFn: async ({ pageParam = 1 }) => {
-      // Build filters inside queryFn to avoid stale closures
-      // Use full selectedCategories array when available, fall back to activeCategory
-      const categoryParam = selectedCategories && selectedCategories.length > 0
-        ? selectedCategories
-        : activeCategory === 'All'
-          ? []
-          : [activeCategory];
-
-      // Build filter state
-      const filters: FilterState = {
-        query: searchQuery.trim(),
-        categories: categoryParam,
-        tag: tag || null,
-        sort: sortOrder,
-        limit,
-        collectionId: collectionId || undefined,
-        favorites: favorites || undefined,
-        unread: unread || undefined,
-        formats: formats.length > 0 ? formats : undefined,
-        timeRange: timeRange !== 'all' ? (timeRange as FilterState['timeRange']) : undefined,
-        formatTagIds: formatTagIds.length > 0 ? formatTagIds : undefined,
-        domainTagIds: domainTagIds.length > 0 ? domainTagIds : undefined,
-        subtopicTagIds: subtopicTagIds.length > 0 ? subtopicTagIds : undefined,
-        contentStream: contentStream || undefined,
-      };
-
-      return articleService.getArticles(filters, pageParam as number);
-    },
-    getNextPageParam: (lastPage) => {
-      // Return next page number if there are more pages
-      // Add null check to prevent errors during refetch/reset
-      return lastPage?.hasMore ? lastPage.page + 1 : undefined;
-    },
-    initialPageParam: 1,
-    staleTime: 1000 * 30, // 30 seconds
-    // CRITICAL FIX: Removed placeholderData - it interferes with page accumulation in infinite queries
-    // React Query handles data persistence naturally without placeholderData
-  });
+  const query = useInfiniteQuery<PaginatedArticlesResponse>(
+    buildInfiniteArticlesQueryOptions({
+      searchQuery,
+      activeCategory,
+      selectedCategories: selectedCategories ?? [],
+      sortOrder,
+      limit,
+      tag,
+      collectionId,
+      favorites,
+      unread,
+      formats,
+      timeRange,
+      formatTagIds,
+      domainTagIds,
+      subtopicTagIds,
+      contentStream,
+    }),
+  );
 
   // Accumulate all pages into a single articles array (memoized)
   // Backend now handles all filtering (including "Today" date filter)

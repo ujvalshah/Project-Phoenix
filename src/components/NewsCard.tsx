@@ -15,7 +15,7 @@ import { CreateNuggetModal } from './CreateNuggetModal';
 import { LinkPreviewModal } from './LinkPreviewModal';
 import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
-import { useAuth } from '@/hooks/useAuth';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import { buildLightboxSourceLinksForImageUrls } from '@/utils/masonryMediaHelper';
 // Lazy-load YouTube modal for code splitting (zero impact on initial bundle)
@@ -57,7 +57,10 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
     ref
   ) => {
     const toast = useToast();
-    const { currentUser } = useAuth();
+    const { currentUser } = useAuthSelector(
+      (a) => ({ currentUser: a.user }),
+      shallowEqualAuth,
+    );
 
     // Call the logic hook
     const hookResult = useNewsCard({

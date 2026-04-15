@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from './useAuth';
+import { useAuthSelector } from '@/context/AuthContext';
 import {
   getUnreadCount,
   getNotifications,
@@ -22,7 +22,7 @@ const NOTIFICATION_KEYS = {
 };
 
 export function useNotifications() {
-  const { currentUserId } = useAuth();
+  const currentUserId = useAuthSelector((a) => a.user?.id || '');
   const queryClient = useQueryClient();
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission | 'unsupported'>(
     getPermissionStatus()

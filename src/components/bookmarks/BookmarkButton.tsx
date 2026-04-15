@@ -3,7 +3,7 @@ import { Bookmark, BookmarkCheck, Trash2, FolderOpen, Loader2 } from 'lucide-rea
 import { useToggleBookmark } from '@/hooks/useBookmarks';
 import { useToast } from '@/hooks/useToast';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useAuth } from '@/hooks/useAuth';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import type { BookmarkItemType } from '@/services/bookmarkService';
 import { bookmarkService } from '@/services/bookmarkService';
 import { twMerge } from 'tailwind-merge';
@@ -61,7 +61,10 @@ function BookmarkButtonInner({
 }: BookmarkButtonProps) {
   const toast = useToast();
   const { withAuth } = useRequireAuth();
-  const { user } = useAuth();
+  const { user } = useAuthSelector(
+    (a) => ({ user: a.user }),
+    shallowEqualAuth,
+  );
   const [isAnimating, setIsAnimating] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 

@@ -13,31 +13,36 @@ import { mountOverlayHostStack } from './utils/overlayHosts';
 // Initialize Sentry early
 initSentry();
 
-// Register service worker for push notifications
-registerServiceWorker();
+performance.mark('app:boot:start');
+mountOverlayHostStack();
 
-const renderApp = () => {
-  mountOverlayHostStack();
-  const container = document.getElementById('root');
-  
-  if (container) {
-    const root = createRoot(container);
-    root.render(
-      <React.StrictMode>
-        <BrowserRouter>
-          <QueryClientProvider client={queryClient}>
-            <App />
-          </QueryClientProvider>
-        </BrowserRouter>
-      </React.StrictMode>
-    );
+const container = document.getElementById('root');
+
+if (container) {
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+  performance.mark('app:boot:mounted');
+  performance.measure('app:boot:mount', 'app:boot:start', 'app:boot:mounted');
+
+  // Keep first render path non-blocking. Register SW after first paint/idle.
+  const registerInBackground = () => {
+    void registerServiceWorker();
+  };
+  if ('requestIdleCallback' in window) {
+    (window as Window & {
+      requestIdleCallback: (cb: () => void, opts?: { timeout?: number }) => number;
+    }).requestIdleCallback(registerInBackground, { timeout: 2000 });
   } else {
-    console.error("Failed to find the root element. Application cannot mount.");
+    window.setTimeout(registerInBackground, 0);
   }
-};
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', renderApp);
 } else {
-  renderApp();
+  console.error('Failed to find the root element. Application cannot mount.');
 }

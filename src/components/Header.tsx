@@ -11,7 +11,6 @@ import { Avatar } from './shared/Avatar';
 import { FilterPopover } from './header/FilterPopover';
 import { useFilterPanelHandlers } from '@/hooks/useFilterPanelHandlers';
 import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
-import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useToast } from '@/hooks/useToast';
 import { Loader2 } from 'lucide-react';
@@ -20,7 +19,8 @@ import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 import { getOverlayHost } from '@/utils/overlayHosts';
 import { DropdownPortal } from './UI/DropdownPortal';
-import { useFilters } from '@/context/FilterStateContext';
+import { shallowEqual as shallowEqualFilters, useFilterSelector } from '@/context/FilterStateContext';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { useLegalPages } from '@/hooks/useLegalPages';
 import { usePulseUnseenCount, useStandardUnseenCount } from '@/hooks/usePulseUnseen';
@@ -89,7 +89,19 @@ export const Header: React.FC<HeaderProps> = ({
   toggleTheme,
 }) => {
   // Consume filter state from context — no prop drilling required
-  const filters = useFilters();
+  const filters = useFilterSelector(
+    (s) => ({
+      searchInputValue: s.searchInputValue,
+      setSearchInput: s.setSearchInput,
+      sortOrder: s.sortOrder,
+      setSortOrder: s.setSortOrder,
+      hasActiveFilters: s.hasActiveFilters,
+      activeFilterCount: s.activeFilterCount,
+      contentStream: s.contentStream,
+      setContentStream: s.setContentStream,
+    }),
+    shallowEqualFilters,
+  );
   const { searchInputValue: searchQuery, setSearchInput: setSearchQuery, sortOrder, setSortOrder } = filters;
   const { data: pulseUnseenCount } = usePulseUnseenCount();
   const { data: standardUnseenCount } = useStandardUnseenCount();
@@ -144,7 +156,15 @@ export const Header: React.FC<HeaderProps> = ({
   const activeAvatarRef = isMobile ? mobileAvatarButtonRef : avatarButtonRef;
   
   const location = useLocation();
-  const { currentUser, isAuthenticated, openAuthModal, logout } = useAuth();
+  const { currentUser, isAuthenticated, openAuthModal, logout } = useAuthSelector(
+    (a) => ({
+      currentUser: a.user,
+      isAuthenticated: a.isAuthenticated,
+      openAuthModal: a.openAuthModal,
+      logout: a.logout,
+    }),
+    shallowEqualAuth,
+  );
   const headerToast = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -1029,17 +1049,57 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   viewMode,
   setViewMode,
 }) => {
-  if (!isOpen) return null;
+  // Two booleans replace the previous 4-state machine:
+  //   • isMounted — controls portal lifetime (delayed unmount for exit anim)
+  //   • isVisible — controls data-state; flipped one frame after mount so the
+  //                 enter transition actually has a starting state to leave from
+  // All visual styling is `data-state` driven, including motion-reduce.
+  const [isMounted, setIsMounted] = useState(isOpen);
+  const [isVisible, setIsVisible] = useState(false);
+  const drawerRef = React.useRef<HTMLDivElement | null>(null);
 
-  // IMPORTANT:
-  // Portals must remain OUTSIDE layout JSX.
-  // Never access `document` at module scope.
-  if (typeof document === "undefined") return null;
+  useEffect(() => {
+    if (isOpen) {
+      setIsMounted(true);
+      const raf = requestAnimationFrame(() => setIsVisible(true));
+      return () => cancelAnimationFrame(raf);
+    }
+    setIsVisible(false);
+    // Fallback unmount: transitionend will not fire under prefers-reduced-motion
+    // (transition-none), so guarantee cleanup on a matching timeout.
+    const t = window.setTimeout(() => setIsMounted(false), 250);
+    return () => window.clearTimeout(t);
+  }, [isOpen]);
+
+  // Unmount once the drawer's exit transform finishes. Using onTransitionEnd
+  // on the actual element (vs. a hardcoded timeout) keeps mount lifetime in
+  // sync with the real animation, including motion-reduce overrides.
+  const handleTransitionEnd = (event: React.TransitionEvent<HTMLDivElement>) => {
+    if (event.target !== drawerRef.current) return;
+    if (event.propertyName !== 'transform') return;
+    if (!isOpen) setIsMounted(false);
+  };
+
+  if (!isMounted) return null;
+  if (typeof document === 'undefined') return null;
+
+  const state = isVisible && isOpen ? 'open' : 'closed';
 
   return createPortal(
-    <div className="fixed inset-0 pointer-events-auto">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={onClose} />
-      <div className="absolute bottom-0 left-0 top-0 flex w-[280px] flex-col border-r border-gray-200 bg-white shadow-2xl animate-in slide-in-from-left duration-300 dark:border-slate-700 dark:bg-slate-900">
+    <div className="fixed inset-0 pointer-events-auto" data-state={state}>
+      <div
+        data-state={state}
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none data-[state=closed]:opacity-0 data-[state=open]:opacity-100"
+        onClick={onClose}
+      />
+      <div
+        ref={drawerRef}
+        data-state={state}
+        onTransitionEnd={handleTransitionEnd}
+        role="dialog"
+        aria-modal="true"
+        className="absolute bottom-0 left-0 top-0 flex w-[280px] flex-col border-r border-gray-200 bg-white shadow-2xl transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform motion-reduce:transition-none data-[state=closed]:-translate-x-full data-[state=closed]:opacity-0 data-[state=open]:translate-x-0 data-[state=open]:opacity-100 dark:border-slate-700 dark:bg-slate-900"
+      >
         
         <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-5 dark:border-slate-800 dark:bg-slate-900/95">
           <div className="flex min-w-0 items-center gap-2.5">

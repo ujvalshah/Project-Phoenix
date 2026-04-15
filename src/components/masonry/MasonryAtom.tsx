@@ -7,7 +7,7 @@ import { useMasonryInteraction } from '@/hooks/useMasonryInteraction';
 import { CollectionPopover } from '@/components/CollectionPopover';
 import { ReportModal, ReportPayload } from '@/components/ReportModal';
 import { CreateNuggetModal } from '@/components/CreateNuggetModal';
-import { useAuth } from '@/hooks/useAuth';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { storageService } from '@/services/storageService';
@@ -43,7 +43,10 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
-  const { currentUser } = useAuth();
+  const { currentUser } = useAuthSelector(
+    (a) => ({ currentUser: a.user }),
+    shallowEqualAuth,
+  );
   const queryClient = useQueryClient();
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 

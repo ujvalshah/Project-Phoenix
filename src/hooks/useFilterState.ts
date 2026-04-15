@@ -167,6 +167,12 @@ export interface UseFilterStateReturn {
   toggleFormat: (fmt: string) => void;
   setTimeRange: (t: TimeRange) => void;
   setCollectionId: (id: string | null) => void;
+  setFilterPanelState: (next: {
+    collectionId: string | null;
+    formatTagIds: string[];
+    domainTagIds: string[];
+    subtopicTagIds: string[];
+  }) => void;
   toggleFormatTag: (tagId: string) => void;
   toggleDomainTag: (tagId: string) => void;
   toggleSubtopicTag: (tagId: string) => void;
@@ -398,6 +404,18 @@ export function useFilterState(): UseFilterStateReturn {
   const clearDomainTags = useCallback(() => setDomainTagIds([]), []);
   const clearSubtopicTags = useCallback(() => setSubtopicTagIds([]), []);
 
+  const setFilterPanelState = useCallback((next: {
+    collectionId: string | null;
+    formatTagIds: string[];
+    domainTagIds: string[];
+    subtopicTagIds: string[];
+  }) => {
+    setCollectionId(next.collectionId);
+    setFormatTagIds(next.formatTagIds);
+    setDomainTagIds(next.domainTagIds);
+    setSubtopicTagIds(next.subtopicTagIds);
+  }, []);
+
   return {
     searchQuery: debouncedQuery,
     searchInputValue,
@@ -426,6 +444,7 @@ export function useFilterState(): UseFilterStateReturn {
     toggleFormat,
     setTimeRange,
     setCollectionId,
+    setFilterPanelState,
     toggleFormatTag,
     toggleDomainTag,
     toggleSubtopicTag,

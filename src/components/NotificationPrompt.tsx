@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, X } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthSelector } from '@/context/AuthContext';
 
 const DISMISSED_KEY = 'nuggets_notif_prompt_dismissed';
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -9,7 +9,7 @@ const VIEW_COUNT_KEY = 'nuggets_article_view_count';
 const VIEW_THRESHOLD = 3;
 
 export const NotificationPrompt: React.FC = () => {
-  const { currentUserId } = useAuth();
+  const currentUserId = useAuthSelector((a) => a.user?.id || '');
   const { subscribe, permissionStatus, isSubscribed, isPushSupported } = useNotifications();
   const [visible, setVisible] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);

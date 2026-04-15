@@ -383,9 +383,9 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     );
   }
 
-  // FIX #2: Remove duplicate masonry loading logic
-  // MasonryGrid handles its own loading state with correct column count
-  // This prevents visual mismatch between loading and loaded states
+  // Show immediate skeleton structure while initial data loads, except in
+  // masonry view where MasonryGrid renders its own shape-matched skeleton —
+  // a generic grid skeleton there flashes the wrong layout before hydrate.
   if (isLoading && viewMode !== 'masonry') {
     return (
       <div

@@ -8,7 +8,7 @@ import { detectProviderFromUrl, looksLikeMultipleUrls, splitPastedUrlCandidates 
 import { queryClient } from '@/queryClient';
 import { GenericLinkPreview } from './embeds/GenericLinkPreview';
 import { Collection } from '@/types';
-import { useAuth } from '@/hooks/useAuth';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 // AI service removed - AI creation system has been fully removed
 import { useToast } from '@/hooks/useToast';
 import { compressImage, isImageFile, formatFileSize } from '@/utils/imageOptimizer';
@@ -71,7 +71,14 @@ const MAX_FILE_SIZE_AFTER_COMPRESSION = 500 * 1024; // 500KB (after compression)
 
 export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, onClose, mode = 'create', initialData }) => {
   // Auth
-  const { currentUser, currentUserId, isAdmin } = useAuth();
+  const { currentUser, currentUserId, isAdmin } = useAuthSelector(
+    (a) => ({
+      currentUser: a.user,
+      currentUserId: a.user?.id || '',
+      isAdmin: a.user?.role === 'admin',
+    }),
+    shallowEqualAuth,
+  );
   const authorName = currentUser?.name || 'User';
   const toast = useToast();
 
