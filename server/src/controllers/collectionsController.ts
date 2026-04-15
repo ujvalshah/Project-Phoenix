@@ -9,59 +9,17 @@ import { getCommunityCollections, getCommunityCollectionsCount, CollectionQueryF
 import { createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+import {
+  canModifyCollectionMetadata,
+  canModifyCollectionEntriesPolicy,
+  canViewCollectionPolicy,
+  canCreateCollectionOfType
+} from '../utils/editorialCollectionPolicy.js';
 
 /**
- * PHASE 1: Helper function to check if user has permission to modify a collection
- * Returns true if user is the creator OR user is an admin
+ * Editorial collections API (/api/collections): public collections are admin-managed only.
+ * Private collections remain user-owned (creator or admin may modify).
  */
-function canModifyCollection(
-  collection: { creatorId: unknown; type: string },
-  userId: string | undefined,
-  userRole: string | undefined
-): boolean {
-  if (!userId) return false;
-  const normalizedRole = userRole?.toLowerCase();
-  // Admin can modify any collection
-  if (normalizedRole === 'admin') return true;
-  // Creator can modify their own collection
-  return String(collection.creatorId) === String(userId);
-}
-
-/**
- * PHASE 1: Helper function to check if user has permission to view a collection
- * Returns true if collection is public OR user is creator OR user is admin
- */
-function canViewCollection(
-  collection: { creatorId: unknown; type: string },
-  userId: string | undefined,
-  userRole: string | undefined
-): boolean {
-  // Public collections are viewable by anyone
-  if (collection.type === 'public') return true;
-  if (!userId) return false;
-  // Admin can view any collection
-  if (userRole?.toLowerCase() === 'admin') return true;
-  // Creator can view their own private collection
-  return String(collection.creatorId) === String(userId);
-}
-
-/**
- * PHASE 1: Helper function to check if user can add/remove entries from a collection
- * Returns true if collection is public OR user is creator OR user is admin
- */
-function canModifyCollectionEntries(
-  collection: { creatorId: unknown; type: string },
-  userId: string | undefined,
-  userRole: string | undefined
-): boolean {
-  if (!userId) return false;
-  // Admin can modify entries in any collection
-  if (userRole?.toLowerCase() === 'admin') return true;
-  // Public collections allow anyone to add/remove entries
-  if (collection.type === 'public') return true;
-  // Private collections: only creator can modify entries
-  return String(collection.creatorId) === String(userId);
-}
 
 function buildRootCollectionQuery() {
   return { $or: [{ parentId: null }, { parentId: { $exists: false } }] };
@@ -306,7 +264,7 @@ export const getCollectionById = async (req: Request, res: Response) => {
     // PHASE 1: Check collection access with admin override
     const userId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
-    if (!canViewCollection(collection, userId, userRole)) {
+    if (!canViewCollectionPolicy(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to view this collection' });
     }
     
@@ -391,7 +349,14 @@ export const createCollection = async (req: Request, res: Response) => {
 
     const { name, description, type, parentId } = validationResult.data;
     const creatorId = userId; // USE AUTHENTICATED USER, NOT CLIENT PROVIDED
-    
+
+    if (!canCreateCollectionOfType(type, (req as any).user?.role)) {
+      return res.status(403).json({
+        message: 'Only administrators can create public collections',
+        code: 'PUBLIC_COLLECTION_ADMIN_ONLY'
+      });
+    }
+
     // PHASE 4: Validate creatorId existence (even though it's the authenticated user)
     const creatorExists = await User.exists({ _id: creatorId });
     if (!creatorExists) {
@@ -483,9 +448,10 @@ export const createCollection = async (req: Request, res: Response) => {
       const requestedParentId = typeof req.body.parentId === 'string' && req.body.parentId.trim().length > 0
         ? req.body.parentId.trim()
         : null;
+      const authUserId = (req as any).user?.userId as string | undefined;
       const query: any = { canonicalName };
       if (collectionType === 'private') {
-        query.creatorId = userId; // Use authenticated user ID
+        query.creatorId = authUserId;
         query.type = 'private';
       } else {
         query.type = 'public';
@@ -521,7 +487,7 @@ export const updateCollection = async (req: Request, res: Response) => {
     
     const userId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
-    if (!canModifyCollection(collection, userId, userRole)) {
+    if (!canModifyCollectionMetadata(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to update this collection' });
     }
 
@@ -687,7 +653,7 @@ export const deleteCollection = async (req: Request, res: Response) => {
     
     const userId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
-    if (!canModifyCollection(collection, userId, userRole)) {
+    if (!canModifyCollectionMetadata(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to delete this collection' });
     }
 
@@ -744,7 +710,7 @@ export const addEntry = async (req: Request, res: Response) => {
     // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
     const currentUserId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
-    if (!canModifyCollectionEntries(collection, currentUserId, userRole)) {
+    if (!canModifyCollectionEntriesPolicy(collection, currentUserId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
     }
 
@@ -770,7 +736,7 @@ export const addEntry = async (req: Request, res: Response) => {
       // Even when already present in sub-collection, ensure parent also has the entry.
       if (collection.parentId) {
         const parentCollection = await Collection.findById(collection.parentId).select('creatorId type').lean();
-        if (parentCollection && canModifyCollectionEntries(parentCollection, currentUserId, userRole)) {
+        if (parentCollection && canModifyCollectionEntriesPolicy(parentCollection, currentUserId, userRole)) {
           await addEntryIfMissing(String(collection.parentId), articleId, currentUserId, now);
         }
       }
@@ -781,7 +747,7 @@ export const addEntry = async (req: Request, res: Response) => {
     // Auto-add to parent collection when saving to a sub-collection.
     if (collection.parentId) {
       const parentCollection = await Collection.findById(collection.parentId).select('creatorId type').lean();
-      if (parentCollection && canModifyCollectionEntries(parentCollection, currentUserId, userRole)) {
+      if (parentCollection && canModifyCollectionEntriesPolicy(parentCollection, currentUserId, userRole)) {
         await addEntryIfMissing(String(collection.parentId), articleId, currentUserId, now);
       }
     }
@@ -831,7 +797,7 @@ export const removeEntry = async (req: Request, res: Response) => {
     
     const userId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
-    if (!canModifyCollectionEntries(collection, userId, userRole)) {
+    if (!canModifyCollectionEntriesPolicy(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to remove entries from this collection' });
     }
     
@@ -915,7 +881,7 @@ export const addBatchEntries = async (req: Request, res: Response) => {
     // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
     const currentUserId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
-    if (!canModifyCollectionEntries(collection, currentUserId, userRole)) {
+    if (!canModifyCollectionEntriesPolicy(collection, currentUserId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
     }
 
@@ -961,7 +927,7 @@ export const addBatchEntries = async (req: Request, res: Response) => {
     // Auto-add all saved entries to the parent collection when target is a sub-collection.
     if (collection.parentId) {
       const parentCollection = await Collection.findById(collection.parentId).select('creatorId type').lean();
-      if (parentCollection && canModifyCollectionEntries(parentCollection, currentUserId, userRole)) {
+      if (parentCollection && canModifyCollectionEntriesPolicy(parentCollection, currentUserId, userRole)) {
         const parentBulkOps = buildBulkOps(String(collection.parentId));
         if (parentBulkOps.length > 0) {
           await Collection.bulkWrite(parentBulkOps);
@@ -1049,7 +1015,7 @@ export const removeBatchEntries = async (req: Request, res: Response) => {
 
     const currentUserId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
-    if (!canModifyCollectionEntries(collection, currentUserId, userRole)) {
+    if (!canModifyCollectionEntriesPolicy(collection, currentUserId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to remove entries from this collection' });
     }
 
@@ -1422,7 +1388,7 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     // Check access
     const userId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
-    if (!canViewCollection(collection, userId, userRole)) {
+    if (!canViewCollectionPolicy(collection, userId, userRole)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 

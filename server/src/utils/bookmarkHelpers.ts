@@ -7,6 +7,9 @@ import { BookmarkCollectionLink } from '../models/BookmarkCollectionLink.js';
  *
  * Core helper functions for bookmark operations.
  * These are used by controllers to ensure consistent behavior.
+ *
+ * Naming: "Bookmark folders" in product copy map to BookmarkCollection + BookmarkCollectionLink.
+ * They are private per user and unrelated to public editorial Collections (/api/collections).
  */
 
 const DEFAULT_COLLECTION_NAME = 'Saved';
@@ -186,18 +189,44 @@ export async function ensureBookmarkInDefaultCollection(
  * @param userId - The user's ID
  * @param collectionIds - Array of collection IDs to add to
  */
+/**
+ * Validates that every requested folder id exists and is owned by the user.
+ * Dedupes collectionIds. Exported for unit tests.
+ */
+export function assertAllBookmarkFoldersOwned(
+  requestedCollectionIds: string[],
+  ownedFolderDocs: Array<{ _id: unknown }>
+): { ok: true; uniqueIds: string[] } | { ok: false } {
+  const uniqueIds = [...new Set(requestedCollectionIds)];
+  if (uniqueIds.length === 0) {
+    return { ok: false };
+  }
+  if (ownedFolderDocs.length !== uniqueIds.length) {
+    return { ok: false };
+  }
+  const ownedSet = new Set(ownedFolderDocs.map((c) => String(c._id)));
+  for (const id of uniqueIds) {
+    if (!ownedSet.has(id)) {
+      return { ok: false };
+    }
+  }
+  return { ok: true, uniqueIds };
+}
+
 export async function assignBookmarkToCollections(
   bookmarkId: string,
   userId: string,
   collectionIds: string[]
 ): Promise<void> {
+  const uniqueCollectionIds = [...new Set(collectionIds)];
+
   // Get current collection links for this bookmark
   const currentLinks = await BookmarkCollectionLink.find({
     bookmarkId
   }).lean();
 
   const currentCollectionIds = new Set(currentLinks.map(l => l.collectionId));
-  const targetCollectionIds = new Set(collectionIds);
+  const targetCollectionIds = new Set(uniqueCollectionIds);
 
   const now = new Date().toISOString();
 
@@ -329,6 +358,34 @@ export async function getBookmarkCollectionIds(bookmarkId: string): Promise<stri
   }).select('collectionId').lean();
 
   return links.map(l => l.collectionId);
+}
+
+/**
+ * Batch-load folder ids for many bookmarks (avoids N+1 in list endpoints).
+ */
+export async function getBookmarkCollectionIdsMap(
+  bookmarkIds: string[]
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (bookmarkIds.length === 0) {
+    return result;
+  }
+  for (const id of bookmarkIds) {
+    result.set(id, []);
+  }
+  const links = await BookmarkCollectionLink.find({
+    bookmarkId: { $in: bookmarkIds }
+  })
+    .select('bookmarkId collectionId')
+    .lean();
+
+  for (const link of links) {
+    const arr = result.get(link.bookmarkId);
+    if (arr) {
+      arr.push(link.collectionId);
+    }
+  }
+  return result;
 }
 
 /**

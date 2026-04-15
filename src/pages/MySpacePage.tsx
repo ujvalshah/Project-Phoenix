@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/useToast';
 import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
 import { queryClient } from '@/queryClient';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
+import { useAuth } from '@/hooks/useAuth';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { PaginatedArticlesResponse } from '@/services/adapters/IAdapter';
 import { apiClient } from '@/services/apiClient';
@@ -111,6 +112,7 @@ const InfiniteScrollTrigger: React.FC<{
 };
 
 export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
+  const { isAdmin } = useAuth();
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
@@ -755,6 +757,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                               >
                                 <Lock size={14} /> Make draft
                               </button>
+                              {isAdmin && (
                               <button
                                 type="button"
                                 role="menuitem"
@@ -766,6 +769,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                               >
                                 <FolderPlus size={14} /> Add to collection
                               </button>
+                              )}
                               <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
                             </>
                           )}
@@ -966,13 +970,15 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
         isDestructive
       />
 
-      <AddToCollectionModal
-        isOpen={showAddToCollection}
-        onClose={() => {
-          setShowAddToCollection(false);
-        }}
-        articleIds={selectedIds}
-      />
+      {isAdmin && (
+        <AddToCollectionModal
+          isOpen={showAddToCollection}
+          onClose={() => {
+            setShowAddToCollection(false);
+          }}
+          articleIds={selectedIds}
+        />
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Check, Folder, Loader2 } from 'lucide-react';
 import {
@@ -8,34 +8,40 @@ import {
 } from '@/hooks/useBookmarks';
 import { useToast } from '@/hooks/useToast';
 import { twMerge } from 'tailwind-merge';
+import { getHeaderHeight } from '@/constants/layout';
+import { Z_INDEX } from '@/constants/zIndex';
 import { getOverlayHost } from '@/utils/overlayHosts';
+import { normalizeFolderIdsForAssign } from '@/utils/bookmarkFolderSelection';
 import type { BookmarkCollection } from '@/services/bookmarkService';
 
 /**
- * CollectionSelector Component
- *
- * Instagram/Pinterest style folder selector for bookmarks.
- * Features:
- * - Checkbox list of folders
- * - Create new folder inline
- * - Multi-folder support
- * - Keyboard navigation
+ * Private bookmark folder picker (BookmarkCollection /api/bookmark-collections).
+ * Not related to public editorial collections (/api/collections).
  */
+
+function setsEqualStrings(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const x of a) {
+    if (!b.has(x)) return false;
+  }
+  return true;
+}
 
 interface CollectionSelectorProps {
   bookmarkId: string;
   itemId: string;
-  currentCollectionIds?: string[];
+  /** Folder membership when the dialog opened */
+  initialCollectionIds?: string[];
   isOpen: boolean;
   onClose: () => void;
-  onCollectionChange?: () => void;
+  onCollectionChange?: (folderIds: string[]) => void;
   anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function CollectionSelector({
   bookmarkId,
   itemId: _itemId,
-  currentCollectionIds = [],
+  initialCollectionIds = [],
   isOpen,
   onClose,
   onCollectionChange,
@@ -52,23 +58,26 @@ export function CollectionSelector({
 
   // Local state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    new Set(currentCollectionIds)
+    new Set(initialCollectionIds)
   );
   const [isCreating, setIsCreating] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [panelPos, setPanelPos] = useState({ top: 0, left: 0 });
+  const [positionReady, setPositionReady] = useState(false);
+  const wasOpenRef = useRef(false);
 
   // Queries and mutations
   const { data: collections = [], isLoading } = useBookmarkCollections();
   const createMutation = useCreateBookmarkCollection();
   const assignMutation = useAssignBookmarkToCollections();
 
-  // Sync selected IDs when currentCollectionIds changes
+  // Sync when parent passes fresh membership (e.g. after refetch)
   useEffect(() => {
-    setSelectedIds(new Set(currentCollectionIds));
-  }, [currentCollectionIds]);
+    setSelectedIds(new Set(initialCollectionIds));
+  }, [initialCollectionIds]);
 
-  // Handle click outside
+  // Dismiss without persisting (explicit Done saves)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -77,13 +86,25 @@ export function CollectionSelector({
         containerRef.current &&
         !containerRef.current.contains(event.target as Node)
       ) {
-        handleSave();
+        onClose();
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen, selectedIds]);
+  }, [isOpen, onClose]);
+
+  const toggleCollection = useCallback((collectionId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(collectionId)) {
+        next.delete(collectionId);
+      } else {
+        next.add(collectionId);
+      }
+      return next;
+    });
+  }, []);
 
   // Handle escape key
   useEffect(() => {
@@ -111,33 +132,34 @@ export function CollectionSelector({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, collections, focusedIndex]);
-
-  const toggleCollection = useCallback((collectionId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(collectionId)) {
-        next.delete(collectionId);
-      } else {
-        next.add(collectionId);
-      }
-      return next;
-    });
-  }, []);
+  }, [isOpen, collections, focusedIndex, onClose, toggleCollection]);
 
   const handleSave = useCallback(async () => {
-    const collectionIds = Array.from(selectedIds);
+    const defaultFolder = collections.find((c) => c.isDefault);
+    const normalized = normalizeFolderIdsForAssign(
+      Array.from(selectedIds),
+      defaultFolder?.id
+    );
+    if (normalized.error === 'missing_default') {
+      toast.error('Your Saved folder is not available. Please try again.');
+      onClose();
+      return;
+    }
+    const collectionIds = normalized.folderIds;
+    if (normalized.normalizedFromEmpty) {
+      toast.info(
+        'Bookmarks stay in Saved. Use Remove bookmark on the card to unsave completely.'
+      );
+    }
 
-    // Only save if there are changes
-    const currentSet = new Set(currentCollectionIds);
-    const hasChanges =
-      selectedIds.size !== currentSet.size ||
-      [...selectedIds].some((id) => !currentSet.has(id));
+    const nextSet = new Set(collectionIds);
+    const prevSet = new Set(initialCollectionIds);
+    const hasChanges = !setsEqualStrings(nextSet, prevSet);
 
-    if (hasChanges && collectionIds.length > 0) {
+    if (hasChanges) {
       try {
         await assignMutation.mutateAsync({ bookmarkId, collectionIds });
-        onCollectionChange?.();
+        onCollectionChange?.(collectionIds);
         toast.success('Folders updated');
       } catch (error) {
         toast.error(getCollectionErrorMessage(error, 'Failed to update folders'));
@@ -147,12 +169,14 @@ export function CollectionSelector({
     onClose();
   }, [
     selectedIds,
-    currentCollectionIds,
+    initialCollectionIds,
+    collections,
     bookmarkId,
     assignMutation,
     onCollectionChange,
     onClose,
-    toast
+    toast,
+    getCollectionErrorMessage
   ]);
 
   const handleCreateCollection = useCallback(async () => {
@@ -176,7 +200,8 @@ export function CollectionSelector({
 
       toast.success(`Created "${name}"`);
     } catch (error: unknown) {
-      if ((error as any)?.message?.includes('already exists')) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes('already exists')) {
         toast.error('A folder with this name already exists');
       } else {
         toast.error(getCollectionErrorMessage(error, 'Failed to create folder'));
@@ -184,73 +209,116 @@ export function CollectionSelector({
     }
   }, [newCollectionName, createMutation, toast, getCollectionErrorMessage]);
 
-  // Calculate position based on anchor element
-  const getPosition = useCallback(() => {
+  const recomputePanelPosition = useCallback(() => {
+    const modalWidth = 288;
+    const edge = 8;
+    const gap = 8;
+    const headerHeight = getHeaderHeight();
+    const measuredH = containerRef.current?.getBoundingClientRect().height ?? 0;
+    const h = measuredH > 0 ? measuredH : 320;
+
     if (!anchorRef?.current) {
-      return { top: 100, left: 100 };
+      setPanelPos({ top: edge + headerHeight, left: edge });
+      return;
     }
+
     const rect = anchorRef.current.getBoundingClientRect();
-    const modalWidth = 288; // w-72 = 18rem = 288px
-
-    // Position below the button, aligned to the right
     let left = rect.right - modalWidth;
-    let top = rect.bottom + 8;
+    left = Math.max(edge, Math.min(left, window.innerWidth - modalWidth - edge));
 
-    // Ensure it doesn't go off-screen on the left
-    if (left < 8) {
-      left = 8;
-    }
-
-    // Ensure it doesn't go off-screen on the right
-    if (left + modalWidth > window.innerWidth - 8) {
-      left = window.innerWidth - modalWidth - 8;
-    }
-
-    // If not enough space below, position above
-    const modalHeight = 400; // approximate max height
-    if (top + modalHeight > window.innerHeight - 8) {
-      top = rect.top - modalHeight - 8;
-      if (top < 8) {
-        top = 8;
+    let top = rect.bottom + gap;
+    const minTop = headerHeight + edge;
+    const maxTop = window.innerHeight - h - edge;
+    if (top > maxTop) {
+      const aboveTop = rect.top - h - gap;
+      if (aboveTop >= minTop) {
+        top = aboveTop;
+      } else {
+        top = Math.max(minTop, maxTop);
       }
     }
+    top = Math.max(minTop, Math.min(top, maxTop));
 
-    return { top, left };
+    setPanelPos({ top, left });
   }, [anchorRef]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- panel coords follow anchor + measured dialog */
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setPositionReady(false);
+      return;
+    }
+    recomputePanelPosition();
+    setPositionReady(true);
+  }, [isOpen, recomputePanelPosition, collections.length, isLoading, isCreating]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handle = () => {
+      recomputePanelPosition();
+    };
+    const scrollOpts = { passive: true, capture: true } as const;
+    window.addEventListener('scroll', handle, scrollOpts);
+    window.addEventListener('resize', handle);
+    return () => {
+      window.removeEventListener('scroll', handle, scrollOpts);
+      window.removeEventListener('resize', handle);
+    };
+  }, [isOpen, recomputePanelPosition]);
+
+  useEffect(() => {
+    if (wasOpenRef.current && !isOpen && anchorRef?.current) {
+      const el = anchorRef.current;
+      if (typeof el.focus === 'function') {
+        el.focus({ preventScroll: true });
+      }
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, anchorRef]);
+
   if (!isOpen) return null;
+  if (!positionReady) return null;
 
-  const position = getPosition();
-
+  /* Host: #modal-root — stacks at MODAL band so card/grid overflow cannot clip this UI */
   return createPortal(
     <>
-      {/* Backdrop */}
       <div
-        className="fixed inset-0 pointer-events-auto"
-        onClick={() => handleSave()}
+        data-testid="bookmark-folder-backdrop"
+        className="fixed inset-0 bg-black/20 pointer-events-auto"
+        style={{ zIndex: Z_INDEX.MODAL }}
+        onClick={() => onClose()}
         aria-hidden="true"
       />
 
-      {/* Modal */}
       <div
         ref={containerRef}
+        data-testid="bookmark-folder-dialog"
         className={twMerge(
-          'fixed pointer-events-auto w-72 bg-white dark:bg-gray-900 rounded-lg shadow-xl',
+          'fixed pointer-events-auto w-72 max-h-[calc(100vh-16px)] overflow-y-auto',
+          'bg-white dark:bg-gray-900 rounded-lg shadow-xl',
           'border border-gray-200 dark:border-gray-700',
           'animate-in fade-in-0 zoom-in-95 duration-200'
         )}
         style={{
-          top: position.top,
-          left: position.left
+          top: panelPos.top,
+          left: panelPos.left,
+          zIndex: Z_INDEX.MODAL + 1
         }}
         role="dialog"
         aria-label="Select folders"
       >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-          Save to folders
-        </h3>
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            Folders
+          </h3>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+            Private folders only — not public collections
+          </p>
+        </div>
         <button
           onClick={onClose}
           className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -373,7 +441,7 @@ export function CollectionSelector({
       </div>
       </div>
     </>,
-    getOverlayHost('popover'),
+    getOverlayHost('modal'),
   );
 }
 
@@ -427,7 +495,7 @@ function CollectionItem({
           </span>
           {collection.isDefault && (
             <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
-              Default
+              Saved
             </span>
           )}
         </div>

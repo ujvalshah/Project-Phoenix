@@ -4,7 +4,7 @@
  * ============================================================================
  *
  * Matches HomePage layout exactly:
- * - PageStack with collection toolbar (like TagFilterBar)
+ * - PageStack with folder toolbar (like TagFilterBar)
  * - ArticleGrid for cards (same grid as homepage)
  * - Infinite scroll pagination
  *
@@ -34,7 +34,7 @@ import { LAYOUT_CLASSES } from '@/constants/layout';
 import type { Article } from '@/types';
 
 /**
- * CollectionFilterBar - Folder toolbar matching TagFilterBar style
+ * FolderFilterBar — private bookmark folders only (not editorial collections).
  */
 interface CollectionFilterBarProps {
   collections: Array<{ id: string; name: string; bookmarkCount: number; isDefault: boolean }>;
@@ -72,7 +72,10 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
   const isAllActive = activeCollectionId === null;
 
   return (
-    <div className={`bg-white dark:bg-slate-950 ${LAYOUT_CLASSES.CATEGORY_BAR_HEIGHT} border-b border-gray-200 dark:border-slate-700`}>
+    <div
+      className={`bg-white dark:bg-slate-950 ${LAYOUT_CLASSES.CATEGORY_BAR_HEIGHT} border-b border-gray-200 dark:border-slate-700`}
+      aria-label="Bookmark folders"
+    >
       <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex items-center py-1`}>
         <div
           className="flex flex-nowrap gap-1.5 overflow-x-auto overflow-y-hidden items-center scroll-smooth"
@@ -283,13 +286,13 @@ export const SavedPage: React.FC = () => {
               <h1 className="text-lg font-bold text-slate-900 dark:text-white">
                 {activeCollectionId
                   ? collections.find(c => c.id === activeCollectionId)?.name || 'Folder'
-                  : 'All Bookmarks'
+                  : 'All saved nuggets'
                 }
               </h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {activeCollectionId
-                  ? 'Items in this folder'
-                  : 'All your saved nuggets'
+                  ? 'Items in this private folder (Saved can also list the same nugget)'
+                  : 'Everything you saved, across all private folders. The Saved folder is your default bucket — custom folders are optional.'
                 }
               </p>
             </div>

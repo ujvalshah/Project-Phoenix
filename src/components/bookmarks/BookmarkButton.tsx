@@ -20,10 +20,8 @@ import { DropdownPortal } from '@/components/UI/DropdownPortal';
  * - Optimistic UI updates
  * - Toast with "Change" action for folder selection
  *
- * HYBRID APPROACH:
- * - Uses localStorage for instant initial state (no API call on mount)
- * - Server is source of truth (synced on toggle)
- * - Avoids N+1 API calls while maintaining state across sessions
+ * State: localStorage seeds first paint; when logged in, GET /bookmarks/status hydrates
+ * and wins (also on tab focus / visibility) so icons stay aligned with the server.
  */
 
 interface BookmarkButtonProps {
@@ -72,9 +70,10 @@ function BookmarkButtonInner({
     bookmarkService.isLocallyBookmarked(itemId)
   );
   const [bookmarkId, setBookmarkId] = useState<string | undefined>(undefined);
-  const [defaultCollectionId, setDefaultCollectionId] = useState<string | undefined>(undefined);
+  /** All private folder (BookmarkCollection) ids for this bookmark — passed to folder picker */
+  const [folderIds, setFolderIds] = useState<string[]>([]);
 
-  // Collection selector state
+  // Private folder picker (portaled to modal layer)
   const [showCollectionSelector, setShowCollectionSelector] = useState(false);
 
   // Mini-menu state (for already-bookmarked items)
@@ -84,44 +83,76 @@ function BookmarkButtonInner({
   // Sync with localStorage when itemId changes (e.g., navigating between items)
   useEffect(() => {
     setIsBookmarked(bookmarkService.isLocallyBookmarked(itemId));
-    // Reset bookmarkId when itemId changes
     setBookmarkId(undefined);
+    setFolderIds([]);
   }, [itemId]);
+
+  // Hydrate from server when authenticated (server wins over localStorage)
+  useEffect(() => {
+    if (!user?.id) {
+      setIsBookmarked(bookmarkService.isLocallyBookmarked(itemId));
+      return;
+    }
+
+    let cancelled = false;
+    const hydrate = async () => {
+      try {
+        const status = await bookmarkService.getStatus(itemId, itemType);
+        if (cancelled) return;
+        setIsBookmarked(status.isBookmarked);
+        bookmarkService.syncLocalFromServer(itemId, status.isBookmarked);
+        if (status.isBookmarked && status.bookmarkId) {
+          setBookmarkId(status.bookmarkId);
+          setFolderIds(status.collectionIds);
+        } else {
+          setBookmarkId(undefined);
+          setFolderIds([]);
+        }
+      } catch {
+        // Keep current UI if status fetch fails
+      }
+    };
+
+    void hydrate();
+
+    const onReconcile = () => {
+      if (document.visibilityState === 'visible') {
+        void hydrate();
+      }
+    };
+    document.addEventListener('visibilitychange', onReconcile);
+    window.addEventListener('focus', onReconcile);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onReconcile);
+      window.removeEventListener('focus', onReconcile);
+    };
+  }, [user?.id, itemId, itemType]);
 
   // Toggle mutation
   const toggleMutation = useToggleBookmark();
 
-  // Fetch bookmark status to get bookmarkId (for already-bookmarked items)
-  const fetchBookmarkStatus = useCallback(async () => {
-    if (bookmarkId) return bookmarkId; // Already have it
-
+  // Handler to open folder picker (refresh membership from server first)
+  const handleOpenCollectionSelector = useCallback(async () => {
     setIsFetchingStatus(true);
     try {
       const status = await bookmarkService.getStatus(itemId, itemType);
       if (status.isBookmarked && status.bookmarkId) {
         setBookmarkId(status.bookmarkId);
-        if (status.collectionIds.length > 0) {
-          setDefaultCollectionId(status.collectionIds[0]);
-        }
-        return status.bookmarkId;
+        setFolderIds(status.collectionIds);
+        setIsBookmarked(true);
+        bookmarkService.syncLocalFromServer(itemId, true);
+        setShowBookmarkMenu(false);
+        setShowCollectionSelector(true);
+      } else {
+        toast.error('Bookmark not found');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load bookmark info');
     } finally {
       setIsFetchingStatus(false);
     }
-    return undefined;
-  }, [itemId, itemType, bookmarkId, toast]);
-
-  // Handler to open collection selector
-  const handleOpenCollectionSelector = useCallback(async () => {
-    // Ensure we have bookmarkId before opening
-    const id = await fetchBookmarkStatus();
-    if (id) {
-      setShowBookmarkMenu(false);
-      setShowCollectionSelector(true);
-    }
-  }, [fetchBookmarkStatus]);
+  }, [itemId, itemType, toast]);
 
   // Handler to remove bookmark
   const handleRemoveBookmark = useCallback(() => {
@@ -141,7 +172,8 @@ function BookmarkButtonInner({
         onSuccess: (data) => {
           setIsBookmarked(data.bookmarked);
           setBookmarkId(undefined);
-          setDefaultCollectionId(undefined);
+          setFolderIds([]);
+          bookmarkService.syncLocalFromServer(itemId, data.bookmarked);
           onToggle?.(data.bookmarked, undefined);
           toast.info('Removed from Bookmarks', { duration: 2000 });
         },
@@ -184,7 +216,9 @@ function BookmarkButtonInner({
           onSuccess: (data) => {
             setIsBookmarked(data.bookmarked);
             setBookmarkId(data.bookmarkId);
-            setDefaultCollectionId(data.defaultCollectionId);
+            const nextFolders = data.defaultCollectionId ? [data.defaultCollectionId] : [];
+            setFolderIds(nextFolders);
+            bookmarkService.syncLocalFromServer(itemId, data.bookmarked);
 
             // Notify parent
             onToggle?.(data.bookmarked, data.bookmarkId);
@@ -192,9 +226,8 @@ function BookmarkButtonInner({
             // Show toast with action
             if (data.bookmarked) {
               toast.success('Added to Bookmarks', {
-                actionLabel: 'Change',
+                actionLabel: 'Folders',
                 onAction: () => {
-                  // Open collection selector
                   setShowCollectionSelector(true);
                 },
                 duration: 4000
@@ -219,6 +252,7 @@ function BookmarkButtonInner({
       <button
         ref={buttonRef}
         type="button"
+        data-testid="bookmark-button"
         onClick={handleClick}
         disabled={toggleMutation.isPending || isFetchingStatus}
         className={twMerge(
@@ -268,15 +302,16 @@ function BookmarkButtonInner({
         anchorRef={buttonRef}
       />
 
-      {/* Collection Selector Modal - renders via portal */}
+      {/* Folder picker — portaled to #modal-root (above card overflow) */}
       {bookmarkId && (
         <CollectionSelector
           bookmarkId={bookmarkId}
           itemId={itemId}
-          currentCollectionIds={defaultCollectionId ? [defaultCollectionId] : []}
+          initialCollectionIds={folderIds}
           isOpen={showCollectionSelector}
           onClose={() => setShowCollectionSelector(false)}
-          onCollectionChange={() => {
+          onCollectionChange={(nextFolderIds) => {
+            setFolderIds(nextFolderIds);
             onChangeCollection?.(bookmarkId);
           }}
           anchorRef={buttonRef}

@@ -16,10 +16,10 @@
  * |----------------------|----------------------------|----------------------|
  * | Header, category bar | (in #root, not a host)     | HEADER, STICKY_*     |
  * | Menus, sort, avatar  | dropdown-root              | DROPDOWN             |
- * | Collection picker, … | popover-root               | POPOVER              |
+ * | Anchored pickers, …  | popover-root               | POPOVER              |
  * | Tooltips             | tooltip-root               | TOOLTIP              |
  * | Sheets, drawers, nav | drawer-root                | DRAWER               |
- * | Dialogs, lightbox    | modal-root                 | MODAL                |
+ * | Dialogs, lightbox, bookmark folder picker | modal-root          | MODAL                |
  * | PiP / mini player    | pip-root                   | PICTURE_IN_PICTURE   |
  * | Toasts               | toast-root                 | TOAST                |
  *

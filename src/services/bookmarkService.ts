@@ -80,6 +80,17 @@ function isLocallyBookmarked(itemId: string): boolean {
   return getLocalBookmarks().has(itemId);
 }
 
+/**
+ * Align localStorage with server truth (server wins after hydration).
+ */
+export function syncLocalBookmarkFromServer(itemId: string, isBookmarked: boolean): void {
+  if (isBookmarked) {
+    addLocalBookmark(itemId);
+  } else {
+    removeLocalBookmark(itemId);
+  }
+}
+
 // ============================================================================
 
 // Types
@@ -369,5 +380,6 @@ export const bookmarkService = {
 
   // localStorage helpers (for instant initial state)
   isLocallyBookmarked,
-  getLocalBookmarks: () => Array.from(getLocalBookmarks())
+  getLocalBookmarks: () => Array.from(getLocalBookmarks()),
+  syncLocalFromServer: syncLocalBookmarkFromServer
 };

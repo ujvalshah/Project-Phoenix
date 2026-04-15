@@ -22,7 +22,7 @@ export const CollectionDetailPage: React.FC = () => {
   const { collectionId } = useParams<{ collectionId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
-  const { currentUserId } = useAuth();
+  const { currentUserId, isAdmin } = useAuth();
 
   const [collection, setCollection] = useState<Collection | null>(null);
   const [nuggets, setNuggets] = useState<Article[]>([]);
@@ -62,6 +62,8 @@ export const CollectionDetailPage: React.FC = () => {
     setNuggets([]);
     setIsLoading(true);
     setSelectedArticle(null);
+    setSelectionMode(false);
+    setSelectedIds([]);
 
     // Track if this effect is still valid (prevents race conditions)
     let isMounted = true;
@@ -314,9 +316,6 @@ export const CollectionDetailPage: React.FC = () => {
     }
   }, [collectionId, selectedIds, currentUserId, toast, exitSelectionMode]);
 
-  // Check if current user is the owner
-  const isOwner = collection && currentUserId === collection.creatorId;
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -328,6 +327,13 @@ export const CollectionDetailPage: React.FC = () => {
     );
   }
   if (!collection) return null;
+
+  /** Public editorial collections: only admins curate. Private: owner curates. */
+  const canCurateCollection =
+    collection.type === 'public' ? isAdmin : currentUserId === collection.creatorId;
+
+  const canEditMetadata =
+    collection.type === 'public' ? isAdmin : currentUserId === collection.creatorId;
 
   const theme = getCollectionTheme(collection.id);
 
@@ -389,7 +395,7 @@ export const CollectionDetailPage: React.FC = () => {
                               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
                                 {collection.name}
                               </h1>
-                              {isOwner && (
+                              {canEditMetadata && (
                                 <button
                                   onClick={handleStartEdit}
                                   className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
@@ -423,7 +429,7 @@ export const CollectionDetailPage: React.FC = () => {
                         className="hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-white w-10 h-10"
                         iconSize={20}
                     />
-                    {nuggets.length > 0 && selectionMode && (
+                    {canCurateCollection && nuggets.length > 0 && selectionMode && (
                       <button
                         onClick={selectedIds.length === nuggets.length ? handleDeselectAll : handleSelectAll}
                         className="px-4 py-2 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 shadow-sm bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -431,7 +437,7 @@ export const CollectionDetailPage: React.FC = () => {
                         <CheckSquare size={16} /> {selectedIds.length === nuggets.length ? 'Deselect All' : 'Select All'}
                       </button>
                     )}
-                    {nuggets.length > 0 && (
+                    {canCurateCollection && nuggets.length > 0 && (
                       <button
                         onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
                         className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 shadow-sm ${
@@ -443,9 +449,11 @@ export const CollectionDetailPage: React.FC = () => {
                         <CheckSquare size={16} /> {selectionMode ? 'Cancel' : 'Select'}
                       </button>
                     )}
+                    {canCurateCollection && (
                     <button onClick={handleAddNugget} className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl text-sm font-bold hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors flex items-center gap-2 shadow-sm">
                         <Plus size={16} /> Add Nugget
                     </button>
+                    )}
                 </div>
             </div>
         </div>
@@ -468,7 +476,7 @@ export const CollectionDetailPage: React.FC = () => {
       {selectedArticle && <ArticleModal isOpen={!!selectedArticle} onClose={() => setSelectedArticle(null)} article={selectedArticle} />}
 
       {/* Bulk Selection Action Bar */}
-      {selectionMode && (
+      {canCurateCollection && selectionMode && (
         <BulkActionBar
           selectedCount={selectedIds.length}
           totalCount={nuggets.length}
@@ -480,7 +488,8 @@ export const CollectionDetailPage: React.FC = () => {
         />
       )}
 
-      {/* Bulk Save To — YouTube-style multi-select */}
+      {/* Bulk Save To — editorial / owner tools only */}
+      {canCurateCollection && (
       <AddToCollectionModal
         isOpen={bulkModalOpen}
         onClose={handleBulkModalClose}
@@ -488,6 +497,7 @@ export const CollectionDetailPage: React.FC = () => {
         title={`Save ${selectedIds.length} nugget${selectedIds.length > 1 ? 's' : ''} to...`}
         currentCollectionId={collectionId}
       />
+      )}
 
       <ModalShell
         isOpen={showRemoveConfirm}

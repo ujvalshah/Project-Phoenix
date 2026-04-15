@@ -357,7 +357,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                onEdit={handleEdit}
                onDelete={handleDelete}
                onToggleVisibility={handleToggleVisibility}
-               onAddToCollection={withAuth(handleAddToCollection)}
+               onAddToCollection={isAdmin ? withAuth(handleAddToCollection) : undefined}
                onReport={() => setShowReportModal(true)}
                isOwner={isOwner}
                isAdmin={isAdmin}
@@ -578,11 +578,13 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
            </div>
        </div>
 
-      <AddToCollectionModal
-          isOpen={isCollectionModalOpen}
-          onClose={() => setIsCollectionModalOpen(false)}
-          articleIds={[article?.id ?? '']}
-      />
+      {isAdmin && (
+        <AddToCollectionModal
+            isOpen={isCollectionModalOpen}
+            onClose={() => setIsCollectionModalOpen(false)}
+            articleIds={[article?.id ?? '']}
+        />
+      )}
 
       <ReportModal
           isOpen={showReportModal}

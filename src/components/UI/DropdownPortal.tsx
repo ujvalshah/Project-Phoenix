@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { getHeaderHeight } from '@/constants/layout';
 import { getOverlayHost, type OverlayHostKind } from '@/utils/overlayHosts';
@@ -9,6 +9,18 @@ export interface DropdownPosition {
   left?: number;
   right?: number;
   width?: number;
+}
+
+function positionsEqual(a: DropdownPosition | null, b: DropdownPosition | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.top === b.top &&
+    a.bottom === b.bottom &&
+    a.left === b.left &&
+    a.right === b.right &&
+    a.width === b.width
+  );
 }
 
 /** Subset of hosts appropriate for anchored menus (not drawer/modal shell). */
@@ -42,6 +54,8 @@ export interface DropdownPortalProps {
   matchAnchorWidth?: boolean;
   /** Merged onto the portaled root (e.g. `id`, `role`, `aria-*` for listboxes). */
   overlayRootProps?: React.HTMLAttributes<HTMLDivElement>;
+  /** When true (default), focus returns to the anchor after the menu closes. */
+  restoreFocusOnClose?: boolean;
 }
 
 /**
@@ -65,10 +79,12 @@ export const DropdownPortal: React.FC<DropdownPortalProps> = ({
   host = 'dropdown',
   matchAnchorWidth = false,
   overlayRootProps,
+  restoreFocusOnClose = true,
 }) => {
   const [position, setPosition] = useState<DropdownPosition | null>(null);
   const internalDropdownRef = useRef<HTMLDivElement>(null);
   const dropdownRef = externalDropdownRef || internalDropdownRef;
+  const wasOpenRef = useRef(false);
 
   const updatePosition = useCallback(() => {
     if (!anchorRef.current) {
@@ -79,46 +95,94 @@ export const DropdownPortal: React.FC<DropdownPortalProps> = ({
     const rect = anchorRef.current.getBoundingClientRect();
     const headerHeight = getHeaderHeight();
     const edge = 4;
+    const panelEl = dropdownRef.current;
+    const panelBox = panelEl ? panelEl.getBoundingClientRect() : null;
+    const panelHeight = panelEl
+      ? Math.max(panelEl.offsetHeight, panelBox?.height ?? 0)
+      : 0;
+    const panelWidth = panelEl
+      ? Math.max(panelEl.offsetWidth, panelBox?.width ?? 0)
+      : 0;
+    const minTop = headerHeight + edge;
+    const maxBottomY = window.innerHeight - edge;
 
-    if (placement === 'above') {
-      const bottom = Math.max(window.innerHeight - rect.top + offsetY, edge);
-      const pos: DropdownPosition = { bottom };
+    const applyHorizontal = (pos: DropdownPosition): DropdownPosition => {
       if (matchAnchorWidth) {
         pos.left = Math.max(edge, Math.min(rect.left, window.innerWidth - rect.width - edge));
         pos.width = rect.width;
       } else if (align === 'right') {
-        pos.right = Math.max(edge, window.innerWidth - rect.right);
+        const rightPos = window.innerWidth - rect.right;
+        pos.right = Number.isFinite(rightPos) && rightPos >= 0 ? rightPos : 0;
       } else {
-        pos.left = Math.max(edge, Math.min(rect.left, window.innerWidth - edge));
+        const safeLeft = Number.isFinite(rect.left) && rect.left >= 0 ? rect.left : 0;
+        pos.left = safeLeft;
       }
-      setPosition(pos);
+      if (panelWidth > 0) {
+        if (typeof pos.left === 'number') {
+          pos.left = Math.max(edge, Math.min(pos.left, window.innerWidth - panelWidth - edge));
+        }
+        if (typeof pos.right === 'number') {
+          const leftFromRight = window.innerWidth - pos.right - panelWidth;
+          if (leftFromRight < edge) {
+            pos.right = Math.max(edge, window.innerWidth - panelWidth - edge);
+          }
+        }
+      }
+      return pos;
+    };
+
+    if (placement === 'above') {
+      let bottom = Math.max(window.innerHeight - rect.top + offsetY, edge);
+      const pos: DropdownPosition = { bottom };
+      applyHorizontal(pos);
+      if (panelHeight > 0) {
+        const topY = window.innerHeight - bottom - panelHeight;
+        if (topY < minTop) {
+          bottom = Math.max(edge, window.innerHeight - panelHeight - minTop);
+          pos.bottom = bottom;
+        }
+      }
+      setPosition((prev) => (positionsEqual(prev, pos) ? prev : pos));
       return;
     }
 
-    const top = Math.max(rect.bottom + offsetY, headerHeight + offsetY);
+    let top = Math.max(rect.bottom + offsetY, headerHeight + offsetY);
     const safeTop = Number.isFinite(top) ? top : headerHeight + offsetY;
-    const pos: DropdownPosition = { top: safeTop };
+    top = safeTop;
 
-    if (matchAnchorWidth) {
-      pos.left = Math.max(edge, Math.min(rect.left, window.innerWidth - rect.width - edge));
-      pos.width = rect.width;
-    } else if (align === 'right') {
-      const rightPos = window.innerWidth - rect.right;
-      pos.right = Number.isFinite(rightPos) && rightPos >= 0 ? rightPos : 0;
-    } else {
-      const safeLeft = Number.isFinite(rect.left) && rect.left >= 0 ? rect.left : 0;
-      pos.left = safeLeft;
+    if (panelHeight > 0) {
+      const bottomY = top + panelHeight;
+      if (bottomY > maxBottomY) {
+        const aboveTop = rect.top - panelHeight - offsetY;
+        if (aboveTop >= minTop) {
+          top = aboveTop;
+        } else {
+          top = Math.max(minTop, maxBottomY - panelHeight);
+        }
+      }
     }
-    setPosition(pos);
-  }, [anchorRef, align, offsetY, placement, matchAnchorWidth]);
 
+    const pos: DropdownPosition = { top };
+    applyHorizontal(pos);
+    setPosition((prev) => (positionsEqual(prev, pos) ? prev : pos));
+  }, [anchorRef, align, offsetY, placement, matchAnchorWidth, dropdownRef]);
+
+  // Open: effect seeds position from the anchor; layout effect re-runs once `position` is set so
+  // we can measure the portaled panel and apply viewport collision (flip / clamp).
+  /* eslint-disable react-hooks/set-state-in-effect -- overlay position syncs to anchor + measured panel */
   useEffect(() => {
-    if (isOpen) {
-      updatePosition();
-    } else {
+    if (!isOpen) {
       setPosition(null);
+      return;
     }
+    updatePosition();
   }, [isOpen, updatePosition]);
+
+  useLayoutEffect(() => {
+    if (!isOpen || !position) return;
+    updatePosition();
+  }, [isOpen, position, updatePosition]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!isOpen) return;
@@ -178,6 +242,16 @@ export const DropdownPortal: React.FC<DropdownPortalProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClickOutside]);
 
+  useEffect(() => {
+    if (wasOpenRef.current && !isOpen && restoreFocusOnClose) {
+      const el = anchorRef.current;
+      if (el && typeof el.focus === 'function') {
+        el.focus({ preventScroll: true });
+      }
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, anchorRef, restoreFocusOnClose]);
+
   if (!isOpen || !position || typeof document === 'undefined') {
     return null;
   }
@@ -188,7 +262,7 @@ export const DropdownPortal: React.FC<DropdownPortalProps> = ({
     <div
       ref={dropdownRef}
       {...restOverlayRootProps}
-      className={`fixed animate-in slide-in-from-top-2 fade-in duration-200 pointer-events-auto ${className}`}
+      className={`fixed z-[1] max-h-[calc(100vh-8px)] overflow-y-auto overflow-x-hidden animate-in slide-in-from-top-2 fade-in duration-200 pointer-events-auto ${className}`}
       style={{
         top: position.top,
         bottom: position.bottom,

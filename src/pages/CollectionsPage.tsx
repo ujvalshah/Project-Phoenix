@@ -26,7 +26,11 @@ type SortField = 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
 type SortDirection = 'asc' | 'desc';
 
 // -- Internal Instruction Modal --
-const CreateCollectionInstructionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => (
+const CreateCollectionInstructionModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  isAdmin: boolean;
+}> = ({ isOpen, onClose, isAdmin }) => (
   <ModalShell isOpen={isOpen} onClose={onClose} wrapperClassName="p-4">
     <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 animate-in zoom-in-95 z-10">
       <button type="button" onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
@@ -37,11 +41,21 @@ const CreateCollectionInstructionModal: React.FC<{ isOpen: boolean; onClose: () 
         <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-full flex items-center justify-center mb-4">
           <Folder size={24} />
         </div>
-        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">How to create a Collection</h3>
+        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+          {isAdmin ? 'How to create a public collection' : 'Public collections'}
+        </h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
-          Collections must start with at least one nugget. <br />
-          To create a new one, find any nugget in your feed, click the <strong>Folder Icon</strong>, and select{' '}
-          <strong>&quot;Create new public collection&quot;</strong>.
+          {isAdmin ? (
+            <>
+              Collections usually start from a nugget. Use the card menu <strong>Add to collection</strong> (admin) or
+              admin tools to add entries. Public collections are editorial — standard visitors browse only.
+            </>
+          ) : (
+            <>
+              These pages are curated by the team. To save something for yourself, use the{' '}
+              <strong>bookmark</strong> icon and manage items under <strong>Saved</strong> with private folders.
+            </>
+          )}
         </p>
         <button
           type="button"
@@ -526,7 +540,13 @@ export const CollectionsPage: React.FC = () => {
         </div>
       </div>
 
-      {showInstruction && <CreateCollectionInstructionModal isOpen={showInstruction} onClose={() => setShowInstruction(false)} />}
+      {showInstruction && (
+        <CreateCollectionInstructionModal
+          isOpen={showInstruction}
+          onClose={() => setShowInstruction(false)}
+          isAdmin={isAdmin}
+        />
+      )}
     </div>
   );
 };

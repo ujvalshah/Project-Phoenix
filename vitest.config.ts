@@ -21,7 +21,8 @@ export default defineConfig({
       'node_modules',
       'dist',
       '.git',
-      '.cache'
+      '.cache',
+      'tests/e2e/**'
     ],
     
     // Coverage configuration

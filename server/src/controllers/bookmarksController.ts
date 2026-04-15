@@ -1,25 +1,31 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { Bookmark, BookmarkItemType } from '../models/Bookmark.js';
+import { BookmarkCollection } from '../models/BookmarkCollection.js';
 import { BookmarkCollectionLink } from '../models/BookmarkCollectionLink.js';
 import { Article } from '../models/Article.js';
-import { normalizeDoc, normalizeDocs, getTagNameMap } from '../utils/db.js';
+import { normalizeDoc, getTagNameMap } from '../utils/db.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import {
-  sendErrorResponse,
   sendValidationError,
   sendNotFoundError,
-  sendInternalError
+  sendInternalError,
+  sendForbiddenError
 } from '../utils/errorResponse.js';
 import {
   getOrCreateBookmark,
   ensureBookmarkInDefaultCollection,
   deleteBookmarkCompletely,
   getBookmarkStatus,
-  getBookmarkCollectionIds,
-  assignBookmarkToCollections
+  assignBookmarkToCollections,
+  assertAllBookmarkFoldersOwned,
+  getBookmarkCollectionIdsMap
 } from '../utils/bookmarkHelpers.js';
+import {
+  buildItemIdsMatchingBookmarkQuery,
+  paginateInMemory
+} from '../utils/bookmarkListSearch.js';
 
 /**
  * Bookmark Controller
@@ -215,77 +221,100 @@ export const getBookmarks = async (req: Request, res: Response) => {
     }
 
     // Build sort order
-    const sortOrder: any = {};
+    const sortOrder: Record<string, 1 | -1> = {};
     sortOrder[sort] = order === 'asc' ? 1 : -1;
 
-    // Execute query
-    const [bookmarks, total] = await Promise.all([
-      Bookmark.find(bookmarkQuery)
+    const searchTrimmed = q && q.trim().length > 0 ? q.trim() : '';
+    let pageBookmarks: Array<{
+      _id: { toString: () => string };
+      itemId: string;
+      itemType: string;
+      createdAt: string;
+      lastAccessedAt: string;
+      notes?: string;
+    }>;
+    let total: number;
+    let hasMore: boolean;
+
+    if (searchTrimmed.length > 0) {
+      // Search: filter against article text first, then paginate (correct total/hasMore)
+      const allBookmarks = await Bookmark.find(bookmarkQuery).sort(sortOrder).lean();
+      const uniqueItemIds = [...new Set(allBookmarks.map((b) => b.itemId))];
+      if (uniqueItemIds.length === 0) {
+        return res.json({
+          data: [],
+          meta: { total: 0, page, limit, hasMore: false }
+        });
+      }
+      const articlesForSearch = await Article.find({ _id: { $in: uniqueItemIds } })
+        .select('title content excerpt')
+        .lean();
+      const matchingItemIds = buildItemIdsMatchingBookmarkQuery(
+        articlesForSearch as Array<{
+          _id: { toString: () => string };
+          title?: string;
+          content?: string;
+          excerpt?: string;
+        }>,
+        searchTrimmed
+      );
+      const filtered = allBookmarks.filter((b) => matchingItemIds.has(b.itemId));
+      const paged = paginateInMemory(filtered, page, limit);
+      pageBookmarks = paged.pageItems;
+      total = paged.total;
+      hasMore = paged.hasMore;
+    } else {
+      total = await Bookmark.countDocuments(bookmarkQuery);
+      pageBookmarks = await Bookmark.find(bookmarkQuery)
         .sort(sortOrder)
         .skip(skip)
         .limit(limit)
-        .lean(),
-      Bookmark.countDocuments(bookmarkQuery)
-    ]);
-
-    // Get article details for the bookmarks (with tag resolution)
-    const itemIds = bookmarks.map(b => b.itemId);
-    const articles = await Article.find({ _id: { $in: itemIds } }).lean();
-    const tagNameMap = await getTagNameMap();
-    const articleMap = new Map(articles.map(a => {
-      const normalized = normalizeDoc(a);
-      if (normalized && normalized.tagIds && normalized.tagIds.length > 0) {
-        const resolved = normalized.tagIds
-          .map((id: string) => tagNameMap.get(id.toString()))
-          .filter(Boolean);
-        if (resolved.length > 0) normalized.tags = resolved;
-      }
-      return [a._id.toString(), normalized];
-    }));
-
-    // Search filter (if q provided, filter by article title/content)
-    let filteredBookmarks = bookmarks;
-    if (q && q.trim().length > 0) {
-      const searchLower = q.toLowerCase();
-      filteredBookmarks = bookmarks.filter(b => {
-        const article = articleMap.get(b.itemId);
-        if (!article) return false;
-        return (
-          (article.title && article.title.toLowerCase().includes(searchLower)) ||
-          (article.content && article.content.toLowerCase().includes(searchLower)) ||
-          (article.excerpt && article.excerpt.toLowerCase().includes(searchLower))
-        );
-      });
+        .lean();
+      hasMore = skip + pageBookmarks.length < total;
     }
 
-    // Enrich bookmarks with article data and collection info
-    const enrichedBookmarks = await Promise.all(
-      filteredBookmarks.map(async (bookmark) => {
-        const article = articleMap.get(bookmark.itemId);
-        const collectionIds = await getBookmarkCollectionIds(bookmark._id.toString());
-
-        return {
-          id: bookmark._id.toString(),
-          itemId: bookmark.itemId,
-          itemType: bookmark.itemType,
-          createdAt: bookmark.createdAt,
-          lastAccessedAt: bookmark.lastAccessedAt,
-          notes: bookmark.notes,
-          collectionIds,
-          article: article || null
-        };
+    // Full article documents + tag resolution for the current page only
+    const itemIds = pageBookmarks.map((b) => b.itemId);
+    const articles = await Article.find({ _id: { $in: itemIds } }).lean();
+    const tagNameMap = await getTagNameMap();
+    const articleMap = new Map(
+      articles.map((a) => {
+        const normalized = normalizeDoc(a);
+        if (normalized && normalized.tagIds && normalized.tagIds.length > 0) {
+          const resolved = normalized.tagIds
+            .map((id: string) => tagNameMap.get(id.toString()))
+            .filter(Boolean);
+          if (resolved.length > 0) normalized.tags = resolved;
+        }
+        return [a._id.toString(), normalized];
       })
     );
 
-    const hasMore = page * limit < total;
+    const bookmarkIdsOnPage = pageBookmarks.map((b) => b._id.toString());
+    const collectionIdsByBookmark = await getBookmarkCollectionIdsMap(bookmarkIdsOnPage);
+
+    const enrichedBookmarks = pageBookmarks.map((bookmark) => {
+        const article = articleMap.get(bookmark.itemId);
+        const collectionIds = collectionIdsByBookmark.get(bookmark._id.toString()) ?? [];
+      return {
+        id: bookmark._id.toString(),
+        itemId: bookmark.itemId,
+        itemType: bookmark.itemType,
+        createdAt: bookmark.createdAt,
+        lastAccessedAt: bookmark.lastAccessedAt,
+        notes: bookmark.notes,
+        collectionIds,
+        article: article || null
+      };
+    });
 
     return res.json({
       data: enrichedBookmarks,
       meta: {
-        total: q ? filteredBookmarks.length : total,
+        total,
         page,
         limit,
-        hasMore: q ? false : hasMore
+        hasMore
       }
     });
 
@@ -332,19 +361,34 @@ export const assignToCollections = async (req: Request, res: Response) => {
       return sendNotFoundError(res, 'Bookmark not found');
     }
 
-    // Assign to collections
-    await assignBookmarkToCollections(bookmarkId, userId, collectionIds);
+    const uniqueRequested = [...new Set(collectionIds)];
+    const ownedFolders = await BookmarkCollection.find({
+      userId,
+      _id: { $in: uniqueRequested }
+    })
+      .select('_id')
+      .lean();
+
+    const ownership = assertAllBookmarkFoldersOwned(collectionIds, ownedFolders);
+    if (!ownership.ok) {
+      return sendForbiddenError(
+        res,
+        'One or more folders are invalid or do not belong to your account'
+      );
+    }
+
+    await assignBookmarkToCollections(bookmarkId, userId, ownership.uniqueIds);
 
     requestLogger.info({
       msg: 'Bookmark collections updated',
       bookmarkId,
-      collectionIds
+      collectionIds: ownership.uniqueIds
     });
 
     return res.json({
       success: true,
       bookmarkId,
-      collectionIds
+      collectionIds: ownership.uniqueIds
     });
 
   } catch (error: any) {

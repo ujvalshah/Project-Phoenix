@@ -349,8 +349,8 @@ export const deleteCollection = async (req: Request, res: Response) => {
       return sendForbiddenError(res, 'Cannot delete the default collection');
     }
 
-    // Delete all links to this collection
-    await BookmarkCollectionLink.deleteMany({ collectionId: id });
+    // Delete all links to this collection (scoped by user for defense in depth)
+    await BookmarkCollectionLink.deleteMany({ collectionId: id, userId });
 
     // Delete the collection
     await BookmarkCollection.deleteOne({ _id: id });

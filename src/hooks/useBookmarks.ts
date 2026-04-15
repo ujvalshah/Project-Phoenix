@@ -107,12 +107,13 @@ export function useToggleBookmark() {
     },
 
     onError: (err, { itemId, itemType = 'nugget' }, context) => {
-      // Rollback on error
-      if (context?.previousStatus) {
+      if (context?.previousStatus !== undefined) {
         queryClient.setQueryData(
           bookmarkKeys.status(itemId, itemType),
           context.previousStatus
         );
+      } else {
+        queryClient.removeQueries({ queryKey: bookmarkKeys.status(itemId, itemType) });
       }
     },
 

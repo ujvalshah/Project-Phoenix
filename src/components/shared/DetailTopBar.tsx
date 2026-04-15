@@ -13,7 +13,8 @@ interface DetailTopBarProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onToggleVisibility?: () => void;
-  onAddToCollection: () => void;
+  /** Editorial “public collection” add — omitted for standard users */
+  onAddToCollection?: () => void;
   onReport: () => void;
   isOwner: boolean;
   isAdmin: boolean;
@@ -130,18 +131,20 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
                   )}
                 </button>
               )}
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(false);
-                  onAddToCollection();
-                }}
-                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-              >
-                <FolderPlus size={12} /> Add to collection
-              </button>
+              {onAddToCollection && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu(false);
+                    onAddToCollection();
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                >
+                  <FolderPlus size={12} /> Add to collection
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"

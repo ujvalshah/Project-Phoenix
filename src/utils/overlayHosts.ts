@@ -12,6 +12,8 @@ import { Z_INDEX } from '@/constants/zIndex';
  *   from `getBoundingClientRect` — see `CardMeta`.
  * - **drawer** — slide-over shells (navigation, filters).
  * - **modal** — dialogs, lightboxes, full-screen overlays; use `ModalShell` for consistent behavior.
+ *   The bookmark **folder** picker (`CollectionSelector`) also mounts here at `Z_INDEX.MODAL` so grid/card
+ *   `overflow: hidden` cannot clip it (it is not an editorial “collection” — private folders only).
  *   For combobox/listbox panels **inside** an open modal, use `DropdownPortal` with `host="modal"`
  *   so the list stacks above the modal body without local `z-index` arms races.
  * - **pip** / **toast** — dedicated layers for PiP and notifications.

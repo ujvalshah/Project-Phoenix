@@ -618,7 +618,8 @@ export const useNewsCard = ({
     if (buttonRect) {
       setCollectionAnchor(buttonRect);
     }
-    setCollectionMode('public');
+    // Public editorial collections: admin only (server-enforced). Others use private collections.
+    setCollectionMode(isAdmin ? 'public' : 'private');
     setShowCollection(true);
   };
 
