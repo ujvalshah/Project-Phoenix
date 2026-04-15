@@ -1,9 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Mail, Lock, ArrowRight, Loader2, Chrome, ChevronLeft } from 'lucide-react';
+import { X, Mail, Lock, ArrowRight, Loader2, ChevronLeft, Eye, EyeOff } from 'lucide-react';
 import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { Input } from '../UI/Input';
-import { ENABLED_SOCIAL_PROVIDERS } from '@/types/auth';
 import type { SignupPayload } from '@/types/auth';
 import { authService } from '@/services/authService';
 import { ModalShell } from '@/components/UI/ModalShell';
@@ -62,6 +61,7 @@ export const AuthModal: React.FC = () => {
 
   // Signup Form
   const [fullName, setFullName] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -71,6 +71,7 @@ export const AuthModal: React.FC = () => {
     setFieldErrors({});
     setEmail('');
     setPassword('');
+    setIsPasswordVisible(false);
     // Reset Signup
     setFullName('');
   }, [isAuthModalOpen, authModalView]);
@@ -196,7 +197,7 @@ export const AuthModal: React.FC = () => {
                     {view === 'login' && <p className="text-sm text-slate-500 dark:text-slate-400">Sign in to continue to your space.</p>}
                 </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar px-8 pb-8 pt-6">
+                <div className="flex-1 overflow-y-auto custom-scrollbar px-8 pb-8 pt-5">
                     {view === 'forgot' && forgotSubmitSuccess ? (
                         <div className="text-center py-10 px-2">
                             <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
@@ -220,33 +221,9 @@ export const AuthModal: React.FC = () => {
                     <>
                     {/* Toggle Tabs */}
                     {view !== 'forgot' && (
-                        <div className="flex bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-xl mb-6 relative border border-slate-200/50 dark:border-slate-700/50">
+                        <div className="flex bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-xl mb-5 relative border border-slate-200/50 dark:border-slate-700/50">
                             <button onClick={() => setView('login')} className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${view === 'login' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}>Log in</button>
                             <button onClick={() => setView('signup')} className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${view === 'signup' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}>Sign up</button>
-                        </div>
-                    )}
-
-                    {/* Social Login */}
-                    {view !== 'forgot' && (
-                        <div className="space-y-3 mb-6">
-                            {ENABLED_SOCIAL_PROVIDERS.includes('google') && (
-                                <button
-                                    type="button"
-                                    disabled
-                                    aria-disabled="true"
-                                    title="Google sign-in is not available yet"
-                                    className="w-full flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-white/5 opacity-60 cursor-not-allowed font-medium text-sm text-slate-500 dark:text-slate-400 shadow-sm"
-                                >
-                                    <span className="flex items-center justify-center gap-3">
-                                        <Chrome size={18} className="text-slate-400" /> <span>Google</span>
-                                    </span>
-                                    <span className="text-[10px] font-normal normal-case tracking-normal text-slate-400">Coming soon</span>
-                                </button>
-                            )}
-                            <div className="relative py-2 flex items-center justify-center mt-2">
-                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-700/60"></div></div>
-                                <span className="relative px-2 text-[10px] uppercase font-bold text-slate-400 bg-white/90 dark:bg-slate-900/90 rounded-full">or</span>
-                            </div>
                         </div>
                     )}
 
@@ -277,14 +254,25 @@ export const AuthModal: React.FC = () => {
 
                                 <div>
                                     <label className={labelClass}>Password</label>
-                                    <Input 
-                                        type="password" 
-                                        placeholder="••••••••" 
-                                        value={password} 
-                                        onChange={handlePasswordChange} 
-                                        required 
-                                        className={`${inputClass} ${fieldErrors.password ? 'border-red-300 dark:border-red-700' : ''}`} 
-                                    />
+                                    <div className="relative">
+                                      <Input 
+                                          type={isPasswordVisible ? 'text' : 'password'}
+                                          placeholder="••••••••" 
+                                          value={password} 
+                                          onChange={handlePasswordChange} 
+                                          required 
+                                          className={`${inputClass} pr-14 ${fieldErrors.password ? 'border-red-300 dark:border-red-700' : ''}`} 
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setIsPasswordVisible((prev) => !prev)}
+                                        aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                                        aria-pressed={isPasswordVisible}
+                                        className="absolute inset-y-0 right-0 mr-3 flex items-center text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+                                      >
+                                        {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                      </button>
+                                    </div>
                                     {fieldErrors.password && (
                                         <p className="mt-1 text-xs text-red-600 dark:text-red-400 ml-1">{fieldErrors.password}</p>
                                     )}
@@ -346,21 +334,30 @@ export const AuthModal: React.FC = () => {
                                         <p className="mt-1 text-xs text-red-600 dark:text-red-400 ml-1">{fieldErrors.email}</p>
                                     )}
                                 </div>
-                                <div>
+                                <div className="relative">
                                     <div className="flex justify-between items-center mb-1.5 ml-1">
                                         <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Password</label>
                                     </div>
                                     <Input 
-                                        type="password" 
+                                        type={isPasswordVisible ? 'text' : 'password'}
                                         placeholder="••••••••" 
                                         leftIcon={<Lock size={16} />} 
                                         value={password} 
                                         onChange={handlePasswordChange} 
                                         required 
-                                        className={inputClass} 
+                                        className={`${inputClass} pr-14`} 
                                     />
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsPasswordVisible((prev) => !prev)}
+                                      aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                                      aria-pressed={isPasswordVisible}
+                                      className="absolute inset-y-0 right-0 mr-3 flex items-center text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+                                    >
+                                      {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
                                 </div>
-                                <div className="flex items-center justify-between">
+                                <div className="flex justify-between items-center">
                                     <label className="flex items-center gap-2 cursor-pointer group">
                                         <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${keepSignedIn ? 'bg-primary-500 border-primary-500 text-white' : 'bg-white/50 border-slate-300 dark:border-slate-600 dark:bg-black/20'}`}>
                                             {keepSignedIn && <div className="w-2 h-2 bg-white rounded-sm" />}

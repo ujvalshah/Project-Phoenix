@@ -12,4 +12,3 @@ export interface SignupPayload {
   password: string;
 }
 
-export const ENABLED_SOCIAL_PROVIDERS: AuthProvider[] = ["google", "linkedin"];
