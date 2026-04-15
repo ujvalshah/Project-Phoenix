@@ -3,6 +3,7 @@
 import { recordApiTiming } from '../observability/telemetry.js';
 import { captureException } from '../utils/sentry.js';
 import { getNormalizedApiBase } from '../utils/urlUtils.js';
+import { getCsrfToken, setCsrfToken } from '../utils/csrf.js';
 
 // Normalize API base URL: defaults to '/api', respects VITE_API_URL if set (ensures /api suffix)
 const BASE_URL = getNormalizedApiBase();
@@ -118,7 +119,7 @@ class ApiClient {
     // action — that amplifies Redis outages into multi-second hangs while
     // still failing. Let React Query / the caller decide to retry.
     try {
-      const csrfToken = getCookie(CSRF_COOKIE_NAME);
+      const csrfToken = getCsrfToken() || getCookie(CSRF_COOKIE_NAME);
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
 
@@ -129,8 +130,19 @@ class ApiClient {
         body: JSON.stringify({}), // Body kept for backward compat; tokens come from cookies
       });
 
-      // Success — backend has set new HttpOnly cookies in the response
-      return response.ok;
+      if (response.ok) {
+        // Capture the rotated CSRF token from the response body so cross-origin
+        // clients (where document.cookie can't see the API-domain cookie) keep
+        // a valid token in sync with the refreshed access cookie.
+        try {
+          const data = await response.clone().json();
+          if (data && typeof data.csrfToken === 'string') {
+            setCsrfToken(data.csrfToken);
+          }
+        } catch { /* ignore body parse errors */ }
+        return true;
+      }
+      return false;
     } catch {
       return false;
     }
@@ -196,7 +208,7 @@ class ApiClient {
 
     // Build headers: include CSRF token on state-changing requests
     const isMutation = method !== 'GET' && method !== 'HEAD';
-    const csrfToken = isMutation ? getCookie(CSRF_COOKIE_NAME) : undefined;
+    const csrfToken = isMutation ? (getCsrfToken() || getCookie(CSRF_COOKIE_NAME)) : undefined;
 
     const config: RequestInit = {
       ...requestOptions,
@@ -317,7 +329,14 @@ class ApiClient {
       }
 
       success = true;
-      return response.json();
+      const data = await response.json();
+      // Opportunistically capture CSRF tokens returned by auth endpoints so
+      // cross-origin deployments (SPA on a different domain than the API)
+      // keep a valid token in memory even when document.cookie can't see it.
+      if (data && typeof data === 'object' && typeof (data as any).csrfToken === 'string') {
+        setCsrfToken((data as any).csrfToken);
+      }
+      return data as T;
     } catch (error: any) {
       // SAFETY PATCH: Treat request cancellations as non-errors
       if (error?.name === 'AbortError' || error?.message?.includes('Request cancelled')) {

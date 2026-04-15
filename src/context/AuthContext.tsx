@@ -11,6 +11,7 @@ import { isTransientAuthMeError } from '@/utils/authBootstrapErrors';
 import { getSafeUsernameHandle } from '@/utils/userIdentity';
 import { captureException } from '@/utils/sentry';
 import { shallowEqual } from '@/utils/shallowEqual';
+import { clearCsrfToken } from '@/utils/csrf';
 
 export const shallowEqualAuth = shallowEqual;
 
@@ -198,6 +199,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (typeof document !== 'undefined') {
       document.cookie = 'csrf_token=; Path=/; Max-Age=0; SameSite=Strict';
     }
+    // Drop the in-memory/sessionStorage CSRF cache so the next login starts
+    // with a clean slate and doesn't replay a stale token against a new session.
+    clearCsrfToken();
     setModularUser(null);
   }, []);
 

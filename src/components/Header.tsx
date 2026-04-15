@@ -314,9 +314,9 @@ export const Header: React.FC<HeaderProps> = ({
         style={{ zIndex: Z_INDEX.HEADER }}
       >
         {/* Desktop Layout (lg+) - Original layout preserved */}
-        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full hidden lg:flex items-center gap-3`}>
+        <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full hidden lg:flex items-center gap-3 min-w-0`}>
           {/* Left: Menu + Logo + Navigation */}
-          <div className="flex items-center gap-3 min-w-0 shrink-0">
+          <div className="flex items-center gap-3 min-w-0 shrink">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
@@ -336,8 +336,8 @@ export const Header: React.FC<HeaderProps> = ({
             </Link>
 
             {/* Desktop Navigation (lg+) */}
-            <nav 
-              className="rounded-lg border border-gray-200/80 bg-gray-100 p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 shrink-0 dark:border-slate-700/80 dark:bg-slate-800/90" 
+            <nav
+              className="rounded-lg border border-gray-200/80 bg-gray-100 p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 shrink dark:border-slate-700/80 dark:bg-slate-800/90"
               role="navigation"
               aria-label="Main navigation"
             >

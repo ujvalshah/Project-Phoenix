@@ -588,8 +588,20 @@ export const getMe = async (req: Request, res: Response) => {
       return sendNotFoundError(res, 'User not found');
     }
 
+    // Re-issue (or refresh) the client-readable CSRF cookie and include the
+    // value in the response body. Cross-origin SPA deployments cannot read
+    // the API-domain cookie via document.cookie, so returning the token here
+    // is how the client bootstraps a valid double-submit header after a hard
+    // reload. Reuse an existing csrf cookie when present to avoid breaking
+    // concurrent tabs mid-flight.
+    const existingCsrf = (req as any).cookies?.csrf_token as string | undefined;
+    const csrfToken = existingCsrf && existingCsrf.length >= 32
+      ? existingCsrf
+      : crypto.randomBytes(32).toString('hex');
+    setCsrfCookie(res, csrfToken);
+
     const userData = normalizeDoc(user);
-    res.json(userData);
+    res.json({ ...userData, csrfToken });
   } catch (error: any) {
     const requestLogger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
     requestLogger.error({

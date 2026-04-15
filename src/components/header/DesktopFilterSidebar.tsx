@@ -37,12 +37,13 @@ export const DesktopFilterSidebar: React.FC = () => {
         transitionDuration: `${SIDEBAR_MS}ms`,
         transitionTimingFunction: SIDEBAR_EASE,
       }}
-      className="relative hidden min-h-0 shrink-0 flex-col overflow-hidden border-r border-slate-200/80 bg-white will-change-[width] motion-reduce:transition-none data-[state=collapsed]:w-[52px] data-[state=expanded]:w-64 dark:border-slate-800 dark:bg-slate-950 lg:flex xl:data-[state=expanded]:w-72"
+      className="sticky top-16 z-0 hidden h-[calc(100vh-4rem)] min-h-0 shrink-0 flex-col self-start overflow-hidden border-r border-slate-200/80 bg-white will-change-[width] motion-reduce:transition-none data-[state=collapsed]:w-[52px] data-[state=expanded]:w-64 dark:border-slate-800 dark:bg-slate-950 lg:flex xl:data-[state=expanded]:w-72"
       aria-label={sidebarCollapsed ? 'Filters collapsed' : 'Filters'}
     >
       {/* Collapsed rail — always mounted; opacity cross-fades with the panel.
           Absolutely positioned so it doesn't fight the panel for layout space
-          while the aside width animates. */}
+          while the aside width animates. The aside itself is sticky, so the
+          rail pins naturally without any inner sticky tricks. */}
       <button
         type="button"
         onClick={toggleSidebarCollapsed}
@@ -57,7 +58,7 @@ export const DesktopFilterSidebar: React.FC = () => {
         aria-controls="desktop-filter-panel"
         title="Show filters"
       >
-        <div className="sticky top-20 flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-2">
           <Filter size={20} strokeWidth={2} className="shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
           {hasActiveFilters && (
             <span className="flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold text-white">
@@ -79,7 +80,7 @@ export const DesktopFilterSidebar: React.FC = () => {
           transitionDuration: `${SIDEBAR_MS}ms`,
           transitionTimingFunction: SIDEBAR_EASE,
         }}
-        className="sticky top-16 z-0 flex h-[calc(100vh-4rem)] w-64 min-h-0 shrink-0 flex-col overflow-hidden will-change-[opacity] motion-reduce:transition-none data-[state=collapsed]:pointer-events-none data-[state=collapsed]:opacity-0 data-[state=expanded]:pointer-events-auto data-[state=expanded]:opacity-100 xl:w-72"
+        className="flex h-full w-64 min-h-0 shrink-0 flex-col overflow-hidden will-change-[opacity] motion-reduce:transition-none data-[state=collapsed]:pointer-events-none data-[state=collapsed]:opacity-0 data-[state=expanded]:pointer-events-auto data-[state=expanded]:opacity-100 xl:w-72"
         aria-hidden={sidebarCollapsed}
       >
         <FilterPanel
