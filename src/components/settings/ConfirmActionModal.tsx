@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 interface ConfirmActionModalProps {
   isOpen: boolean;
@@ -27,8 +27,6 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  if (!isOpen) return null;
-
   const isConfirmDisabled = confirmString ? inputValue !== confirmString : false;
 
   const handleConfirm = async () => {
@@ -52,13 +50,13 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div 
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={() => !isProcessing && onClose()}
-      />
-      
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      disableBackdropClose={isProcessing}
+      disableEscape={isProcessing}
+    >
       <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 animate-in zoom-in-95 duration-200">
         <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${isDestructive ? 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400' : 'bg-slate-100 text-slate-600'}`}>
           <AlertTriangle size={24} />
@@ -107,7 +105,6 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };

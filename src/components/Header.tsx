@@ -14,6 +14,7 @@ import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useToast } from '@/hooks/useToast';
+import { Loader2 } from 'lucide-react';
 import { adminFeedbackService } from '@/admin/services/adminFeedbackService';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
@@ -142,6 +143,36 @@ export const Header: React.FC<HeaderProps> = ({
   
   const location = useLocation();
   const { currentUser, isAuthenticated, openAuthModal, logout } = useAuth();
+  const headerToast = useToast();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  /**
+   * Single source of truth for logout UX. Wraps the async AuthContext logout
+   * with a loading flag, toast feedback, and a hard reload on success so any
+   * in-memory auth caches (React Query, context, lazy modules) are fully
+   * reset. Hard reload also guarantees the browser has honored the server's
+   * Set-Cookie clear headers before the next auth attempt.
+   */
+  const handleLogout = useCallback(async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      headerToast.success('Signed out', 'You have been logged out.');
+      // Hard reload to flush all in-memory state. Use a microtask delay so
+      // the toast has a chance to mount before navigation.
+      setTimeout(() => {
+        window.location.assign('/');
+      }, 150);
+    } catch (error: any) {
+      setIsLoggingOut(false);
+      const message =
+        typeof error?.message === 'string' && error.message
+          ? error.message
+          : 'Could not sign you out. Please try again.';
+      headerToast.error('Sign out failed', message);
+    }
+  }, [isLoggingOut, logout, headerToast]);
   const { withAuth } = useRequireAuth();
 
   const isAdmin = currentUser?.role === 'admin';
@@ -341,7 +372,7 @@ export const Header: React.FC<HeaderProps> = ({
                   }`}
                   aria-current={(currentPath.includes('/profile') || currentPath === '/myspace') ? 'page' : undefined}
                 >
-                  My Space
+                  Library
                 </Link>
               )}
               {isAuthenticated && (
@@ -672,7 +703,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <UserIcon size={16} />
-            My Space
+            Library
           </Link>
           <Link
             to="/bookmarks"
@@ -719,18 +750,15 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={async (e) => {
               e.preventDefault();
               e.stopPropagation();
-              try {
-                await logout();
-                setIsUserMenuOpen(false);
-              } catch (error) {
-                console.error('Logout failed:', error);
-                setIsUserMenuOpen(false);
-              }
+              setIsUserMenuOpen(false);
+              await handleLogout();
             }}
-            className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+            disabled={isLoggingOut}
+            aria-busy={isLoggingOut}
+            className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950/40"
           >
-            <LogOut size={16} />
-            Log Out
+            {isLoggingOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+            {isLoggingOut ? 'Signing out…' : 'Log Out'}
           </button>
         </div>
 
@@ -801,7 +829,7 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               <UserIcon size={16} />
-              My Space
+              Library
             </Link>
           )}
           {isAdmin && (
@@ -846,7 +874,8 @@ export const Header: React.FC<HeaderProps> = ({
         isAuthenticated={isAuthenticated}
         currentUser={currentUser}
         isAdmin={isAdmin}
-        logout={logout}
+        logout={handleLogout}
+        isLoggingOut={isLoggingOut}
         openAuthModal={() => openAuthModal('login')}
         viewMode={viewMode}
         setViewMode={setViewMode}
@@ -968,7 +997,8 @@ interface NavigationDrawerProps {
   isAuthenticated: boolean;
   currentUser: { id?: string; name?: string; email?: string; avatarUrl?: string } | null | undefined;
   isAdmin: boolean;
-  logout: () => void;
+  logout: () => Promise<void> | void;
+  isLoggingOut: boolean;
   openAuthModal: () => void;
   viewMode: 'grid' | 'masonry';
   setViewMode: (mode: 'grid' | 'masonry') => void;
@@ -981,6 +1011,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   currentUser,
   isAdmin,
   logout,
+  isLoggingOut,
   openAuthModal,
   viewMode,
   setViewMode,
@@ -1061,7 +1092,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                <div className="mx-4 my-2 h-px bg-gray-100 dark:bg-slate-800" />
                <p className="px-4 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">Personal</p>
                <Link to={`/profile/${currentUser?.id || ''}`} onClick={onClose} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800">
-                  <UserIcon size={18} /> My Space
+                  <UserIcon size={18} /> Library
                </Link>
                <Link to="/bookmarks" onClick={onClose} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800">
                   <BookOpen size={18} /> Bookmarks
@@ -1097,17 +1128,19 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
         <div className="border-t border-gray-100 bg-gray-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/95">
            {isAuthenticated ? (
-             <button onClick={async (e) => { 
-               e.preventDefault();
-               e.stopPropagation();
-               onClose(); 
-               try {
+             <button
+               onClick={async (e) => {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 onClose();
                  await logout();
-               } catch (error) {
-                 console.error('Logout failed:', error);
-               }
-             }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-red-600 shadow-sm transition-colors hover:bg-red-50 dark:border-slate-600 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-red-950/35">
-               <LogOut size={18} /> Sign Out
+               }}
+               disabled={isLoggingOut}
+               aria-busy={isLoggingOut}
+               className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-red-600 shadow-sm transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-red-950/35"
+             >
+               {isLoggingOut ? <Loader2 size={18} className="animate-spin" /> : <LogOut size={18} />}
+               {isLoggingOut ? 'Signing out…' : 'Sign Out'}
              </button>
            ) : (
              <button onClick={() => { openAuthModal(); onClose(); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-400 px-4 py-3 text-sm font-bold text-gray-900 shadow-lg shadow-yellow-400/20 transition-transform hover:scale-[1.02] dark:bg-primary-400 dark:text-gray-900 dark:shadow-primary-900/30">

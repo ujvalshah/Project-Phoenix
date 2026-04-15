@@ -9,6 +9,8 @@ import {
   generatePasswordResetToken,
   verifyPasswordResetToken,
   getTokenRemainingSeconds,
+  decodeTokenUnsafe,
+  verifyToken,
   TOKEN_CONFIG,
 } from '../utils/jwt.js';
 import { getEnv } from '../config/envValidation.js';
@@ -922,53 +924,75 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/logout
- * Logout current session - blacklists access token and revokes refresh token
  *
- * Requires authentication (access token in header)
- * Optional: refreshToken in body to revoke that specific refresh token
+ * Idempotent logout. Always clears cookies and returns success, even if the
+ * caller's access token is missing, expired, blacklisted, or malformed. This
+ * is critical: if logout required a valid session, an expired token would
+ * make the user un-logoutable, leaving them "stuck" signed in. Instead we
+ * do best-effort token invalidation and always end with a clean cookie state
+ * on the client.
+ *
+ * - If a valid (or decodable) access token is present → blacklist it.
+ * - If a refresh token is present (body or cookie) → revoke it.
+ * - Always clear all auth + CSRF cookies on the response.
  */
 export const logout = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
+  const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
 
-  try {
-    const userId = (req as any).user?.userId;
-    const currentToken = (req as any).token;
+  // Extract access token from cookie first, then Authorization header.
+  const cookieAccessToken = (req as any).cookies?.access_token as string | undefined;
+  const authHeader = req.headers['authorization'];
+  const headerAccessToken = authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : undefined;
+  const accessToken = cookieAccessToken || headerAccessToken;
 
-    if (!userId || !currentToken) {
-      return sendUnauthorizedError(res, 'Authentication required');
+  let userId: string | undefined;
+
+  // Best-effort: blacklist access token if it still has remaining lifetime.
+  if (accessToken) {
+    try {
+      const verified = verifyToken(accessToken);
+      userId = verified.userId;
+    } catch {
+      // Token is expired or invalid — decode unsafely just to recover userId
+      // for refresh-token revocation. We do not trust the payload for auth.
+      const decoded = decodeTokenUnsafe(accessToken);
+      if (decoded?.userId) userId = decoded.userId;
     }
 
-    // Blacklist the current access token
-    const remainingSeconds = getTokenRemainingSeconds(currentToken);
-    if (remainingSeconds > 0) {
-      await blacklistToken(currentToken, remainingSeconds);
+    try {
+      const remainingSeconds = getTokenRemainingSeconds(accessToken);
+      if (remainingSeconds > 0) {
+        await blacklistToken(accessToken, remainingSeconds);
+      }
+    } catch (error: any) {
+      requestLogger.warn({
+        msg: 'Access token blacklist failed during logout (continuing)',
+        err: error instanceof Error ? { message: error.message } : { message: String(error) },
+      });
     }
-
-    // Revoke refresh token — from body or HttpOnly cookie
-    const bodyRefreshToken = req.body?.refreshToken;
-    const cookieRefreshToken = (req as any).cookies?.refresh_token as string | undefined;
-    const refreshToken = (typeof bodyRefreshToken === 'string' && bodyRefreshToken) || cookieRefreshToken;
-    if (refreshToken) {
-      await revokeRefreshToken(userId, refreshToken);
-    }
-
-    requestLogger.info({ msg: 'User logged out', userId });
-
-    clearAuthCookies(res);
-    res.json({
-      message: 'Logged out successfully',
-    });
-  } catch (error: any) {
-    requestLogger.error({
-      msg: 'Logout failed',
-      err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) },
-    });
-    // Still return success - logout should be idempotent
-    clearAuthCookies(res);
-    res.json({
-      message: 'Logged out successfully',
-    });
   }
+
+  // Best-effort: revoke the refresh token from body or HttpOnly cookie.
+  const bodyRefreshToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : undefined;
+  const cookieRefreshToken = (req as any).cookies?.refresh_token as string | undefined;
+  const refreshToken = bodyRefreshToken || cookieRefreshToken;
+  if (refreshToken && userId) {
+    try {
+      await revokeRefreshToken(userId, refreshToken);
+    } catch (error: any) {
+      requestLogger.warn({
+        msg: 'Refresh token revoke failed during logout (continuing)',
+        err: error instanceof Error ? { message: error.message } : { message: String(error) },
+      });
+    }
+  }
+
+  requestLogger.info({ msg: 'User logged out', userId: userId || 'anonymous' });
+
+  clearAuthCookies(res);
+  res.status(200).json({ message: 'Logged out successfully' });
 };
 
 /**

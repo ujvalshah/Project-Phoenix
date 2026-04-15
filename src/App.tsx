@@ -101,6 +101,12 @@ const AppContent: React.FC = () => {
     else html.classList.remove('dark');
   }, [isDark]);
 
+  useEffect(() => {
+    const openCreate = () => setIsCreateOpen(true);
+    window.addEventListener('nuggets:open-create-modal', openCreate);
+    return () => window.removeEventListener('nuggets:open-create-modal', openCreate);
+  }, []);
+
   return (
     <>
       {/* Handle legacy hash URLs (e.g., /#/collections → /collections) */}

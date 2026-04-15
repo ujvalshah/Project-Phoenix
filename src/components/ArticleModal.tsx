@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Article } from '@/types';
 import { ArticleDetail } from './ArticleDetail';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 interface ArticleModalProps {
   isOpen: boolean;
@@ -22,67 +22,31 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({
     setArticle(initialArticle);
   }, [initialArticle]);
 
-  // Lock body scroll when drawer is open - ensures all scrolling happens inside drawer only
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div 
-      className="fixed inset-0 z-[60] flex justify-end isolation-auto"
-      role="dialog"
-      aria-modal="true"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
-    >
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      
+  return (
+    <ModalShell isOpen={isOpen} onClose={onClose} align="end">
       {/* Drawer Container - Right Aligned, Full Height
           Width: Full width on mobile, 50% on desktop with max constraint for optimal reading */}
-      <div 
+      <div
+        role="dialog"
+        aria-modal="true"
         className="
-          relative w-full md:w-1/2 max-w-[1000px] h-full 
-          bg-white dark:bg-slate-950 shadow-2xl 
+          relative w-full md:w-1/2 max-w-[1000px] h-full
+          bg-white dark:bg-slate-950 shadow-2xl
           flex flex-col border-l border-slate-200 dark:border-slate-800
           animate-in slide-in-from-right duration-300 ease-out
         "
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Scroll Container - Internal scroll only, body scroll locked above
-            Layout: flex-1 ensures container takes available height, overflow-y-auto enables scrolling */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950 relative h-full">
-            <ArticleDetail 
-              article={article} 
-              isModal={true} 
-              onClose={onClose}
-              onYouTubeTimestampClick={onYouTubeTimestampClick}
-            />
+          <ArticleDetail
+            article={article}
+            isModal={true}
+            onClose={onClose}
+            onYouTubeTimestampClick={onYouTubeTimestampClick}
+          />
         </div>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };
 

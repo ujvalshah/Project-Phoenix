@@ -17,10 +17,10 @@
  * ============================================================================
  */
 
-import React, { useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useCallback } from 'react';
 import { X } from 'lucide-react';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 interface YouTubeModalProps {
   isOpen: boolean;
@@ -39,46 +39,10 @@ export const YouTubeModal: React.FC<YouTubeModalProps> = ({
 }) => {
   const videoId = extractYouTubeVideoId(videoUrl);
 
-  // Lock body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  // Handle ESC key to close
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen, onClose]);
-
   const handleClose = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation();
     onClose(e);
   }, [onClose]);
-
-  const handleBackdropClick = useCallback((e: React.MouseEvent) => {
-    // Close if clicking backdrop (not the modal content)
-    if (e.target === e.currentTarget) {
-      handleClose(e);
-    }
-  }, [handleClose]);
-
 
   if (!isOpen || !videoId) return null;
 
@@ -96,19 +60,11 @@ export const YouTubeModal: React.FC<YouTubeModalProps> = ({
   
   const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?${embedParams.toString()}`;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-label={videoTitle || 'YouTube video player'}
-      style={{
-        paddingTop: 'env(safe-area-inset-top)',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-        paddingLeft: 'env(safe-area-inset-left)',
-        paddingRight: 'env(safe-area-inset-right)',
-      }}
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      onClose={() => onClose()}
+      backdropClassName="bg-black/90 backdrop-blur-sm"
     >
       {/* Close Button - Moved to top-left to avoid YouTube controls overlay */}
       <button
@@ -145,7 +101,6 @@ export const YouTubeModal: React.FC<YouTubeModalProps> = ({
           </div>
         )}
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };

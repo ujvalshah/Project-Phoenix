@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { X, ExternalLink, Globe, Lock, AlertCircle } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 interface LinkPreviewModalProps {
   isOpen: boolean;
@@ -40,32 +40,12 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
   // Check if URL is secure (HTTPS)
   const isSecure = url.startsWith('https://');
 
-  // Lock body scroll when modal is open
+  // Reset transient state on open (scroll lock + Escape owned by ModalShell)
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
       setIsClosing(false);
       setDragOffset(0);
-    } else {
-      document.body.style.overflow = 'unset';
     }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  // Keyboard handler
-  useEffect(() => {
-    if (!isOpen) return;
-    
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
   const handleClose = (e?: React.MouseEvent) => {
@@ -113,19 +93,15 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
     setDragOffset(0);
   };
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div
-      className={twMerge(
-        'fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center',
-        'animate-in fade-in duration-200',
-        isClosing && 'animate-out fade-out duration-200'
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      onClose={() => handleClose()}
+      align="bottom-sheet"
+      backdropClassName={twMerge(
+        'bg-black/60 backdrop-blur-sm',
+        isClosing && 'animate-out fade-out duration-200',
       )}
-      onClick={handleClose}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
     >
       <div
         className={twMerge(
@@ -133,12 +109,14 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
           'w-full sm:max-w-md max-h-[90vh] overflow-hidden',
           'flex flex-col',
           'transform transition-transform duration-200',
-          dragOffset > 0 && `translate-y-[${dragOffset}px]`
         )}
         style={{
           transform: dragOffset > 0 ? `translateY(${dragOffset}px)` : undefined,
         }}
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
@@ -228,7 +206,6 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };

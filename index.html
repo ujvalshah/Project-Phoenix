@@ -29,6 +29,16 @@
 </head>
   <body class="bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
     <div id="root"></div>
+    <!--
+      Overlay roots. Siblings of #root so they sit in body's root stacking context,
+      painted AFTER #root, and their z-index is authoritative regardless of what
+      transform/contain/isolation rules are applied inside #root.
+      Consumers (ModalShell, CollectionPopover, ToastContainer) should portal here.
+      pointer-events: none on the host; children opt back in with pointer-events: auto.
+    -->
+    <div id="modal-root"   style="position:fixed;inset:0;z-index:1010;pointer-events:none;"></div>
+    <div id="popover-root" style="position:fixed;inset:0;z-index:1020;pointer-events:none;"></div>
+    <div id="toast-root"   style="position:fixed;inset:0;z-index:1100;pointer-events:none;"></div>
     <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

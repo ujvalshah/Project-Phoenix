@@ -1,10 +1,10 @@
 
 import React, { useState, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { X, Check, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { AvatarColor, AVATAR_COLORS } from '@/types/settings';
 import { getInitials } from '@/utils/formatters';
 import { useMediaUpload } from '@/hooks/useMediaUpload';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 interface AvatarSelectorModalProps {
   isOpen: boolean;
@@ -27,8 +27,6 @@ export const AvatarSelectorModal: React.FC<AvatarSelectorModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaUpload = useMediaUpload({ purpose: 'avatar' });
 
-  if (!isOpen) return null;
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -49,13 +47,8 @@ export const AvatarSelectorModal: React.FC<AvatarSelectorModalProps> = ({
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div 
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={onClose}
-      />
-      
+  return (
+    <ModalShell isOpen={isOpen} onClose={onClose}>
       <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
@@ -159,7 +152,6 @@ export const AvatarSelectorModal: React.FC<AvatarSelectorModalProps> = ({
             )}
         </div>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };

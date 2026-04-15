@@ -120,14 +120,6 @@ body {
   background-color: rgba(100, 116, 139, 0.7);
 }
 
-/* Header stability optimizations */
-header[class*="fixed"] {
-  contain: layout style paint;
-  will-change: transform;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-}
-
 /* Prevent layout shifts from header */
 body {
   scroll-padding-top: 64px; /* Match header height */

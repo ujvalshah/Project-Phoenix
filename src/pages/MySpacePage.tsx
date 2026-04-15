@@ -1,37 +1,55 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { User, Article, Collection } from '@/types';
+import type { InfiniteData } from '@tanstack/react-query';
+import { Article, Collection } from '@/types';
 import { storageService } from '@/services/storageService';
-import { ProfileCard } from '@/components/profile/ProfileCard';
-import { TabsBar } from '@/components/profile/TabsBar';
-import { NewsCard } from '@/components/NewsCard';
-import { CollectionsGrid } from '@/components/profile/CollectionsGrid';
-import { Loader2, CheckSquare, X, Trash2, Lock, Globe, FolderPlus, ChevronDown, Info, Plus } from 'lucide-react';
+import { Loader2, X, Trash2, Lock, Globe, FolderPlus, ChevronDown, Plus } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { AddToCollectionModal } from '@/components/AddToCollectionModal';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
-import { Tooltip } from '@/components/UI/Tooltip';
 import { queryClient } from '@/queryClient';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { PaginatedArticlesResponse } from '@/services/adapters/IAdapter';
 import { apiClient } from '@/services/apiClient';
+import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
+import { MetricsStrip, type LibraryMetric } from '@/components/workspace/MetricsStrip';
+import { ContentTabs, type ContentTabItem } from '@/components/workspace/ContentTabs';
+import {
+  ContentToolbar,
+  type CollectionContentSort,
+  type ContentSort,
+  type LibraryViewMode,
+} from '@/components/workspace/ContentToolbar';
+import { NuggetGridCard } from '@/components/workspace/NuggetGridCard';
+import { NuggetListRow } from '@/components/workspace/NuggetListRow';
+import { CollectionWorkspaceCard } from '@/components/workspace/CollectionWorkspaceCard';
+import {
+  getWorkspaceDisplayName,
+  type ProfilePageUser,
+} from '@/components/workspace/workspaceUserDisplay';
 
 interface MySpacePageProps {
   currentUserId: string;
 }
 
-// Dynamic descriptions based on state
-const getDescription = (tab: string, visibility: 'public' | 'private') => {
-  if (tab === 'collections') return "Thematic lists you have curated for the community.";
-  if (tab === 'nuggets') {
-      return visibility === 'public' 
-        ? "Your nuggets that you've shared with the community."
-        : "These are nuggets you have created that are not shared publicly.";
-  }
-  return "";
-};
+function patchMyspacePages(
+  oldData: InfiniteData<PaginatedArticlesResponse> | undefined,
+  nuggetsToUpdate: Article[],
+  visibility: 'public' | 'private'
+): InfiniteData<PaginatedArticlesResponse> | undefined {
+  if (!oldData?.pages) return oldData;
+  return {
+    ...oldData,
+    pages: oldData.pages.map((page) => ({
+      ...page,
+      data: page.data.map((a: Article) =>
+        nuggetsToUpdate.some((n) => n.id === a.id) ? { ...a, visibility } : a
+      ),
+    })),
+  };
+}
 
 // Infinite Scroll Trigger Component for container-based scrolling
 // Modified from Feed.tsx to support custom scroll container root
@@ -39,7 +57,7 @@ const InfiniteScrollTrigger: React.FC<{
   onIntersect: () => void;
   isLoading: boolean;
   hasMore: boolean;
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }> = ({ onIntersect, isLoading, hasMore, scrollContainerRef }) => {
   const triggerRef = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onIntersect);
@@ -61,7 +79,7 @@ const InfiniteScrollTrigger: React.FC<{
         }
       },
       {
-        root: scrollContainerRef.current, // Use container as root instead of viewport
+        root: scrollContainerRef?.current ?? null,
         rootMargin: '300px',
         threshold: 0,
       }
@@ -97,22 +115,17 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   const toast = useToast();
   
   // Data State
-  const [profileUser, setProfileUser] = useState<User | null>(null);
+  const [profileUser, setProfileUser] = useState<ProfilePageUser | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
-  // Counts state - independent from articles array to support pagination
   const [articleCounts, setArticleCounts] = useState<{ total: number; public: number; private: number } | null>(null);
-  
-  // UI State
-  const [activeTab, setActiveTab] = useState('nuggets');
-  
-  // Sub-Navigation State (Hierarchy)
-  const [nuggetVisibility, setNuggetVisibility] = useState<'public' | 'private'>('public');
+
+  type MainTab = 'library' | 'drafts' | 'collections';
+  const [activeTab, setActiveTab] = useState<MainTab>('library');
 
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Selection Mode State
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -120,50 +133,70 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
-  
-  // Context
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sort, setSort] = useState<ContentSort>('published-desc');
+  const [collectionSort, setCollectionSort] = useState<CollectionContentSort>('updated-desc');
+  const [sourceTypeFilter, setSourceTypeFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [datePreset, setDatePreset] = useState<'all' | '7d' | '30d'>('all');
+  const [recentUpdatesMode, setRecentUpdatesMode] = useState(false);
+  const [contentView, setContentView] = useState<LibraryViewMode>('grid');
+
   const targetUserId = userId || currentUserId;
   const isOwner = currentUserId === targetUserId;
 
-  // Normalize visibility: treat missing visibility as 'private'
   const getVisibility = (article: Article): 'public' | 'private' => {
     return article.visibility ?? 'private';
   };
 
-  // Ref for the scrollable nuggets container
-  const nuggetsScrollContainerRef = useRef<HTMLDivElement>(null);
+  const nuggetListVisibility: 'public' | 'private' = activeTab === 'drafts' ? 'private' : 'public';
+  const showNuggets = activeTab === 'library' || activeTab === 'drafts';
 
-  // Local infinite scroll hook for author-filtered articles (same pattern as useInfiniteArticles)
-  // Uses the existing API endpoint with authorId parameter
+  useEffect(() => {
+    if (!isOwner && activeTab === 'drafts') {
+      setActiveTab('library');
+    }
+  }, [isOwner, activeTab]);
+
+  useEffect(() => {
+    if (recentUpdatesMode) {
+      setSort('updated-desc');
+    }
+  }, [recentUpdatesMode]);
+
+  const myspaceQueryKey = useMemo(
+    () => ['articles', 'myspace', targetUserId, nuggetListVisibility] as const,
+    [targetUserId, nuggetListVisibility]
+  );
+
   const infiniteArticlesQuery = useInfiniteQuery<PaginatedArticlesResponse>({
-    queryKey: ['articles', 'myspace', targetUserId, nuggetVisibility],
+    queryKey: myspaceQueryKey,
     queryFn: async ({ pageParam = 1 }) => {
       const queryParams = new URLSearchParams();
       queryParams.set('authorId', targetUserId);
       queryParams.set('page', (pageParam as number).toString());
       queryParams.set('limit', '25');
-      
+
       return apiClient.get<PaginatedArticlesResponse>(`/articles?${queryParams}`);
     },
     getNextPageParam: (lastPage) => {
       return lastPage.hasMore ? lastPage.page + 1 : undefined;
     },
     initialPageParam: 1,
-    staleTime: 1000 * 30, // 30 seconds
-    enabled: activeTab === 'nuggets', // Only fetch when nuggets tab is active
+    staleTime: 1000 * 30,
+    enabled: showNuggets,
   });
 
-  // Accumulate all pages and filter by visibility
   const infiniteArticles = useMemo(() => {
     if (!infiniteArticlesQuery.data?.pages) {
       return [];
     }
-    
+
     const allArticles = infiniteArticlesQuery.data.pages.flatMap((page) => page.data);
-    
-    // Filter by visibility on client-side (backend returns all for owner)
-    return allArticles.filter((a: Article) => getVisibility(a) === nuggetVisibility);
-  }, [infiniteArticlesQuery.data, nuggetVisibility]);
+
+    return allArticles.filter((a: Article) => getVisibility(a) === nuggetListVisibility);
+  }, [infiniteArticlesQuery.data, nuggetListVisibility]);
 
   // Infinite scroll handler (same pattern as Feed.tsx)
   const handleLoadMore = useCallback(() => {
@@ -184,12 +217,11 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   }, [targetUserId]);
 
 
-  // Clear selection when tab changes
   useEffect(() => {
-      setSelectionMode(false);
-      setSelectedIds([]);
-      setIsActionMenuOpen(false);
-  }, [activeTab, nuggetVisibility]);
+    setSelectionMode(false);
+    setSelectedIds([]);
+    setIsActionMenuOpen(false);
+  }, [activeTab, nuggetListVisibility]);
 
   // Click outside listener for dropdown
   useEffect(() => {
@@ -267,32 +299,137 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     }
   };
 
-  // Defensive checks: ensure arrays before calling filter
   const safeCollections = Array.isArray(collections) ? collections : [];
-  
-  // SEGREGATION LOGIC
-  const publicCollections = safeCollections.filter(c => c.type === 'public');
+  const publicCollections = safeCollections.filter((c) => c.type === 'public');
 
-  // Hierarchy: Top Level Tabs - Updated per requirements
-  // Use counts from API endpoint (independent of pagination) - always use server-provided counts
-  const nuggetCount = isOwner 
-    ? (articleCounts?.total ?? 0)
-    : (articleCounts?.public ?? 0);
-  
-  const tabs: { id: string; label: string; count?: number }[] = [
-    { 
-        id: 'nuggets', 
-        label: 'My Nuggets', 
-        count: nuggetCount
-    },
-    { 
-        id: 'collections', 
-        label: 'Community Collections', 
-        count: publicCollections.length 
-    },
-  ];
+  const visitorPublicCount = useMemo(() => {
+    if (!Array.isArray(articles)) return 0;
+    return articles.filter((a) => getVisibility(a) === 'public').length;
+  }, [articles]);
 
-  const handleUpdateProfile = (updated: User) => setProfileUser(updated);
+  const withinDatePreset = (iso: string, preset: 'all' | '7d' | '30d'): boolean => {
+    if (preset === 'all') return true;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return false;
+    const ms = preset === '7d' ? 7 * 86400000 : 30 * 86400000;
+    return Date.now() - d.getTime() <= ms;
+  };
+
+  const sourceTypeOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of infiniteArticles) {
+      const t = a.source_type?.trim();
+      if (t) s.add(t);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [infiniteArticles]);
+
+  const tagOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of infiniteArticles) {
+      for (const t of a.tags ?? []) {
+        const x = t.trim();
+        if (x) s.add(x);
+      }
+    }
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [infiniteArticles]);
+
+  const filteredNuggets = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let list = [...infiniteArticles];
+    if (q) {
+      list = list.filter((a) => {
+        const blob = `${a.title ?? ''} ${a.excerpt ?? ''} ${(a.tags ?? []).join(' ')}`.toLowerCase();
+        return blob.includes(q);
+      });
+    }
+    if (sourceTypeFilter) {
+      list = list.filter((a) => (a.source_type ?? '').trim() === sourceTypeFilter);
+    }
+    if (tagFilter) {
+      list = list.filter((a) => (a.tags ?? []).some((t) => t === tagFilter));
+    }
+    if (datePreset !== 'all') {
+      list = list.filter((a) => withinDatePreset(a.publishedAt, datePreset));
+    }
+    const dir = sort.endsWith('desc') ? -1 : 1;
+    const usePublished = sort.startsWith('published');
+    list.sort((a, b) => {
+      const ta = usePublished
+        ? new Date(a.publishedAt).getTime()
+        : new Date(a.updated_at || a.created_at || a.publishedAt).getTime();
+      const tb = usePublished
+        ? new Date(b.publishedAt).getTime()
+        : new Date(b.updated_at || b.created_at || b.publishedAt).getTime();
+      if (ta !== tb) return (ta - tb) * dir;
+      return a.id.localeCompare(b.id);
+    });
+    return list;
+  }, [infiniteArticles, searchQuery, sourceTypeFilter, tagFilter, datePreset, sort]);
+
+  const filteredCollections = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let list = [...publicCollections];
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) || (c.description ?? '').toLowerCase().includes(q)
+      );
+    }
+    list.sort((a, b) => {
+      if (collectionSort === 'name-asc') return a.name.localeCompare(b.name);
+      if (collectionSort === 'name-desc') return b.name.localeCompare(a.name);
+      const ta = new Date(a.updatedAt || a.createdAt).getTime();
+      const tb = new Date(b.updatedAt || b.createdAt).getTime();
+      if (collectionSort === 'updated-desc') return tb - ta;
+      return ta - tb;
+    });
+    return list;
+  }, [publicCollections, searchQuery, collectionSort]);
+
+  const contentTabs: ContentTabItem[] = useMemo(() => {
+    const tabs: ContentTabItem[] = [
+      {
+        id: 'library',
+        label: 'Published',
+        count: isOwner ? articleCounts?.public ?? 0 : visitorPublicCount,
+      },
+    ];
+    if (isOwner) {
+      tabs.push({
+        id: 'drafts',
+        label: 'Drafts',
+        count: articleCounts?.private ?? 0,
+      });
+    }
+    tabs.push({
+      id: 'collections',
+      label: 'Collections',
+      count: publicCollections.length,
+    });
+    return tabs;
+  }, [isOwner, articleCounts?.public, articleCounts?.private, visitorPublicCount, publicCollections.length]);
+
+  const libraryMetrics: LibraryMetric[] = useMemo(() => {
+    const pub = isOwner ? articleCounts?.public ?? 0 : visitorPublicCount;
+    if (!isOwner) {
+      return [
+        { id: 'published', label: 'Published', value: pub },
+        { id: 'collections', label: 'Collections', value: safeCollections.length },
+      ];
+    }
+    const total = articleCounts?.total ?? 0;
+    return [
+      { id: 'total', label: 'Total', value: total },
+      { id: 'published', label: 'Published', value: pub },
+      { id: 'drafts', label: 'Drafts', value: articleCounts?.private ?? 0 },
+      { id: 'collections', label: 'Collections', value: safeCollections.length },
+    ];
+  }, [isOwner, articleCounts, visitorPublicCount, safeCollections.length]);
+
+  const currentList: Article[] | Collection[] =
+    activeTab === 'collections' ? filteredCollections : filteredNuggets;
 
   const toggleSelectionMode = () => {
       const newMode = !selectionMode;
@@ -327,18 +464,16 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   };
 
   const handleBulkVisibility = async (visibility: 'public' | 'private') => {
-      if (activeTab !== 'nuggets' || selectedIds.length === 0) return;
-      
+      if (!showNuggets || selectedIds.length === 0) return;
+
       setIsUpdatingVisibility(true);
-      
-      // Use infinite scroll data (already filtered by visibility)
+
       const currentListForUpdate = infiniteArticles;
-      
-      // Filter out nuggets already in target state
-      const nuggetsToUpdate = currentListForUpdate.filter((item: Article) => 
-          selectedIds.includes(item.id) && getVisibility(item) !== visibility
+
+      const nuggetsToUpdate = currentListForUpdate.filter(
+          (item: Article) => selectedIds.includes(item.id) && getVisibility(item) !== visibility
       );
-      
+
       if (nuggetsToUpdate.length === 0) {
           toast.info(`All selected nuggets are already ${visibility}`);
           setIsUpdatingVisibility(false);
@@ -346,27 +481,13 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
           setSelectedIds([]);
           return;
       }
-      
-      // Snapshot previous state for rollback
+
       const previousArticles = [...infiniteArticles];
       const failedIds: string[] = [];
-      
-      // Optimistic cache update for infinite query
-      queryClient.setQueryData(['articles', 'myspace', targetUserId, nuggetVisibility], (oldData: any) => {
-        if (!oldData?.pages) return oldData;
-        
-        return {
-          ...oldData,
-          pages: oldData.pages.map((page: PaginatedArticlesResponse) => ({
-            ...page,
-            data: page.data.map((a: Article) => 
-              nuggetsToUpdate.some(n => n.id === a.id) 
-                ? { ...a, visibility }
-                : a
-            )
-          }))
-        };
-      });
+
+      queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceQueryKey, (oldData) =>
+        patchMyspacePages(oldData, nuggetsToUpdate, visibility)
+      );
       
       try {
           // Parallel PATCH calls
@@ -377,7 +498,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                       throw new Error('Update failed');
                   }
                   return { id: nugget.id, success: true, article: updated };
-              } catch (error: any) {
+              } catch (error: unknown) {
                   failedIds.push(nugget.id);
                   return { id: nugget.id, success: false, error };
               }
@@ -388,22 +509,20 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
           const failureCount = results.filter(r => !r.success).length;
           
           if (failureCount > 0) {
-              // Rollback failed IDs in React Query cache
-              queryClient.setQueryData(['articles', 'myspace', targetUserId, nuggetVisibility], (oldData: any) => {
+              queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceQueryKey, (oldData) => {
                 if (!oldData?.pages) return oldData;
-                
                 return {
                   ...oldData,
-                  pages: oldData.pages.map((page: PaginatedArticlesResponse) => ({
+                  pages: oldData.pages.map((page) => ({
                     ...page,
                     data: page.data.map((a: Article) => {
                       if (failedIds.includes(a.id)) {
-                        const original = previousArticles.find(pa => pa.id === a.id);
+                        const original = previousArticles.find((pa) => pa.id === a.id);
                         return original || a;
                       }
                       return a;
-                    })
-                  }))
+                    }),
+                  })),
                 };
               });
               
@@ -425,43 +544,42 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
           setSelectionMode(false);
           setSelectedIds([]);
           setIsActionMenuOpen(false);
-      } catch (error: any) {
-          // Full rollback on unexpected error - restore React Query cache
-          queryClient.setQueryData(['articles', 'myspace', targetUserId, nuggetVisibility], (oldData: any) => {
+      } catch {
+          queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceQueryKey, (oldData) => {
             if (!oldData?.pages) return oldData;
-            
             return {
               ...oldData,
-              pages: oldData.pages.map((page: PaginatedArticlesResponse) => ({
+              pages: oldData.pages.map((page) => ({
                 ...page,
                 data: page.data.map((a: Article) => {
-                  const original = previousArticles.find(pa => pa.id === a.id);
+                  const original = previousArticles.find((pa) => pa.id === a.id);
                   return original || a;
-                })
-              }))
+                }),
+              })),
             };
           });
-          
-          queryClient.setQueryData(['articles'], (oldData: any) => {
-              if (!oldData) return oldData;
-              
-              if (oldData.data && Array.isArray(oldData.data)) {
+
+          queryClient.setQueryData(['articles'], (oldData: unknown) => {
+              if (!oldData || typeof oldData !== 'object') return oldData;
+
+              const o = oldData as { data?: Article[] };
+              if (o.data && Array.isArray(o.data)) {
                   return {
-                      ...oldData,
-                      data: oldData.data.map((a: Article) => {
-                          const original = previousArticles.find(pa => pa.id === a.id);
+                      ...o,
+                      data: o.data.map((a: Article) => {
+                          const original = previousArticles.find((pa) => pa.id === a.id);
                           return original || a;
                       })
                   };
               }
-              
+
               if (Array.isArray(oldData)) {
-                  return oldData.map((a: Article) => {
-                      const original = previousArticles.find(pa => pa.id === a.id);
+                  return (oldData as Article[]).map((a: Article) => {
+                      const original = previousArticles.find((pa) => pa.id === a.id);
                       return original || a;
                   });
               }
-              
+
               return oldData;
           });
           
@@ -510,8 +628,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
           setSelectionMode(false);
           setSelectedIds([]);
           setIsActionMenuOpen(false);
-      } catch (error: any) {
-          // Rollback on error
+      } catch {
           setCollections(previousCollections);
           toast.error(`Failed to ${action} collections`);
       }
@@ -544,254 +661,285 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     );
   }
 
-  // --- HIERARCHY LOGIC ---
-  // Determine what list to show based on Tab + Sub-Filter
-  // For nuggets, use infinite scroll data; for collections, use regular array
-  let currentList: any[] = [];
-  
-  if (activeTab === 'nuggets') {
-      // Use infinite scroll data for nuggets
-      currentList = infiniteArticles;
-  } else if (activeTab === 'collections') {
-      currentList = publicCollections;
-  }
+  const pageTagline = isOwner
+    ? 'Browse, filter, and manage published work, drafts, and collections.'
+    : `Published work and collections from ${getWorkspaceDisplayName(profileUser)}.`;
 
-  // Determine current description
-  const tabDescription = getDescription(activeTab, nuggetVisibility);
+  const nuggetsInitialLoading =
+    showNuggets && infiniteArticlesQuery.isLoading && infiniteArticles.length === 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-gray-900 dark:text-white pb-32">
+    <div className="min-h-screen bg-slate-100/70 pb-24 font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-50">
       <HeaderSpacer />
-      <div className="max-w-[1280px] mx-auto px-6 py-8">
-        
-        <div className="flex flex-col lg:flex-row items-start">
-          
-          {/* Left Column: Sidebar */}
-          <div className="w-full lg:w-[270px] flex-shrink-0 mb-8 lg:mb-0">
-            <ProfileCard 
-                user={profileUser} 
-                nuggetCount={isOwner ? (articleCounts?.public ?? 0) : 0} 
-                isOwner={isOwner}
-                onUpdate={handleUpdateProfile}
+      <main className="mx-auto w-full max-w-[1320px] px-5 pb-20 pt-6 sm:px-6">
+        <div className="grid grid-cols-12 gap-x-6">
+          <div className="col-span-12">
+            <WorkspaceHeader
+              title="Library"
+              tagline={pageTagline}
+              isOwner={isOwner}
+              selectionMode={selectionMode}
+              onToggleSelect={toggleSelectionMode}
+              user={profileUser}
             />
           </div>
 
-          {/* Right Column: Content */}
-          <div className="flex-grow min-w-0 lg:ml-10 w-full relative">
-            
-            {/* Header / Toolbar Area */}
-            <div className="flex flex-col gap-4 mb-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 min-h-[44px]">
-                    
-                    {/* Tabs */}
-                    <div className={`overflow-x-auto pb-2 sm:pb-0 w-full sm:w-auto transition-opacity duration-200 ${selectionMode ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
-                        <TabsBar 
-                            tabs={tabs} 
-                            activeTab={activeTab} 
-                            onTabChange={(t) => {
-                                setActiveTab(t);
-                                // Reset visibility filter to public when switching back to nuggets tab
-                                if (t === 'nuggets') setNuggetVisibility('public');
-                            }} 
-                        />
-                    </div>
-                    
-                    {/* Contextual Toolbar */}
-                    {isOwner && currentList.length > 0 && (
-                        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                            
-                            {selectionMode ? (
-                                // --- SELECTION ACTIVE STATE ---
-                                <div className="flex items-center gap-2 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-700 animate-in slide-in-from-right-2 duration-200">
-                                    <span className="text-xs font-bold text-gray-600 dark:text-slate-400 ml-2">
-                                        {selectedIds.length} Selected
-                                    </span>
+          <div className="col-span-12 mt-4">
+            <MetricsStrip metrics={libraryMetrics} />
+          </div>
 
-                                    {/* Dropdown Menu */}
-                                    <div className="relative" ref={actionMenuRef}>
-                                        <button 
-                                            onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
-                                            disabled={selectedIds.length === 0 || isUpdatingVisibility}
-                                            className="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-gray-900 rounded-lg text-xs font-bold shadow-sm hover:bg-yellow-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {isUpdatingVisibility ? (
-                                                <>
-                                                    <Loader2 size={14} className="animate-spin" /> Updating...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    Actions <ChevronDown size={14} />
-                                                </>
-                                            )}
-                                        </button>
+          <section className="col-span-12 mt-6" aria-labelledby="library-main-heading">
+            <h2 id="library-main-heading" className="sr-only">
+              Library content
+            </h2>
 
-                                        {isActionMenuOpen && (
-                                            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-gray-200 dark:border-slate-700 z-50 overflow-hidden animate-in zoom-in-95 duration-100 origin-top-right">
-                                                {activeTab === 'nuggets' && (
-                                                    <>
-                                                        <button 
-                                                            onClick={() => { handleBulkVisibility('public'); setIsActionMenuOpen(false); }} 
-                                                            disabled={isUpdatingVisibility}
-                                                            className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            <Globe size={14} className="text-blue-500" /> Make Public
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => { handleBulkVisibility('private'); setIsActionMenuOpen(false); }} 
-                                                            disabled={isUpdatingVisibility}
-                                                            className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            <Lock size={14} className="text-amber-500" /> Make Private
-                                                        </button>
-                                                        <button onClick={() => { setShowAddToCollection(true); setIsActionMenuOpen(false); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
-                                                            <FolderPlus size={14} className="text-indigo-500" /> Add to Collection
-                                                        </button>
-                                                        <div className="h-px bg-gray-100 dark:bg-slate-800 my-1" />
-                                                    </>
-                                                )}
-                                                
-
-                                                {activeTab === 'collections' && (
-                                                    <>
-                                                        <button onClick={() => { handleBulkFollow('follow'); setIsActionMenuOpen(false); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-green-600 hover:bg-green-50 dark:hover:bg-green-900/10 transition-colors">
-                                                            <Plus size={14} /> Follow Selected
-                                                        </button>
-                                                        <div className="h-px bg-gray-100 dark:bg-slate-800 my-1" />
-                                                        <button onClick={() => { handleBulkFollow('unfollow'); setIsActionMenuOpen(false); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
-                                                            <X size={14} /> Unfollow Selected
-                                                        </button>
-                                                        <div className="h-px bg-gray-100 dark:bg-slate-800 my-1" />
-                                                    </>
-                                                )}
-
-                                                <button 
-                                                    onClick={() => { setShowDeleteConfirm(true); setIsActionMenuOpen(false); }} 
-                                                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                                >
-                                                    <Trash2 size={14} /> Delete Items
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <button 
-                                        onClick={toggleSelectionMode}
-                                        className="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors"
-                                        title="Cancel Selection"
-                                    >
-                                        <X size={18} />
-                                    </button>
-                                </div>
-                            ) : (
-                                // --- DEFAULT STATE ---
-                                <Tooltip content="Select multiple items to organize or delete">
-                                    <button 
-                                        onClick={toggleSelectionMode}
-                                        className="flex items-center gap-2 px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100 dark:bg-yellow-900/10 dark:text-yellow-400 dark:border-yellow-900/30 rounded-xl text-xs font-bold transition-all shadow-sm"
-                                    >
-                                        <CheckSquare size={16} /> Select
-                                    </button>
-                                </Tooltip>
-                            )}
-                        </div>
-                    )}
-                </div>
-                
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center w-full">
-                        {/* Hierarchy Sub-Navigation (For Nuggets Tab Only) - MOVED TO LEFT */}
-                        {activeTab === 'nuggets' && isOwner && (
-                            <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-700 shrink-0">
-                                <button
-                                    onClick={() => setNuggetVisibility('public')}
-                                    className={`px-4 py-1.5 text-xs font-bold rounded-lg flex items-center gap-2 transition-all ${nuggetVisibility === 'public' ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-slate-300'}`}
-                                >
-                                    <Globe size={12} /> Public <span className="opacity-60 text-[10px]">{articleCounts?.public ?? 0}</span>
-                                </button>
-                                <button
-                                    onClick={() => setNuggetVisibility('private')}
-                                    className={`px-4 py-1.5 text-xs font-bold rounded-lg flex items-center gap-2 transition-all ${nuggetVisibility === 'private' ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-slate-300'}`}
-                                >
-                                    <Lock size={12} /> Private <span className="opacity-60 text-[10px]">{articleCounts?.private ?? 0}</span>
-                                </button>
-                            </div>
+            <div
+              className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${
+                selectionMode ? 'pointer-events-none opacity-40' : ''
+              }`}
+            >
+              <ContentTabs
+                tabs={contentTabs}
+                activeId={activeTab}
+                onChange={(id) => setActiveTab(id as MainTab)}
+                ariaLabel="Library sections"
+              />
+                {isOwner && currentList.length > 0 && selectionMode && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 dark:border-slate-800 dark:bg-slate-950/60">
+                    <span className="px-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+                      {selectedIds.length} selected
+                    </span>
+                    <div className="relative" ref={actionMenuRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
+                        disabled={selectedIds.length === 0 || isUpdatingVisibility}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-slate-900 px-3 text-xs font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+                      >
+                        {isUpdatingVisibility ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" /> Updating…
+                          </>
+                        ) : (
+                          <>
+                            Actions <ChevronDown size={14} />
+                          </>
                         )}
-
-                        {/* Tab Description Helper */}
-                        <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-slate-500 px-1 animate-in fade-in">
-                            <Info size={12} className="shrink-0" />
-                            {tabDescription}
+                      </button>
+                      {isActionMenuOpen && (
+                        <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                          {showNuggets && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleBulkVisibility('public');
+                                  setIsActionMenuOpen(false);
+                                }}
+                                disabled={isUpdatingVisibility}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                <Globe size={14} /> Make public
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleBulkVisibility('private');
+                                  setIsActionMenuOpen(false);
+                                }}
+                                disabled={isUpdatingVisibility}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                <Lock size={14} /> Make draft
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowAddToCollection(true);
+                                  setIsActionMenuOpen(false);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                <FolderPlus size={14} /> Add to collection
+                              </button>
+                              <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
+                            </>
+                          )}
+                          {activeTab === 'collections' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleBulkFollow('follow');
+                                  setIsActionMenuOpen(false);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                <Plus size={14} /> Follow
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleBulkFollow('unfollow');
+                                  setIsActionMenuOpen(false);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                <X size={14} /> Unfollow
+                              </button>
+                              <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowDeleteConfirm(true);
+                              setIsActionMenuOpen(false);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                          >
+                            <Trash2 size={14} /> Delete…
+                          </button>
                         </div>
+                      )}
                     </div>
-                </div>
-            </div>
-
-            {/* Content Grid */}
-              {activeTab === 'collections' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <div className="col-span-full">
-                    <CollectionsGrid 
-                      collections={currentList} 
-                      onCollectionClick={(id) => selectionMode ? handleSelect(id) : navigate(`/collections/${id}`)}
-                      selectionMode={selectionMode}
-                      selectedIds={selectedIds}
-                      onSelect={handleSelect}
-                      onCollectionUpdate={handleCollectionUpdate}
-                    />
+                    <button
+                      type="button"
+                      onClick={toggleSelectionMode}
+                      className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                      title="Exit selection"
+                    >
+                      <X size={18} />
+                    </button>
                   </div>
-                  {currentList.length === 0 && (
-                    <div className="col-span-full py-16 text-center border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-2xl">
-                      <p className="text-gray-400 text-sm">Nothing to see here yet.</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                // Scrollable container for nuggets grid with infinite scroll
-                <div 
-                  ref={nuggetsScrollContainerRef}
-                  className="overflow-y-auto"
-                  style={{ maxHeight: 'calc(100vh - 400px)' }}
-                >
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pr-2">
-                    {currentList.map(item => (
-                      <NewsCard 
-                        key={item.id} 
-                        article={item as Article}
-                        viewMode="grid"
-                        onTagClick={() => {}}
-                        onCategoryClick={() => {}}
-                        onClick={() => setSelectedArticle(item as Article)}
-                        currentUserId={currentUserId}
+                )}
+              </div>
+
+              <ContentToolbar
+                mode={activeTab === 'collections' ? 'collections' : 'nuggets'}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                sort={sort}
+                onSortChange={setSort}
+                collectionSort={collectionSort}
+                onCollectionSortChange={setCollectionSort}
+                sourceTypeFilter={sourceTypeFilter}
+                onSourceTypeChange={setSourceTypeFilter}
+                sourceTypeOptions={sourceTypeOptions}
+                tagFilter={tagFilter}
+                onTagChange={setTagFilter}
+                tagOptions={tagOptions}
+                datePreset={datePreset}
+                onDatePresetChange={setDatePreset}
+                recentUpdatesMode={recentUpdatesMode}
+                onRecentUpdatesModeChange={setRecentUpdatesMode}
+                libraryView={contentView}
+                onLibraryViewChange={setContentView}
+                showLibraryViewToggle={showNuggets}
+                disabled={activeTab !== 'collections' && !showNuggets}
+              />
+
+              <div
+                id={`library-panel-${activeTab}`}
+                role="tabpanel"
+                aria-labelledby={`library-tab-${activeTab}`}
+                className="mt-5"
+              >
+                {activeTab === 'collections' ? (
+                  <>
+                    {filteredCollections.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-200 py-16 text-center dark:border-slate-800">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                          {publicCollections.length === 0
+                            ? 'No community collections yet. Curate a public list from the collections hub when you are ready.'
+                            : 'No collections match your search.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {filteredCollections.map((col) => (
+                          <CollectionWorkspaceCard
+                            key={col.id}
+                            collection={col}
+                            onOpen={() => navigate(`/collections/${col.id}`)}
+                            selectionMode={selectionMode}
+                            isSelected={selectedIds.includes(col.id)}
+                            onSelect={handleSelect}
+                            onCollectionUpdate={handleCollectionUpdate}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : nuggetsInitialLoading ? (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div
+                        key={`sk-${i}`}
+                        className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800"
+                      >
+                        <div className="aspect-[16/10] animate-pulse bg-slate-200 dark:bg-slate-800" />
+                        <div className="space-y-2 p-4">
+                          <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+                          <div className="h-3 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800/80" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : filteredNuggets.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 py-16 text-center dark:border-slate-800">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {infiniteArticles.length === 0
+                        ? activeTab === 'drafts'
+                          ? 'No drafts yet. Save private work here until it is ready to publish.'
+                          : 'Nothing published yet. When you ship a nugget, it will appear here.'
+                        : 'No nuggets match your filters. Try clearing search or widening the date range.'}
+                    </p>
+                  </div>
+                ) : contentView === 'grid' ? (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {filteredNuggets.map((item) => (
+                      <NuggetGridCard
+                        key={item.id}
+                        article={item}
                         selectionMode={selectionMode}
                         isSelected={selectedIds.includes(item.id)}
                         onSelect={handleSelect}
+                        onOpen={setSelectedArticle}
                       />
                     ))}
-                    
-                    {/* Infinite Scroll Trigger - inside container */}
-                    {currentList.length > 0 && (
-                      <div className="col-span-full">
-                        <InfiniteScrollTrigger
-                          onIntersect={handleLoadMore}
-                          isLoading={infiniteArticlesQuery.isFetchingNextPage}
-                          hasMore={infiniteArticlesQuery.hasNextPage ?? false}
-                          scrollContainerRef={nuggetsScrollContainerRef}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {currentList.length === 0 && !infiniteArticlesQuery.isLoading && (
-                    <div className="py-16 text-center border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-2xl">
-                      <p className="text-gray-400 text-sm">Nothing to see here yet.</p>
+                    <div className="col-span-full">
+                      <InfiniteScrollTrigger
+                        onIntersect={handleLoadMore}
+                        isLoading={infiniteArticlesQuery.isFetchingNextPage}
+                        hasMore={infiniteArticlesQuery.hasNextPage ?? false}
+                      />
                     </div>
-                  )}
-                </div>
-              )}
-
-          </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {filteredNuggets.map((item) => (
+                      <NuggetListRow
+                        key={item.id}
+                        article={item}
+                        selectionMode={selectionMode}
+                        isSelected={selectedIds.includes(item.id)}
+                        onSelect={handleSelect}
+                        onOpen={setSelectedArticle}
+                        compact={contentView === 'compact'}
+                      />
+                    ))}
+                    <InfiniteScrollTrigger
+                      onIntersect={handleLoadMore}
+                      isLoading={infiniteArticlesQuery.isFetchingNextPage}
+                      hasMore={infiniteArticlesQuery.hasNextPage ?? false}
+                    />
+                  </div>
+                )}
+              </div>
+            </section>
         </div>
-      </div>
+      </main>
 
       {selectedArticle && (
         <ArticleModal

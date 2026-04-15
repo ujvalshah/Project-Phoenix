@@ -154,13 +154,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    // Call backend to invalidate tokens and clear HttpOnly cookies
+    // Call backend to invalidate tokens and clear HttpOnly cookies. We must
+    // NOT silently swallow errors: HttpOnly cookies can only be cleared by
+    // the server (Set-Cookie with Max-Age=0), so if this fails the browser
+    // still holds the session and the next page load will auto-sign the
+    // user back in. Surface the error to the caller so the UI can respond.
     try {
       await authService.logoutApi();
     } catch (e) {
       captureException(e instanceof Error ? e : new Error(String(e)), {
         route: 'AuthContext/logout',
       });
+      throw e;
+    }
+    // Clear client-readable CSRF cookie defensively. HttpOnly access/refresh
+    // cookies are cleared by the server response; this one we can nuke here
+    // to guarantee no stale double-submit value carries into the next login.
+    if (typeof document !== 'undefined') {
+      document.cookie = 'csrf_token=; Path=/; Max-Age=0; SameSite=Strict';
     }
     setModularUser(null);
   };

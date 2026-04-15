@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { X, Flag, AlertTriangle, Info, ShieldAlert, FileWarning, HelpCircle } from 'lucide-react';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 export type ReportReasonCode = 'spam' | 'misleading' | 'abusive' | 'copyright' | 'other';
 
@@ -39,21 +39,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSub
       setComment('');
       setError(null);
       setIsSubmitting(false);
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
     }
-    return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
-
-  // Handle Escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
 
   const handleSubmit = async () => {
     if (!selectedReason) return;
@@ -74,23 +61,19 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSub
     }
   };
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-      }}
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      backdropClassName="bg-black/40"
     >
-      <div 
+      <div
         ref={modalRef}
+        role="dialog"
+        aria-modal="true"
         className="
-          w-full max-w-[380px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md 
-          rounded-2xl shadow-2xl border border-white/60 dark:border-slate-800 
+          relative w-full max-w-[380px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md
+          rounded-2xl shadow-2xl border border-white/60 dark:border-slate-800
           overflow-hidden animate-in zoom-in-95 duration-200
         "
         onClick={(e) => e.stopPropagation()}
@@ -190,8 +173,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSub
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };
 

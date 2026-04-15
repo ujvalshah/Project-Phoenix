@@ -188,12 +188,11 @@ class AuthService {
   }
 
   async logoutApi(): Promise<void> {
-    try {
-      // Call backend to invalidate tokens — cookies sent automatically via credentials: 'include'
-      await apiClient.post('/auth/logout', {});
-    } catch {
-      // Ignore logout errors - we'll clear local state regardless
-    }
+    // Propagate errors so the caller can surface them to the user. Swallowing
+    // failures here is dangerous: if the backend didn't clear cookies, the
+    // next page load will auto-resurrect the previous session from the
+    // still-present HttpOnly cookies, while the UI thinks it's signed out.
+    await apiClient.post('/auth/logout', {});
   }
 
   async logoutAllDevices(): Promise<void> {

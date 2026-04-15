@@ -40,8 +40,11 @@ router.post('/reset-password', passwordResetLimiter, authController.resetPasswor
 // User profile
 router.get('/me', authenticateToken, authController.getMe);
 
-// Logout (single device)
-router.post('/logout', authenticateToken, authController.logout);
+// Logout (single device) — intentionally public/idempotent. The controller
+// extracts and best-effort invalidates any present token and always clears
+// cookies. Requiring authenticateToken here would make expired-session users
+// unable to sign out, leaving them "stuck" authenticated.
+router.post('/logout', authController.logout);
 
 // Logout all devices
 router.post('/logout-all', authenticateToken, authController.logoutAll);

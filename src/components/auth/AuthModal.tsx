@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { X, Mail, Lock, ArrowRight, Loader2, Chrome, ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Input } from '../UI/Input';
 import { ENABLED_SOCIAL_PROVIDERS } from '@/types/auth';
 import type { SignupPayload } from '@/types/auth';
 import { authService } from '@/services/authService';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 // Simple validation helpers (minimal client-side checks)
 const validateEmail = (email: string): string | null => {
@@ -155,18 +155,11 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  if (!isAuthModalOpen) return null;
-
   const inputClass = "bg-white/60 dark:bg-black/20 border-slate-200/80 dark:border-slate-700/60 focus:ring-primary-400/50 focus:border-primary-400 dark:text-white backdrop-blur-sm transition-all shadow-sm";
   const labelClass = "block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 ml-1 uppercase tracking-wider";
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div 
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
-        onClick={closeAuthModal}
-      />
-      
+  return (
+    <ModalShell isOpen={isAuthModalOpen} onClose={closeAuthModal}>
       <div className="
         relative w-full max-w-md 
         bg-white/90 dark:bg-slate-950/80 backdrop-blur-xl 
@@ -436,7 +429,6 @@ export const AuthModal: React.FC = () => {
                 </div>
         </>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };

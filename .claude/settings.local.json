@@ -67,7 +67,9 @@
       "Bash(powershell:*)",
       "Bash(git checkout:*)",
       "Bash(npx eslint:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(git -C \"C:/Users/ujval/Projects/Project-Phoenix\" log --oneline -15)",
+      "Bash(git -C \"C:/Users/ujval/Projects/Project-Phoenix\" log --all --oneline --since=\"14.days\" -- src/components/UI/ErrorBoundary.tsx src/components/CreateNuggetModal.tsx src/components/layouts/MainLayout.tsx src/App.tsx index.css)"
     ]
   }
 }

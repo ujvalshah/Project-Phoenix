@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { ModalShell } from '@/components/UI/ModalShell';
 // useNavigate removed - not currently used in this component
 import { X, Globe, Lock, Loader2, Zap } from 'lucide-react';
 import { getInitials } from '@/utils/formatters';
@@ -40,7 +40,6 @@ import { isFeatureEnabled } from '@/constants/featureFlags';
 import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
 import { useAllCollections, nuggetFormKeys } from '@/hooks/useNuggetFormData';
 import { useDisclaimerConfig } from '@/hooks/useDisclaimerConfig';
-import { Z_INDEX } from '@/constants/zIndex';
 
 interface CreateNuggetModalProps {
   isOpen: boolean;
@@ -2026,26 +2025,19 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     }
   };
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 flex items-center justify-center p-0 sm:p-4"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      onClose={handleClose}
+      disableEscape
+      disableScrollLock
     >
       <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-        style={{ zIndex: Z_INDEX.BACKDROP }}
-        onClick={(e) => { e.stopPropagation(); handleClose(); }}
-      />
-      
-      <div 
         ref={modalRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className="relative w-full h-screen max-h-screen sm:h-auto sm:max-h-[90vh] sm:max-w-4xl bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 fade-in duration-200 border border-slate-200 dark:border-slate-800 overflow-hidden"
-        style={{ zIndex: Z_INDEX.MODAL }}
+        className="relative w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-4xl bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 fade-in duration-200 border border-slate-200 dark:border-slate-800 overflow-hidden"
       >
         
         {/* Header */}
@@ -2637,8 +2629,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         />
 
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };
 

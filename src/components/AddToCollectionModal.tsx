@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { X, Plus, Check, Folder, Search, Globe, Loader2 } from 'lucide-react';
 import { storageService } from '@/services/storageService';
 import { Collection } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 interface AddToCollectionModalProps {
   isOpen: boolean;
@@ -218,12 +218,9 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" onClick={(e) => e.stopPropagation()}>
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+  return (
+    <ModalShell isOpen={isOpen} onClose={onClose} wrapperClassName="p-4 sm:p-6">
+      <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-6 max-w-md w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between mb-4 shrink-0">
           <div className="flex items-center gap-2">
@@ -364,7 +361,6 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };

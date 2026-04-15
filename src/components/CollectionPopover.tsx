@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Check, Folder, Lock, Globe, X, Search } from 'lucide-react';
 import { storageService } from '@/services/storageService';
@@ -6,6 +6,12 @@ import { Collection } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+/** Top inset the popover should avoid (fixed header region). Keep in sync with header height. */
+const HEADER_SAFE_INSET = 72;
+
+/** Prefer dedicated overlay host (sibling of #root in index.html). Falls back to body. */
+const getPopoverHost = (): HTMLElement =>
+  document.getElementById('popover-root') ?? document.body;
 
 interface CollectionPopoverProps {
   isOpen: boolean;
@@ -75,28 +81,49 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
     };
   }, [isOpen]);
 
+  // Measure actual popover size after render for accurate placement
+  const [measured, setMeasured] = useState<{ h: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!isOpen) { setMeasured(null); return; }
+    const el = modalRef.current;
+    if (!el) return;
+    setMeasured({ h: el.offsetHeight });
+  }, [isOpen, collections.length, isCreating, searchQuery, viewportTick]);
+
   const style = useMemo<React.CSSProperties>(() => {
     if (!anchorRect) return {};
     const width = 260;
-    const margin = 12;
-    const estimatedHeight = 340;
+    const margin = 8;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    const maxAvailableH = Math.max(160, vh - HEADER_SAFE_INSET - margin * 2);
+    const estimatedHeight = Math.min(measured?.h ?? 360, maxAvailableH);
 
-    let left = anchorRect.left - width / 2 + anchorRect.width / 2;
+    let left = anchorRect.left + anchorRect.width / 2 - width / 2;
     if (left < margin) left = margin;
-    if (left + width > window.innerWidth - margin) left = window.innerWidth - width - margin;
+    if (left + width > vw - margin) left = vw - width - margin;
 
-    const spaceBelow = window.innerHeight - anchorRect.bottom;
-    const computed: React.CSSProperties = { left, width };
-    if (spaceBelow < estimatedHeight && anchorRect.top > spaceBelow) {
-      computed.top = anchorRect.top - margin;
-      computed.transform = 'translateY(-100%)';
-      computed.transformOrigin = 'bottom center';
+    const spaceBelow = vh - anchorRect.bottom - margin;
+    const spaceAbove = anchorRect.top - HEADER_SAFE_INSET - margin;
+    const placeBelow = spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove;
+
+    let top: number;
+    if (placeBelow) {
+      top = anchorRect.bottom + margin;
     } else {
-      computed.top = anchorRect.bottom + margin;
-      computed.transformOrigin = 'top center';
+      top = anchorRect.top - margin - estimatedHeight;
     }
-    return computed;
-  }, [anchorRect, viewportTick]);
+    // Final clamp: never under the header, never off the bottom.
+    top = Math.min(Math.max(top, HEADER_SAFE_INSET + margin), vh - estimatedHeight - margin);
+
+    return {
+      left,
+      top,
+      width,
+      maxHeight: maxAvailableH,
+      transformOrigin: placeBelow ? 'top center' : 'bottom center',
+    };
+  }, [anchorRect, viewportTick, measured]);
 
   // --- Data ---
 
@@ -243,8 +270,8 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
       ref={modalRef}
       role="dialog"
       aria-label={headerText}
-      className="fixed z-[80] bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-in zoom-in-95 fade-in duration-200"
-      style={style}
+      className="fixed bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-in zoom-in-95 fade-in duration-200"
+      style={{ ...style, pointerEvents: 'auto' }}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -346,6 +373,6 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
         )}
       </div>
     </div>,
-    document.body
+    getPopoverHost()
   );
 };

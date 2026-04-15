@@ -27,9 +27,9 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Image } from '@/components/Image';
+import { ModalShell } from '@/components/UI/ModalShell';
 
 interface ImageCarouselModalProps {
   isOpen: boolean;
@@ -56,19 +56,6 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
     }
   }, [initialIndex, isOpen]);
   
-  // Lock body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-  
   // Navigation functions
   const goToPrevious = useCallback(() => {
     setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
@@ -78,29 +65,18 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
     setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
   }, [images.length]);
   
-  // Keyboard navigation
+  // Arrow-key navigation (Escape is owned by ModalShell)
   useEffect(() => {
     if (!isOpen) return;
-    
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'Escape':
-          onClose();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          goToPrevious();
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          goToNext();
-          break;
-      }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goToPrevious(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); goToNext(); }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, goToPrevious, goToNext]);
+  }, [isOpen, goToPrevious, goToNext]);
   
   // Don't render if not open
   if (!isOpen) return null;
@@ -109,22 +85,20 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
   const currentTitle = titles?.[currentIndex];
   const hasMultipleImages = images.length > 1;
   
-  return createPortal(
-    <div 
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 animate-in fade-in duration-200"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Image carousel"
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      backdropClassName="bg-black/90"
     >
-      {/* Click outside to close */}
-      <div 
-        className="absolute inset-0" 
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      
       {/* Modal Content Container */}
-      <div className="relative w-full h-full max-w-full max-h-full p-4 md:p-8 flex flex-col overflow-hidden">
+      <div
+        className="relative w-full h-full max-w-full max-h-full p-4 md:p-8 flex flex-col overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Image carousel"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header: Close button + Counter */}
         <div className="flex items-center justify-between mb-4 z-10">
           {/* Image counter (left) */}
@@ -222,8 +196,7 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
           </div>
         )}
       </div>
-    </div>,
-    document.body
+    </ModalShell>
   );
 };
 
