@@ -102,6 +102,7 @@ export interface IArticle extends Document {
   documents?: IDocument[]; // Legacy field
   themes?: string[];
   mediaIds?: string[]; // Cloudinary Media ObjectIds for tracking uploads
+  readBy?: Record<string, boolean>;
   
   // Engagement metrics
   engagement?: IEngagement;
@@ -250,6 +251,7 @@ const ArticleSchema = new Schema<IArticle>({
   documents: { type: [DocumentSchema], default: [] }, // Legacy
   themes: { type: [String], default: [] },
   mediaIds: { type: [String], default: [] }, // Cloudinary Media ObjectIds
+  readBy: { type: Map, of: Boolean, default: {} },
   
   // Engagement
   engagement: { type: EngagementSchema },

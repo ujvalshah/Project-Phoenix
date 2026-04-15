@@ -43,7 +43,7 @@ import { markRouteContentReady } from '@/utils/routeProfiling';
 import { articleService } from '@/services/articleService';
 import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import { useFilterResults } from '@/context/FilterResultsContext';
-import { useMarkPulseSeen, useMarkStandardSeen } from '@/hooks/usePulseUnseen';
+import { useMarkFeedSeen } from '@/hooks/usePulseUnseen';
 
 const VALUEPROP_DISMISSED_KEY = 'nuggets_valueprop_dismissed';
 const PULSE_INTRO_DISMISSED_KEY = 'market_pulse_intro_dismissed';
@@ -186,16 +186,15 @@ export const HomePage: React.FC<HomePageProps> = ({
     }),
     shallowEqualAuth,
   );
-  const markPulseSeen = useMarkPulseSeen();
-  const markStandardSeen = useMarkStandardSeen();
+  const markFeedSeen = useMarkFeedSeen();
 
   // Clear the matching unseen badge when an authenticated user lands on that
   // stream. Guarded by isAuthenticated to avoid 401s on anonymous visits;
   // re-runs each time contentStream changes so switching streams re-marks once.
   useEffect(() => {
     if (!isAuthenticated) return;
-    if (contentStream === 'pulse') markPulseSeen.mutate();
-    else if (contentStream === 'standard') markStandardSeen.mutate();
+    if (contentStream === 'pulse') markFeedSeen.mutate('market-pulse');
+    else if (contentStream === 'standard') markFeedSeen.mutate('home');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentStream, isAuthenticated]);
 

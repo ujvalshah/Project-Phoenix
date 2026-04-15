@@ -102,6 +102,14 @@ export class RestAdapter implements IAdapter {
     return apiClient.get<Article>(`/articles/${id}`).catch(() => undefined);
   }
 
+  getUnseenFeedCounts(): Promise<{ home: number; marketPulse: number }> {
+    return apiClient.get<{ home: number; marketPulse: number }>('/articles/unseen-counts');
+  }
+
+  markFeedSeen(feed: 'home' | 'market-pulse'): Promise<void> {
+    return apiClient.post<void>('/articles/mark-seen', { feed });
+  }
+
   getPulseUnseenCount(): Promise<number> {
     return apiClient.get<{ count: number }>('/articles/pulse/unseen-count').then(r => r.count);
   }

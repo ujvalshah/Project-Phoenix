@@ -24,6 +24,7 @@ import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { useLegalPages } from '@/hooks/useLegalPages';
 import { usePulseUnseenCount, useStandardUnseenCount } from '@/hooks/usePulseUnseen';
+import { formatNavBadgeCount, hasNavBadge } from '@/utils/navBadge';
 import { twMerge } from 'tailwind-merge';
 import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { setNarrowHeaderHidden } from '@/constants/layoutScrollBridge';
@@ -353,12 +354,12 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-current={isHome && filters.contentStream === 'standard' ? 'page' : undefined}
               >
                 Home
-                {standardUnseenCount != null && standardUnseenCount > 0 && (
+                {hasNavBadge(standardUnseenCount) && (
                   <span
                     className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-primary-500 text-gray-900 text-[10px] font-normal leading-none"
-                    aria-label={`${standardUnseenCount > 99 ? '99+' : standardUnseenCount} unseen Home updates`}
+                    aria-label={`${formatNavBadgeCount(standardUnseenCount)} unseen Home updates`}
                   >
-                    {standardUnseenCount > 99 ? '99+' : standardUnseenCount}
+                    {formatNavBadgeCount(standardUnseenCount)}
                   </span>
                 )}
               </Link>
@@ -374,12 +375,12 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-current={isHome && filters.contentStream === 'pulse' ? 'page' : undefined}
                 >
                   Market Pulse
-                  {pulseUnseenCount != null && pulseUnseenCount > 0 && (
+                  {hasNavBadge(pulseUnseenCount) && (
                     <span
                       className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-normal leading-none"
-                      aria-label={`${pulseUnseenCount > 99 ? '99+' : pulseUnseenCount} unseen Market Pulse updates`}
+                      aria-label={`${formatNavBadgeCount(pulseUnseenCount)} unseen Market Pulse updates`}
                     >
-                      {pulseUnseenCount > 99 ? '99+' : pulseUnseenCount}
+                      {formatNavBadgeCount(pulseUnseenCount)}
                     </span>
                   )}
                 </Link>

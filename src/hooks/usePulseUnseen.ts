@@ -1,68 +1,63 @@
-import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RestAdapter } from '@/services/adapters/RestAdapter';
 import { useAuthSelector } from '@/context/AuthContext';
 
 const adapter = new RestAdapter();
 
-const PULSE_KEY = ['pulse', 'unseen-count'] as const;
-const STANDARD_KEY = ['standard', 'unseen-count'] as const;
+const FEED_BADGE_KEY = ['feeds', 'unseen-counts'] as const;
+type FeedBadgeKey = 'home' | 'market-pulse';
 
 /**
  * Count of Market Pulse nuggets the current user has not seen yet.
  * Authenticated-only — returns undefined for anonymous users so callers
  * can suppress the badge entirely.
  */
+export function useUnseenFeedCounts() {
+  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
+  return useQuery({
+    queryKey: FEED_BADGE_KEY,
+    queryFn: () => adapter.getUnseenFeedCounts(),
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+}
+
+/** Backward-compatible selectors that read from the shared feed badge query. */
 export function usePulseUnseenCount() {
-  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
-  return useQuery({
-    queryKey: PULSE_KEY,
-    queryFn: () => adapter.getPulseUnseenCount(),
-    enabled: isAuthenticated,
-    staleTime: 5 * 60 * 1000,
-    refetchInterval: 5 * 60 * 1000,
-  });
+  const { data, ...rest } = useUnseenFeedCounts();
+  return { data: data?.marketPulse, ...rest };
 }
 
-/** Same as usePulseUnseenCount, but for the Home (standard) feed. */
 export function useStandardUnseenCount() {
-  const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
-  return useQuery({
-    queryKey: STANDARD_KEY,
-    queryFn: () => adapter.getStandardUnseenCount(),
-    enabled: isAuthenticated,
-    staleTime: 5 * 60 * 1000,
-    refetchInterval: 5 * 60 * 1000,
-  });
+  const { data, ...rest } = useUnseenFeedCounts();
+  return { data: data?.home, ...rest };
 }
 
-function useMarkSeen(queryKey: QueryKey, run: () => Promise<void>) {
+function useMarkSeen(run: (feed: FeedBadgeKey) => Promise<void>) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: run,
-    onMutate: async () => {
-      await qc.cancelQueries({ queryKey });
-      const prev = qc.getQueryData<number>(queryKey);
-      qc.setQueryData<number>(queryKey, 0);
+    mutationFn: (feed: FeedBadgeKey) => run(feed),
+    onMutate: async (feed) => {
+      await qc.cancelQueries({ queryKey: FEED_BADGE_KEY });
+      const prev = qc.getQueryData<{ home: number; marketPulse: number }>(FEED_BADGE_KEY);
+      if (prev) {
+        qc.setQueryData(FEED_BADGE_KEY, {
+          ...prev,
+          ...(feed === 'home' ? { home: 0 } : { marketPulse: 0 }),
+        });
+      }
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev !== undefined) qc.setQueryData(queryKey, ctx.prev);
+      if (ctx?.prev !== undefined) qc.setQueryData(FEED_BADGE_KEY, ctx.prev);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey });
+      qc.invalidateQueries({ queryKey: FEED_BADGE_KEY });
     },
   });
 }
 
-/**
- * Marks the Pulse feed as seen and optimistically clears the badge.
- * Fires when the user actually lands on the Pulse stream.
- */
-export function useMarkPulseSeen() {
-  return useMarkSeen(PULSE_KEY, () => adapter.markPulseSeen());
-}
-
-/** Same as useMarkPulseSeen, but for the Home (standard) feed. */
-export function useMarkStandardSeen() {
-  return useMarkSeen(STANDARD_KEY, () => adapter.markStandardSeen());
+export function useMarkFeedSeen() {
+  return useMarkSeen((feed) => adapter.markFeedSeen(feed));
 }

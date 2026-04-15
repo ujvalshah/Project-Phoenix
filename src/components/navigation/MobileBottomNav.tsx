@@ -8,6 +8,7 @@ import { isFeatureEnabled } from '@/constants/featureFlags';
 import { LAYOUT } from '@/constants/layout';
 import { Z_INDEX } from '@/constants/zIndex';
 import { usePulseUnseenCount, useStandardUnseenCount } from '@/hooks/usePulseUnseen';
+import { formatNavBadgeCount, hasNavBadge } from '@/utils/navBadge';
 
 const NAV_LABEL_CLASS = 'text-[11px] font-medium leading-tight tracking-[0.01em]';
 
@@ -133,22 +134,17 @@ export const MobileBottomNav: React.FC = () => {
   const isPulse = isHome && filters.contentStream === 'pulse';
 
   const gridCols = pulseEnabled ? 'grid-cols-3' : 'grid-cols-2';
-  // Mobile bottom nav uses a dot (presence indicator) rather than a number:
-  // follows Material 3 / Instagram / X convention for feed-style destinations
-  // where quantity isn't actionable. The exact count lives on the desktop header.
-  const pulseHasUpdates = (pulseUnseenCount ?? 0) > 0;
+  const pulseHasUpdates = hasNavBadge(pulseUnseenCount);
   const pulseBadgeLabel = useMemo(() => {
     if (!pulseHasUpdates) return '';
-    return pulseUnseenCount != null && pulseUnseenCount > 99
-      ? '99+ unseen Market Pulse updates'
-      : `${pulseUnseenCount ?? 0} unseen Market Pulse updates`;
+    const count = pulseUnseenCount ?? 0;
+    return `${formatNavBadgeCount(count)} unseen Market Pulse updates`;
   }, [pulseHasUpdates, pulseUnseenCount]);
-  const standardHasUpdates = (standardUnseenCount ?? 0) > 0;
+  const standardHasUpdates = hasNavBadge(standardUnseenCount);
   const standardBadgeLabel = useMemo(() => {
     if (!standardHasUpdates) return '';
-    return standardUnseenCount != null && standardUnseenCount > 99
-      ? '99+ unseen Home updates'
-      : `${standardUnseenCount ?? 0} unseen Home updates`;
+    const count = standardUnseenCount ?? 0;
+    return `${formatNavBadgeCount(count)} unseen Home updates`;
   }, [standardHasUpdates, standardUnseenCount]);
 
   return (
@@ -178,11 +174,11 @@ export const MobileBottomNav: React.FC = () => {
           }}
           indicator={standardHasUpdates ? (
             <span
-              className="absolute right-3 top-2.5 flex h-2.5 w-2.5 items-center justify-center rounded-full border border-white bg-primary-500 dark:border-slate-950"
+              className="absolute right-1.5 top-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-medium leading-none text-white"
               aria-label={standardBadgeLabel}
               title={standardBadgeLabel}
             >
-              <span className="sr-only">{standardBadgeLabel}</span>
+              {formatNavBadgeCount(standardUnseenCount ?? 0)}
             </span>
           ) : undefined}
         />
@@ -200,11 +196,11 @@ export const MobileBottomNav: React.FC = () => {
             aria-label="Market Pulse"
             indicator={pulseHasUpdates ? (
               <span
-                className="absolute right-3 top-2.5 flex h-2.5 w-2.5 items-center justify-center rounded-full border border-white bg-amber-500 dark:border-slate-950"
+                className="absolute right-1.5 top-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-medium leading-none text-white"
                 aria-label={pulseBadgeLabel}
                 title={pulseBadgeLabel}
               >
-                <span className="sr-only">{pulseBadgeLabel}</span>
+                {formatNavBadgeCount(pulseUnseenCount ?? 0)}
               </span>
             ) : undefined}
           />

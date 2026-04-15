@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { Article } from '../models/Article.js';
 import { Collection } from '../models/Collection.js';
 import { Tag } from '../models/Tag.js';
-import { User } from '../models/User.js';
 import { normalizeDoc, normalizeDocs, normalizeArticleDoc, normalizeArticleDocs } from '../utils/db.js';
 import { createArticleSchema, updateArticleSchema } from '../utils/validation.js';
 import { validateDimensionTagIds } from '../utils/validateDimensionTagIds.js';
@@ -10,7 +9,14 @@ import { cleanupCollectionEntries } from '../utils/collectionHelpers.js';
 import { resolveTagNamesToIds } from '../utils/tagHelpers.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { escapeRegExp, createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
+import { z } from 'zod';
 import { verifyToken } from '../utils/jwt.js';
+import {
+  getUnseenCountForFeed,
+  getUnseenFeedCountsForUser,
+  markFeedSeenForUser,
+  type FeedBadgeKey,
+} from '../services/unseenBadgeService.js';
 import {
   sendErrorResponse,
   sendValidationError,
@@ -1245,53 +1251,59 @@ export const getMyArticleCounts = async (req: Request, res: Response) => {
   }
 };
 
-// Both feeds share the same "unseen since lastSeen<Stream>At" logic. The only
-// differences are the User field we read/write and the contentStream values
-// that count toward each feed. 'both' articles appear in Home and Pulse, so
-// they count against both badges.
-type StreamKey = 'pulse' | 'standard';
+const feedSchema = z.object({
+  feed: z.enum(['home', 'market-pulse']),
+});
 
-const STREAM_CONFIG: Record<StreamKey, { field: 'lastSeenPulseAt' | 'lastSeenStandardAt'; streams: string[] }> = {
-  pulse: { field: 'lastSeenPulseAt', streams: ['pulse', 'both'] },
-  standard: { field: 'lastSeenStandardAt', streams: ['standard', 'both'] },
+function normalizeLegacyStreamToFeed(stream: 'pulse' | 'standard'): FeedBadgeKey {
+  return stream === 'pulse' ? 'market-pulse' : 'home';
+}
+
+function getAuthedUserId(req: Request, res: Response): string | null {
+  const userId = (req as any).user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: true, message: 'Unauthorized' });
+    return null;
+  }
+  return userId;
+}
+
+export const getUnseenFeedCounts = async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthedUserId(req, res);
+    if (!userId) return;
+    const counts = await getUnseenFeedCountsForUser(userId);
+    res.json(counts);
+  } catch (error: unknown) {
+    createRequestLogger(req).error({ error }, '[Articles] Get unseen feed counts error');
+    sendInternalError(res);
+  }
 };
 
-async function getUnseenCountForStream(userId: string, key: StreamKey): Promise<number> {
-  const { field, streams } = STREAM_CONFIG[key];
-  const selector = `appState.${field}`;
-  const user = await User.findById(userId).select(selector).lean();
-  const lastSeenIso = user?.appState?.[field];
-
-  // First read ever: seed the timestamp to now and return 0. Prevents the
-  // badge from showing the entire backlog at feature-ship time.
-  if (!lastSeenIso) {
-    const nowIso = new Date().toISOString();
-    await User.updateOne({ _id: userId }, { $set: { [selector]: nowIso } });
-    return 0;
+export const markFeedSeen = async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthedUserId(req, res);
+    if (!userId) return;
+    const parsed = feedSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendValidationError(res, 'Validation failed', parsed.error.errors);
+    }
+    await markFeedSeenForUser(userId, parsed.data.feed);
+    res.json({ ok: true });
+  } catch (error: unknown) {
+    createRequestLogger(req).error({ error }, '[Articles] Mark feed seen error');
+    sendInternalError(res);
   }
-
-  return Article.countDocuments({
-    contentStream: { $in: streams },
-    createdAt: { $gt: new Date(lastSeenIso) },
-    visibility: { $ne: 'private' },
-  });
-}
-
-async function markStreamSeen(userId: string, key: StreamKey): Promise<string> {
-  const { field } = STREAM_CONFIG[key];
-  const nowIso = new Date().toISOString();
-  await User.updateOne({ _id: userId }, { $set: { [`appState.${field}`]: nowIso } });
-  return nowIso;
-}
+};
 
 /**
  * GET /api/articles/pulse/unseen-count — authenticated.
  */
 export const getPulseUnseenCount = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) return res.status(401).json({ error: true, message: 'Unauthorized' });
-    const count = await getUnseenCountForStream(userId, 'pulse');
+    const userId = getAuthedUserId(req, res);
+    if (!userId) return;
+    const count = await getUnseenCountForFeed(userId, normalizeLegacyStreamToFeed('pulse'));
     res.json({ count });
   } catch (error: unknown) {
     createRequestLogger(req).error({ error }, '[Articles] Get pulse unseen count error');
@@ -1304,10 +1316,10 @@ export const getPulseUnseenCount = async (req: Request, res: Response) => {
  */
 export const markPulseSeen = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) return res.status(401).json({ error: true, message: 'Unauthorized' });
-    const lastSeenPulseAt = await markStreamSeen(userId, 'pulse');
-    res.json({ lastSeenPulseAt });
+    const userId = getAuthedUserId(req, res);
+    if (!userId) return;
+    await markFeedSeenForUser(userId, normalizeLegacyStreamToFeed('pulse'));
+    res.json({ ok: true });
   } catch (error: unknown) {
     createRequestLogger(req).error({ error }, '[Articles] Mark pulse seen error');
     sendInternalError(res);
@@ -1320,9 +1332,9 @@ export const markPulseSeen = async (req: Request, res: Response) => {
  */
 export const getStandardUnseenCount = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) return res.status(401).json({ error: true, message: 'Unauthorized' });
-    const count = await getUnseenCountForStream(userId, 'standard');
+    const userId = getAuthedUserId(req, res);
+    if (!userId) return;
+    const count = await getUnseenCountForFeed(userId, normalizeLegacyStreamToFeed('standard'));
     res.json({ count });
   } catch (error: unknown) {
     createRequestLogger(req).error({ error }, '[Articles] Get standard unseen count error');
@@ -1335,10 +1347,10 @@ export const getStandardUnseenCount = async (req: Request, res: Response) => {
  */
 export const markStandardSeen = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) return res.status(401).json({ error: true, message: 'Unauthorized' });
-    const lastSeenStandardAt = await markStreamSeen(userId, 'standard');
-    res.json({ lastSeenStandardAt });
+    const userId = getAuthedUserId(req, res);
+    if (!userId) return;
+    await markFeedSeenForUser(userId, normalizeLegacyStreamToFeed('standard'));
+    res.json({ ok: true });
   } catch (error: unknown) {
     createRequestLogger(req).error({ error }, '[Articles] Mark standard seen error');
     sendInternalError(res);

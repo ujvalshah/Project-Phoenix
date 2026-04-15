@@ -11,9 +11,11 @@ router.get('/', articlesController.getArticles);
 // NOTE: This route must come BEFORE /:id route to ensure proper matching
 router.get('/my/counts', authenticateToken, articlesController.getMyArticleCounts);
 
-// GET /api/articles/pulse/unseen-count - Count of Pulse nuggets the user hasn't seen yet
-// POST /api/articles/pulse/mark-seen - Reset that counter by bumping lastSeenPulseAt
+// Feed badge endpoints (per-user unseen via readBy map)
+// NOTE: Keep legacy pulse/standard routes for backward compatibility.
 // NOTE: These routes must come BEFORE /:id route to ensure proper matching
+router.get('/unseen-counts', authenticateToken, articlesController.getUnseenFeedCounts);
+router.post('/mark-seen', authenticateToken, articlesController.markFeedSeen);
 router.get('/pulse/unseen-count', authenticateToken, articlesController.getPulseUnseenCount);
 router.post('/pulse/mark-seen', authenticateToken, articlesController.markPulseSeen);
 router.get('/standard/unseen-count', authenticateToken, articlesController.getStandardUnseenCount);
