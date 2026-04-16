@@ -64,6 +64,8 @@ export type InfiniteArticlesOptions = Required<
 > &
   Pick<UseInfiniteArticlesOptions, 'contentStream'>;
 
+const MIN_COMMITTED_QUERY_LENGTH = 3;
+
 export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptions) => ({
   queryKey: [
     'articles',
@@ -88,6 +90,17 @@ export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptio
     options.contentStream ?? '',
   ],
   queryFn: async ({ pageParam = 1 }: { pageParam?: unknown }) => {
+    const trimmedQuery = options.searchQuery.trim();
+    if (trimmedQuery.length > 0 && trimmedQuery.length < MIN_COMMITTED_QUERY_LENGTH) {
+      return {
+        data: [],
+        total: 0,
+        page: pageParam as number,
+        limit: options.limit,
+        hasMore: false,
+      };
+    }
+
     const categoryParam =
       options.selectedCategories && options.selectedCategories.length > 0
         ? options.selectedCategories
@@ -96,7 +109,8 @@ export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptio
           : [options.activeCategory];
 
     const filters: FilterState = {
-      query: options.searchQuery.trim(),
+      query: trimmedQuery,
+      searchMode: trimmedQuery.length >= MIN_COMMITTED_QUERY_LENGTH ? 'relevance' : undefined,
       categories: categoryParam,
       tag: options.tag || null,
       sort: options.sortOrder,

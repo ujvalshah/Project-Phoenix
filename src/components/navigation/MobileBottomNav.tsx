@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Activity, Home, Layers } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
@@ -122,10 +122,6 @@ export const MobileBottomNav: React.FC = () => {
     };
   }, [showShell]);
 
-  if (!showShell) {
-    return null;
-  }
-
   const chromeHidden = narrowHeaderHidden && !prefersReducedMotion;
 
   const isHome = location.pathname === '/';
@@ -135,17 +131,17 @@ export const MobileBottomNav: React.FC = () => {
 
   const gridCols = pulseEnabled ? 'grid-cols-3' : 'grid-cols-2';
   const pulseHasUpdates = hasNavBadge(pulseUnseenCount);
-  const pulseBadgeLabel = useMemo(() => {
-    if (!pulseHasUpdates) return '';
-    const count = pulseUnseenCount ?? 0;
-    return `${formatNavBadgeCount(count)} unseen Market Pulse updates`;
-  }, [pulseHasUpdates, pulseUnseenCount]);
+  const pulseBadgeLabel = pulseHasUpdates
+    ? `${formatNavBadgeCount(pulseUnseenCount ?? 0)} unseen Market Pulse updates`
+    : '';
   const standardHasUpdates = hasNavBadge(standardUnseenCount);
-  const standardBadgeLabel = useMemo(() => {
-    if (!standardHasUpdates) return '';
-    const count = standardUnseenCount ?? 0;
-    return `${formatNavBadgeCount(count)} unseen Home updates`;
-  }, [standardHasUpdates, standardUnseenCount]);
+  const standardBadgeLabel = standardHasUpdates
+    ? `${formatNavBadgeCount(standardUnseenCount ?? 0)} unseen Home updates`
+    : '';
+
+  if (!showShell) {
+    return null;
+  }
 
   return (
     <nav

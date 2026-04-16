@@ -1,13 +1,16 @@
 import React from 'react';
 import { twMerge } from 'tailwind-merge';
+import { highlightPlainText } from '@/utils/searchHighlight';
 
 interface CardTitleProps {
   title?: string;
   className?: string;
   variant?: 'grid' | 'feed' | 'masonry'; // Variant for feed-specific styling
+  /** When set, highlights case-insensitive token matches from the committed search query (plain segments only). */
+  highlightQuery?: string;
 }
 
-export const CardTitle: React.FC<CardTitleProps> = ({ title, className, variant }) => {
+export const CardTitle: React.FC<CardTitleProps> = ({ title, className, variant, highlightQuery }) => {
   if (!title) return null;
 
   // Finance-grade hierarchy: Feed titles are dominant (1.25rem-1.375rem, font-weight 500-600)
@@ -38,7 +41,11 @@ export const CardTitle: React.FC<CardTitleProps> = ({ title, className, variant 
           );
         }
       }
-      return <span key={index}>{part}</span>;
+      const segment =
+        highlightQuery && highlightQuery.trim().length >= 2
+          ? highlightPlainText(part, highlightQuery)
+          : part;
+      return <span key={index}>{segment}</span>;
     });
   };
   

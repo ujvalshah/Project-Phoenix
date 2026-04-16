@@ -164,6 +164,7 @@ export const getArticles = async (req: Request, res: Response) => {
       subtopicTagIds: rawSubtopicTagIds,
       // Content stream routing (standard vs Market Pulse)
       contentStream,
+      searchMode,
     } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
@@ -236,6 +237,7 @@ export const getArticles = async (req: Request, res: Response) => {
 
     // Search query — use MongoDB $text index for word-level search (queries >= 3 chars),
     // fall back to regex for short/partial queries. Both paths are ReDoS-safe.
+    const useRelevanceMode = searchMode === 'relevance';
     if (q && typeof q === 'string' && q.trim().length > 0) {
       const trimmedQ = q.trim();
 
@@ -250,8 +252,9 @@ export const getArticles = async (req: Request, res: Response) => {
         // Use $text index for efficient full-text search (word-level matching)
         const textCondition: Record<string, unknown> = { $text: { $search: trimmedQ } };
         const searchConditions: Record<string, unknown>[] = [textCondition];
-
-        if (matchingTags.length > 0) {
+        // In relevance mode, keep search conditions strictly text-based so
+        // textScore sorting remains deterministic and stable.
+        if (!useRelevanceMode && matchingTags.length > 0) {
           searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
         }
 
@@ -458,8 +461,12 @@ export const getArticles = async (req: Request, res: Response) => {
       'title': { title: 1 },
       'title-desc': { title: -1 }
     };
-    // Add secondary sort by _id for deterministic ordering when publishedAt values are identical
-    const sortOrder = sortMap[sort as string] || { publishedAt: -1, _id: -1 }; // Default: latest first
+    // Relevance-first when searching with >= 3 chars and caller requests it.
+    const hasSearchQuery = typeof q === 'string' && q.trim().length >= 3;
+    const sortOrder =
+      hasSearchQuery && useRelevanceMode
+        ? { score: { $meta: 'textScore' }, publishedAt: -1, _id: -1 }
+        : (sortMap[sort as string] || { publishedAt: -1, _id: -1 }); // Default: latest first
     
     // Build a stable cache key from the fully-constructed query + sort + pagination
     const cacheKey = JSON.stringify({ query, sort: sortOrder, skip, limit });
@@ -475,7 +482,10 @@ export const getArticles = async (req: Request, res: Response) => {
     }
 
     const [articles, total] = await Promise.all([
-      Article.find(query)
+      Article.find(
+        query,
+        hasSearchQuery && useRelevanceMode ? { score: { $meta: 'textScore' } } : undefined,
+      )
         .sort(sortOrder)
         .skip(skip)
         .limit(limit)

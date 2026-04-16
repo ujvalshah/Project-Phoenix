@@ -19,6 +19,7 @@ interface MasonryVariantProps {
   isOwner: boolean;
   isAdmin: boolean;
   isPreview?: boolean;
+  searchHighlightQuery?: string;
 }
 
 export const MasonryVariant: React.FC<MasonryVariantProps> = ({
@@ -29,6 +30,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
   isOwner,
   isAdmin,
   isPreview = false,
+  searchHighlightQuery,
 }) => {
   const { data, handlers } = logic;
   const { data: disclaimerConfig } = useDisclaimerConfig();
@@ -192,6 +194,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
                 title={data.shouldShowTitle ? data.title : undefined}
                 onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
                 disclaimerText={resolvedDisclaimer}
+                titleHighlightQuery={searchHighlightQuery}
               />
             </div>
           </div>

@@ -19,6 +19,7 @@ interface FeedVariantProps {
   isOwner: boolean;
   isAdmin: boolean;
   isPreview?: boolean;
+  searchHighlightQuery?: string;
 }
 
 export const FeedVariant: React.FC<FeedVariantProps> = ({
@@ -29,6 +30,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
   isOwner,
   isAdmin,
   isPreview = false,
+  searchHighlightQuery,
 }) => {
   const { data, handlers } = logic;
   const { data: disclaimerConfig } = useDisclaimerConfig();
@@ -191,6 +193,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
               title={data.shouldShowTitle ? data.title : undefined}
               onYouTubeTimestampClick={handlers.onYouTubeTimestampClick}
               disclaimerText={resolvedDisclaimer}
+              titleHighlightQuery={searchHighlightQuery}
             />
           </div>
         </>

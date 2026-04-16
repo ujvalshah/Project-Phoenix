@@ -77,10 +77,10 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
         bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm
         border-b border-slate-100 dark:border-slate-800/60
         flex items-center
-        w-full
+        w-full min-w-0
       `}
     >
-      <div className="relative group w-full flex items-center max-w-[1800px] mx-auto px-4 lg:px-6">
+      <div className="relative group w-full min-w-0 flex items-center max-w-[1800px] mx-auto px-4 lg:px-6">
         {/* Left scroll arrow (desktop only) */}
         <button
           onClick={() => scroll('left')}
@@ -95,7 +95,7 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
           ref={scrollRef}
           role="toolbar"
           aria-label="Content categories"
-          className="flex items-center gap-1.5 overflow-x-auto scroll-smooth w-full px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+          className="no-scrollbar-visual flex min-w-0 items-center gap-1.5 overflow-x-auto scroll-smooth w-full pl-1 pr-8 [scroll-padding-inline:1rem] [scrollbar-gutter:stable] md:px-9"
         >
           {/* "All" button — always first */}
           <CategoryPill
@@ -156,6 +156,10 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
             </>
           )}
         </div>
+
+        {/* Edge fades hint intentional horizontal scrolling */}
+        <div className="pointer-events-none absolute inset-y-0 left-4 z-10 w-5 bg-gradient-to-r from-white/95 to-transparent dark:from-slate-900/95 md:left-12" aria-hidden />
+        <div className="pointer-events-none absolute inset-y-0 right-4 z-10 w-5 bg-gradient-to-l from-white/95 to-transparent dark:from-slate-900/95 md:right-12" aria-hidden />
 
         {/* Right scroll arrow (desktop only) */}
         <button

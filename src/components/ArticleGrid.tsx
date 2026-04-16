@@ -36,6 +36,8 @@ interface ArticleGridProps {
   // Error Handling Props
   error?: Error | null;
   onRetry?: () => void;
+  /** When set, highlights query tokens in card titles for committed search */
+  searchHighlightQuery?: string;
 }
 
 // Infinite Scroll Trigger Component (reused from Feed.tsx pattern)
@@ -113,6 +115,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   // Error Handling Props
   error = null,
   onRetry,
+  searchHighlightQuery,
 }) => {
   const { expandedId, toggleExpansion, registerCard } = useRowExpansion();
   // Default to animated-visible when we already have data at mount so cards
@@ -506,6 +509,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
                 onSelect={onSelect ? () => onSelect(sanitized.id) : undefined}
                 // Disable inline expansion for desktop multi-column grid
                 disableInlineExpansion={isMultiColumnGrid}
+                searchHighlightQuery={searchHighlightQuery}
               />
             </div>
           </ErrorBoundary>

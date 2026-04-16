@@ -33,6 +33,7 @@ export const articleService = {
       const trimmedQuery = filters.query?.trim() || undefined;
       return await storageService.getArticlesPaginated({
         q: trimmedQuery || undefined,
+        searchMode: filters.searchMode || undefined,
         category: category,
         categories: filters.categories && filters.categories.length > 1 ? filters.categories : undefined,
         tag: filters.tag || undefined,

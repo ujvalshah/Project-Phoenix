@@ -3,12 +3,21 @@ import { createPortal } from 'react-dom';
 import { Search, X, Clock } from 'lucide-react';
 import { SearchInput, SearchInputHandle } from './SearchInput';
 import { getOverlayHost } from '@/utils/overlayHosts';
+import { useSearchSuggestions } from '@/hooks/useSearchSuggestions';
+import { setPendingSuggestionArticleId } from '@/observability/searchTelemetryIds';
+import { recordSearchEvent } from '@/observability/telemetry';
+import {
+  formatContentStreamLabel,
+  formatSourceTypeLabel,
+  formatSuggestionPublishedLabel,
+} from '@/utils/suggestionDisplay';
 
 interface MobileSearchOverlayProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose: (reason?: 'dismiss' | 'commit') => void;
   initialValue: string;
-  onSearch: (value: string) => void;
+  onDraftChange: (value: string) => void;
+  onCommitSearch: (value: string) => void;
 }
 
 /**
@@ -21,9 +30,12 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   isOpen,
   onClose,
   initialValue,
-  onSearch,
+  onDraftChange,
+  onCommitSearch,
 }) => {
   const searchRef = useRef<SearchInputHandle>(null);
+  const [draftQuery, setDraftQuery] = useState(initialValue);
+  const suggestionsQuery = useSearchSuggestions(draftQuery, 6);
 
   // Recent searches — self-contained in the overlay
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
@@ -49,10 +61,31 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   const handleSubmit = useCallback((query: string) => {
     if (query.trim()) {
       saveRecentSearch(query);
-      onSearch(query.trim());
     }
-    onClose();
-  }, [saveRecentSearch, onSearch, onClose]);
+    onCommitSearch(query.trim());
+    onClose('commit');
+  }, [saveRecentSearch, onCommitSearch, onClose]);
+
+  const handleSuggestionPick = useCallback(
+    (item: { id: string; title: string }, rankIndex: number) => {
+      recordSearchEvent({
+        name: 'search_suggestion_selected',
+        payload: {
+          query: draftQuery.trim(),
+          suggestionId: item.id,
+          suggestionTitle: item.title,
+          commitQuery: item.title,
+          selectionIntent: 'commit_search_by_article_title',
+          source: 'touch',
+          surface: 'mobile-overlay',
+          rank: rankIndex + 1,
+        },
+      });
+      setPendingSuggestionArticleId(item.id);
+      handleSubmit(item.title);
+    },
+    [draftQuery, handleSubmit],
+  );
 
   const handleRecentClick = useCallback((search: string) => {
     searchRef.current?.setValue(search);
@@ -74,7 +107,11 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
           <SearchInput
             ref={searchRef}
             initialValue={initialValue}
-            onSearch={onSearch}
+            onSearch={(value) => {
+              setDraftQuery(value);
+              onDraftChange(value);
+            }}
+            onChangeImmediate={(value) => setDraftQuery(value)}
             onSubmit={(q) => handleSubmit(q)}
             placeholder="Search..."
             className="w-full"
@@ -84,13 +121,53 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
           />
         </div>
         <button
-          onClick={onClose}
+          onClick={() => onClose('dismiss')}
           className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-500 hover:text-gray-700 transition-colors"
           aria-label="Close search"
         >
           <X size={20} />
         </button>
       </div>
+
+      {/* Typeahead suggestions */}
+      {draftQuery.trim().length >= 2 && (
+        <div className="px-4 pt-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Suggestions</p>
+          {suggestionsQuery.isLoading ? (
+            <p className="py-2 text-sm text-gray-500">Loading suggestions...</p>
+          ) : suggestionsQuery.data?.suggestions?.length ? (
+            <div className="space-y-1">
+              {suggestionsQuery.data.suggestions.map((item, index) => {
+                const dateLabel = formatSuggestionPublishedLabel(item.publishedAt);
+                const streamLabel = formatContentStreamLabel(item.contentStream);
+                const sourceLabel = formatSourceTypeLabel(item.sourceType);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSuggestionPick(item, index)}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <div className="font-medium">{item.title}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
+                      <span className="rounded bg-gray-100 px-1.5 py-px font-medium text-gray-600">
+                        {streamLabel}
+                      </span>
+                      {dateLabel ? <span>{dateLabel}</span> : null}
+                      {sourceLabel ? <span className="text-gray-400">{sourceLabel}</span> : null}
+                    </div>
+                    {item.excerpt ? (
+                      <div className="line-clamp-1 text-xs text-gray-500">{item.excerpt}</div>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="py-2 text-sm text-gray-500">No suggestions found.</p>
+          )}
+        </div>
+      )}
 
       {/* Recent Searches */}
       {recentSearches.length > 0 && (

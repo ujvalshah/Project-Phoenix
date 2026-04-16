@@ -20,6 +20,8 @@ interface CardContentProps {
   onExpansionChange?: (isExpanded: boolean) => void; // Callback when expansion state changes (for split button layout)
   onOverflowChange?: (hasOverflow: boolean) => void; // Callback when overflow state changes (for button visibility)
   disclaimerText?: string | null; // Resolved disclaimer text (null = no disclaimer)
+  /** Highlights committed search terms in the card title (plain text / link segments). */
+  titleHighlightQuery?: string;
 }
 
 /**
@@ -49,6 +51,7 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   onExpansionChange,
   onOverflowChange,
   disclaimerText,
+  titleHighlightQuery,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   
@@ -420,7 +423,7 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
         {/* Title (if provided) - included in truncation wrapper */}
         {title && (
           <div className={variant === 'grid' ? 'mb-2' : 'mb-2'}>
-            <CardTitle title={title} variant={variant} />
+            <CardTitle title={title} variant={variant} highlightQuery={titleHighlightQuery} />
           </div>
         )}
         

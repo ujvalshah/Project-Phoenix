@@ -66,6 +66,7 @@ import notificationsRouter from './routes/notifications.js';
 import legalRouter from './routes/legal.js';
 import adminLegalRouter from './routes/adminLegal.js';
 import contactRouter from './routes/contact.js';
+import searchRouter from './routes/search.js';
 import { ogMiddleware } from './middleware/ogMiddleware.js';
 import { authenticateToken as clearDbAuth } from './middleware/authenticateToken.js';
 import { requireAdminRole as clearDbAdmin } from './middleware/requireAdminRole.js';
@@ -298,6 +299,7 @@ app.all(/^\/api\/ai\/.+/, (req, res) => {
 });
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/contact', contactRouter);
+app.use('/api/search', searchRouter);
 app.use('/api/moderation', moderationRouter);
 // Audit Phase-1 Fix: Apply longOperationTimeout to unfurl routes (60s for metadata fetching)
 app.use('/api/unfurl', longOperationTimeout, unfurlRouter);

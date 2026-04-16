@@ -24,6 +24,7 @@ interface GridVariantProps {
   isSelected?: boolean;
   onSelect?: () => void;
   disableInlineExpansion?: boolean; // Disable inline expansion for desktop multi-column grid
+  searchHighlightQuery?: string;
 }
 
 export const GridVariant: React.FC<GridVariantProps> = ({
@@ -38,6 +39,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   isSelected = false,
   onSelect,
   disableInlineExpansion = false,
+  searchHighlightQuery,
 }) => {
   const { data, handlers } = logic;
   const { data: disclaimerConfig } = useDisclaimerConfig();
@@ -415,6 +417,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               onExpansionChange={!disableInlineExpansion ? setIsContentExpanded : undefined} // Update expanded state for split button
               onOverflowChange={setHasContentOverflow} // Update overflow state for button visibility
               disclaimerText={resolvedDisclaimer}
+              titleHighlightQuery={searchHighlightQuery}
             />
           </div>
         </>

@@ -24,6 +24,16 @@ interface SearchInputProps {
   showClearButton?: boolean;
   autoFocus?: boolean;
   ariaLabel?: string;
+  inputId?: string;
+  inputRole?: React.AriaRole;
+  ariaAutocomplete?: 'none' | 'inline' | 'list' | 'both';
+  ariaControls?: string;
+  ariaExpanded?: boolean;
+  ariaActiveDescendant?: string;
+  autoComplete?: string;
+  onInputKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onInputFocus?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  onInputBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
 }
 
 const DEBOUNCE_MS = 250;
@@ -47,6 +57,16 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
   showClearButton = true,
   autoFocus = false,
   ariaLabel = 'Search',
+  inputId,
+  inputRole,
+  ariaAutocomplete,
+  ariaControls,
+  ariaExpanded,
+  ariaActiveDescendant,
+  autoComplete,
+  onInputKeyDown,
+  onInputFocus,
+  onInputBlur,
 }, ref) => {
   const [localValue, setLocalValue] = useState(initialValue);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -96,22 +116,25 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
   }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    onInputKeyDown?.(e);
+    if (e.defaultPrevented) return;
     if (e.key === 'Enter') {
       clearTimeout(debounceRef.current);
       const trimmed = localValue.trim();
       onSearchRef.current(trimmed);
       onSubmit?.(trimmed);
     }
-  }, [localValue, onSubmit]);
+  }, [localValue, onSubmit, onInputKeyDown]);
 
-  const handleBlur = useCallback(() => {
+  const handleBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    onInputBlur?.(e);
     const trimmed = localValue.trim();
     if (trimmed !== localValue) {
       setLocalValue(trimmed);
     }
     clearTimeout(debounceRef.current);
     onSearchRef.current(trimmed);
-  }, [localValue]);
+  }, [localValue, onInputBlur]);
 
   return (
     <div className={className ?? 'flex items-center px-3 transition-colors cursor-text w-full overflow-hidden'}>
@@ -121,14 +144,22 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
         </div>
         <input
           ref={inputRef}
+          id={inputId}
           type="text"
           value={localValue}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
+          onFocus={onInputFocus}
           placeholder={placeholder}
           className={inputClassName ?? 'min-w-[50px] w-full flex-1 bg-transparent py-2.5 pl-10 text-sm font-medium text-slate-700 placeholder-slate-400 focus:outline-none dark:text-slate-200 dark:placeholder-slate-500'}
           aria-label={ariaLabel}
+          role={inputRole}
+          aria-autocomplete={ariaAutocomplete}
+          aria-controls={ariaControls}
+          aria-expanded={ariaExpanded}
+          aria-activedescendant={ariaActiveDescendant}
+          autoComplete={autoComplete}
           autoFocus={autoFocus}
         />
         {showClearButton && localValue && (

@@ -37,6 +37,8 @@ interface NewsCardProps {
   onSelect?: (id: string) => void;
   // Drawer Props
   disableInlineExpansion?: boolean; // Disable inline expansion for desktop multi-column grid
+  /** Committed search query for title highlighting on results cards */
+  searchHighlightQuery?: string;
 }
 
 export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
@@ -53,6 +55,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
       isSelected = false,
       onSelect,
       disableInlineExpansion = false,
+      searchHighlightQuery,
     },
     ref
   ) => {
@@ -99,6 +102,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             isSelected={isSelected}
             onSelect={onSelect ? () => onSelect(article.id) : undefined}
             disableInlineExpansion={disableInlineExpansion}
+            searchHighlightQuery={searchHighlightQuery}
           />
         );
         break;
@@ -112,6 +116,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             isOwner={isOwner}
             isAdmin={isAdmin}
             isPreview={isPreview}
+            searchHighlightQuery={searchHighlightQuery}
           />
         );
         break;
@@ -125,6 +130,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             isOwner={isOwner}
             isAdmin={isAdmin}
             isPreview={isPreview}
+            searchHighlightQuery={searchHighlightQuery}
           />
         );
         break;

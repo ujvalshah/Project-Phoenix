@@ -19,6 +19,7 @@ export interface IAdapter {
   getAllArticles(params?: { q?: string; page?: number; limit?: number }): Promise<Article[]>;
   getArticlesPaginated(params: {
     q?: string;
+    searchMode?: 'relevance' | 'latest';
     page: number;
     limit: number;
     category?: string;

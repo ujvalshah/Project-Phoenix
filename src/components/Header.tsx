@@ -1,7 +1,7 @@
 // NOTE: Do not add multiple React imports in this file.
 // Consolidate all hooks into the single import below.
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, LogOut, Settings, Shield, LogIn, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, Mail } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Sparkles, LogOut, Settings, Shield, LogIn, User as UserIcon, BookOpen, MessageSquare, Menu, X, LayoutGrid, Columns, Filter, ArrowUpDown, Maximize, Sun, Moon, Send, CheckCircle2, Search, Mail, MoreHorizontal } from 'lucide-react';
 import { SearchInput, SearchInputHandle } from './header/SearchInput';
 import { MobileSearchOverlay } from './header/MobileSearchOverlay';
 import { NotificationBell } from './NotificationBell';
@@ -30,6 +30,17 @@ import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { setNarrowHeaderHidden } from '@/constants/layoutScrollBridge';
 import MobileFilterSheet from './header/MobileFilterSheet';
 import { useFilterResults } from '@/context/FilterResultsContext';
+import { recordSearchEvent } from '@/observability/telemetry';
+import {
+  setPendingSuggestionArticleId,
+  takePendingSuggestionArticleId,
+} from '@/observability/searchTelemetryIds';
+import { useSearchSuggestions } from '@/hooks/useSearchSuggestions';
+import {
+  formatContentStreamLabel,
+  formatSourceTypeLabel,
+  formatSuggestionPublishedLabel,
+} from '@/utils/suggestionDisplay';
 
 /** Yellow “N” tile — matches NavigationDrawer / app favicon treatment */
 const NuggetsLogoMark: React.FC<{ showName?: boolean }> = ({ showName }) => (
@@ -92,8 +103,10 @@ export const Header: React.FC<HeaderProps> = ({
   // Consume filter state from context — no prop drilling required
   const filters = useFilterSelector(
     (s) => ({
+      searchQuery: s.searchQuery,
       searchInputValue: s.searchInputValue,
       setSearchInput: s.setSearchInput,
+      commitSearch: s.commitSearch,
       sortOrder: s.sortOrder,
       setSortOrder: s.setSortOrder,
       hasActiveFilters: s.hasActiveFilters,
@@ -103,7 +116,14 @@ export const Header: React.FC<HeaderProps> = ({
     }),
     shallowEqualFilters,
   );
-  const { searchInputValue: searchQuery, setSearchInput: setSearchQuery, sortOrder, setSortOrder } = filters;
+  const {
+    searchQuery,
+    searchInputValue,
+    setSearchInput: setSearchDraft,
+    commitSearch,
+    sortOrder,
+    setSortOrder,
+  } = filters;
   const { data: pulseUnseenCount } = usePulseUnseenCount();
   const { data: standardUnseenCount } = useStandardUnseenCount();
   const { narrowHeaderHidden } = useAppChromeScroll();
@@ -120,6 +140,8 @@ export const Header: React.FC<HeaderProps> = ({
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isDesktopSearchFocused, setIsDesktopSearchFocused] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
 
   const { filterState, handleFilterChange, handleFilterClear } = useFilterPanelHandlers();
 
@@ -140,6 +162,7 @@ export const Header: React.FC<HeaderProps> = ({
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
   const desktopSearchRef = useRef<SearchInputHandle>(null);
+  const desktopSearchContainerRef = useRef<HTMLDivElement>(null);
 
   // Determine which avatar ref to use based on viewport width
   const [isMobile, setIsMobile] = useState(false);
@@ -197,6 +220,33 @@ export const Header: React.FC<HeaderProps> = ({
     }
   }, [isLoggingOut, logout, headerToast]);
   const { withAuth } = useRequireAuth();
+  const desktopSuggestions = useSearchSuggestions(searchInputValue, 6);
+  const desktopSuggestionItems = useMemo(
+    () => desktopSuggestions.data?.suggestions ?? [],
+    [desktopSuggestions.data?.suggestions],
+  );
+  const shouldShowDesktopSuggestions =
+    isDesktopSearchFocused && searchInputValue.trim().length >= 2;
+  const activeSuggestion = useMemo(
+    () =>
+      activeSuggestionIndex >= 0 && activeSuggestionIndex < desktopSuggestionItems.length
+        ? desktopSuggestionItems[activeSuggestionIndex]
+        : null,
+    [activeSuggestionIndex, desktopSuggestionItems],
+  );
+
+  const desktopActiveOptionAnnouncement = useMemo(() => {
+    if (!shouldShowDesktopSuggestions || desktopSuggestions.isLoading) return '';
+    if (activeSuggestionIndex < 0 || desktopSuggestionItems.length === 0) return '';
+    const item = desktopSuggestionItems[activeSuggestionIndex];
+    if (!item) return '';
+    return `Suggestion ${activeSuggestionIndex + 1} of ${desktopSuggestionItems.length}: ${item.title}`;
+  }, [
+    shouldShowDesktopSuggestions,
+    desktopSuggestions.isLoading,
+    activeSuggestionIndex,
+    desktopSuggestionItems,
+  ]);
 
   const isAdmin = currentUser?.role === 'admin';
   const currentPath = location.pathname;
@@ -234,19 +284,103 @@ export const Header: React.FC<HeaderProps> = ({
   // Stable callback: SearchInput calls this after its internal debounce.
   // This propagates the trimmed value up to useFilterState (which triggers the API query).
   const handleDebouncedSearch = useCallback((value: string) => {
-    setSearchQuery(value);
-  }, [setSearchQuery]);
+    setSearchDraft(value);
+    setActiveSuggestionIndex(-1);
+    recordSearchEvent({
+      name: 'search_query_changed',
+      payload: { query: value, length: value.trim().length, surface: 'header' },
+    });
+    if (!value.trim()) {
+      commitSearch('');
+    }
+  }, [setSearchDraft, commitSearch]);
 
   // Handle search submit (Enter key or recent-search click)
   const handleSearchSubmit = useCallback((query: string, closeMobileOverlay = true) => {
-    if (query.trim()) {
-      saveRecentSearch(query);
-      setSearchQuery(query.trim());
+    const trimmed = query.trim();
+    const suggestionArticleId = takePendingSuggestionArticleId();
+    if (trimmed) saveRecentSearch(trimmed);
+    commitSearch(trimmed);
+    setSearchDraft(trimmed);
+    recordSearchEvent({
+      name: 'search_submitted',
+      payload: {
+        query: trimmed,
+        surface: closeMobileOverlay ? 'mobile-overlay' : 'desktop',
+        ...(suggestionArticleId
+          ? { suggestionArticleId, commitSource: 'suggestion_row' as const }
+          : { commitSource: 'typed_submit' as const }),
+      },
+    });
+    if (searchQuery && searchQuery !== trimmed) {
+      recordSearchEvent({
+        name: 'search_query_reformulated',
+        payload: { from: searchQuery, to: trimmed },
+      });
     }
     if (closeMobileOverlay) {
       setIsMobileSearchOpen(false);
     }
-  }, [saveRecentSearch, setSearchQuery]);
+  }, [saveRecentSearch, commitSearch, setSearchDraft, searchQuery]);
+
+  const handleDesktopSuggestionSelect = useCallback((index: number, source: 'mouse' | 'keyboard') => {
+    const item = desktopSuggestionItems[index];
+    if (!item) return;
+    recordSearchEvent({
+      name: 'search_suggestion_selected',
+      payload: {
+        query: searchInputValue.trim(),
+        suggestionId: item.id,
+        suggestionTitle: item.title,
+        rank: index + 1,
+        source,
+        commitQuery: item.title,
+        selectionIntent: 'commit_search_by_article_title',
+      },
+    });
+    setPendingSuggestionArticleId(item.id);
+    handleSearchSubmit(item.title, false);
+    setActiveSuggestionIndex(-1);
+    setIsDesktopSearchFocused(false);
+  }, [desktopSuggestionItems, handleSearchSubmit, searchInputValue]);
+
+  const handleDesktopInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!shouldShowDesktopSuggestions) {
+      if (e.key === 'Escape') {
+        setIsDesktopSearchFocused(false);
+        setActiveSuggestionIndex(-1);
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => {
+        if (desktopSuggestionItems.length === 0) return -1;
+        return prev < desktopSuggestionItems.length - 1 ? prev + 1 : 0;
+      });
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => {
+        if (desktopSuggestionItems.length === 0) return -1;
+        return prev > 0 ? prev - 1 : desktopSuggestionItems.length - 1;
+      });
+      return;
+    }
+    if (e.key === 'Enter' && activeSuggestion) {
+      e.preventDefault();
+      handleDesktopSuggestionSelect(activeSuggestionIndex, 'keyboard');
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsDesktopSearchFocused(false);
+      setActiveSuggestionIndex(-1);
+    }
+  }, [shouldShowDesktopSuggestions, desktopSuggestionItems.length, activeSuggestion, activeSuggestionIndex, handleDesktopSuggestionSelect]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -256,6 +390,10 @@ export const Header: React.FC<HeaderProps> = ({
         e.preventDefault();
         // On mobile, open search overlay; on desktop, focus search input
         if (window.innerWidth < 768) {
+          recordSearchEvent({
+            name: 'search_opened',
+            payload: { surface: 'keyboard-shortcut', forceNewQueryTrace: true },
+          });
           setIsMobileSearchOpen(true);
         } else {
           desktopSearchRef.current?.focus();
@@ -263,7 +401,10 @@ export const Header: React.FC<HeaderProps> = ({
       }
       // Escape to close dropdowns and mobile search
       if (e.key === 'Escape') {
-        if (isMobileSearchOpen) {
+        if (isDesktopSearchFocused) {
+          setIsDesktopSearchFocused(false);
+          setActiveSuggestionIndex(-1);
+        } else if (isMobileSearchOpen) {
           setIsMobileSearchOpen(false);
         } else if (isSortOpen) setIsSortOpen(false);
         else if (isUserMenuOpen) setIsUserMenuOpen(false);
@@ -280,6 +421,7 @@ export const Header: React.FC<HeaderProps> = ({
     isUserMenuOpen,
     isFilterPopoverOpen,
     isMobileSearchOpen,
+    isDesktopSearchFocused,
     isMoreMenuOpen,
     inlineDesktopFilters,
     sidebarCollapsed,
@@ -302,6 +444,18 @@ export const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener('resize', checkTablet);
   }, []);
 
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!desktopSearchContainerRef.current) return;
+      if (!desktopSearchContainerRef.current.contains(event.target as Node)) {
+        setIsDesktopSearchFocused(false);
+        setActiveSuggestionIndex(-1);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
   return (
     <>
       {/* Glass header — fixed (layout invariant); z-50 via Z_INDEX.HEADER */}
@@ -314,10 +468,10 @@ export const Header: React.FC<HeaderProps> = ({
         )}
         style={{ zIndex: Z_INDEX.HEADER }}
       >
-        {/* Desktop Layout (lg+) - Original layout preserved */}
+        {/* Desktop Layout (lg+) - resilient priority layout */}
         <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} h-full hidden lg:flex items-center gap-3 min-w-0`}>
-          {/* Left: Menu + Logo + Navigation */}
-          <div className="flex items-center gap-3 min-w-0 shrink">
+          {/* Left: Menu + Logo */}
+          <div className="flex items-center gap-3 min-w-0 shrink-0">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
@@ -336,9 +490,16 @@ export const Header: React.FC<HeaderProps> = ({
               <NuggetsLogoMark showName />
             </Link>
 
-            {/* Desktop Navigation (lg+) */}
+          </div>
+
+          {/* Center: Primary navigation rail + desktop search */}
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {/* Desktop Navigation rail (intentional horizontal scroll) */}
+            <div className="relative min-w-0 flex-1">
+              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-white/90 to-transparent dark:from-slate-900/90" aria-hidden />
+              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-white/90 to-transparent dark:from-slate-900/90" aria-hidden />
             <nav
-              className="rounded-lg border border-gray-200/80 bg-gray-100 p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 shrink dark:border-slate-700/80 dark:bg-slate-800/90"
+                className="no-scrollbar-visual rounded-lg border border-gray-200/80 bg-gray-100 p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 whitespace-nowrap [scroll-padding-inline:0.75rem] dark:border-slate-700/80 dark:bg-slate-800/90"
               role="navigation"
               aria-label="Main navigation"
             >
@@ -436,25 +597,131 @@ export const Header: React.FC<HeaderProps> = ({
                 </Link>
               )}
             </nav>
+            </div>
 
-          </div>
-
-          {/* Center: Search - Desktop (lg+) */}
-          <div className="hidden lg:flex flex-1 items-center justify-center min-w-0">
-            <div className="relative w-full max-w-2xl min-w-0">
+            {/* Search - full field on xl+, compact trigger on lg */}
+            <div className="hidden xl:flex min-w-[240px] max-w-[360px] flex-1 items-center justify-end">
+              <div ref={desktopSearchContainerRef} className="relative w-full min-w-0">
               <SearchInput
                 ref={desktopSearchRef}
-                initialValue={searchQuery}
+                initialValue={searchInputValue}
                 onSearch={handleDebouncedSearch}
+                onChangeImmediate={setSearchDraft}
                 onSubmit={(q) => handleSearchSubmit(q, false)}
                 placeholder="Search..."
                 showClearButton={false}
                 className="w-full"
-                inputClassName="w-full h-9 pl-10 pr-28 text-sm font-medium bg-gray-50 border border-gray-100 rounded-lg text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-yellow-500/50"
+                inputClassName="w-full h-9 pl-10 pr-36 text-sm font-medium bg-gray-50 border border-gray-100 rounded-lg text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-yellow-400 focus:bg-white focus:outline-none transition-all dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800 dark:focus:ring-yellow-500/50"
                 iconSize={16}
+                inputId="desktop-search-combobox"
+                inputRole="combobox"
+                ariaAutocomplete="list"
+                ariaControls="desktop-search-suggestions"
+                ariaExpanded={shouldShowDesktopSuggestions}
+                ariaActiveDescendant={
+                  activeSuggestion ? `desktop-search-option-${activeSuggestion.id}` : undefined
+                }
+                autoComplete="off"
+                onInputFocus={() => {
+                  recordSearchEvent({
+                    name: 'search_opened',
+                    payload: { surface: 'desktop-input' },
+                  });
+                  setIsDesktopSearchFocused(true);
+                }}
+                onInputBlur={() => {
+                  // Delay close so option click can run first.
+                  window.setTimeout(() => setIsDesktopSearchFocused(false), 120);
+                }}
+                onInputKeyDown={handleDesktopInputKeyDown}
               />
 
+              <div className="sr-only" aria-live="polite" aria-atomic="true">
+                {shouldShowDesktopSuggestions
+                  ? desktopSuggestions.isLoading
+                    ? 'Loading suggestions'
+                    : desktopSuggestionItems.length > 0
+                      ? `${desktopSuggestionItems.length} suggestions available.`
+                      : 'No suggestions found.'
+                  : ''}
+              </div>
+
+              <div
+                key={`${activeSuggestionIndex}-${activeSuggestion?.id ?? 'none'}`}
+                className="sr-only"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {desktopActiveOptionAnnouncement}
+              </div>
+
+              {shouldShowDesktopSuggestions && (
+                <div
+                  id="desktop-search-suggestions"
+                  role="listbox"
+                  aria-label="Search suggestions"
+                  aria-multiselectable={false}
+                  className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                >
+                  {desktopSuggestions.isLoading ? (
+                    <div className="px-3 py-2 text-sm text-gray-500 dark:text-slate-400">Loading suggestions...</div>
+                  ) : desktopSuggestionItems.length > 0 ? (
+                    desktopSuggestionItems.map((item, idx) => {
+                      const isActive = idx === activeSuggestionIndex;
+                      const dateLabel = formatSuggestionPublishedLabel(item.publishedAt);
+                      const streamLabel = formatContentStreamLabel(item.contentStream);
+                      const sourceLabel = formatSourceTypeLabel(item.sourceType);
+                      return (
+                        <button
+                          key={item.id}
+                          id={`desktop-search-option-${item.id}`}
+                          role="option"
+                          aria-selected={isActive}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => handleDesktopSuggestionSelect(idx, 'mouse')}
+                          className={`w-full rounded-md px-3 py-2 text-left transition-colors ${
+                            isActive
+                              ? 'bg-yellow-50 text-gray-900 dark:bg-slate-800 dark:text-slate-100'
+                              : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800/80'
+                          }`}
+                        >
+                          <div className="text-sm font-medium">{item.title}</div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500 dark:text-slate-400">
+                            <span className="rounded bg-gray-100 px-1.5 py-px font-medium text-gray-600 dark:bg-slate-800 dark:text-slate-300">
+                              {streamLabel}
+                            </span>
+                            {dateLabel ? <span>{dateLabel}</span> : null}
+                            {sourceLabel ? (
+                              <span className="text-gray-400 dark:text-slate-500">{sourceLabel}</span>
+                            ) : null}
+                          </div>
+                          {item.excerpt ? (
+                            <div className="line-clamp-1 text-xs text-gray-500 dark:text-slate-400">{item.excerpt}</div>
+                          ) : null}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-gray-500 dark:text-slate-400">No suggestions found.</div>
+                  )}
+                </div>
+              )}
+
               <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSearchSubmit(searchInputValue, false);
+                    setIsDesktopSearchFocused(false);
+                    setActiveSuggestionIndex(-1);
+                  }}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300 dark:focus-visible:ring-offset-slate-900"
+                  aria-label="Submit search"
+                  title="Search"
+                >
+                  <Search size={16} />
+                </button>
                 <button
                   ref={filterButtonRef}
                   type="button"
@@ -507,9 +774,73 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-
           {/* Right: Tools Cluster - Desktop */}
-          <div className="flex items-center justify-end gap-2 min-w-0 shrink-0">
+          <div className="flex items-center justify-end gap-1.5 min-w-0 shrink-0">
+                <button
+              type="button"
+              onClick={() => {
+                recordSearchEvent({
+                  name: 'search_opened',
+                  payload: { surface: 'desktop-trigger', forceNewQueryTrace: true },
+                });
+                setIsMobileSearchOpen(true);
+              }}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 xl:hidden dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              aria-label="Search"
+              title="Search"
+            >
+              <Search size={18} aria-hidden />
+            </button>
+
+            <button
+              type="button"
+              ref={filterButtonRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (inlineDesktopFilters) {
+                  toggleSidebarCollapsed();
+                } else {
+                  setIsFilterPopoverOpen(!isFilterPopoverOpen);
+                }
+              }}
+              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all xl:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900 ${
+                (inlineDesktopFilters ? !sidebarCollapsed : isFilterPopoverOpen) || hasActiveFilters
+                  ? 'bg-yellow-50 text-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-400'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+              }`}
+              aria-label="Filter"
+              title="Filter"
+              aria-expanded={inlineDesktopFilters ? !sidebarCollapsed : isFilterPopoverOpen}
+            >
+              <Filter
+                size={16}
+                fill={
+                  (inlineDesktopFilters ? !sidebarCollapsed : isFilterPopoverOpen) || hasActiveFilters
+                    ? 'currentColor'
+                    : 'none'
+                }
+              />
+              {hasActiveFilters && (
+                <span className="absolute right-1 top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-gray-500 px-0.5 text-[8px] font-medium text-white dark:bg-slate-500">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              ref={sortButtonRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsSortOpen(!isSortOpen);
+              }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 xl:hidden dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              aria-label="Sort"
+              title="Sort"
+            >
+              <ArrowUpDown size={16} />
+            </button>
+
             {/* Create button */}
             <button
               onClick={withAuth(onCreateNugget)}
@@ -520,7 +851,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {/* View mode buttons - Desktop only (lg+) */}
-            <div className="flex items-center rounded-lg border border-gray-200/80 bg-gray-100 p-1 dark:border-slate-700/80 dark:bg-slate-800/90">
+            <div className="hidden xl:flex items-center rounded-lg border border-gray-200/80 bg-gray-100 p-1 dark:border-slate-700/80 dark:bg-slate-800/90">
               <button
                 onClick={() => setViewMode('grid')}
                 className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded transition-all ${
@@ -550,7 +881,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Fullscreen button */}
             <button
               onClick={toggleFullScreen}
-              className="min-h-[44px] min-w-[44px] items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors flex dark:text-slate-400 dark:hover:text-slate-200"
+              className="hidden xl:flex min-h-[44px] min-w-[44px] items-center justify-center p-2 text-gray-500 hover:text-gray-700 transition-colors dark:text-slate-400 dark:hover:text-slate-200"
               title="Toggle Fullscreen"
               aria-label="Toggle Fullscreen"
             >
@@ -566,11 +897,26 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+              className="hidden xl:flex min-h-[44px] min-w-[44px] items-center justify-center p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
               title="Toggle Theme"
               aria-label="Toggle Theme"
             >
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+
+            <button
+              ref={moreMenuButtonRef}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMoreMenuOpen(!isMoreMenuOpen);
+              }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 xl:hidden"
+              aria-label="More actions"
+              title="More actions"
+              aria-expanded={isMoreMenuOpen}
+            >
+              <MoreHorizontal size={18} />
             </button>
 
             {/* Avatar/Login */}
@@ -603,6 +949,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
         </div>
+        </div>
 
         {/* Mobile/Tablet (<lg): single row — menu + logo | search, filter, theme, bell, profile (extra view/theme in drawer) */}
         <div
@@ -629,7 +976,13 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex shrink-0 items-center gap-0.5">
             <button
               type="button"
-              onClick={() => setIsMobileSearchOpen(true)}
+              onClick={() => {
+                recordSearchEvent({
+                  name: 'search_opened',
+                  payload: { surface: 'mobile-header', forceNewQueryTrace: true },
+                });
+                setIsMobileSearchOpen(true);
+              }}
               className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
               aria-label="Search"
             >
@@ -880,6 +1233,59 @@ export const Header: React.FC<HeaderProps> = ({
               Admin
             </Link>
           )}
+          <div className="my-1 h-px bg-gray-100 dark:bg-slate-700" />
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('grid');
+              setIsMoreMenuOpen(false);
+            }}
+            className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50 dark:hover:bg-slate-800 ${
+              viewMode === 'grid'
+                ? 'bg-gray-50 text-gray-900 dark:bg-slate-800 dark:text-slate-50'
+                : 'text-gray-700 dark:text-slate-200'
+            }`}
+          >
+            <LayoutGrid size={16} />
+            Grid view
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('masonry');
+              setIsMoreMenuOpen(false);
+            }}
+            className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50 dark:hover:bg-slate-800 ${
+              viewMode === 'masonry'
+                ? 'bg-gray-50 text-gray-900 dark:bg-slate-800 dark:text-slate-50'
+                : 'text-gray-700 dark:text-slate-200'
+            }`}
+          >
+            <Columns size={16} />
+            Masonry view
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              toggleFullScreen();
+              setIsMoreMenuOpen(false);
+            }}
+            className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <Maximize size={16} />
+            Fullscreen
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              toggleTheme();
+              setIsMoreMenuOpen(false);
+            }}
+            className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            Toggle theme
+          </button>
         </div>
       </DropdownPortal>
 
@@ -897,9 +1303,18 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Mobile Search Overlay — extracted to its own component */}
       <MobileSearchOverlay
         isOpen={isMobileSearchOpen}
-        onClose={() => setIsMobileSearchOpen(false)}
-        initialValue={searchQuery}
-        onSearch={handleDebouncedSearch}
+        onClose={(reason) => {
+          if (reason !== 'commit') {
+            recordSearchEvent({
+              name: 'search_abandoned',
+              payload: { surface: 'mobile-overlay', draft: searchInputValue },
+            });
+          }
+          setIsMobileSearchOpen(false);
+        }}
+        initialValue={searchInputValue}
+        onDraftChange={handleDebouncedSearch}
+        onCommitSearch={(q) => handleSearchSubmit(q, true)}
       />
 
       <NavigationDrawer

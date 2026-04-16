@@ -6,7 +6,6 @@ import { SortOrder, TimeRange, ContentStream, SerializableFilterState } from '@/
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEBOUNCE_MS = 300;
 const STORAGE_KEY = 'phoenix_filters';
 
 const DEFAULTS: Required<SerializableFilterState> = {
@@ -130,9 +129,9 @@ function persistFilters(f: SerializableFilterState): void {
 // ---------------------------------------------------------------------------
 
 export interface UseFilterStateReturn {
-  // Current state (debounced query for API calls)
-  searchQuery: string;           // debounced — use for API calls
-  searchInputValue: string;      // raw — use for <input> value
+  // Current state
+  searchQuery: string;           // committed query — use for API calls
+  searchInputValue: string;      // draft value — use for <input> value
   selectedCategories: string[];
   selectedTag: string | null;
   sortOrder: SortOrder;
@@ -158,6 +157,7 @@ export interface UseFilterStateReturn {
 
   // Setters
   setSearchInput: (value: string) => void;
+  commitSearch: (value?: string) => void;
   setSelectedCategories: (cats: string[]) => void;
   toggleCategory: (cat: string) => void;
   setSelectedTag: (tag: string | null) => void;
@@ -230,7 +230,7 @@ export function useFilterState(): UseFilterStateReturn {
 
   // ---- State ----
   const [searchInputValue, setSearchInputValueRaw] = useState(initial.q);
-  const [debouncedQuery, setDebouncedQuery] = useState(initial.q);
+  const [committedQuery, setCommittedQuery] = useState(initial.q);
   const [categories, setCategories] = useState<string[]>(initial.categories);
   const [tag, setTag] = useState<string | null>(initial.tag || null);
   const [sort, setSort] = useState<SortOrder>(initial.sort);
@@ -244,22 +244,16 @@ export function useFilterState(): UseFilterStateReturn {
   const [subtopicTagIds, setSubtopicTagIds] = useState<string[]>(initial.subtopicTagIds);
   const [contentStream, setContentStream] = useState<ContentStream>(initial.contentStream);
 
-  // ---- Debounce search input ----
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
   const setSearchInput = useCallback((value: string) => {
-    const trimmed = value.trimStart();
-    setSearchInputValueRaw(trimmed);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setDebouncedQuery(trimmed.trim());
-    }, DEBOUNCE_MS);
+    setSearchInputValueRaw(value.trimStart());
   }, []);
 
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => clearTimeout(debounceRef.current);
-  }, []);
+  const commitSearch = useCallback((value?: string) => {
+    const next = typeof value === 'string' ? value : searchInputValue;
+    const trimmed = next.trim();
+    setSearchInputValueRaw(next.trimStart());
+    setCommittedQuery(trimmed);
+  }, [searchInputValue]);
 
   // ---- URL sync (write) ----
   // CRITICAL: Must preserve URL params that belong to other components (e.g. "expanded"
@@ -274,7 +268,7 @@ export function useFilterState(): UseFilterStateReturn {
       return;
     }
     const serializable: SerializableFilterState = {
-      q: debouncedQuery || undefined,
+      q: committedQuery || undefined,
       categories: categories.length > 0 ? categories : undefined,
       tag: tag || undefined,
       sort: sort !== 'latest' ? sort : undefined,
@@ -306,7 +300,7 @@ export function useFilterState(): UseFilterStateReturn {
     }, { replace: true });
 
     persistFilters(serializable);
-  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, formatTagIds, domainTagIds, subtopicTagIds, contentStream, setSearchParams]);
+  }, [committedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, formatTagIds, domainTagIds, subtopicTagIds, contentStream, setSearchParams]);
 
   // ---- Derived ----
   const activeCategory = useMemo(() => {
@@ -317,7 +311,7 @@ export function useFilterState(): UseFilterStateReturn {
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (debouncedQuery) count++;
+    if (committedQuery) count++;
     count += categories.length;
     if (tag) count++;
     if (sort !== 'latest') count++;
@@ -330,7 +324,7 @@ export function useFilterState(): UseFilterStateReturn {
     count += domainTagIds.length;
     count += subtopicTagIds.length;
     return count;
-  }, [debouncedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, formatTagIds, domainTagIds, subtopicTagIds]);
+  }, [committedQuery, categories, tag, sort, favorites, unread, formats, timeRange, collectionId, formatTagIds, domainTagIds, subtopicTagIds]);
 
   const hasActiveFilters = activeFilterCount > 0;
 
@@ -370,7 +364,7 @@ export function useFilterState(): UseFilterStateReturn {
   // ---- Resets ----
   const clearAll = useCallback(() => {
     setSearchInputValueRaw('');
-    setDebouncedQuery('');
+    setCommittedQuery('');
     setCategories([]);
     setTag(null);
     setSort('latest');
@@ -383,13 +377,11 @@ export function useFilterState(): UseFilterStateReturn {
     setDomainTagIds([]);
     setSubtopicTagIds([]);
     setContentStream('standard');
-    clearTimeout(debounceRef.current);
   }, []);
 
   const clearSearch = useCallback(() => {
     setSearchInputValueRaw('');
-    setDebouncedQuery('');
-    clearTimeout(debounceRef.current);
+    setCommittedQuery('');
   }, []);
 
   const clearCategories = useCallback(() => setCategories([]), []);
@@ -417,7 +409,7 @@ export function useFilterState(): UseFilterStateReturn {
   }, []);
 
   return {
-    searchQuery: debouncedQuery,
+    searchQuery: committedQuery,
     searchInputValue,
     selectedCategories: categories,
     selectedTag: tag,
@@ -435,6 +427,7 @@ export function useFilterState(): UseFilterStateReturn {
     hasActiveFilters,
     activeFilterCount,
     setSearchInput,
+    commitSearch,
     setSelectedCategories: setCategories,
     toggleCategory,
     setSelectedTag: setTag,

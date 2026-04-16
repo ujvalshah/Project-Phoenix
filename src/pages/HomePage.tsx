@@ -44,6 +44,7 @@ import { articleService } from '@/services/articleService';
 import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import { useFilterResults } from '@/context/FilterResultsContext';
 import { useMarkFeedSeen } from '@/hooks/usePulseUnseen';
+import { endActiveSearchDraft, recordSearchEvent } from '@/observability/telemetry';
 
 const VALUEPROP_DISMISSED_KEY = 'nuggets_valueprop_dismissed';
 const PULSE_INTRO_DISMISSED_KEY = 'market_pulse_intro_dismissed';
@@ -125,6 +126,7 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({
   viewMode,
 }) => {
+  const MIN_QUERY_LEN = 3;
   const firstContentMarkedRef = useRef(false);
   // Consume filter state from context — no prop drilling required
   const {
@@ -292,6 +294,109 @@ export const HomePage: React.FC<HomePageProps> = ({
     setResultCount(totalCount);
   }, [setResultCount, totalCount]);
 
+  const committedQuery = searchQuery.trim();
+  const isCommittedSearch = committedQuery.length > 0;
+  const isQueryTooShort = isCommittedSearch && committedQuery.length < MIN_QUERY_LEN;
+
+  /** Suppress duplicate success/rendered/zero when infinite scroll finishes (same committed search). */
+  const suppressResultsTelemetryAfterAppendRef = useRef(false);
+
+  /** Last committed query seen when emitting search_request_started (vs feed-only param changes). */
+  const prevCommittedQueryForRequestTelemetryRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    suppressResultsTelemetryAfterAppendRef.current = false;
+  }, [committedQuery]);
+
+  useEffect(() => {
+    if (!isCommittedSearch) {
+      prevCommittedQueryForRequestTelemetryRef.current = null;
+    }
+  }, [isCommittedSearch]);
+
+  useEffect(() => {
+    if (!isCommittedSearch || isQueryTooShort) return;
+
+    const prevQ = prevCommittedQueryForRequestTelemetryRef.current;
+    const feedRefetchCause =
+      prevQ !== committedQuery ? 'committed_query_changed' : 'feed_params_changed';
+    prevCommittedQueryForRequestTelemetryRef.current = committedQuery;
+
+    recordSearchEvent({
+      name: 'search_request_started',
+      payload: {
+        query: committedQuery,
+        surface: 'home-feed',
+        feedRefetchCause,
+      },
+    });
+  }, [
+    isCommittedSearch,
+    isQueryTooShort,
+    committedQuery,
+    sortOrder,
+    selectedTag,
+    collectionId,
+    activeCategory,
+    selectedCategories,
+    favorites,
+    unread,
+    formats,
+    timeRange,
+    formatTagIds,
+    domainTagIds,
+    subtopicTagIds,
+    contentStream,
+  ]);
+
+  useEffect(() => {
+    if (!isCommittedSearch || isQueryTooShort || isLoadingArticles || isFilterRefetching) return;
+
+    if (isFetchingNextPage) {
+      suppressResultsTelemetryAfterAppendRef.current = true;
+      return;
+    }
+    if (suppressResultsTelemetryAfterAppendRef.current) {
+      suppressResultsTelemetryAfterAppendRef.current = false;
+      return;
+    }
+
+    if (articlesError) {
+      recordSearchEvent({
+        name: 'search_request_failed',
+        payload: { query: committedQuery, message: articlesError.message },
+      });
+      endActiveSearchDraft();
+      return;
+    }
+    recordSearchEvent({
+      name: 'search_request_succeeded',
+      payload: { query: committedQuery, total: totalCount ?? 0 },
+    });
+    recordSearchEvent({
+      name: 'search_results_rendered',
+      payload: { query: committedQuery, total: totalCount ?? 0, visible: articles.length },
+    });
+    if ((totalCount ?? 0) === 0) {
+      recordSearchEvent({
+        name: 'search_zero_results',
+        payload: { query: committedQuery },
+      });
+    }
+    endActiveSearchDraft();
+    // Intentionally omit `articles.length`: infinite scroll appends must not re-fire
+    // success/rendered/zero (handled via isFetchingNextPage + suppressResultsTelemetryAfterAppendRef).
+  }, [
+    isCommittedSearch,
+    isQueryTooShort,
+    isLoadingArticles,
+    isFilterRefetching,
+    isFetchingNextPage,
+    articlesError,
+    committedQuery,
+    totalCount,
+  ]);
+
   const handleRefreshFeed = async () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     await refetchArticles();
@@ -382,12 +487,46 @@ export const HomePage: React.FC<HomePageProps> = ({
     <div className="max-w-[1800px] mx-auto pb-4">
       {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
       <div className="px-4 lg:px-6">
+        {isCommittedSearch && (
+          <div
+            className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            role="status"
+            aria-live="polite"
+          >
+            {isQueryTooShort
+              ? `Type at least ${MIN_QUERY_LEN} characters to search.`
+              : isLoadingArticles || isFilterRefetching
+                ? `Searching for "${committedQuery}"...`
+                : articlesError
+                  ? `Search failed for "${committedQuery}". Please retry.`
+                  : (totalCount ?? 0) === 0
+                    ? `No results for "${committedQuery}".`
+                    : `${totalCount ?? 0} results for "${committedQuery}".`}
+          </div>
+        )}
         <ArticleGrid
           articles={articles}
           viewMode={viewMode}
           isLoading={isLoadingArticles}
           isFilterRefetching={isFilterRefetching}
-          onArticleClick={setSelectedArticle}
+          searchHighlightQuery={
+            isCommittedSearch && !isQueryTooShort ? committedQuery : undefined
+          }
+          onArticleClick={(article) => {
+            if (isCommittedSearch && !isQueryTooShort) {
+              const rank = articles.findIndex((a) => a.id === article.id) + 1;
+              recordSearchEvent({
+                name: 'search_result_clicked',
+                payload: {
+                  query: committedQuery,
+                  resultId: article.id,
+                  rank: rank > 0 ? rank : undefined,
+                  sourceType: article.source_type || null,
+                },
+              });
+            }
+            setSelectedArticle(article);
+          }}
           onTagClick={(t) => setSelectedTag(t)}
           onCategoryClick={(c) => toggleTag(c)}
           currentUserId={currentUserId}
