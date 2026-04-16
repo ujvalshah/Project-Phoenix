@@ -16,9 +16,9 @@ import { PaginatedArticlesResponse } from '@/services/adapters/IAdapter';
 import { apiClient } from '@/services/apiClient';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
-import { MetricsStrip, type LibraryMetric } from '@/components/workspace/MetricsStrip';
 import { ContentTabs, type ContentTabItem } from '@/components/workspace/ContentTabs';
 import { Z_INDEX } from '@/constants/zIndex';
+import { CreateNuggetModal } from '@/components/CreateNuggetModal';
 import {
   ContentToolbar,
   type CollectionContentSort,
@@ -33,6 +33,7 @@ import {
   type ProfilePageUser,
 } from '@/components/workspace/workspaceUserDisplay';
 import { WorkspaceTopSection } from '@/components/workspace/WorkspaceTopSection';
+import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 
 interface MySpacePageProps {
   currentUserId: string;
@@ -129,6 +130,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   const [activeTab, setActiveTab] = useState<MainTab>('library');
 
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+  const [editingArticle, setEditingArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [selectionMode, setSelectionMode] = useState(false);
@@ -147,6 +149,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   const [datePreset, setDatePreset] = useState<'all' | '7d' | '30d'>('all');
   const [recentUpdatesMode, setRecentUpdatesMode] = useState(false);
   const [contentView, setContentView] = useState<LibraryViewMode>('grid');
+  const { data: taxonomy } = useTagTaxonomy();
 
   const targetUserId = userId || currentUserId;
   const isOwner = currentUserId === targetUserId;
@@ -301,6 +304,23 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     return articles.filter((a) => getVisibility(a) === 'public').length;
   }, [articles]);
 
+  const derivedOwnerCounts = useMemo(() => {
+    if (!Array.isArray(articles)) {
+      return { total: 0, public: 0, private: 0 };
+    }
+    let publicCount = 0;
+    let privateCount = 0;
+    for (const article of articles) {
+      if (getVisibility(article) === 'public') publicCount += 1;
+      else privateCount += 1;
+    }
+    return {
+      total: publicCount + privateCount,
+      public: publicCount,
+      private: privateCount,
+    };
+  }, [articles]);
+
   const withinDatePreset = (iso: string, preset: 'all' | '7d' | '30d'): boolean => {
     if (preset === 'all') return true;
     const d = new Date(iso);
@@ -383,18 +403,20 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   }, [publicCollections, searchQuery, collectionSort]);
 
   const contentTabs: ContentTabItem[] = useMemo(() => {
+    const ownerPublic = articleCounts?.public ?? derivedOwnerCounts.public;
+    const ownerPrivate = articleCounts?.private ?? derivedOwnerCounts.private;
     const tabs: ContentTabItem[] = [
       {
         id: 'library',
         label: 'Published',
-        count: isOwner ? articleCounts?.public ?? 0 : visitorPublicCount,
+        count: isOwner ? ownerPublic : visitorPublicCount,
       },
     ];
     if (isOwner) {
       tabs.push({
         id: 'drafts',
         label: 'Drafts',
-        count: articleCounts?.private ?? 0,
+        count: ownerPrivate,
       });
     }
     tabs.push({
@@ -403,27 +425,29 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       count: publicCollections.length,
     });
     return tabs;
-  }, [isOwner, articleCounts?.public, articleCounts?.private, visitorPublicCount, publicCollections.length]);
+  }, [isOwner, articleCounts?.public, articleCounts?.private, derivedOwnerCounts.public, derivedOwnerCounts.private, visitorPublicCount, publicCollections.length]);
 
-  const libraryMetrics: LibraryMetric[] = useMemo(() => {
-    const pub = isOwner ? articleCounts?.public ?? 0 : visitorPublicCount;
-    if (!isOwner) {
-      return [
-        { id: 'published', label: 'Published', value: pub },
-        { id: 'collections', label: 'Collections', value: safeCollections.length },
-      ];
-    }
-    const total = articleCounts?.total ?? 0;
-    return [
-      { id: 'total', label: 'Total', value: total },
-      { id: 'published', label: 'Published', value: pub },
-      { id: 'drafts', label: 'Drafts', value: articleCounts?.private ?? 0 },
-      { id: 'collections', label: 'Collections', value: safeCollections.length },
-    ];
-  }, [isOwner, articleCounts, visitorPublicCount, safeCollections.length]);
+  const publishedCount = isOwner
+    ? (articleCounts?.public ?? derivedOwnerCounts.public)
+    : visitorPublicCount;
+  const draftsCount = isOwner
+    ? (articleCounts?.private ?? derivedOwnerCounts.private)
+    : 0;
+  // "Total" mirrors the connected set shown in the header row:
+  // Published + Drafts (+ Collections for this workspace).
+  const totalWorkspaceItems = publishedCount + draftsCount + publicCollections.length;
 
   const currentList: Article[] | Collection[] =
     activeTab === 'collections' ? filteredCollections : filteredNuggets;
+
+  const taxonomyForTagPicker = useMemo(
+    () => ({
+      formats: (taxonomy?.formats || []).map((t) => t.rawName),
+      domains: (taxonomy?.domains || []).map((t) => t.rawName),
+      subtopics: (taxonomy?.subtopics || []).map((t) => t.rawName),
+    }),
+    [taxonomy],
+  );
 
   const toggleSelectionMode = () => {
       const newMode = !selectionMode;
@@ -634,6 +658,19 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       ));
   };
 
+  const handleDeleteSingleArticle = async (article: Article) => {
+    const ok = window.confirm(`Delete "${article.title || 'this nugget'}"? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await storageService.deleteArticle(article.id);
+      await loadData();
+      await refreshCounts();
+      toast.success('Nugget deleted');
+    } catch {
+      toast.error('Failed to delete nugget');
+    }
+  };
+
   // Early returns for loading and error states
   if (loading) {
     return (
@@ -665,7 +702,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-50">
       <HeaderSpacer />
-      <main className="mx-auto w-full max-w-[1280px] px-4 pb-20 pt-6 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1280px] px-4 pb-20 pt-3 sm:px-6 lg:px-8">
         <div className="grid grid-cols-12 gap-x-6">
           <section className="col-span-12" aria-labelledby="library-main-heading">
             <h2 id="library-main-heading" className="sr-only">
@@ -675,7 +712,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
             <div className="sticky top-14 lg:top-16" style={{ zIndex: Z_INDEX.STICKY_SUBHEADER }}>
               <WorkspaceTopSection
                 header={
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-2.5">
                     <WorkspaceHeader
                       title="Library"
                       tagline={pageTagline}
@@ -684,9 +721,14 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                       onToggleSelect={toggleSelectionMode}
                       user={profileUser}
                     />
-                    <MetricsStrip metrics={libraryMetrics} />
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className={selectionMode ? 'pointer-events-none opacity-50' : ''}>
+                      <div className={`flex flex-wrap items-center gap-2 ${selectionMode ? 'pointer-events-none opacity-50' : ''}`}>
+                        <span className="inline-flex min-h-[40px] min-w-[44px] items-center rounded-md border border-slate-200/70 bg-white px-3.5 py-2 text-sm font-medium text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                          <span className="whitespace-nowrap">Total</span>
+                          <span className="ml-1.5 tabular-nums text-xs font-normal text-slate-500 dark:text-slate-400">
+                            {totalWorkspaceItems.toLocaleString()}
+                          </span>
+                        </span>
                         <ContentTabs
                           tabs={contentTabs}
                           activeId={activeTab}
@@ -826,7 +868,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                   </div>
                 }
                 toolbar={
-                  <div className={selectionMode ? 'pointer-events-none opacity-50' : ''}>
+                  <div className={`pt-0.5 ${selectionMode ? 'pointer-events-none opacity-50' : ''}`}>
                     <ContentToolbar
                       mode={activeTab === 'collections' ? 'collections' : 'nuggets'}
                       searchQuery={searchQuery}
@@ -837,14 +879,17 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                       onCollectionSortChange={setCollectionSort}
                       sourceTypeFilter={sourceTypeFilter}
                       onSourceTypeChange={setSourceTypeFilter}
-                      sourceTypeOptions={sourceTypeOptions}
+                      sourceTypeOptions={[]}
                       tagFilter={tagFilter}
                       onTagChange={setTagFilter}
                       tagOptions={tagOptions}
+                      tagTaxonomy={taxonomyForTagPicker}
+                      enableGroupedTagPicker
                       datePreset={datePreset}
                       onDatePresetChange={setDatePreset}
                       recentUpdatesMode={recentUpdatesMode}
                       onRecentUpdatesModeChange={setRecentUpdatesMode}
+                      showRecentToggle={false}
                       libraryView={contentView}
                       onLibraryViewChange={setContentView}
                       showLibraryViewToggle={showNuggets}
@@ -943,6 +988,9 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                         onSelect={handleSelect}
                         onOpen={setSelectedArticle}
                         compact={contentView === 'compact'}
+                        canManage={isOwner}
+                        onEdit={(article) => setEditingArticle(article)}
+                        onDelete={handleDeleteSingleArticle}
                       />
                     ))}
                     <InfiniteScrollTrigger
@@ -964,6 +1012,13 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
           article={selectedArticle}
         />
       )}
+
+      <CreateNuggetModal
+        isOpen={!!editingArticle}
+        onClose={() => setEditingArticle(null)}
+        mode="edit"
+        initialData={editingArticle ?? undefined}
+      />
 
       <ConfirmActionModal 
         isOpen={showDeleteConfirm}

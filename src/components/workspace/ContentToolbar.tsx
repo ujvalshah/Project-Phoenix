@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutGrid, List, Rows3, Search, Sparkles } from 'lucide-react';
+import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import {
   TOOLBAR_INPUT,
   TOOLBAR_SELECT,
@@ -26,10 +27,17 @@ interface ContentToolbarProps {
   tagFilter: string;
   onTagChange: (v: string) => void;
   tagOptions: string[];
+  tagTaxonomy?: {
+    formats: string[];
+    domains: string[];
+    subtopics: string[];
+  };
+  enableGroupedTagPicker?: boolean;
   datePreset: 'all' | '7d' | '30d';
   onDatePresetChange: (v: 'all' | '7d' | '30d') => void;
   recentUpdatesMode: boolean;
   onRecentUpdatesModeChange: (on: boolean) => void;
+  showRecentToggle?: boolean;
   libraryView?: LibraryViewMode;
   onLibraryViewChange?: (v: LibraryViewMode) => void;
   showLibraryViewToggle?: boolean;
@@ -57,16 +65,70 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
   tagFilter,
   onTagChange,
   tagOptions,
+  tagTaxonomy,
+  enableGroupedTagPicker = false,
   datePreset,
   onDatePresetChange,
   recentUpdatesMode,
   onRecentUpdatesModeChange,
+  showRecentToggle = true,
   libraryView = 'grid',
   onLibraryViewChange,
   showLibraryViewToggle = false,
   disabled,
 }) => {
   const isNuggets = mode === 'nuggets';
+  const [isTagPanelOpen, setIsTagPanelOpen] = useState(false);
+  const [tagSearch, setTagSearch] = useState('');
+  const [showUnmappedTags, setShowUnmappedTags] = useState(false);
+  const tagAnchorRef = useRef<HTMLButtonElement>(null);
+  const showTaxonomyDebug = import.meta.env.DEV;
+
+  useEffect(() => {
+    if (!isTagPanelOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsTagPanelOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isTagPanelOpen]);
+
+  const groupedTags = useMemo(() => {
+    const q = tagSearch.trim().toLowerCase();
+    const filteredOptions = q
+      ? tagOptions.filter((tag) => tag.toLowerCase().includes(q))
+      : tagOptions;
+    const formatSet = new Set((tagTaxonomy?.formats || []).map((t) => t.trim().toLowerCase()));
+    const domainSet = new Set((tagTaxonomy?.domains || []).map((t) => t.trim().toLowerCase()));
+    const subtopicSet = new Set((tagTaxonomy?.subtopics || []).map((t) => t.trim().toLowerCase()));
+
+    return filteredOptions.reduce<Record<'format' | 'domain' | 'subtopic', string[]>>(
+      (acc, tag) => {
+        const key = tag.trim().toLowerCase();
+        if (formatSet.has(key)) acc.format.push(tag);
+        else if (domainSet.has(key)) acc.domain.push(tag);
+        else if (subtopicSet.has(key)) acc.subtopic.push(tag);
+        return acc;
+      },
+      { format: [], domain: [], subtopic: [] },
+    );
+  }, [tagOptions, tagSearch, tagTaxonomy]);
+
+  const unmappedTags = useMemo(() => {
+    const q = tagSearch.trim().toLowerCase();
+    const filteredOptions = q
+      ? tagOptions.filter((tag) => tag.toLowerCase().includes(q))
+      : tagOptions;
+    const formatSet = new Set((tagTaxonomy?.formats || []).map((t) => t.trim().toLowerCase()));
+    const domainSet = new Set((tagTaxonomy?.domains || []).map((t) => t.trim().toLowerCase()));
+    const subtopicSet = new Set((tagTaxonomy?.subtopics || []).map((t) => t.trim().toLowerCase()));
+    return filteredOptions.filter((tag) => {
+      const key = tag.trim().toLowerCase();
+      return !formatSet.has(key) && !domainSet.has(key) && !subtopicSet.has(key);
+    });
+  }, [tagOptions, tagSearch, tagTaxonomy]);
 
   return (
     <div className={['flex flex-col gap-2', className].filter(Boolean).join(' ')} role="search">
@@ -92,7 +154,7 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto md:justify-end">
-          {isNuggets && (
+          {isNuggets && showRecentToggle && (
             <button
               type="button"
               disabled={disabled}
@@ -181,7 +243,7 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
                 </>
               )}
 
-              {tagOptions.length > 0 && (
+              {tagOptions.length > 0 && !enableGroupedTagPicker && (
                 <>
                   <label htmlFor="library-tag" className="sr-only">
                     Tag
@@ -201,6 +263,115 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
                     ))}
                   </select>
                 </>
+              )}
+              {tagOptions.length > 0 && enableGroupedTagPicker && (
+                <div className="relative w-full sm:w-auto">
+                  <button
+                    ref={tagAnchorRef}
+                    type="button"
+                    onClick={() => setIsTagPanelOpen((open) => !open)}
+                    className={`${TOOLBAR_SELECT} w-full min-w-[130px] justify-between text-left sm:w-auto`}
+                    aria-expanded={isTagPanelOpen}
+                    aria-haspopup="dialog"
+                    disabled={disabled}
+                  >
+                    {tagFilter ? `Tag: ${tagFilter}` : 'All tags'}
+                  </button>
+                  <DropdownPortal
+                    isOpen={isTagPanelOpen}
+                    anchorRef={tagAnchorRef}
+                    align="right"
+                    host="dropdown"
+                    offsetY={6}
+                    onClickOutside={() => setIsTagPanelOpen(false)}
+                    className="w-[320px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                  >
+                      <input
+                        type="text"
+                        value={tagSearch}
+                        onChange={(e) => setTagSearch(e.target.value)}
+                        placeholder="Search tags..."
+                        className={`${TOOLBAR_INPUT} h-8 w-full px-2.5 text-[12px]`}
+                      />
+                      <div className="mt-2 max-h-64 overflow-y-auto pr-1">
+                        {(
+                          [
+                            ['format', 'Content format'],
+                            ['domain', 'Domain'],
+                            ['subtopic', 'Subtopic'],
+                          ] as const
+                        ).map(([key, label]) =>
+                          groupedTags[key].length > 0 ? (
+                            <div key={key} className="mb-2">
+                              <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                {label}
+                              </p>
+                              <div className="flex flex-wrap gap-1">
+                                {groupedTags[key].map((tag) => {
+                                  const isActive = tagFilter === tag;
+                                  return (
+                                    <button
+                                      key={tag}
+                                      type="button"
+                                      onClick={() => {
+                                        onTagChange(tag);
+                                        setIsTagPanelOpen(false);
+                                      }}
+                                      className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                                        isActive
+                                          ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                                      }`}
+                                    >
+                                      {tag}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null,
+                        )}
+                        {tagOptions.length === 0 && (
+                          <p className="px-1 py-2 text-[11px] text-slate-500 dark:text-slate-400">No tags yet.</p>
+                        )}
+                        {showTaxonomyDebug && unmappedTags.length > 0 && (
+                          <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                            <button
+                              type="button"
+                              onClick={() => setShowUnmappedTags((value) => !value)}
+                              className="px-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                            >
+                              Not in taxonomy ({unmappedTags.length}) {showUnmappedTags ? 'Hide' : 'Show'}
+                            </button>
+                            {showUnmappedTags && (
+                              <div className="mt-1 flex flex-wrap gap-1 px-1">
+                                {unmappedTags.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-1 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onTagChange('');
+                            setTagSearch('');
+                          }}
+                          className="text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+                        >
+                          Clear tag
+                        </button>
+                      </div>
+                  </DropdownPortal>
+                </div>
               )}
             </>
           )}
