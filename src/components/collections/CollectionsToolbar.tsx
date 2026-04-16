@@ -1,13 +1,19 @@
 import React, { useRef } from 'react';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import {
+  TOOLBAR_BUTTON,
+  TOOLBAR_INPUT,
+  TOOLBAR_SELECT,
+  TOOLBAR_TOGGLE_GROUP,
+  TOOLBAR_TOGGLE_ITEM,
+} from '@/components/workspace/toolbarPrimitives';
+import {
   ArrowDown,
   ArrowUp,
   CheckSquare,
   ChevronDown,
   LayoutGrid,
   List,
-  Plus,
   Search,
   SlidersHorizontal,
   X,
@@ -31,7 +37,6 @@ interface CollectionsToolbarProps {
   canSelect: boolean;
   canCreate: boolean;
   onToggleSelection: () => void;
-  onOpenCreate: () => void;
   onOpenActions: () => void;
   onCloseActionMenu: () => void;
   isActionMenuOpen: boolean;
@@ -54,7 +59,6 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
   canSelect,
   canCreate,
   onToggleSelection,
-  onOpenCreate,
   onOpenActions,
   onCloseActionMenu,
   isActionMenuOpen,
@@ -65,8 +69,8 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
   const actionsAnchorRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-      <div className="relative flex-1 sm:min-w-[260px] sm:max-w-xl">
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div className="relative w-full md:max-w-[420px]">
         <Search
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
           size={15}
@@ -76,17 +80,17 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           placeholder="Search collections and sub-collections…"
           value={searchInputValue}
           onChange={(event) => onSearchInput(event.target.value)}
-          className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-[13px] text-slate-900 placeholder:text-slate-400 shadow-[0_1px_0_0_rgba(15,23,42,0.02)] transition-all duration-150 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+          className={`${TOOLBAR_INPUT} w-full pl-9 pr-3 text-[13px] focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:bg-slate-900`}
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+      <div className="flex items-center gap-1.5 overflow-x-auto md:justify-end">
         <button
           onClick={onOpenFiltersMobile}
           className={`relative inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 lg:hidden ${
             mobileFilterCount > 0
               ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
-              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+              : `${TOOLBAR_BUTTON} border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800`
           }`}
           aria-label={mobileFilterCount > 0 ? `Filters (${mobileFilterCount} active)` : 'Filters'}
         >
@@ -105,7 +109,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
             id="collections-sort"
             value={sortField}
             onChange={(event) => setSortField(event.target.value as SortField)}
-            className="h-full border-none bg-transparent pl-2.5 pr-1 text-[13px] font-medium text-slate-700 focus:outline-none dark:text-slate-200"
+            className={`${TOOLBAR_SELECT} h-full rounded-none border-none bg-transparent pl-2.5 pr-1 text-[13px] dark:bg-transparent`}
           >
             <option value="created">Created</option>
             <option value="updated">Updated</option>
@@ -123,10 +127,10 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           </button>
         </div>
 
-        <div className="hidden h-9 items-center rounded-lg border border-slate-200 bg-white p-0.5 sm:flex dark:border-slate-700 dark:bg-slate-900">
+        <div className={`${TOOLBAR_TOGGLE_GROUP} hidden h-9 p-0.5 lg:flex dark:bg-slate-900`}>
           <button
             onClick={() => setViewMode('table')}
-            className={`inline-flex h-7 w-8 items-center justify-center rounded-md transition-all ${
+            className={`${TOOLBAR_TOGGLE_ITEM} w-8 justify-center transition-all ${
               viewMode === 'table'
                 ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white'
@@ -138,7 +142,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           </button>
           <button
             onClick={() => setViewMode('grid')}
-            className={`inline-flex h-7 w-8 items-center justify-center rounded-md transition-all ${
+            className={`${TOOLBAR_TOGGLE_ITEM} w-8 justify-center transition-all ${
               viewMode === 'grid'
                 ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white'
@@ -156,7 +160,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
             className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
               selectionMode
                 ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/20 dark:text-primary-300'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                : `${TOOLBAR_BUTTON} border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800`
             }`}
           >
             <CheckSquare size={14} />
@@ -171,7 +175,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
               type="button"
               onClick={onOpenActions}
               disabled={selectedCount === 0}
-              className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] font-medium text-slate-700 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              className={`${TOOLBAR_BUTTON} h-9 gap-1 px-2.5 text-[13px]`}
               aria-expanded={isActionMenuOpen}
               aria-haspopup="menu"
             >
@@ -202,15 +206,6 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           </button>
         )}
 
-        {!selectionMode && canCreate && (
-          <button
-            onClick={onOpenCreate}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-[13px] font-semibold text-white transition-all hover:bg-slate-800 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
-          >
-            <Plus size={15} />
-            Create Collection
-          </button>
-        )}
       </div>
     </div>
   );

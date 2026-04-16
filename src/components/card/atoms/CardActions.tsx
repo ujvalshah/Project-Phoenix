@@ -258,7 +258,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
     });
   }
 
-  if (onAddToCollection) {
+  if (isAdmin && onAddToCollection) {
     menuItems.push({
       id: 'add-to-collection',
       label: 'Add to collection',

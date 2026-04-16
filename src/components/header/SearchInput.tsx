@@ -11,6 +11,15 @@ export interface SearchInputHandle {
 interface SearchInputProps {
   /** Initial value to seed the input (read once on mount) */
   initialValue?: string;
+  /**
+   * Monotonic counter — when it increments, the input mirrors `externalValue`
+   * into its local state. Lets callers (filter chip removal, clearSearch, URL
+   * hydration) deterministically reset the visible input without taking over
+   * every keystroke. Keystrokes still stay local to avoid render cascades.
+   */
+  resetSignal?: number;
+  /** External value applied when `resetSignal` changes (and on mount alongside initialValue). */
+  externalValue?: string;
   /** Called with the trimmed value after the debounce window (250ms) */
   onSearch: (value: string) => void;
   /** Called immediately on every change (for features like recent-search display) */
@@ -47,6 +56,8 @@ const DEBOUNCE_MS = 250;
  */
 export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputProps>(({
   initialValue = '',
+  resetSignal,
+  externalValue,
   onSearch,
   onChangeImmediate,
   onSubmit,
@@ -71,6 +82,9 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
   const [localValue, setLocalValue] = useState(initialValue);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Tracks the last value we emitted via onSearch so blur can't re-emit the
+  // same value (and so the empty-on-blur path can't overwrite a kept commit).
+  const lastEmittedRef = useRef(initialValue.trim());
 
   // Stable reference to the latest onSearch to avoid re-creating the debounce callback
   const onSearchRef = useRef(onSearch);
@@ -79,23 +93,50 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
   const onChangeImmediateRef = useRef(onChangeImmediate);
   onChangeImmediateRef.current = onChangeImmediate;
 
+  // External reset: when the parent bumps `resetSignal`, mirror `externalValue`
+  // into local state and cancel any in-flight debounce. This is how filter
+  // chip removal / clearSearch / clearAll make the visible input actually clear.
+  const prevResetSignalRef = useRef(resetSignal);
+  useEffect(() => {
+    if (resetSignal === undefined) return;
+    if (prevResetSignalRef.current === resetSignal) return;
+    prevResetSignalRef.current = resetSignal;
+    const next = externalValue ?? '';
+    setLocalValue(next);
+    lastEmittedRef.current = next.trim();
+    clearTimeout(debounceRef.current);
+  }, [resetSignal, externalValue]);
+
   useImperativeHandle(ref, () => ({
     clear: () => {
       setLocalValue('');
       clearTimeout(debounceRef.current);
-      onSearchRef.current('');
+      if (lastEmittedRef.current !== '') {
+        lastEmittedRef.current = '';
+        onSearchRef.current('');
+      }
     },
     focus: () => inputRef.current?.focus(),
     setValue: (v: string) => {
       setLocalValue(v);
       clearTimeout(debounceRef.current);
-      onSearchRef.current(v.trim());
+      const trimmed = v.trim();
+      if (lastEmittedRef.current !== trimmed) {
+        lastEmittedRef.current = trimmed;
+        onSearchRef.current(trimmed);
+      }
     },
     getValue: () => localValue,
   }));
 
   // Cleanup debounce timer on unmount
   useEffect(() => () => clearTimeout(debounceRef.current), []);
+
+  const emitOnSearch = (trimmed: string) => {
+    if (lastEmittedRef.current === trimmed) return;
+    lastEmittedRef.current = trimmed;
+    onSearchRef.current(trimmed);
+  };
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.trimStart();
@@ -104,14 +145,14 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
 
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      onSearchRef.current(raw.trim());
+      emitOnSearch(raw.trim());
     }, DEBOUNCE_MS);
   }, []);
 
   const handleClear = useCallback(() => {
     setLocalValue('');
     clearTimeout(debounceRef.current);
-    onSearchRef.current('');
+    emitOnSearch('');
     inputRef.current?.focus();
   }, []);
 
@@ -121,6 +162,9 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
     if (e.key === 'Enter') {
       clearTimeout(debounceRef.current);
       const trimmed = localValue.trim();
+      // Force emit on explicit submit even if value matches last emitted,
+      // so parents treat Enter as an intentional commit gesture.
+      lastEmittedRef.current = trimmed;
       onSearchRef.current(trimmed);
       onSubmit?.(trimmed);
     }
@@ -133,7 +177,10 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
       setLocalValue(trimmed);
     }
     clearTimeout(debounceRef.current);
-    onSearchRef.current(trimmed);
+    // Only emit on blur if the trimmed value is meaningfully different from
+    // what we last emitted. Prevents blur from silently re-committing an
+    // empty value after a clear, or re-firing the last debounced value.
+    emitOnSearch(trimmed);
   }, [localValue, onInputBlur]);
 
   return (

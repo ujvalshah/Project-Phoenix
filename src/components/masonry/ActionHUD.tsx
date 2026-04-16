@@ -7,7 +7,7 @@ type SourceLinkLabel = 'Link' | 'Source';
 
 interface ActionHUDProps {
   article: Article;
-  onAddToCollection: (e: React.MouseEvent) => void;
+  onAddToCollection?: (e: React.MouseEvent) => void;
   onMore: (e: React.MouseEvent) => void;
   sourceLink?: { url: string; label: SourceLinkLabel } | null;
   showMenuButton?: boolean;
@@ -107,19 +107,21 @@ export const ActionHUD: React.FC<ActionHUDProps> = ({
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddToCollection(e);
-                    onMenuClose();
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-                  aria-label="Add to collection"
-                >
-                  <FolderPlus size={12} /> Add to collection
-                </button>
+                {isAdmin && onAddToCollection && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddToCollection(e);
+                      onMenuClose();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                    aria-label="Add to collection"
+                  >
+                    <FolderPlus size={12} /> Add to collection
+                  </button>
+                )}
                 {onReport && (
                   <button
                     type="button"

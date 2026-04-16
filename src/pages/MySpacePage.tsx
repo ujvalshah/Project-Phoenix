@@ -18,6 +18,7 @@ import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
 import { MetricsStrip, type LibraryMetric } from '@/components/workspace/MetricsStrip';
 import { ContentTabs, type ContentTabItem } from '@/components/workspace/ContentTabs';
+import { Z_INDEX } from '@/constants/zIndex';
 import {
   ContentToolbar,
   type CollectionContentSort,
@@ -31,6 +32,7 @@ import {
   getWorkspaceDisplayName,
   type ProfilePageUser,
 } from '@/components/workspace/workspaceUserDisplay';
+import { WorkspaceTopSection } from '@/components/workspace/WorkspaceTopSection';
 
 interface MySpacePageProps {
   currentUserId: string;
@@ -661,200 +663,203 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     showNuggets && infiniteArticlesQuery.isLoading && infiniteArticles.length === 0;
 
   return (
-    <div className="min-h-screen bg-slate-100/70 pb-24 font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-50">
+    <div className="min-h-screen bg-slate-50 pb-24 font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-50">
       <HeaderSpacer />
-      <main className="mx-auto w-full max-w-[1320px] px-5 pb-20 pt-6 sm:px-6">
+      <main className="mx-auto w-full max-w-[1280px] px-4 pb-20 pt-6 sm:px-6 lg:px-8">
         <div className="grid grid-cols-12 gap-x-6">
-          <div className="col-span-12">
-            <WorkspaceHeader
-              title="Library"
-              tagline={pageTagline}
-              isOwner={isOwner}
-              selectionMode={selectionMode}
-              onToggleSelect={toggleSelectionMode}
-              user={profileUser}
-            />
-          </div>
-
-          <div className="col-span-12 mt-4">
-            <MetricsStrip metrics={libraryMetrics} />
-          </div>
-
-          <section className="col-span-12 mt-6" aria-labelledby="library-main-heading">
+          <section className="col-span-12" aria-labelledby="library-main-heading">
             <h2 id="library-main-heading" className="sr-only">
               Library content
             </h2>
 
-            <div
-              className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${
-                selectionMode ? 'pointer-events-none opacity-40' : ''
-              }`}
-            >
-              <ContentTabs
-                tabs={contentTabs}
-                activeId={activeTab}
-                onChange={(id) => setActiveTab(id as MainTab)}
-                ariaLabel="Library sections"
-              />
-                {isOwner && currentList.length > 0 && selectionMode && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 dark:border-slate-800 dark:bg-slate-950/60">
-                    <span className="px-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {selectedIds.length} selected
-                    </span>
-                    <div className="relative inline-flex">
-                      <button
-                        ref={mySpaceActionsAnchorRef}
-                        type="button"
-                        onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
-                        disabled={selectedIds.length === 0 || isUpdatingVisibility}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-slate-900 px-3 text-xs font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-                        aria-expanded={isActionMenuOpen}
-                        aria-haspopup="menu"
-                      >
-                        {isUpdatingVisibility ? (
-                          <>
-                            <Loader2 size={14} className="animate-spin" /> Updating…
-                          </>
-                        ) : (
-                          <>
-                            Actions <ChevronDown size={14} />
-                          </>
-                        )}
-                      </button>
-                      <DropdownPortal
-                        isOpen={isActionMenuOpen}
-                        anchorRef={mySpaceActionsAnchorRef}
-                        align="right"
-                        host="dropdown"
-                        offsetY={4}
-                        onClickOutside={() => setIsActionMenuOpen(false)}
-                        className="w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
-                      >
-                        <div role="menu">
-                          {showNuggets && (
-                            <>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  void handleBulkVisibility('public');
-                                  setIsActionMenuOpen(false);
-                                }}
-                                disabled={isUpdatingVisibility}
-                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                <Globe size={14} /> Make public
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  void handleBulkVisibility('private');
-                                  setIsActionMenuOpen(false);
-                                }}
-                                disabled={isUpdatingVisibility}
-                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                <Lock size={14} /> Make draft
-                              </button>
-                              {isAdmin && (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setShowAddToCollection(true);
-                                  setIsActionMenuOpen(false);
-                                }}
-                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                <FolderPlus size={14} /> Add to collection
-                              </button>
+            <div className="sticky top-14 lg:top-16" style={{ zIndex: Z_INDEX.STICKY_SUBHEADER }}>
+              <WorkspaceTopSection
+                header={
+                  <div className="flex flex-col gap-3">
+                    <WorkspaceHeader
+                      title="Library"
+                      tagline={pageTagline}
+                      isOwner={isOwner}
+                      selectionMode={selectionMode}
+                      onToggleSelect={toggleSelectionMode}
+                      user={profileUser}
+                    />
+                    <MetricsStrip metrics={libraryMetrics} />
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className={selectionMode ? 'pointer-events-none opacity-50' : ''}>
+                        <ContentTabs
+                          tabs={contentTabs}
+                          activeId={activeTab}
+                          onChange={(id) => setActiveTab(id as MainTab)}
+                          ariaLabel="Library sections"
+                        />
+                      </div>
+                      {isOwner && currentList.length > 0 && selectionMode && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 dark:border-slate-800 dark:bg-slate-950/60">
+                          <span className="px-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+                            {selectedIds.length} selected
+                          </span>
+                          <div className="relative inline-flex">
+                            <button
+                              ref={mySpaceActionsAnchorRef}
+                              type="button"
+                              onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
+                              disabled={selectedIds.length === 0 || isUpdatingVisibility}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-slate-900 px-3 text-xs font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+                              aria-expanded={isActionMenuOpen}
+                              aria-haspopup="menu"
+                            >
+                              {isUpdatingVisibility ? (
+                                <>
+                                  <Loader2 size={14} className="animate-spin" /> Updating…
+                                </>
+                              ) : (
+                                <>
+                                  Actions <ChevronDown size={14} />
+                                </>
                               )}
-                              <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
-                            </>
-                          )}
-                          {activeTab === 'collections' && (
-                            <>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  void handleBulkFollow('follow');
-                                  setIsActionMenuOpen(false);
-                                }}
-                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                <Plus size={14} /> Follow
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  void handleBulkFollow('unfollow');
-                                  setIsActionMenuOpen(false);
-                                }}
-                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                <X size={14} /> Unfollow
-                              </button>
-                              <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
-                            </>
-                          )}
+                            </button>
+                            <DropdownPortal
+                              isOpen={isActionMenuOpen}
+                              anchorRef={mySpaceActionsAnchorRef}
+                              align="right"
+                              host="dropdown"
+                              offsetY={4}
+                              onClickOutside={() => setIsActionMenuOpen(false)}
+                              className="w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                            >
+                              <div role="menu">
+                                {showNuggets && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        void handleBulkVisibility('public');
+                                        setIsActionMenuOpen(false);
+                                      }}
+                                      disabled={isUpdatingVisibility}
+                                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    >
+                                      <Globe size={14} /> Make public
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        void handleBulkVisibility('private');
+                                        setIsActionMenuOpen(false);
+                                      }}
+                                      disabled={isUpdatingVisibility}
+                                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    >
+                                      <Lock size={14} /> Make draft
+                                    </button>
+                                    {isAdmin && (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setShowAddToCollection(true);
+                                          setIsActionMenuOpen(false);
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                      >
+                                        <FolderPlus size={14} /> Add to collection
+                                      </button>
+                                    )}
+                                    <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
+                                  </>
+                                )}
+                                {activeTab === 'collections' && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        void handleBulkFollow('follow');
+                                        setIsActionMenuOpen(false);
+                                      }}
+                                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    >
+                                      <Plus size={14} /> Follow
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        void handleBulkFollow('unfollow');
+                                        setIsActionMenuOpen(false);
+                                      }}
+                                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    >
+                                      <X size={14} /> Unfollow
+                                    </button>
+                                    <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
+                                  </>
+                                )}
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setShowDeleteConfirm(true);
+                                    setIsActionMenuOpen(false);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                >
+                                  <Trash2 size={14} /> Delete…
+                                </button>
+                              </div>
+                            </DropdownPortal>
+                          </div>
                           <button
                             type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setShowDeleteConfirm(true);
-                              setIsActionMenuOpen(false);
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                            onClick={toggleSelectionMode}
+                            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                            title="Exit selection"
                           >
-                            <Trash2 size={14} /> Delete…
+                            <X size={18} />
                           </button>
                         </div>
-                      </DropdownPortal>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={toggleSelectionMode}
-                      className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                      title="Exit selection"
-                    >
-                      <X size={18} />
-                    </button>
                   </div>
-                )}
-              </div>
-
-              <ContentToolbar
-                mode={activeTab === 'collections' ? 'collections' : 'nuggets'}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                sort={sort}
-                onSortChange={setSort}
-                collectionSort={collectionSort}
-                onCollectionSortChange={setCollectionSort}
-                sourceTypeFilter={sourceTypeFilter}
-                onSourceTypeChange={setSourceTypeFilter}
-                sourceTypeOptions={sourceTypeOptions}
-                tagFilter={tagFilter}
-                onTagChange={setTagFilter}
-                tagOptions={tagOptions}
-                datePreset={datePreset}
-                onDatePresetChange={setDatePreset}
-                recentUpdatesMode={recentUpdatesMode}
-                onRecentUpdatesModeChange={setRecentUpdatesMode}
-                libraryView={contentView}
-                onLibraryViewChange={setContentView}
-                showLibraryViewToggle={showNuggets}
-                disabled={activeTab !== 'collections' && !showNuggets}
+                }
+                toolbar={
+                  <div className={selectionMode ? 'pointer-events-none opacity-50' : ''}>
+                    <ContentToolbar
+                      mode={activeTab === 'collections' ? 'collections' : 'nuggets'}
+                      searchQuery={searchQuery}
+                      onSearchChange={setSearchQuery}
+                      sort={sort}
+                      onSortChange={setSort}
+                      collectionSort={collectionSort}
+                      onCollectionSortChange={setCollectionSort}
+                      sourceTypeFilter={sourceTypeFilter}
+                      onSourceTypeChange={setSourceTypeFilter}
+                      sourceTypeOptions={sourceTypeOptions}
+                      tagFilter={tagFilter}
+                      onTagChange={setTagFilter}
+                      tagOptions={tagOptions}
+                      datePreset={datePreset}
+                      onDatePresetChange={setDatePreset}
+                      recentUpdatesMode={recentUpdatesMode}
+                      onRecentUpdatesModeChange={setRecentUpdatesMode}
+                      libraryView={contentView}
+                      onLibraryViewChange={setContentView}
+                      showLibraryViewToggle={showNuggets}
+                      disabled={selectionMode || (activeTab !== 'collections' && !showNuggets)}
+                    />
+                  </div>
+                }
               />
+            </div>
 
               <div
                 id={`library-panel-${activeTab}`}
                 role="tabpanel"
                 aria-labelledby={`library-tab-${activeTab}`}
-                className="mt-5"
+                className="mt-4"
               >
                 {activeTab === 'collections' ? (
                   <>
@@ -867,7 +872,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                         </p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                         {filteredCollections.map((col) => (
                           <CollectionWorkspaceCard
                             key={col.id}
@@ -883,7 +888,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                     )}
                   </>
                 ) : nuggetsInitialLoading ? (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {Array.from({ length: 6 }).map((_, i) => (
                       <div
                         key={`sk-${i}`}
@@ -908,7 +913,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                     </p>
                   </div>
                 ) : contentView === 'grid' ? (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {filteredNuggets.map((item) => (
                       <NuggetGridCard
                         key={item.id}
@@ -928,7 +933,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-2.5">
                     {filteredNuggets.map((item) => (
                       <NuggetListRow
                         key={item.id}

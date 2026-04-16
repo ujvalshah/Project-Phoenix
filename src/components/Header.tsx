@@ -105,6 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
     (s) => ({
       searchQuery: s.searchQuery,
       searchInputValue: s.searchInputValue,
+      searchInputResetSignal: s.searchInputResetSignal,
       setSearchInput: s.setSearchInput,
       commitSearch: s.commitSearch,
       sortOrder: s.sortOrder,
@@ -119,6 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
   const {
     searchQuery,
     searchInputValue,
+    searchInputResetSignal,
     setSearchInput: setSearchDraft,
     commitSearch,
     sortOrder,
@@ -322,6 +324,15 @@ export const Header: React.FC<HeaderProps> = ({
       setIsMobileSearchOpen(false);
     }
   }, [saveRecentSearch, commitSearch, setSearchDraft, searchQuery]);
+
+  const handleClearSearch = useCallback(() => {
+    // Clear the visible input (SearchInput local state) and ensure both draft + commit reset.
+    desktopSearchRef.current?.clear();
+    setSearchDraft('');
+    commitSearch('');
+    setActiveSuggestionIndex(-1);
+    setIsDesktopSearchFocused(false);
+  }, [setSearchDraft, commitSearch]);
 
   const handleDesktopSuggestionSelect = useCallback((index: number, source: 'mouse' | 'keyboard') => {
     const item = desktopSuggestionItems[index];
@@ -605,6 +616,8 @@ export const Header: React.FC<HeaderProps> = ({
               <SearchInput
                 ref={desktopSearchRef}
                 initialValue={searchInputValue}
+                resetSignal={searchInputResetSignal}
+                externalValue={searchInputValue}
                 onSearch={handleDebouncedSearch}
                 onChangeImmediate={setSearchDraft}
                 onSubmit={(q) => handleSearchSubmit(q, false)}
@@ -712,7 +725,10 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleSearchSubmit(searchInputValue, false);
+                    // Read the live input value (not the debounced context value),
+                    // otherwise a click during the 250ms debounce window commits a stale value.
+                    const liveValue = desktopSearchRef.current?.getValue() ?? searchInputValue;
+                    handleSearchSubmit(liveValue, false);
                     setIsDesktopSearchFocused(false);
                     setActiveSuggestionIndex(-1);
                   }}
@@ -722,6 +738,20 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <Search size={16} />
                 </button>
+                {(searchInputValue.trim().length > 0 || searchQuery.trim().length > 0) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleClearSearch();
+                    }}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-1 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300 dark:focus-visible:ring-offset-slate-900"
+                    aria-label="Clear search"
+                    title="Clear"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
                 <button
                   ref={filterButtonRef}
                   type="button"
@@ -1313,6 +1343,7 @@ export const Header: React.FC<HeaderProps> = ({
           setIsMobileSearchOpen(false);
         }}
         initialValue={searchInputValue}
+        resetSignal={searchInputResetSignal}
         onDraftChange={handleDebouncedSearch}
         onCommitSearch={(q) => handleSearchSubmit(q, true)}
       />

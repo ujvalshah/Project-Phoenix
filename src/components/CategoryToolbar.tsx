@@ -1,5 +1,5 @@
 import React, { useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Check } from 'lucide-react';
 import { TaxonomyTag } from '@/types';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 
@@ -193,13 +193,13 @@ const SkeletonPills: React.FC<{ count: number }> = ({ count }) => (
 
 const ACCENT_PILL = {
   blue: {
-    active: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-700 shadow-sm',
+    active: 'bg-blue-100 text-blue-900 dark:bg-blue-900/45 dark:text-blue-100 border-blue-400/80 dark:border-blue-500/70 shadow-sm ring-1 ring-inset ring-blue-300/60 dark:ring-blue-500/40',
   },
   emerald: {
-    active: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700 shadow-sm',
+    active: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/45 dark:text-emerald-100 border-emerald-400/80 dark:border-emerald-500/70 shadow-sm ring-1 ring-inset ring-emerald-300/60 dark:ring-emerald-500/40',
   },
   primary: {
-    active: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 border-primary-200 dark:border-primary-700 shadow-sm',
+    active: 'bg-primary-100 text-primary-900 dark:bg-primary-900/45 dark:text-primary-100 border-primary-400/80 dark:border-primary-500/70 shadow-sm ring-1 ring-inset ring-primary-300/60 dark:ring-primary-500/40',
   },
 } as const;
 
@@ -227,10 +227,11 @@ const CategoryPill: React.FC<{
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1
       ${isActive
         ? ACCENT_PILL[accentColor].active
-        : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+        : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
       }
     `}
   >
+    {isActive && <Check size={12} strokeWidth={2.5} className="mr-0.5 shrink-0" aria-hidden />}
     {label}
   </button>
 );

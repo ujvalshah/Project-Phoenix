@@ -252,9 +252,13 @@ export const getArticles = async (req: Request, res: Response) => {
         // Use $text index for efficient full-text search (word-level matching)
         const textCondition: Record<string, unknown> = { $text: { $search: trimmedQ } };
         const searchConditions: Record<string, unknown>[] = [textCondition];
-        // In relevance mode, keep search conditions strictly text-based so
-        // textScore sorting remains deterministic and stable.
-        if (!useRelevanceMode && matchingTags.length > 0) {
+        // Recall fix: include tag matches in BOTH modes. Previously we skipped
+        // tag matches in relevance mode to keep textScore "stable"; the side
+        // effect was a hard recall cliff at 3 chars (articles tagged "AI" but
+        // whose body never mentions "ai" disappeared from results).
+        // Tag-only hits have textScore 0 and naturally sort below text hits,
+        // then fall to the publishedAt tiebreaker — which matches user intent.
+        if (matchingTags.length > 0) {
           searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
         }
 

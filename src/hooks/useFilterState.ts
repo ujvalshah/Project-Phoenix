@@ -132,6 +132,13 @@ export interface UseFilterStateReturn {
   // Current state
   searchQuery: string;           // committed query — use for API calls
   searchInputValue: string;      // draft value — use for <input> value
+  /**
+   * Monotonic counter bumped on any programmatic reset of the search input
+   * (clearSearch, clearAll, filter-chip removal that strips the query).
+   * SearchInput consumes this to mirror `searchInputValue` into its local
+   * state so the visible field stays in sync with committed state.
+   */
+  searchInputResetSignal: number;
   selectedCategories: string[];
   selectedTag: string | null;
   sortOrder: SortOrder;
@@ -243,6 +250,7 @@ export function useFilterState(): UseFilterStateReturn {
   const [domainTagIds, setDomainTagIds] = useState<string[]>(initial.domainTagIds);
   const [subtopicTagIds, setSubtopicTagIds] = useState<string[]>(initial.subtopicTagIds);
   const [contentStream, setContentStream] = useState<ContentStream>(initial.contentStream);
+  const [searchInputResetSignal, setSearchInputResetSignal] = useState(0);
 
   const setSearchInput = useCallback((value: string) => {
     setSearchInputValueRaw(value.trimStart());
@@ -377,11 +385,13 @@ export function useFilterState(): UseFilterStateReturn {
     setDomainTagIds([]);
     setSubtopicTagIds([]);
     setContentStream('standard');
+    setSearchInputResetSignal((n) => n + 1);
   }, []);
 
   const clearSearch = useCallback(() => {
     setSearchInputValueRaw('');
     setCommittedQuery('');
+    setSearchInputResetSignal((n) => n + 1);
   }, []);
 
   const clearCategories = useCallback(() => setCategories([]), []);
@@ -411,6 +421,7 @@ export function useFilterState(): UseFilterStateReturn {
   return {
     searchQuery: committedQuery,
     searchInputValue,
+    searchInputResetSignal,
     selectedCategories: categories,
     selectedTag: tag,
     sortOrder: sort,

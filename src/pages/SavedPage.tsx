@@ -16,9 +16,9 @@
  * ============================================================================
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bookmark, Plus, Loader2, X, Check } from 'lucide-react';
+import { Bookmark, Check, Columns, LayoutGrid, Loader2, Plus, Search, X } from 'lucide-react';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { ArticleModal } from '@/components/ArticleModal';
 import { PageStack } from '@/components/layouts/PageStack';
@@ -32,6 +32,17 @@ import {
 } from '@/hooks/useBookmarks';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 import type { Article } from '@/types';
+import { SearchInput } from '@/components/header/SearchInput';
+import type { BookmarkFilters } from '@/services/bookmarkService';
+import { WorkspaceTopSection } from '@/components/workspace/WorkspaceTopSection';
+import { MetricsStrip, type LibraryMetric } from '@/components/workspace/MetricsStrip';
+import {
+  TOOLBAR_BUTTON,
+  TOOLBAR_INPUT,
+  TOOLBAR_SELECT,
+  TOOLBAR_TOGGLE_GROUP,
+  TOOLBAR_TOGGLE_ITEM,
+} from '@/components/workspace/toolbarPrimitives';
 
 /**
  * FolderFilterBar — private bookmark folders only (not editorial collections).
@@ -73,26 +84,31 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
 
   return (
     <div
-      className={`bg-white dark:bg-slate-950 ${LAYOUT_CLASSES.CATEGORY_BAR_HEIGHT} border-b border-gray-200 dark:border-slate-700`}
+      className={`bg-white/90 dark:bg-slate-950/70 ${LAYOUT_CLASSES.CATEGORY_BAR_HEIGHT} border-b border-gray-200/80 dark:border-slate-800/70 backdrop-blur-md`}
       aria-label="Bookmark folders"
     >
-      <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex items-center py-1`}>
-        <div
-          className="flex flex-nowrap gap-1.5 overflow-x-auto overflow-y-hidden items-center scroll-smooth"
-          style={{
-            scrollbarWidth: 'thin',
-            WebkitOverflowScrolling: 'touch',
-            minHeight: 'fit-content',
-          }}
-        >
+      <div className={`${LAYOUT_CLASSES.TOOLBAR_PADDING} flex h-full items-center`}>
+        <div className="relative min-w-0 flex-1">
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-white/95 to-transparent dark:from-slate-950/70"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-white/95 to-transparent dark:from-slate-950/70"
+            aria-hidden="true"
+          />
+          <div
+            className="no-scrollbar-visual flex flex-nowrap items-center gap-1 overflow-x-auto scroll-smooth py-1 [scroll-padding-inline:0.75rem]"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
           {/* "All" button */}
           <button
             onClick={() => onSelect(null)}
             className={`
-              whitespace-nowrap rounded-full px-2.5 py-1 text-[12px] leading-snug font-medium transition-all duration-150 shrink-0
+              whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] leading-snug font-medium transition-all duration-150 shrink-0
               ${isAllActive
-                ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-                : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                ? 'bg-gray-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900 dark:shadow-none'
+                : 'bg-gray-100/80 text-gray-700 hover:bg-gray-200/70 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:bg-slate-900'
               }
             `}
             aria-pressed={isAllActive}
@@ -116,10 +132,10 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
                 key={collection.id}
                 onClick={() => onSelect(collection.id)}
                 className={`
-                  whitespace-nowrap rounded-full px-2.5 py-1 text-[12px] leading-snug font-medium transition-all duration-150 shrink-0
+                  whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] leading-snug font-medium transition-all duration-150 shrink-0
                   ${isActive
-                    ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                    ? 'bg-gray-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900 dark:shadow-none'
+                    : 'bg-gray-100/80 text-gray-700 hover:bg-gray-200/70 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:bg-slate-900'
                   }
                 `}
                 aria-pressed={isActive}
@@ -149,12 +165,12 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
                 }}
                 placeholder="Folder name"
                 maxLength={50}
-                className="w-28 px-2 py-1 text-[12px] rounded-full border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-28 px-2 py-1 text-[12px] rounded-md border border-gray-300/80 dark:border-slate-700 bg-white/90 dark:bg-slate-950/40 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/60"
               />
               <button
                 onClick={handleCreate}
                 disabled={!newName.trim() || isCreating}
-                className="p-1 rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+                className="p-1 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
               >
                 {isCreating ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
               </button>
@@ -163,7 +179,7 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
                   setShowCreateInput(false);
                   setNewName('');
                 }}
-                className="p-1 rounded-full bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-slate-600"
+                className="p-1 rounded-md bg-gray-100/90 dark:bg-slate-900/60 text-gray-600 dark:text-slate-300 hover:bg-gray-200/80 dark:hover:bg-slate-900"
               >
                 <X size={12} />
               </button>
@@ -171,7 +187,7 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
           ) : (
             <button
               onClick={() => setShowCreateInput(true)}
-              className="whitespace-nowrap rounded-full px-2 py-1 text-[12px] leading-snug font-medium transition-all duration-150 shrink-0 bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 flex items-center gap-1"
+              className="whitespace-nowrap rounded-md px-2 py-1 text-[12px] leading-snug font-medium transition-all duration-150 shrink-0 bg-gray-100/80 text-gray-600 hover:bg-gray-200/70 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900 flex items-center gap-1"
             >
               <Plus size={12} />
               <span className="hidden sm:inline">New</span>
@@ -180,8 +196,11 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
         </div>
       </div>
     </div>
+    </div>
   );
 };
+
+type BookmarkViewMode = 'grid' | 'masonry';
 
 /**
  * SavedPage (Bookmarks Page)
@@ -194,6 +213,12 @@ export const SavedPage: React.FC = () => {
   // State
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+  const [viewMode, setViewMode] = useState<BookmarkViewMode>('grid');
+  const [sort, setSort] = useState<NonNullable<BookmarkFilters['sort']>>('lastAccessedAt');
+  const [order, setOrder] = useState<NonNullable<BookmarkFilters['order']>>('desc');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [searchCommitted, setSearchCommitted] = useState('');
+  const [searchResetSignal, setSearchResetSignal] = useState(0);
 
   // Queries
   const { data: collections = [], isLoading: collectionsLoading } = useBookmarkCollections();
@@ -208,7 +233,10 @@ export const SavedPage: React.FC = () => {
     refetch: refetchBookmarks
   } = useInfiniteBookmarks({
     collectionId: activeCollectionId || undefined,
-    limit: 25
+    limit: 25,
+    sort,
+    order,
+    q: searchCommitted || undefined,
   });
 
   // Mutations
@@ -226,6 +254,27 @@ export const SavedPage: React.FC = () => {
       .map(bookmark => bookmark.article as Article);
   }, [bookmarks]);
 
+  const activeCollectionName = useMemo(() => {
+    if (!activeCollectionId) return 'All saved nuggets';
+    return collections.find((c) => c.id === activeCollectionId)?.name ?? 'Folder';
+  }, [activeCollectionId, collections]);
+
+  const activeCollectionCount = useMemo(() => {
+    if (!activeCollectionId) return bookmarksData?.pages?.[0]?.meta?.total ?? 0;
+    const col = collections.find((c) => c.id === activeCollectionId);
+    return col?.bookmarkCount ?? (bookmarksData?.pages?.[0]?.meta?.total ?? 0);
+  }, [activeCollectionId, bookmarksData?.pages, collections]);
+
+  const defaultCollectionName = useMemo(() => {
+    const def = collections.find((c) => c.isDefault);
+    return def?.name || 'Saved';
+  }, [collections]);
+
+  const bookmarkMetrics: LibraryMetric[] = useMemo(() => [
+    { id: 'items', label: 'Items', value: activeCollectionCount },
+    { id: 'folders', label: 'Folders', value: collections.length },
+  ], [activeCollectionCount, collections.length]);
+
   // Handlers
   const handleCreateCollection = async (name: string) => {
     try {
@@ -242,6 +291,12 @@ export const SavedPage: React.FC = () => {
 
   const handleArticleClick = (article: Article) => {
     setSelectedArticle(article);
+  };
+
+  const handleCategoryClick = (category: string) => {
+    const params = new URLSearchParams();
+    params.append('cat', category);
+    navigate(`/?${params.toString()}`);
   };
 
   // Redirect if not logged in
@@ -280,21 +335,134 @@ export const SavedPage: React.FC = () => {
           />
         }
         mainContent={
-          <div className="max-w-[1800px] mx-auto px-4 lg:px-6 pb-4">
-            {/* Page Title - Only shown on bookmarks page */}
-            <div className="py-4">
-              <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-                {activeCollectionId
-                  ? collections.find(c => c.id === activeCollectionId)?.name || 'Folder'
-                  : 'All saved nuggets'
+          <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pb-6">
+            <div className="sticky top-14 lg:top-16" style={{ zIndex: 20 }}>
+              <WorkspaceTopSection
+                header={
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-3 sm:gap-2 md:flex-row md:items-end md:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <h1 className="truncate text-[1.35rem] font-semibold leading-tight tracking-[-0.02em] text-slate-900 dark:text-slate-50 sm:text-[1.55rem]">
+                          {activeCollectionName}
+                        </h1>
+                        <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
+                          {activeCollectionId
+                            ? `Items in this private folder. ${defaultCollectionName} is your default bucket.`
+                            : `Everything you saved across private folders. ${defaultCollectionName} is the default bucket — custom folders are optional.`
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <MetricsStrip metrics={bookmarkMetrics} />
+                  </div>
                 }
-              </h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {activeCollectionId
-                  ? 'Items in this private folder (Saved can also list the same nugget)'
-                  : 'Everything you saved, across all private folders. The Saved folder is your default bucket — custom folders are optional.'
+                toolbar={
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="relative w-full md:max-w-[420px]">
+                      <SearchInput
+                        initialValue={searchDraft}
+                        externalValue={searchDraft}
+                        resetSignal={searchResetSignal}
+                        onSearch={(v) => setSearchDraft(v)}
+                        onSubmit={(q) => setSearchCommitted(q)}
+                        placeholder="Search saved nuggets…"
+                        className="w-full"
+                        inputClassName={`${TOOLBAR_INPUT} w-full pl-9 pr-10 text-[13px] dark:bg-slate-900`}
+                        iconSize={15}
+                        ariaLabel="Search bookmarks"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1.5 overflow-x-auto md:justify-end">
+                      <label htmlFor="bookmark-sort" className="sr-only">
+                        Sort bookmarks
+                      </label>
+                      <select
+                        id="bookmark-sort"
+                        value={`${sort}:${order}`}
+                        onChange={(e) => {
+                          const [nextSort, nextOrder] = e.target.value.split(':');
+                          setSort(nextSort as NonNullable<BookmarkFilters['sort']>);
+                          setOrder(nextOrder as NonNullable<BookmarkFilters['order']>);
+                        }}
+                        className={`${TOOLBAR_SELECT} h-9 px-2.5 text-[13px]`}
+                        aria-label="Sort"
+                      >
+                        <option value="lastAccessedAt:desc">Last opened · Newest</option>
+                        <option value="lastAccessedAt:asc">Last opened · Oldest</option>
+                        <option value="createdAt:desc">Saved · Newest</option>
+                        <option value="createdAt:asc">Saved · Oldest</option>
+                      </select>
+
+                      <div
+                        className={`${TOOLBAR_TOGGLE_GROUP} hidden h-9 p-0.5 lg:flex dark:bg-slate-900`}
+                        role="radiogroup"
+                        aria-label="Layout"
+                      >
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={viewMode === 'grid'}
+                          onClick={() => setViewMode('grid')}
+                          className={[
+                            TOOLBAR_TOGGLE_ITEM,
+                            'h-7 px-2 text-[12px]',
+                            viewMode === 'grid'
+                              ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
+                              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100',
+                          ].join(' ')}
+                          title="Grid"
+                        >
+                          <LayoutGrid className="h-3.5 w-3.5" aria-hidden />
+                          <span className="hidden sm:inline">Grid</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={viewMode === 'masonry'}
+                          onClick={() => setViewMode('masonry')}
+                          className={[
+                            TOOLBAR_TOGGLE_ITEM,
+                            'h-7 px-2 text-[12px]',
+                            viewMode === 'masonry'
+                              ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
+                              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100',
+                          ].join(' ')}
+                          title="Masonry"
+                        >
+                          <Columns className="h-3.5 w-3.5" aria-hidden />
+                          <span className="hidden sm:inline">Masonry</span>
+                        </button>
+                      </div>
+
+                      {(searchDraft.trim().length > 0 || searchCommitted.trim().length > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchDraft('');
+                            setSearchCommitted('');
+                            setSearchResetSignal((n) => n + 1);
+                          }}
+                          className={`${TOOLBAR_BUTTON} text-[13px]`}
+                          aria-label="Clear search"
+                          title="Clear search"
+                        >
+                          <X className="h-3.5 w-3.5 text-slate-400" aria-hidden />
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 }
-              </p>
+                footer={
+                  searchCommitted.trim() ? (
+                    <div className="flex items-center gap-2 text-[12px] text-slate-500 dark:text-slate-400">
+                      <Search className="h-3.5 w-3.5" aria-hidden />
+                      <span>Showing results for “{searchCommitted.trim()}”</span>
+                    </div>
+                  ) : undefined
+                }
+              />
             </div>
 
             {isLoading ? (
@@ -314,10 +482,12 @@ export const SavedPage: React.FC = () => {
             ) : (
               <ArticleGrid
                 articles={articles}
-                viewMode="grid"
+                viewMode={viewMode}
                 isLoading={false}
                 onArticleClick={handleArticleClick}
+                onCategoryClick={handleCategoryClick}
                 currentUserId={currentUserId}
+                searchHighlightQuery={searchCommitted}
                 // Infinite Scroll Props
                 hasNextPage={hasNextPage}
                 isFetchingNextPage={isFetchingNextPage}

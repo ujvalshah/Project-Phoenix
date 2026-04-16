@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Check, X, PanelLeftClose } from 'lucide-react';
+import { Search, Check, X, PanelLeftClose, Layers3, FolderKanban } from 'lucide-react';
 import { useFeaturedCollections } from '@/hooks/useFeaturedCollections';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 import { useQuery } from '@tanstack/react-query';
@@ -231,49 +231,64 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
         {appliedChips.length > 0 && (
           <div
-            className="mt-3 rounded-lg border border-slate-200/60 bg-slate-50/80 px-2.5 py-2 dark:border-slate-800 dark:bg-slate-900/40"
+            className="mt-3 rounded-xl border border-primary-200/70 bg-primary-50/60 px-3 py-2.5 shadow-sm dark:border-primary-900/40 dark:bg-primary-950/25"
             role="region"
             aria-label="Active filters"
           >
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                Applied
-              </span>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="text-[11px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                  Active filters
+                </span>
+                <span className="inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary-500/90 px-1 text-[10px] font-bold text-white dark:bg-primary-400/90 dark:text-slate-950">
+                  {appliedChips.length}
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={onClear}
-                className="text-[11px] font-medium text-primary-600 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 dark:text-primary-400"
+                className="text-[11px] font-semibold text-primary-700 hover:text-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 dark:text-primary-300 dark:hover:text-primary-200"
               >
                 Clear all
               </button>
             </div>
-            <ul className="flex flex-wrap gap-1.5" role="list">
-              {appliedChips.map((c) => (
-                <li key={c.key}>
-                  <button
-                    type="button"
-                    onClick={c.onRemove}
-                    aria-label={`Remove filter: ${c.label}`}
-                    className="group inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200/90 bg-white py-1 pl-2 pr-1 text-left text-[12px] font-medium text-slate-800 shadow-sm transition-colors hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600"
-                  >
-                    <span className="min-w-0 truncate">{c.label}</span>
-                    <span
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 group-hover:bg-slate-100 group-hover:text-slate-700 dark:group-hover:bg-slate-800 dark:group-hover:text-slate-200"
-                      aria-hidden
+            <div className="relative">
+              <ul
+                className="max-h-28 overflow-y-auto pr-1 flex flex-wrap content-start gap-2"
+                role="list"
+                aria-label="Active filter chips"
+              >
+                {appliedChips.map((c) => (
+                  <li key={c.key}>
+                    <button
+                      type="button"
+                      onClick={c.onRemove}
+                      aria-label={`Remove filter: ${c.label}`}
+                      className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary-200/80 bg-white py-1 pl-2.5 pr-1.5 text-left text-[12px] font-semibold text-slate-900 shadow-sm transition-colors hover:border-primary-300 hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 dark:border-primary-900/40 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
                     >
-                      <X size={12} strokeWidth={2.5} />
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                      <span className="min-w-0 truncate">{c.label}</span>
+                      <span
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 group-hover:bg-primary-100 group-hover:text-slate-900 dark:text-slate-400 dark:group-hover:bg-primary-950/40 dark:group-hover:text-slate-100"
+                        aria-hidden
+                      >
+                        <X size={12} strokeWidth={2.5} />
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-primary-50/95 to-transparent dark:from-primary-950/65"
+                aria-hidden
+              />
+            </div>
           </div>
         )}
 
         {/* Mode switch */}
         <div className={`${appliedChips.length > 0 ? 'mt-3' : 'mt-3'} flex flex-col gap-2`}>
           <div
-            className="flex rounded-lg bg-slate-100/90 p-0.5 dark:bg-slate-800/80"
+            className="flex rounded-xl border border-slate-200/70 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900/50"
             role="tablist"
             aria-label="Filter mode"
           >
@@ -282,28 +297,35 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
               role="tab"
               aria-selected={activeMode === 'dimensions'}
               onClick={() => { setActiveMode('dimensions'); setSearchQuery(''); }}
-              className={`min-h-9 flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 ${
+              className={`min-h-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-center text-[11px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 ${
                 activeMode === 'dimensions'
-                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100'
-                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-slate-100'
+                  : 'text-slate-600 hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-950/40 dark:hover:text-slate-100'
               }`}
             >
-              Format, domain & topics
+              <Layers3 size={14} aria-hidden />
+              <span>Format, domain & topics</span>
             </button>
             <button
               type="button"
               role="tab"
               aria-selected={activeMode === 'collections'}
               onClick={() => { setActiveMode('collections'); setSearchQuery(''); }}
-              className={`min-h-9 flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 ${
+              className={`min-h-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-center text-[11px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 ${
                 activeMode === 'collections'
-                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100'
-                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-slate-100'
+                  : 'text-slate-600 hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-950/40 dark:hover:text-slate-100'
               }`}
             >
-              Collections
+              <FolderKanban size={14} aria-hidden />
+              <span>Collections</span>
             </button>
           </div>
+          <p className="text-[11px] leading-snug text-slate-600 dark:text-slate-400">
+            {activeMode === 'dimensions'
+              ? 'Use taxonomy filters to narrow by format, domain, or topic.'
+              : 'Use collections to explore curated sets of nuggets.'}
+          </p>
 
           <div className="relative">
             <Search

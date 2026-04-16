@@ -17,7 +17,7 @@ interface ContentTabsProps {
 export const ContentTabs: React.FC<ContentTabsProps> = ({ tabs, activeId, onChange, ariaLabel }) => {
   return (
     <div
-      className="inline-flex rounded border border-slate-200/70 bg-slate-100/50 p-px dark:border-slate-800 dark:bg-slate-900/40"
+      className="inline-flex rounded-lg border border-slate-200/70 bg-slate-100/50 p-px dark:border-slate-800 dark:bg-slate-900/40"
       role="tablist"
       aria-label={ariaLabel}
     >
@@ -34,8 +34,8 @@ export const ContentTabs: React.FC<ContentTabsProps> = ({ tabs, activeId, onChan
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
             className={[
-              'min-h-[40px] min-w-[44px] rounded-sm px-3.5 py-2 text-sm font-medium motion-safe:transition-colors',
-              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-200',
+              'min-h-[40px] min-w-[44px] rounded-md px-3.5 py-2 text-sm font-medium motion-safe:transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40 dark:focus-visible:ring-slate-500/40',
               selected
                 ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50'
                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100',

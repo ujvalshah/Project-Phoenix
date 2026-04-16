@@ -183,13 +183,17 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
           {(!!sourceLink && (isHovered || !isDesktop)) && (
             <ActionHUD
               article={article}
-              onAddToCollection={(e) => {
-                e.stopPropagation();
-                if (e.currentTarget) {
-                  setCollectionAnchor(e.currentTarget.getBoundingClientRect());
-                  setShowCollectionPopover(true);
-                }
-              }}
+              onAddToCollection={
+                isAdmin
+                  ? (e) => {
+                      e.stopPropagation();
+                      if (e.currentTarget) {
+                        setCollectionAnchor(e.currentTarget.getBoundingClientRect());
+                        setShowCollectionPopover(true);
+                      }
+                    }
+                  : undefined
+              }
               onMore={(e) => {
                 e.stopPropagation();
                 setShowMoreMenu(!showMoreMenu);

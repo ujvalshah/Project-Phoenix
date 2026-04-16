@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Collection, User } from '@/types';
 import { storageService } from '@/services/storageService';
-import { Folder, X } from 'lucide-react';
+import { Folder, Plus, X } from 'lucide-react';
 import { EmptyState } from '@/components/UI/EmptyState';
 import { useNavigate } from 'react-router-dom';
 import { CollectionCard } from '@/components/collections/CollectionCard';
@@ -20,6 +20,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 import { Z_INDEX } from '@/constants/zIndex';
+import { WorkspaceTopSection } from '@/components/workspace/WorkspaceTopSection';
 
 type ViewMode = 'grid' | 'table';
 type SortField = 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
@@ -411,74 +412,89 @@ export const CollectionsPage: React.FC = () => {
         className={`sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER} ${LAYOUT_CLASSES.PAGE_TOOLBAR} border-b border-slate-200/80 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/75 transition-colors dark:border-slate-800 dark:bg-slate-950/85`}
         style={{ zIndex: Z_INDEX.CATEGORY_BAR }}
       >
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
-          <CollectionsHeader
-            totalCount={totalCount}
-            visibleCount={processedCollections.length}
-            breadcrumb={breadcrumb}
-          />
-          <div className="mt-3">
-            <CollectionsToolbar
-              searchInputValue={searchInputValue}
-              onSearchInput={handleSearchInput}
-              sortField={sortField}
-              sortDirection={sortDirection}
-              setSortField={setSortField}
-              toggleSortDirection={() =>
-                setSortDirection((previous) => (previous === 'asc' ? 'desc' : 'asc'))
-              }
-              viewMode={viewMode}
-              setViewMode={setViewMode}
-              selectionMode={selectionMode}
-              selectedCount={selectedIds.length}
-              canSelect={collections.length > 0}
-              canCreate={isAdmin}
-              onToggleSelection={toggleSelectionMode}
-              onOpenCreate={() => setShowInstruction(true)}
-              onOpenActions={() => setIsActionMenuOpen((previous) => !previous)}
-              onCloseActionMenu={() => setIsActionMenuOpen(false)}
-              isActionMenuOpen={isActionMenuOpen}
-              actionMenu={
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleBulkFollow('follow');
-                      setIsActionMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-2 text-left text-xs font-semibold text-green-600 transition-colors hover:bg-green-50 dark:hover:bg-green-900/10"
-                  >
-                    Follow selected
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleBulkFollow('unfollow');
-                      setIsActionMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:hover:bg-red-900/10"
-                  >
-                    Unfollow selected
-                  </button>
-                </>
-              }
-              onOpenFiltersMobile={() => setIsMobileFiltersOpen(true)}
-              mobileFilterCount={(selectedParentId ? 1 : 0) + (selectedChildId ? 1 : 0)}
-            />
-          </div>
-          {appliedFilters.length > 0 && (
-            <div className="mt-2.5">
-              <AppliedFiltersBar
-                filters={appliedFilters}
-                onClearAll={() => {
-                  setSearchInputValue('');
-                  setSearchQuery('');
-                  setSelectedParentId(null);
-                  setSelectedChildId(null);
-                }}
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <WorkspaceTopSection
+            header={
+              <CollectionsHeader
+                totalCount={totalCount}
+                visibleCount={processedCollections.length}
+                breadcrumb={breadcrumb}
+                actions={
+                  !selectionMode && isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowInstruction(true)}
+                      className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 text-[13px] font-semibold text-white transition-all hover:bg-slate-800 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 sm:w-auto dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                    >
+                      <Plus size={15} />
+                      Create Collection
+                    </button>
+                  ) : null
+                }
               />
-            </div>
-          )}
+            }
+            toolbar={
+              <CollectionsToolbar
+                searchInputValue={searchInputValue}
+                onSearchInput={handleSearchInput}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                setSortField={setSortField}
+                toggleSortDirection={() =>
+                  setSortDirection((previous) => (previous === 'asc' ? 'desc' : 'asc'))
+                }
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                selectionMode={selectionMode}
+                selectedCount={selectedIds.length}
+                canSelect={collections.length > 0}
+                canCreate={isAdmin}
+                onToggleSelection={toggleSelectionMode}
+                onOpenActions={() => setIsActionMenuOpen((previous) => !previous)}
+                onCloseActionMenu={() => setIsActionMenuOpen(false)}
+                isActionMenuOpen={isActionMenuOpen}
+                actionMenu={
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleBulkFollow('follow');
+                        setIsActionMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-xs font-semibold text-green-600 transition-colors hover:bg-green-50 dark:hover:bg-green-900/10"
+                    >
+                      Follow selected
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleBulkFollow('unfollow');
+                        setIsActionMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:hover:bg-red-900/10"
+                    >
+                      Unfollow selected
+                    </button>
+                  </>
+                }
+                onOpenFiltersMobile={() => setIsMobileFiltersOpen(true)}
+                mobileFilterCount={(selectedParentId ? 1 : 0) + (selectedChildId ? 1 : 0)}
+              />
+            }
+            footer={
+              appliedFilters.length > 0 ? (
+                <AppliedFiltersBar
+                  filters={appliedFilters}
+                  onClearAll={() => {
+                    setSearchInputValue('');
+                    setSearchQuery('');
+                    setSelectedParentId(null);
+                    setSelectedChildId(null);
+                  }}
+                />
+              ) : undefined
+            }
+          />
         </div>
       </div>
 

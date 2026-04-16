@@ -5,19 +5,21 @@ interface CollectionsHeaderProps {
   totalCount: number;
   visibleCount: number;
   breadcrumb: string[];
+  actions?: React.ReactNode;
 }
 
 export const CollectionsHeader: React.FC<CollectionsHeaderProps> = ({
   totalCount,
   visibleCount,
   breadcrumb,
+  actions,
 }) => {
   const hasPath = breadcrumb.length > 0;
   const isFiltered = visibleCount !== totalCount;
 
   return (
-    <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0">
+    <header className="flex flex-col gap-3 sm:gap-2 md:flex-row md:items-end md:justify-between">
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h1 className="truncate text-[1.35rem] font-semibold leading-tight tracking-[-0.02em] text-slate-900 dark:text-slate-50 sm:text-[1.55rem]">
             Community Collections
@@ -49,11 +51,12 @@ export const CollectionsHeader: React.FC<CollectionsHeaderProps> = ({
             ))}
           </nav>
         ) : (
-          <p className="mt-1 truncate text-[13px] text-slate-500 dark:text-slate-400">
+          <p className="mt-1 hidden truncate text-[13px] text-slate-500 dark:text-slate-400 sm:block">
             Explore curated topics and nested sub-collections across the Nuggets ecosystem.
           </p>
         )}
       </div>
+      {actions ? <div className="w-full sm:w-auto md:shrink-0">{actions}</div> : null}
     </header>
   );
 };

@@ -69,17 +69,21 @@ export function configureTelemetry(next: Handlers) {
 }
 
 export function recordError(ctx: ErrorContext) {
-  // Automatically send to Sentry
-  captureException(ctx.error, {
-    route: window.location.pathname,
-    extra: {
-      source: ctx.source,
-      componentStack: ctx.info?.componentStack,
-    },
-  });
-  
-  // Call custom handlers if registered
-  handlers.onError?.(ctx);
+  // Automatically send to Sentry — must never throw into the caller (we're
+  // often invoked from error paths already).
+  try {
+    captureException(ctx.error, {
+      route: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      extra: {
+        source: ctx.source,
+        componentStack: ctx.info?.componentStack,
+      },
+    });
+  } catch { /* swallow reporting errors */ }
+
+  try {
+    handlers.onError?.(ctx);
+  } catch { /* swallow consumer errors */ }
 }
 
 export function recordApiTiming(timing: ApiTiming) {
@@ -143,23 +147,46 @@ function resolveSearchQueryId(name: SearchEvent['name'], payload: Record<string,
 export { endActiveSearchDraft };
 
 export function recordSearchEvent(event: SearchEvent) {
-  const raw: Record<string, unknown> = { ...event.payload };
-  const searchQueryId = resolveSearchQueryId(event.name, raw);
-  delete raw.forceNewQueryTrace;
+  // Telemetry must never throw into UX. A misbehaving handler, a browser that
+  // rejects CustomEvent detail, or an id-resolution failure should degrade
+  // silently — never interrupt typing, submission, or scroll.
+  try {
+    const raw: Record<string, unknown> = { ...event.payload };
+    const searchQueryId = resolveSearchQueryId(event.name, raw);
+    delete raw.forceNewQueryTrace;
 
-  const merged: SearchEvent = {
-    name: event.name,
-    payload: {
-      searchSessionId: getSearchSessionId(),
-      ...(searchQueryId ? { searchQueryId } : {}),
-      ...raw,
-    },
-  };
+    const merged: SearchEvent = {
+      name: event.name,
+      payload: {
+        searchSessionId: getSearchSessionId(),
+        ...(searchQueryId ? { searchQueryId } : {}),
+        ...raw,
+      },
+    };
 
-  handlers.onSearchEvent?.(merged);
-  // Keep lightweight local signal for development and QA traces.
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('nuggets:search-event', { detail: merged }));
+    try {
+      handlers.onSearchEvent?.(merged);
+    } catch (err) {
+      // A consumer-registered handler threw; report once, do not surface.
+      try {
+        recordError({ error: err as Error, source: 'telemetry.onSearchEvent' });
+      } catch { /* recordError must never rethrow either */ }
+    }
+
+    // Keep lightweight local signal for development and QA traces.
+    if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('nuggets:search-event', { detail: merged }));
+      } catch {
+        // CustomEvent construction / dispatch failed — swallow.
+      }
+    }
+  } catch (err) {
+    // Defensive top-level guard. If any of the above throws unexpectedly,
+    // capture and move on; UX must continue uninterrupted.
+    try {
+      recordError({ error: err as Error, source: 'telemetry.recordSearchEvent' });
+    } catch { /* noop */ }
   }
 }
 

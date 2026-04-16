@@ -16,6 +16,8 @@ interface MobileSearchOverlayProps {
   isOpen: boolean;
   onClose: (reason?: 'dismiss' | 'commit') => void;
   initialValue: string;
+  /** Bumped by filter resets so the overlay's input mirrors the cleared state. */
+  resetSignal?: number;
   onDraftChange: (value: string) => void;
   onCommitSearch: (value: string) => void;
 }
@@ -30,6 +32,7 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   isOpen,
   onClose,
   initialValue,
+  resetSignal,
   onDraftChange,
   onCommitSearch,
 }) => {
@@ -37,13 +40,20 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   const [draftQuery, setDraftQuery] = useState(initialValue);
   const suggestionsQuery = useSearchSuggestions(draftQuery, 6);
 
-  // Recent searches — self-contained in the overlay
+  // Recent searches — self-contained in the overlay.
+  // Guarded against corrupted/foreign localStorage payloads: a bad value must
+  // never crash the overlay's mount (the only user-visible search path on mobile).
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return [];
+    try {
       const stored = localStorage.getItem('recent_searches');
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((s): s is string => typeof s === 'string' && s.length > 0);
+    } catch {
+      return [];
     }
-    return [];
   });
 
   const saveRecentSearch = useCallback((query: string) => {
@@ -107,6 +117,8 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
           <SearchInput
             ref={searchRef}
             initialValue={initialValue}
+            resetSignal={resetSignal}
+            externalValue={initialValue}
             onSearch={(value) => {
               setDraftQuery(value);
               onDraftChange(value);

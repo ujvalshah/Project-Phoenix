@@ -260,6 +260,22 @@ class ApiClient {
 
         if (response.status === 403) {
           const isPublicAuth = this.isPublicAuthEndpoint(endpoint);
+
+          // Auto-heal CSRF desyncs once before surfacing the error. A common
+          // failure mode is a rotated `csrf_token` cookie that no longer matches
+          // the SPA's cached header. In that case we can safely re-sync by
+          // hitting the CSRF-exempt /auth/refresh endpoint and retrying once.
+          if (errorCode === 'CSRF_INVALID' && !_isRetry) {
+            try {
+              const healed = await this.refreshAccessToken();
+              if (healed) {
+                return this.request<T>(endpoint, { ...options, _isRetry: true });
+              }
+            } catch {
+              // Fall through to normal 403 handling below
+            }
+          }
+
           if (isPublicAuth || !isTokenError) {
             throw error;
           }
