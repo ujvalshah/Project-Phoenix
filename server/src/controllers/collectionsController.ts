@@ -13,7 +13,8 @@ import {
   canModifyCollectionMetadata,
   canModifyCollectionEntriesPolicy,
   canViewCollectionPolicy,
-  canCreateCollectionOfType
+  canCreateCollectionOfType,
+  canInspectArticleCollectionMembership,
 } from '../utils/editorialCollectionPolicy.js';
 
 /**
@@ -323,6 +324,63 @@ export const getCollectionById = async (req: Request, res: Response) => {
       error: {
         message: error.message,
         stack: error.stack,
+      },
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
+ * GET /api/collections/containing-article/:articleId
+ * Editorial collections that list this article (for edit-nugget UI).
+ * Restricted to the article author or admins.
+ */
+export const getCollectionsContainingArticle = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId as string | undefined;
+    const userRole = (req as any).user?.role as string | undefined;
+    if (!userId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const articleId = req.params.articleId?.trim();
+    if (!articleId) {
+      return res.status(400).json({ message: 'Article id is required' });
+    }
+
+    const article = await Article.findById(articleId).select('authorId').lean();
+    if (!article) {
+      return res.status(404).json({ message: 'Article not found' });
+    }
+
+    const authorId = article.authorId ? String(article.authorId) : undefined;
+    if (!canInspectArticleCollectionMembership(authorId, userId, userRole)) {
+      return res.status(403).json({ message: 'You do not have permission to view collection membership for this article' });
+    }
+
+    const raw = await Collection.find({
+      'entries.articleId': articleId,
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    const visible = raw.filter((doc) =>
+      canViewCollectionPolicy(
+        { type: String(doc.type), creatorId: doc.creatorId },
+        userId,
+        userRole
+      )
+    );
+
+    res.json(normalizeDocs(visible));
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({
+      msg: '[Collections] getCollectionsContainingArticle error',
+      error: {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });

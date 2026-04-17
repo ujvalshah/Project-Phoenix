@@ -393,6 +393,14 @@ export class LocalAdapter implements IAdapter {
     return all.find(c => c.id === id);
   }
 
+  async getCollectionsContainingArticle(articleId: string): Promise<Collection[]> {
+    const collections = await this.getCollections();
+    const all = Array.isArray(collections) ? collections : (collections as { data: Collection[] }).data;
+    return all.filter(
+      (c) => Array.isArray(c.entries) && c.entries.some((e) => e.articleId === articleId)
+    );
+  }
+
   async createCollection(
     name: string,
     description: string,

@@ -80,6 +80,8 @@ export interface IAdapter {
   getFeaturedCollections(): Promise<Collection[]>;
   getCollectionArticles(collectionId: string, params: { q?: string; page: number; limit: number; sort?: string }): Promise<PaginatedArticlesResponse>;
   getCollectionById(id: string): Promise<Collection | undefined>;
+  /** Editorial collections that include this article (author or admin only). */
+  getCollectionsContainingArticle(articleId: string): Promise<Collection[]>;
   createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private', parentId?: string | null): Promise<Collection>;
   deleteCollection(id: string): Promise<void>;
   updateCollection(id: string, updates: Partial<Collection>): Promise<Collection | null>;

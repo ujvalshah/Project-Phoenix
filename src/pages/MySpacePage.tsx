@@ -131,6 +131,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
 
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
+  const wasEditingRef = useRef(false);
   const [loading, setLoading] = useState(true);
 
   const [selectionMode, setSelectionMode] = useState(false);
@@ -230,6 +231,19 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     setSelectedIds([]);
     setIsActionMenuOpen(false);
   }, [activeTab, nuggetListVisibility]);
+
+  // Ensure list reflects edits after closing edit modal.
+  useEffect(() => {
+    if (editingArticle) {
+      wasEditingRef.current = true;
+      return;
+    }
+    if (!editingArticle && wasEditingRef.current) {
+      wasEditingRef.current = false;
+      void loadData();
+      void refreshCounts();
+    }
+  }, [editingArticle]);
 
   // Helper function to refresh counts independently
   const refreshCounts = async () => {
@@ -719,7 +733,6 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                       isOwner={isOwner}
                       selectionMode={selectionMode}
                       onToggleSelect={toggleSelectionMode}
-                      user={profileUser}
                     />
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className={`flex flex-wrap items-center gap-2 ${selectionMode ? 'pointer-events-none opacity-50' : ''}`}>

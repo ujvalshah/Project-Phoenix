@@ -461,6 +461,11 @@ export class RestAdapter implements IAdapter {
     return apiClient.get<Collection>(`/collections/${id}`).catch(() => undefined);
   }
 
+  getCollectionsContainingArticle(articleId: string): Promise<Collection[]> {
+    const enc = encodeURIComponent(articleId);
+    return apiClient.get<Collection[]>(`/collections/containing-article/${enc}`);
+  }
+
   createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private', parentId?: string | null): Promise<Collection> {
     return apiClient.post('/collections', { name, description, creatorId, type, parentId });
   }

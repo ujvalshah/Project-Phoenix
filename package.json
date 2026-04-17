@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "tsx watch server/src/index.ts",
-    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
+    "dev:all": "concurrently --kill-others-on-fail \"npm run dev:server\" \"npm run dev\"",
     "build": "vite build",
     "build:verify": "npm run build && node scripts/verify-build.js",
     "preview": "vite preview",

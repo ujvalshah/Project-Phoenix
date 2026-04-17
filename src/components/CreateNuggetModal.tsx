@@ -38,7 +38,7 @@ import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeAr
 import { useImageManager } from '@/hooks/useImageManager';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
-import { useAllCollections, nuggetFormKeys } from '@/hooks/useNuggetFormData';
+import { useAllCollections } from '@/hooks/useNuggetFormData';
 import { useDisclaimerConfig } from '@/hooks/useDisclaimerConfig';
 
 interface CreateNuggetModalProps {
@@ -92,6 +92,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Ref to track if form has been initialized from initialData (prevents re-initialization)
   const initializedFromDataRef = useRef<string | null>(null);
+  /** Baseline editorial collection ids (current visibility) for edit save diff */
+  const editInitialCollectionIdsRef = useRef<string[]>([]);
   
   // Ref to track previous URLs for change detection (CRITICAL for Edit mode)
   const previousUrlsRef = useRef<string[]>([]);
@@ -130,12 +132,24 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const collectionsComboboxRef = useRef<HTMLDivElement>(null);
   const collectionsListboxRef = useRef<HTMLDivElement>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  // Keep toast reference stable for async effects.
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+  const sameCollectionIds = (a: Collection[], b: Collection[]): boolean => {
+    if (a.length !== b.length) return false;
+    const ids = new Set(a.map((c) => c.id));
+    if (ids.size !== b.length) return false;
+    return b.every((c) => ids.has(c.id));
+  };
 
   // Metadata State
   const [dimensionTagIds, setDimensionTagIds] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [contentStream, setContentStream] = useState<'standard' | 'pulse' | 'both'>('standard');
-  const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
+  /** Selected editorial collection document ids (public or private), never display names */
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>([]);
+  /** Server: all editorial collections that include this article (edit mode) */
+  const [editArticleCollections, setEditArticleCollections] = useState<Collection[]>([]);
   
   // Identity State (Admin Only)
   const [postAs, setPostAs] = useState<'me' | 'alias'>('me');
@@ -185,15 +199,6 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     isLoading: _isLoadingCollections, // eslint-disable-line @typescript-eslint/no-unused-vars -- Available for future loading state UI
   } = useAllCollections();
 
-  /**
-   * Callback to optimistically update the collections cache when a new collection is created.
-   * This is called by CollectionSelector after it creates a new collection via storageService.
-   * The callback updates the React Query cache immediately for instant UI feedback.
-   */
-  const handleAvailableCollectionsChange = React.useCallback((newCollections: Collection[]) => {
-    queryClient.setQueryData<Collection[]>(nuggetFormKeys.collections(), newCollections);
-  }, []); // queryClient is a module-level singleton, no need in deps
-  
   // UI State
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [_isLoading, setIsLoading] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -291,8 +296,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           setLinkMetadata(null);
         }
         
-        // Note: We don't pre-fill attachments or collections in edit mode
-        // as they require file objects and collection membership is separate
+        // Note: We don't pre-fill attachments in edit mode (file objects).
+        // Editorial collections load via getCollectionsContainingArticle + editArticleCollections.
         // MediaIds are preserved from initialData and will be included in update
         
         // Sync imageManager with article data (Phase 9: Legacy code removed)
@@ -308,6 +313,45 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     }
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen, mode, initialData]);
+
+  // Load editorial collection membership when editing (runs after init effect sets visibility)
+  useEffect(() => {
+    if (!isOpen || mode !== 'edit' || !initialData?.id || !currentUserId) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cols = await storageService.getCollectionsContainingArticle(initialData.id);
+        if (cancelled) return;
+        setEditArticleCollections((prev) => (sameCollectionIds(prev, cols) ? prev : cols));
+      } catch {
+        if (!cancelled) {
+          toastRef.current.error('Could not load collections for this nugget');
+          setEditArticleCollections((prev) => (prev.length === 0 ? prev : []));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mode, initialData?.id, currentUserId]);
+
+  // Map membership to the picker for the active article visibility (public vs private)
+  useEffect(() => {
+    if (!isOpen || mode !== 'edit') return;
+    const ids = editArticleCollections.filter((c) => c.type === visibility).map((c) => c.id);
+    setSelectedCollectionIds((prev) => {
+      if (
+        prev.length === ids.length &&
+        prev.every((value, index) => value === ids[index])
+      ) {
+        return prev;
+      }
+      return ids;
+    });
+    editInitialCollectionIdsRef.current = [...ids];
+  }, [isOpen, mode, visibility, editArticleCollections]);
 
   // Sync imageManager when initialData changes (for edit mode)
   // This ensures the hook stays in sync if the article data is updated externally
@@ -438,7 +482,9 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     setAttachments([]);
     setDimensionTagIds([]);
     setVisibility('public');
-    setSelectedCollections([]);
+    setSelectedCollectionIds([]);
+    setEditArticleCollections([]);
+    editInitialCollectionIdsRef.current = [];
     // categoryInput and collectionInput are now managed by components
     setPostAs('me');
     setCustomAlias('');
@@ -1686,6 +1732,28 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 throw new Error('Failed to update nugget');
             }
 
+            const prevCol = editInitialCollectionIdsRef.current;
+            const nextCol = selectedCollectionIds;
+            const prevSet = new Set(prevCol);
+            const nextSet = new Set(nextCol);
+            const toAddCol = nextCol.filter((id) => !prevSet.has(id));
+            const toRemoveCol = prevCol.filter((id) => !nextSet.has(id));
+            for (const id of toAddCol) {
+              await storageService.addArticleToCollection(id, initialData.id, currentUserId);
+            }
+            for (const id of toRemoveCol) {
+              await storageService.removeArticleFromCollection(id, initialData.id, currentUserId);
+            }
+            editInitialCollectionIdsRef.current = [...nextCol];
+            try {
+              const refreshedCols = await storageService.getCollectionsContainingArticle(initialData.id);
+              setEditArticleCollections((prev) =>
+                sameCollectionIds(prev, refreshedCols) ? prev : refreshedCols
+              );
+            } catch {
+              /* non-fatal */
+            }
+
             // DEBUG: Log what the backend returned
             console.log('[EDIT RESULT] Backend returned article:', {
                 hasSupportingMedia: !!updatedArticle.supportingMedia,
@@ -1963,15 +2031,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         
         const newArticle = await storageService.createArticle(createPayload);
 
-        const allColsResult = await storageService.getCollections();
-        // Handle union type: Collection[] | { data: Collection[], count: number }
-        const allCols: Collection[] = Array.isArray(allColsResult) ? allColsResult : (allColsResult?.data ?? []);
-        for (const colName of selectedCollections) {
-            let targetCol = allCols.find((c: Collection) => c.name === colName);
-            if (!targetCol) {
-                targetCol = await storageService.createCollection(colName, '', currentUserId, visibility);
-            }
-            await storageService.addArticleToCollection(targetCol.id, newArticle.id, currentUserId);
+        for (const collectionId of selectedCollectionIds) {
+            await storageService.addArticleToCollection(collectionId, newArticle.id, currentUserId);
         }
 
         await queryClient.invalidateQueries({ queryKey: ['articles'] });
@@ -2118,13 +2179,13 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                     <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
                              <button
-                                onClick={() => { setVisibility('public'); setSelectedCollections([]); }}
+                                onClick={() => { setVisibility('public'); setSelectedCollectionIds([]); }}
                                 className={`px-3 py-1.5 text-[10px] font-bold rounded-md flex items-center gap-1.5 transition-all ${visibility === 'public' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
                              >
                                 <Globe size={12} /> Public
                              </button>
                              <button
-                                onClick={() => { setVisibility('private'); setSelectedCollections([]); }}
+                                onClick={() => { setVisibility('private'); setSelectedCollectionIds([]); }}
                                 className={`px-3 py-1.5 text-[10px] font-bold rounded-md flex items-center gap-1.5 transition-all ${visibility === 'private' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
                              >
                                 <Lock size={12} /> Private
@@ -2159,12 +2220,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 {/* Organization Rows - Collections and Classification Tags */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                     <CollectionSelector
-                        selected={selectedCollections}
+                        selected={selectedCollectionIds}
                         availableCollections={allCollections}
                         visibility={visibility}
-                        onSelectedChange={setSelectedCollections}
-                        onAvailableCollectionsChange={handleAvailableCollectionsChange}
-                        currentUserId={currentUserId}
+                        onSelectedChange={setSelectedCollectionIds}
+                        showTechnicalIds={isAdmin}
                         comboboxRef={collectionsComboboxRef}
                         listboxRef={collectionsListboxRef}
                     />

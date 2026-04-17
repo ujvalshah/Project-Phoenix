@@ -6,6 +6,11 @@ const router = Router();
 
 // Public routes
 router.get('/featured', collectionsController.getFeaturedCollections);
+router.get(
+  '/containing-article/:articleId',
+  authenticateToken,
+  collectionsController.getCollectionsContainingArticle
+);
 router.get('/', collectionsController.getCollections);
 router.get('/:id', collectionsController.getCollectionById);
 router.get('/:id/articles', collectionsController.getCollectionArticles);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { ExternalLink, Globe, Lock } from 'lucide-react';
 import type { Article } from '@/types';
 import { getThumbnailUrl } from '@/utils/mediaClassifier';
@@ -22,13 +22,24 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
   onSelect,
   onOpen,
 }) => {
+  const [showAllTags, setShowAllTags] = useState(false);
   const thumb = getThumbnailUrl(article);
   const source = getNuggetSourceLabel(article);
   const href = getNuggetPrimaryHref(article);
   const vis = article.visibility ?? 'private';
-  const tags = (article.tags ?? []).filter(Boolean);
+  const tags = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (article.tags ?? [])
+            .map((t) => t?.trim())
+            .filter((t): t is string => Boolean(t)),
+        ),
+      ),
+    [article.tags],
+  );
   const extraTags = Math.max(0, tags.length - MAX_TAGS);
-  const displayTags = tags.slice(0, MAX_TAGS);
+  const displayTags = showAllTags ? tags : tags.slice(0, MAX_TAGS);
 
   const published = article.publishedAt ? formatDate(article.publishedAt, false) : '—';
   const updatedRaw = article.updated_at ?? article.created_at;
@@ -121,12 +132,12 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpen(article);
+                    setShowAllTags((prev) => !prev);
                   }}
                   className="text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                  aria-label={`View ${extraTags} more tags`}
+                  aria-label={showAllTags ? 'Collapse tags' : `View ${extraTags} more tags`}
                 >
-                  +{extraTags} more
+                  {showAllTags ? 'Show less' : `+${extraTags} more`}
                 </button>
               )}
             </div>

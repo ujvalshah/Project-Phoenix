@@ -1,17 +1,43 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Globe, Lock, Check } from 'lucide-react';
 import { SelectableDropdown, SelectableDropdownOption } from './SelectableDropdown';
 import { Collection } from '@/types';
-import { storageService } from '@/services/storageService';
-import { useToast } from '@/hooks/useToast';
+
+function scopedNameKey(collection: Collection): string {
+  const parentKey = collection.parentId ?? 'root';
+  return `${parentKey}::${(collection.name || '').toLowerCase().trim()}`;
+}
+
+function collectionPrimaryLine(collection: Collection, nameById: Map<string, string>): string {
+  const name = collection.name || '';
+  if (!collection.parentId) return name;
+  const parentName = nameById.get(collection.parentId);
+  return parentName ? `${parentName} → ${name}` : name;
+}
+
+function collectionOptionLabel(
+  collection: Collection,
+  nameById: Map<string, string>,
+  pathCounts: Map<string, number>,
+  showTechnicalIds: boolean
+): string {
+  const primary = collectionPrimaryLine(collection, nameById);
+  const key = scopedNameKey(collection);
+  const ambiguousPath = (pathCounts.get(key) || 0) > 1;
+  const suffix =
+    showTechnicalIds || ambiguousPath || collection.parentId
+      ? ` · …${collection.id.slice(-8)}`
+      : '';
+  return `${primary}${suffix}`;
+}
 
 interface CollectionSelectorProps {
   selected: string[];
   availableCollections: Collection[];
   visibility: 'public' | 'private';
   onSelectedChange: (selected: string[]) => void;
-  onAvailableCollectionsChange?: (collections: Collection[]) => void;
-  currentUserId?: string;
+  /** When true, every option includes a short id suffix (admin tooling). */
+  showTechnicalIds?: boolean;
   comboboxRef?: React.RefObject<HTMLDivElement | null>;
   listboxRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -21,142 +47,86 @@ export function CollectionSelector({
   availableCollections,
   visibility,
   onSelectedChange,
-  onAvailableCollectionsChange,
-  currentUserId,
+  showTechnicalIds = false,
   comboboxRef,
   listboxRef,
 }: CollectionSelectorProps) {
   const [searchValue, setSearchValue] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const toast = useToast();
 
-  // Track pending creations to prevent duplicate API calls
-  const pendingCreationsRef = useRef<Set<string>>(new Set());
+  const visibleCollections = availableCollections.filter((c) => c.type === visibility);
 
-  const visibleCollections = availableCollections.filter(c => c.type === visibility);
-
-  // Use collection ID for proper tracking, but still display name
-  // Note: Using name as ID for backward compatibility with selection logic
-  const collectionOptions: SelectableDropdownOption[] = visibleCollections.map(col => ({
-    id: col.name, // Keep using name for now to maintain compatibility
-    label: col.name,
-  }));
-
-  /**
-   * Checks if a collection already exists (case-insensitive comparison)
-   */
-  const isDuplicate = (collectionName: string): boolean => {
-    const normalizedName = collectionName.toLowerCase().trim();
-    return selected.some(selectedName => selectedName.toLowerCase().trim() === normalizedName);
-  };
-
-  const handleSelect = useCallback((optionId: string) => {
-    // Case-insensitive duplicate check
-    if (!isDuplicate(optionId)) {
-      onSelectedChange([...selected, optionId]);
+  const nameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of availableCollections) {
+      m.set(c.id, c.name || '');
     }
-    setSearchValue('');
-  }, [selected, onSelectedChange]);
+    return m;
+  }, [availableCollections]);
 
-  const handleDeselect = useCallback((optionId: string) => {
-    // Case-insensitive removal
-    const normalizedId = optionId.toLowerCase().trim();
-    onSelectedChange(selected.filter(id => id.toLowerCase().trim() !== normalizedId));
-  }, [selected, onSelectedChange]);
-
-  const handleCreateNew = useCallback(async (searchValueInput: string) => {
-    // Trim and validate: ignore empty or 1-char values
-    const trimmed = searchValueInput.trim();
-    if (!trimmed || trimmed.length <= 1) {
-      return;
+  const pathCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of visibleCollections) {
+      const k = scopedNameKey(c);
+      m.set(k, (m.get(k) || 0) + 1);
     }
+    return m;
+  }, [visibleCollections]);
 
-    // Case-insensitive duplicate check
-    if (isDuplicate(trimmed)) {
-      return;
-    }
+  const collectionOptions: SelectableDropdownOption[] = useMemo(
+    () =>
+      visibleCollections.map((col) => ({
+        id: col.id,
+        label: collectionOptionLabel(col, nameById, pathCounts, showTechnicalIds),
+      })),
+    [visibleCollections, nameById, pathCounts, showTechnicalIds]
+  );
 
-    // Validate user is authenticated
-    if (!currentUserId) {
-      toast.error('You must be logged in to create a collection');
-      return;
-    }
+  const isDuplicateId = useCallback(
+    (collectionId: string): boolean => selected.includes(collectionId),
+    [selected]
+  );
 
-    // Prevent duplicate API calls
-    const normalizedName = trimmed.toLowerCase();
-    if (pendingCreationsRef.current.has(normalizedName)) {
-      return;
-    }
-
-    // Prevent double creation
-    if (isCreating) return;
-    setIsCreating(true);
-    pendingCreationsRef.current.add(normalizedName);
-
-    try {
-      // Create the collection via API
-      const newCollection = await storageService.createCollection(
-        trimmed,
-        '',
-        currentUserId,
-        visibility
-      );
-
-      // Add to available collections (single update, no double refresh)
-      // Normalize by ID to prevent duplicates
-      const existingIds = new Set(availableCollections.map(c => c.id));
-      if (!existingIds.has(newCollection.id)) {
-        const updatedCollections = [...availableCollections, newCollection];
-        onAvailableCollectionsChange?.(updatedCollections);
+  const handleSelect = useCallback(
+    (optionId: string) => {
+      if (!isDuplicateId(optionId)) {
+        onSelectedChange([...selected, optionId]);
       }
-
-      // Add to selected collections (auto-select the newly created collection)
-      onSelectedChange([...selected, trimmed]);
-
-      // Note: Removed the double refetch that was causing flicker
-      // The optimistic update above is sufficient
-      // If we need fresh data, it should be handled at a higher level (React Query)
-
       setSearchValue('');
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create collection';
-      toast.error(errorMessage);
-    } finally {
-      setIsCreating(false);
-      pendingCreationsRef.current.delete(normalizedName);
-    }
-  }, [selected, availableCollections, visibility, currentUserId, isCreating, onSelectedChange, onAvailableCollectionsChange, toast]);
+    },
+    [selected, onSelectedChange, isDuplicateId]
+  );
+
+  const handleDeselect = useCallback(
+    (optionId: string) => {
+      onSelectedChange(selected.filter((id) => id !== optionId));
+    },
+    [selected, onSelectedChange]
+  );
 
   const filterOptions = useCallback((options: SelectableDropdownOption[], search: string): SelectableDropdownOption[] => {
-    return options.filter(opt =>
-      opt.label && typeof opt.label === 'string' && opt.label.toLowerCase().includes(search.toLowerCase())
-    );
-  }, []);
-
-  const canCreateNew = useCallback((search: string, options: SelectableDropdownOption[]): boolean => {
-    // Never auto-create on empty string or 1-char values
-    const trimmed = search.trim();
-    if (!trimmed || trimmed.length <= 1) return false;
-
-    // Check against both options and selected items (case-insensitive)
-    const existsInOptions = options.some(opt =>
-      opt.label && typeof opt.label === 'string' && opt.label.toLowerCase().trim() === trimmed.toLowerCase().trim()
-    );
-    const existsInSelected = isDuplicate(trimmed);
-
-    return !existsInOptions && !existsInSelected;
-  }, [selected]); // Re-compute when selected changes
+    const q = search.toLowerCase();
+    return options.filter((opt) => {
+      if (!opt.label || typeof opt.label !== 'string') return false;
+      if (opt.label.toLowerCase().includes(q)) return true;
+      const col = visibleCollections.find((c) => c.id === opt.id);
+      if (!col) return false;
+      const plain = (col.name || '').toLowerCase();
+      const parentName = col.parentId ? (nameById.get(col.parentId) || '').toLowerCase() : '';
+      return plain.includes(q) || parentName.includes(q);
+    });
+  }, [visibleCollections, nameById]);
 
   const label = visibility === 'public' ? 'Community Collection' : 'Private Collection';
-  const placeholder = visibility === 'public'
-    ? 'Find or create community collection...'
-    : 'Find or create private collection...';
-  const helperText = visibility === 'public'
-    ? 'Create or Add your nugget to a Community Collection'
-    : 'Save this nugget to your private collection.';
-  const emptyPlaceholder = visibility === 'public'
-    ? 'Add to community collection'
-    : 'Add to your private collection';
+  const placeholder =
+    visibility === 'public'
+      ? 'Find community collection...'
+      : 'Find private collection...';
+  const helperText =
+    visibility === 'public'
+      ? 'Add your nugget to an existing community collection.'
+      : 'Add your nugget to an existing private collection.';
+  const emptyPlaceholder =
+    visibility === 'public' ? 'Add to community collection' : 'Add to your private collection';
 
   return (
     <SelectableDropdown
@@ -168,23 +138,21 @@ export function CollectionSelector({
       onSearchChange={setSearchValue}
       onSelect={handleSelect}
       onDeselect={handleDeselect}
-      onCreateNew={handleCreateNew}
       placeholder={placeholder}
       helperText={helperText}
       emptyPlaceholder={emptyPlaceholder}
-      isLoading={isCreating}
       filterOptions={filterOptions}
-      canCreateNew={canCreateNew}
       comboboxRef={comboboxRef}
       listboxRef={listboxRef}
+      getOptionLabel={(opt) => opt.label}
+      getOptionId={(opt) => opt.id}
       icon={visibility === 'public' ? <Globe size={14} /> : <Lock size={14} />}
       renderOption={(option, isSelected) => (
         <>
-          <span>{option.label}</span>
-          {isSelected && <Check size={14} className="text-primary-600 dark:text-primary-400" />}
+          <span className="text-left">{option.label}</span>
+          {isSelected && <Check size={14} className="text-primary-600 dark:text-primary-400 shrink-0" />}
         </>
       )}
     />
   );
 }
-

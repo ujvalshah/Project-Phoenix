@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
     // Explicit base for BrowserRouter SEO (default is '/' but being explicit)
     base: '/',
     server: {
+      // Keep default local dev ergonomics: prefer 3000, auto-fallback if busy.
       port: 3000,
       host: '0.0.0.0',
       proxy: isProduction ? undefined : {

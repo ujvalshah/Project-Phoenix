@@ -1,7 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderPlus, Plus, Settings, SquareCheck } from 'lucide-react';
-import type { ProfilePageUser } from './workspaceUserDisplay';
 
 interface WorkspaceHeaderProps {
   title: string;
@@ -9,7 +8,6 @@ interface WorkspaceHeaderProps {
   isOwner: boolean;
   selectionMode: boolean;
   onToggleSelect: () => void;
-  user: ProfilePageUser;
 }
 
 export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({

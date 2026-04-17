@@ -35,7 +35,6 @@ import type { Article } from '@/types';
 import { SearchInput } from '@/components/header/SearchInput';
 import type { BookmarkFilters } from '@/services/bookmarkService';
 import { WorkspaceTopSection } from '@/components/workspace/WorkspaceTopSection';
-import { MetricsStrip, type LibraryMetric } from '@/components/workspace/MetricsStrip';
 import {
   TOOLBAR_BUTTON,
   TOOLBAR_INPUT,
@@ -270,11 +269,6 @@ export const SavedPage: React.FC = () => {
     return def?.name || 'Saved';
   }, [collections]);
 
-  const bookmarkMetrics: LibraryMetric[] = useMemo(() => [
-    { id: 'items', label: 'Items', value: activeCollectionCount },
-    { id: 'folders', label: 'Folders', value: collections.length },
-  ], [activeCollectionCount, collections.length]);
-
   // Handlers
   const handleCreateCollection = async (name: string) => {
     try {
@@ -335,26 +329,35 @@ export const SavedPage: React.FC = () => {
           />
         }
         mainContent={
-          <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pb-6">
+          <div className="mx-auto max-w-[1280px] px-4 pb-6 sm:px-6 lg:px-8">
             <div className="sticky top-14 lg:top-16" style={{ zIndex: 20 }}>
               <WorkspaceTopSection
                 header={
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-col gap-3 sm:gap-2 md:flex-row md:items-end md:justify-between">
-                      <div className="min-w-0 flex-1">
+                  <header className="flex flex-col gap-2.5 sm:gap-2 md:flex-row md:items-end md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
                         <h1 className="truncate text-[1.35rem] font-semibold leading-tight tracking-[-0.02em] text-slate-900 dark:text-slate-50 sm:text-[1.55rem]">
                           {activeCollectionName}
                         </h1>
-                        <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
-                          {activeCollectionId
-                            ? `Items in this private folder. ${defaultCollectionName} is your default bucket.`
-                            : `Everything you saved across private folders. ${defaultCollectionName} is the default bucket — custom folders are optional.`
-                          }
-                        </p>
+                        <span className="inline-flex h-5 items-center rounded-md border border-slate-200/70 bg-slate-50 px-1.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                          {activeCollectionCount.toLocaleString()}
+                        </span>
                       </div>
+                      <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
+                        {activeCollectionId
+                          ? `Items in this private folder. ${defaultCollectionName} is your default bucket.`
+                          : `Everything you saved across private folders. ${defaultCollectionName} is the default bucket - custom folders are optional.`}
+                      </p>
                     </div>
-                    <MetricsStrip metrics={bookmarkMetrics} />
-                  </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="inline-flex min-h-[32px] items-center rounded-md border border-slate-200/70 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        Folders
+                        <span className="ml-1 tabular-nums text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                          {collections.length.toLocaleString()}
+                        </span>
+                      </span>
+                    </div>
+                  </header>
                 }
                 toolbar={
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -373,7 +376,7 @@ export const SavedPage: React.FC = () => {
                       />
                     </div>
 
-                    <div className="flex items-center gap-1.5 overflow-x-auto md:justify-end">
+                    <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
                       <label htmlFor="bookmark-sort" className="sr-only">
                         Sort bookmarks
                       </label>
@@ -385,7 +388,7 @@ export const SavedPage: React.FC = () => {
                           setSort(nextSort as NonNullable<BookmarkFilters['sort']>);
                           setOrder(nextOrder as NonNullable<BookmarkFilters['order']>);
                         }}
-                        className={`${TOOLBAR_SELECT} h-9 px-2.5 text-[13px]`}
+                        className={`${TOOLBAR_SELECT} h-9 max-w-full px-2.5 text-[13px]`}
                         aria-label="Sort"
                       >
                         <option value="lastAccessedAt:desc">Last opened · Newest</option>
@@ -465,6 +468,7 @@ export const SavedPage: React.FC = () => {
               />
             </div>
 
+            <div className="-mt-0.5">
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
@@ -497,6 +501,7 @@ export const SavedPage: React.FC = () => {
                 onRetry={refetchBookmarks}
               />
             )}
+            </div>
           </div>
         }
       />

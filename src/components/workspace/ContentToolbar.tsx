@@ -50,6 +50,15 @@ const VIEW_OPTS: { id: LibraryViewMode; label: string; icon: React.ReactNode }[]
   { id: 'compact', label: 'Compact', icon: <Rows3 className="h-3.5 w-3.5" aria-hidden /> },
 ];
 
+const normalizeTagKey = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ');
+
 export const ContentToolbar: React.FC<ContentToolbarProps> = ({
   mode = 'nuggets',
   className,
@@ -100,13 +109,13 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
     const filteredOptions = q
       ? tagOptions.filter((tag) => tag.toLowerCase().includes(q))
       : tagOptions;
-    const formatSet = new Set((tagTaxonomy?.formats || []).map((t) => t.trim().toLowerCase()));
-    const domainSet = new Set((tagTaxonomy?.domains || []).map((t) => t.trim().toLowerCase()));
-    const subtopicSet = new Set((tagTaxonomy?.subtopics || []).map((t) => t.trim().toLowerCase()));
+    const formatSet = new Set((tagTaxonomy?.formats || []).map(normalizeTagKey));
+    const domainSet = new Set((tagTaxonomy?.domains || []).map(normalizeTagKey));
+    const subtopicSet = new Set((tagTaxonomy?.subtopics || []).map(normalizeTagKey));
 
     return filteredOptions.reduce<Record<'format' | 'domain' | 'subtopic', string[]>>(
       (acc, tag) => {
-        const key = tag.trim().toLowerCase();
+        const key = normalizeTagKey(tag);
         if (formatSet.has(key)) acc.format.push(tag);
         else if (domainSet.has(key)) acc.domain.push(tag);
         else if (subtopicSet.has(key)) acc.subtopic.push(tag);
@@ -121,14 +130,18 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
     const filteredOptions = q
       ? tagOptions.filter((tag) => tag.toLowerCase().includes(q))
       : tagOptions;
-    const formatSet = new Set((tagTaxonomy?.formats || []).map((t) => t.trim().toLowerCase()));
-    const domainSet = new Set((tagTaxonomy?.domains || []).map((t) => t.trim().toLowerCase()));
-    const subtopicSet = new Set((tagTaxonomy?.subtopics || []).map((t) => t.trim().toLowerCase()));
+    const formatSet = new Set((tagTaxonomy?.formats || []).map(normalizeTagKey));
+    const domainSet = new Set((tagTaxonomy?.domains || []).map(normalizeTagKey));
+    const subtopicSet = new Set((tagTaxonomy?.subtopics || []).map(normalizeTagKey));
     return filteredOptions.filter((tag) => {
-      const key = tag.trim().toLowerCase();
+      const key = normalizeTagKey(tag);
       return !formatSet.has(key) && !domainSet.has(key) && !subtopicSet.has(key);
     });
   }, [tagOptions, tagSearch, tagTaxonomy]);
+
+  const hasGroupedMatches =
+    groupedTags.format.length > 0 || groupedTags.domain.length > 0 || groupedTags.subtopic.length > 0;
+  const firstVisibleGroupedTag = groupedTags.format[0] ?? groupedTags.domain[0] ?? groupedTags.subtopic[0] ?? null;
 
   return (
     <div className={['flex flex-col gap-2', className].filter(Boolean).join(' ')} role="search">
@@ -290,6 +303,24 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
                         type="text"
                         value={tagSearch}
                         onChange={(e) => setTagSearch(e.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (tagSearch.trim().length > 0) {
+                              setTagSearch('');
+                            } else {
+                              setIsTagPanelOpen(false);
+                            }
+                            return;
+                          }
+                          if (event.key === 'Enter' && firstVisibleGroupedTag) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onTagChange(firstVisibleGroupedTag);
+                            setIsTagPanelOpen(false);
+                          }
+                        }}
                         placeholder="Search tags..."
                         className={`${TOOLBAR_INPUT} h-8 w-full px-2.5 text-[12px]`}
                       />
@@ -333,6 +364,11 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
                         )}
                         {tagOptions.length === 0 && (
                           <p className="px-1 py-2 text-[11px] text-slate-500 dark:text-slate-400">No tags yet.</p>
+                        )}
+                        {tagOptions.length > 0 && !hasGroupedMatches && (
+                          <p className="px-1 py-2 text-[11px] text-slate-500 dark:text-slate-400">
+                            No grouped tags found. Try another search or clear tag.
+                          </p>
                         )}
                         {showTaxonomyDebug && unmappedTags.length > 0 && (
                           <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">

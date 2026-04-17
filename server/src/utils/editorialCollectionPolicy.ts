@@ -7,6 +7,18 @@ export function isAdminRole(userRole: string | undefined): boolean {
   return typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
 }
 
+/** Whether the user may inspect which editorial collections include a given article (edit nugget UI). */
+export function canInspectArticleCollectionMembership(
+  articleAuthorId: string | undefined,
+  userId: string | undefined,
+  userRole: string | undefined
+): boolean {
+  if (!userId) return false;
+  if (isAdminRole(userRole)) return true;
+  if (!articleAuthorId) return false;
+  return String(articleAuthorId) === String(userId);
+}
+
 /** Rename/delete/update metadata */
 export function canModifyCollectionMetadata(
   collection: { type: string; creatorId: unknown },

@@ -507,8 +507,6 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex min-w-0 flex-1 items-center gap-3">
             {/* Desktop Navigation rail (intentional horizontal scroll) */}
             <div className="relative min-w-0 flex-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-white/90 to-transparent dark:from-slate-900/90" aria-hidden />
-              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-white/90 to-transparent dark:from-slate-900/90" aria-hidden />
             <nav
                 className="no-scrollbar-visual rounded-lg border border-gray-200/80 bg-gray-100 p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 whitespace-nowrap [scroll-padding-inline:0.75rem] dark:border-slate-700/80 dark:bg-slate-800/90"
               role="navigation"

@@ -30,6 +30,7 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
   onEdit,
   onDelete,
 }) => {
+  const [showAllTags, setShowAllTags] = React.useState(false);
   const thumb = getThumbnailUrl(article);
   const source = getNuggetSourceLabel(article);
   const href = getNuggetPrimaryHref(article);
@@ -43,7 +44,7 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
   );
   const cap = TAG_CAP(compact);
   const extraTags = Math.max(0, tags.length - cap);
-  const displayTags = tags.slice(0, cap);
+  const displayTags = showAllTags ? tags : tags.slice(0, cap);
 
   const published = article.publishedAt ? formatDate(article.publishedAt, false) : '—';
   const updatedRaw = article.updated_at ?? article.created_at;
@@ -129,12 +130,12 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpen(article);
+                    setShowAllTags((prev) => !prev);
                   }}
                   className="text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                  aria-label={`View ${extraTags} more tags`}
+                  aria-label={showAllTags ? 'Collapse tags' : `View ${extraTags} more tags`}
                 >
-                  +{extraTags}
+                  {showAllTags ? 'Show less' : `+${extraTags}`}
                 </button>
               )}
             </div>
