@@ -1,11 +1,9 @@
 import React from 'react';
-import { twMerge } from 'tailwind-merge';
 import { HeaderSpacer } from './HeaderSpacer';
 import { CategorySpacer } from './CategorySpacer';
 import { MainContentTopSpacer } from './MainContentTopSpacer';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
-import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 
 interface PageStackProps {
   /**
@@ -54,16 +52,21 @@ export const PageStack: React.FC<PageStackProps> = ({
   categoryToolbar,
   mainContent,
 }) => {
-  const { narrowHeaderHidden } = useAppChromeScroll();
-
+  // Sticky offset is STATIC. Previously this toggled between top-0 (with
+  // safe-area padding + background + backdrop-blur + shadow) and top-14 based
+  // on narrowHeaderHidden — that is a layout-mutating class swap on scroll and
+  // compounds the flicker caused by HeaderSpacer height changes. The sticky
+  // toolbar now always sits below the reserved header band; when the fixed
+  // header slides away on scroll-down, the 56/64px band simply reveals the
+  // scrolling content underneath the (now off-screen) header.
+  //
+  // DO NOT re-introduce scroll-state-driven `top`, padding, background, or
+  // backdrop-filter changes here. If the toolbar needs to rise with the
+  // header, do it with a compositor-only translateY on this container.
+  // See src/context/AppChromeScrollContext.tsx for the full invariant.
   const categoryStickyClass =
     categoryToolbar != null
-      ? twMerge(
-          'sticky transition-[box-shadow,background-color] duration-300 ease-out',
-          narrowHeaderHidden
-            ? 'top-0 bg-white/95 pt-[env(safe-area-inset-top)] shadow-md shadow-gray-900/10 backdrop-blur-md dark:bg-slate-900/95 dark:shadow-black/20'
-            : LAYOUT_CLASSES.STICKY_BELOW_HEADER,
-        )
+      ? `sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER}`
       : '';
 
   return (

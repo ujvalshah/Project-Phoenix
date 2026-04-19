@@ -1,14 +1,33 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { LAYOUT } from '@/constants/layout';
 
+/**
+ * INVARIANT — DO NOT REINTRODUCE SCROLL-LINKED LAYOUT MUTATION.
+ *
+ * This controller drives `narrowHeaderHidden`, consumed by Header /
+ * MobileBottomNav / PageStack. Those consumers animate via transform +
+ * opacity ONLY. Mutating document height, sticky `top`, or padding in
+ * response to this state causes browser scroll-anchoring to compensate
+ * `scrollY`, which this listener then reads as phantom user scroll —
+ * producing an oscillation loop (the "vibration" bug). Keep the state
+ * compositor-only at all call sites.
+ */
+
 /** While within this top zone, chrome remains visible and stable */
 const TOP_SAFE_ZONE_PX = 112;
-/** Ignore tiny per-frame jitter and bounce noise */
-const SCROLL_NOISE_PX = 2;
+/**
+ * Ignore tiny per-frame jitter and bounce noise. Tuned above iOS Safari's
+ * 1–3px slow-scroll granularity so finger tremor can't chip at accumulators.
+ */
+const SCROLL_NOISE_PX = 4;
 /** Hide reluctantly: require meaningful cumulative downward travel */
 const HIDE_ACCUMULATED_PX = 44;
-/** Show quickly: smaller cumulative upward travel required */
-const SHOW_ACCUMULATED_PX = 14;
+/**
+ * Show threshold. Deliberately well above the amplitude of iOS rubber-band
+ * rebound deltas so bounce-back at top/bottom edges doesn't flash the header.
+ * Still far below a deliberate scroll-up intent (~80–150px).
+ */
+const SHOW_ACCUMULATED_PX = 24;
 
 interface AppChromeScrollContextValue {
   /** Viewport width &lt; lg (1024px) */
@@ -93,12 +112,30 @@ export const AppChromeScrollProvider: React.FC<{ children: React.ReactNode }> = 
     lastScrollYRef.current = window.scrollY || 0;
     narrowChromeHiddenRef.current = false;
 
+    // Zero accumulators on gesture start so stale noise/momentum from the
+    // previous gesture can't leak across and trip a threshold on the next one.
+    const onGestureStart = () => {
+      downAccumRef.current = 0;
+      upAccumRef.current = 0;
+    };
+
     let raf = 0;
     const onScroll = () => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
         const y = window.scrollY || 0;
+
+        // Rubber-band guard: iOS Safari (and Android overscroll) can briefly
+        // report scrollY past document bounds during elastic bounce. Those
+        // deltas aren't user intent — snapshot position and bail so they
+        // don't enter the accumulators.
+        const maxY =
+          document.documentElement.scrollHeight - window.innerHeight;
+        if (y < 0 || y > maxY) {
+          lastScrollYRef.current = y;
+          return;
+        }
 
         const narrow = window.innerWidth < LAYOUT.LG_BREAKPOINT;
         if (!narrow) {
@@ -163,9 +200,13 @@ export const AppChromeScrollProvider: React.FC<{ children: React.ReactNode }> = 
 
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', readNarrow);
+    window.addEventListener('pointerdown', onGestureStart, { passive: true });
+    window.addEventListener('touchstart', onGestureStart, { passive: true });
     return () => {
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', readNarrow);
+      window.removeEventListener('pointerdown', onGestureStart);
+      window.removeEventListener('touchstart', onGestureStart);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [setHiddenIfChanged]);

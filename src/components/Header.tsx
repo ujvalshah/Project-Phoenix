@@ -481,10 +481,9 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Glass header — fixed (layout invariant); z-50 via Z_INDEX.HEADER */}
       <header
         className={twMerge(
-          'fixed left-0 right-0 top-0 w-full border-b border-gray-200 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md transition-[transform,opacity,background-color,border-color] duration-300 ease-out will-change-transform dark:border-slate-800 dark:bg-slate-900/80',
+          'fixed left-0 right-0 top-0 w-full border-b border-gray-200 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md transition-[transform,opacity] duration-300 ease-out will-change-transform dark:border-slate-800 dark:bg-slate-900/80',
           LAYOUT_CLASSES.HEADER_HEIGHT,
-          narrowHeaderHidden &&
-            'pointer-events-none -translate-y-full border-transparent bg-transparent opacity-0 backdrop-blur-none dark:bg-transparent',
+          narrowHeaderHidden && 'pointer-events-none -translate-y-full opacity-0',
         )}
         style={{ zIndex: Z_INDEX.HEADER }}
       >
@@ -512,12 +511,12 @@ export const Header: React.FC<HeaderProps> = ({
 
           </div>
 
-          {/* Center: Primary navigation rail + desktop search */}
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            {/* Desktop Navigation rail (intentional horizontal scroll) */}
-            <div className="relative min-w-0 flex-1">
+          {/* Center: content-width primary nav + flexible search (nav must not flex-grow) */}
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            {/* Desktop primary nav — width hugs tabs; horizontal scroll only if many tabs / tight width */}
+            <div className="relative max-w-full shrink-0 min-w-0">
             <nav
-                className="no-scrollbar-visual rounded-lg border border-gray-200/80 bg-gray-100 p-1 hidden lg:flex gap-1 overflow-x-auto min-w-0 whitespace-nowrap [scroll-padding-inline:0.75rem] dark:border-slate-700/80 dark:bg-slate-800/90"
+                className="no-scrollbar-visual hidden w-max max-w-full min-w-0 gap-1 overflow-x-auto whitespace-nowrap rounded-lg border border-gray-200/80 bg-gray-100 p-1 [scroll-padding-inline:0.75rem] dark:border-slate-700/80 dark:bg-slate-800/90 lg:flex"
               role="navigation"
               aria-label="Main navigation"
             >
@@ -525,7 +524,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Link
                 to="/"
                 onClick={() => filters.setContentStream('standard')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 ${
+                className={`flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/80 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
                   isHome && filters.contentStream === 'standard'
                     ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
                     : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
@@ -546,7 +545,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Link
                   to="/"
                   onClick={() => filters.setContentStream('pulse')}
-                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 ${
+                  className={`flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/80 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
                     isHome && filters.contentStream === 'pulse'
                       ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
                       : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
@@ -566,7 +565,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
               <Link
                 to="/collections"
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
+                className={`flex min-h-9 shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/80 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
                   isCollections
                     ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
                     : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
@@ -578,7 +577,7 @@ export const Header: React.FC<HeaderProps> = ({
               {isAuthenticated && (
                 <Link
                   to={`/profile/${currentUser?.id || ''}`}
-                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
+                  className={`flex min-h-9 shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/80 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
                     currentPath.includes('/profile') || currentPath === '/myspace'
                       ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
                       : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
@@ -591,7 +590,7 @@ export const Header: React.FC<HeaderProps> = ({
               {isAuthenticated && (
                 <Link
                   to="/bookmarks"
-                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
+                  className={`flex min-h-9 shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/80 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
                     isBookmarks
                       ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
                       : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
@@ -604,7 +603,7 @@ export const Header: React.FC<HeaderProps> = ({
               {isAdmin && (
                 <Link
                   to="/admin"
-                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all whitespace-nowrap flex-shrink-0 ${
+                  className={`flex min-h-9 shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/80 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
                     currentPath.startsWith('/admin')
                       ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-50 dark:shadow-none'
                       : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-100'
@@ -617,9 +616,9 @@ export const Header: React.FC<HeaderProps> = ({
             </nav>
             </div>
 
-            {/* Search - full field on xl+, compact trigger on lg */}
-            <div className="hidden xl:flex min-w-[240px] max-w-[360px] flex-1 items-center justify-end">
-              <div ref={desktopSearchContainerRef} className="relative w-full min-w-0">
+            {/* Search — grows into space between nav and right cluster (xl+); min width keeps field usable */}
+            <div className="hidden min-w-0 flex-1 basis-0 items-stretch xl:flex">
+              <div ref={desktopSearchContainerRef} className="relative min-h-9 min-w-[220px] w-full max-w-none">
               <SearchInput
                 ref={desktopSearchRef}
                 initialValue={searchInputValue}
