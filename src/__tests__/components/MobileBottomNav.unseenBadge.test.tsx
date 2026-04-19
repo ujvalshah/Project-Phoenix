@@ -58,7 +58,7 @@ describe('MobileBottomNav unseen badges', () => {
   it('does not render badge when unseen count is zero', () => {
     renderNav();
     expect(screen.queryByText('99+')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/unseen Home updates/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/unseen Nuggets updates/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/unseen Market Pulse updates/i)).not.toBeInTheDocument();
   });
 
@@ -69,7 +69,7 @@ describe('MobileBottomNav unseen badges', () => {
 
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('99+')).toBeInTheDocument();
-    expect(screen.getByLabelText('3 unseen Home updates')).toBeInTheDocument();
+    expect(screen.getByLabelText('3 unseen Nuggets updates')).toBeInTheDocument();
     expect(screen.getByLabelText('99+ unseen Market Pulse updates')).toBeInTheDocument();
   });
 });

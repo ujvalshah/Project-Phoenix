@@ -1,6 +1,4 @@
-import { forwardRef, Suspense, lazy, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { getOverlayHost } from '@/utils/overlayHosts';
+import { forwardRef, useMemo } from 'react';
 import { Article } from '@/types';
 import { useNewsCard } from '@/hooks/useNewsCard';
 import { GridVariant } from './card/variants/GridVariant';
@@ -16,10 +14,7 @@ import { LinkPreviewModal } from './LinkPreviewModal';
 import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
-import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import { buildLightboxSourceLinksForImageUrls } from '@/utils/masonryMediaHelper';
-// Lazy-load YouTube modal for code splitting (zero impact on initial bundle)
-const YouTubeModal = lazy(() => import('./YouTubeModal').then(module => ({ default: module.YouTubeModal })));
 
 interface NewsCardProps {
   article: Article;
@@ -274,49 +269,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             })() : undefined}
           />
         )}
-        {/* YouTube Modal - Lazy-loaded for performance */}
-        {modals.showYouTubeModal && (() => {
-          const { primaryMedia } = classifyArticleMedia(originalArticle);
-          // Get YouTube URL from multiple sources (same logic as handleMediaClick)
-          const videoUrl = 
-            primaryMedia?.type === 'youtube' ? primaryMedia.url :
-            originalArticle.media?.type === 'youtube' ? originalArticle.media.url :
-            (originalArticle.video && (originalArticle.video.includes('youtube.com') || originalArticle.video.includes('youtu.be'))) ? originalArticle.video :
-            null;
-          const videoTitle = 
-            primaryMedia?.previewMetadata?.title || 
-            originalArticle.media?.previewMetadata?.title || 
-            originalArticle.title;
-          
-          if (!videoUrl) return null;
-          
-          return (
-            <Suspense
-              fallback={
-                typeof document !== 'undefined'
-                  ? createPortal(
-                      <div className="fixed inset-0 flex items-center justify-center bg-black/90 pointer-events-auto">
-                        <div className="text-white text-sm">Loading video player...</div>
-                      </div>,
-                      getOverlayHost('modal'),
-                    )
-                  : null
-              }
-            >
-              <YouTubeModal
-                isOpen={modals.showYouTubeModal}
-                onClose={(e) => {
-                  e?.stopPropagation?.();
-                  modals.setShowYouTubeModal(false);
-                  modals.setYoutubeStartTime(0); // Reset timestamp when closing
-                }}
-                videoUrl={videoUrl}
-                videoTitle={videoTitle}
-                startTime={modals.youtubeStartTime || 0}
-              />
-            </Suspense>
-          );
-        })()}
       </>
     );
   }

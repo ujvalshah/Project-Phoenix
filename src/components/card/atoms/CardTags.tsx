@@ -11,11 +11,11 @@ interface TagPillProps {
 export const TagPill: React.FC<TagPillProps> = ({ label, onClick }) => {
   const pill = (
     <span
+      title={label}
       onClick={onClick}
       className={twMerge(
-        'inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium',
-        'bg-slate-50 border border-slate-200 text-slate-600',
-        'dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400',
+        'inline-flex min-w-0 max-w-full items-center overflow-hidden rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-slate-600',
+        'dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400',
         onClick && [
           'cursor-pointer',
           'hover:border-slate-300 hover:bg-slate-100',
@@ -35,7 +35,7 @@ export const TagPill: React.FC<TagPillProps> = ({ label, onClick }) => {
         }
       } : undefined}
     >
-      {label}
+      <span className="min-w-0 truncate">{label}</span>
     </span>
   );
   return onClick ? <Tooltip content="Click to filter">{pill}</Tooltip> : pill;
@@ -64,16 +64,17 @@ export const CardTags: React.FC<CardTagsProps> = ({
 
   if (!tags || tags.length === 0) return null;
 
-  // PHASE 1: Max 3 visible tags per card spec
-  const visibleTags = tags.slice(0, 3);
-  const remainingCount = tags.length - 3;
+  /** Inline cap before +N; chips share one row and truncate — do not raise this without layout review */
+  const MAX_INLINE_TAGS = 3;
+  const visibleTags = tags.slice(0, MAX_INLINE_TAGS);
+  const remainingCount = tags.length - MAX_INLINE_TAGS;
 
-  // Compact spacing between pills (gap-1 or gap-1.5)
-  // Grid/Feed variant: no background container, just flex layout
-  // Default variant: amber background container
-  const containerClasses = variant === 'grid' || variant === 'feed'
-    ? 'flex flex-wrap items-center gap-1 relative'
-    : 'flex flex-wrap items-center gap-1 mb-2 relative bg-amber-50 dark:bg-amber-900/20 rounded-lg px-2 py-1';
+  // Single-row band: nowrap + hidden overflow keeps grid title baselines aligned across cards.
+  // Grid/Feed: flat row; default (masonry): amber band — same overflow rules.
+  const containerClasses =
+    variant === 'grid' || variant === 'feed'
+      ? 'flex flex-nowrap items-center gap-1 relative w-full min-w-0 shrink-0 overflow-hidden'
+      : 'mb-2 flex flex-nowrap items-center gap-1 relative w-full min-w-0 shrink-0 overflow-hidden rounded-lg bg-amber-50 px-2 py-1 dark:bg-amber-900/20';
 
   return (
     <div
@@ -90,7 +91,7 @@ export const CardTags: React.FC<CardTagsProps> = ({
         />
       ))}
       {remainingCount > 0 && (
-        <div className="relative inline-flex">
+        <div className="relative inline-flex shrink-0">
           <button
             ref={moreTagsAnchorRef}
             type="button"
@@ -100,7 +101,7 @@ export const CardTags: React.FC<CardTagsProps> = ({
                 onToggleTagPopover(e);
               }
             }}
-            className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium bg-slate-50 border border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 cursor-pointer hover:border-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+            className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
             aria-label={`Show ${remainingCount} more tags`}
             aria-expanded={showTagPopover}
             aria-haspopup="menu"
@@ -108,7 +109,7 @@ export const CardTags: React.FC<CardTagsProps> = ({
             +{remainingCount}
           </button>
           <DropdownPortal
-            isOpen={!!showTagPopover && tags.length > 3}
+            isOpen={!!showTagPopover && tags.length > MAX_INLINE_TAGS}
             anchorRef={moreTagsAnchorRef}
             align="left"
             host="popover"
@@ -117,7 +118,7 @@ export const CardTags: React.FC<CardTagsProps> = ({
             className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl p-2 w-40"
           >
             <div className="flex flex-col gap-1 max-h-56 overflow-y-auto custom-scrollbar" role="menu">
-              {tags.slice(3).map((tag) => (
+              {tags.slice(MAX_INLINE_TAGS).map((tag) => (
                 <button
                   key={tag}
                   type="button"

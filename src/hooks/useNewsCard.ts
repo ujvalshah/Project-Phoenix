@@ -8,7 +8,7 @@ import { queryClient } from '@/queryClient';
 import { sanitizeArticle, hasValidAuthor, logError } from '@/utils/errorHandler';
 import { getAllImageUrls, getGridImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
-import { useVideoPlayer } from '@/context/VideoPlayerContext';
+import { useVideoPlayerActions } from '@/context/VideoPlayerContext';
 import { useAuthSelector } from '@/context/AuthContext';
 import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
 // formatDate removed - using relative time formatting in CardMeta instead
@@ -106,13 +106,11 @@ export const useNewsCard = ({
   const [showFullModal, setShowFullModal] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
   const [lightboxInitialIndex, setLightboxInitialIndex] = useState(0);
-  const [showYouTubeModal, setShowYouTubeModal] = useState(false);
-  const [youtubeStartTime, setYoutubeStartTime] = useState<number>(0);
   const [collectionMode, setCollectionMode] = useState<'public' | 'private'>('public');
   const [showLinkPreview, setShowLinkPreview] = useState(false);
   const [linkPreviewUrl, setLinkPreviewUrl] = useState<string | null>(null);
   
-  const { playVideo } = useVideoPlayer();
+  const { playVideo } = useVideoPlayerActions();
   const cardElementIdRef = useRef<string>(`video-card-${article.id}`);
   const [collectionAnchor, setCollectionAnchor] = useState<DOMRect | null>(null);
 
@@ -809,8 +807,6 @@ export const useNewsCard = ({
       showFullModal,
       showLightbox,
       lightboxInitialIndex,
-      showYouTubeModal,
-      youtubeStartTime,
       showMenu,
       showTagPopover,
       showEditModal,
@@ -821,8 +817,6 @@ export const useNewsCard = ({
       setShowFullModal,
       setShowLightbox,
       setLightboxInitialIndex,
-      setShowYouTubeModal,
-      setYoutubeStartTime,
       setShowEditModal,
       setShowLinkPreview,
       setLinkPreviewUrl,

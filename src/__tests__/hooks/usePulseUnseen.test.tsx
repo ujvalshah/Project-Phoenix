@@ -59,7 +59,7 @@ describe('usePulseUnseen hooks', () => {
     expect(mocks.getUnseenFeedCountsMock).toHaveBeenCalledTimes(1);
   });
 
-  it('feed-specific selectors return Home and Market Pulse counts', async () => {
+  it('feed-specific selectors return standard (Nuggets) and Market Pulse counts', async () => {
     mocks.isAuthenticated = true;
     mocks.getUnseenFeedCountsMock.mockResolvedValue({ home: 1, marketPulse: 4 });
     const { result: home } = renderHook(() => useStandardUnseenCount(), { wrapper: createWrapper() });

@@ -504,7 +504,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Link
               to="/"
               className="shrink-0"
-              aria-label="Home"
+              aria-label="Nuggets"
               onClick={() => filters.setContentStream('standard')}
             >
               <NuggetsLogoMark showName />
@@ -532,11 +532,11 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
                 aria-current={isHome && filters.contentStream === 'standard' ? 'page' : undefined}
               >
-                Home
+                Nuggets
                 {hasNavBadge(standardUnseenCount) && (
                   <span
                     className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-primary-500 text-gray-900 text-[10px] font-normal leading-none"
-                    aria-label={`${formatNavBadgeCount(standardUnseenCount)} unseen Home updates`}
+                    aria-label={`${formatNavBadgeCount(standardUnseenCount)} unseen Nuggets updates`}
                   >
                     {formatNavBadgeCount(standardUnseenCount)}
                   </span>
@@ -585,7 +585,7 @@ export const Header: React.FC<HeaderProps> = ({
                   }`}
                   aria-current={(currentPath.includes('/profile') || currentPath === '/myspace') ? 'page' : undefined}
                 >
-                  Library
+                  Workspace
                 </Link>
               )}
               {isAuthenticated && (
@@ -1004,7 +1004,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Link
               to="/"
               className="flex shrink-0 items-center"
-              aria-label="Home"
+              aria-label="Nuggets"
               onClick={() => filters.setContentStream('standard')}
             >
               <NuggetsLogoMark />
@@ -1127,7 +1127,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <UserIcon size={16} />
-            Library
+            Workspace
           </Link>
           <Link
             to="/bookmarks"
@@ -1253,7 +1253,7 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               <UserIcon size={16} />
-              Library
+              Workspace
             </Link>
           )}
           {isAdmin && (
@@ -1624,7 +1624,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                <div className="mx-4 my-2 h-px bg-gray-100 dark:bg-slate-800" />
                <p className="px-4 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">Personal</p>
                <Link to={`/profile/${currentUser?.id || ''}`} onClick={onClose} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800">
-                  <UserIcon size={18} /> Library
+                  <UserIcon size={18} /> Workspace
                </Link>
                <Link to="/bookmarks" onClick={onClose} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800">
                   <BookOpen size={18} /> Bookmarks

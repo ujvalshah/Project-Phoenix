@@ -2,8 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, X } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuthSelector } from '@/context/AuthContext';
+import {
+  NOTIFICATION_PROMPT_COPY,
+  NOTIFICATION_PROMPT_DISMISSED_KEY,
+} from '@/constants/onboardingCopy';
 
-const DISMISSED_KEY = 'nuggets_notif_prompt_dismissed';
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const VIEW_COUNT_KEY = 'nuggets_article_view_count';
 const VIEW_THRESHOLD = 3;
@@ -18,7 +21,7 @@ export const NotificationPrompt: React.FC = () => {
     permissionStatus === 'granted' || permissionStatus === 'denied';
 
   const isDismissed = useCallback((): boolean => {
-    const dismissed = localStorage.getItem(DISMISSED_KEY);
+    const dismissed = localStorage.getItem(NOTIFICATION_PROMPT_DISMISSED_KEY);
     if (!dismissed) return false;
     const dismissedAt = parseInt(dismissed, 10);
     return Date.now() - dismissedAt < DISMISS_DURATION_MS;
@@ -71,7 +74,7 @@ export const NotificationPrompt: React.FC = () => {
   };
 
   const handleDismiss = () => {
-    localStorage.setItem(DISMISSED_KEY, Date.now().toString());
+    localStorage.setItem(NOTIFICATION_PROMPT_DISMISSED_KEY, Date.now().toString());
     setVisible(false);
   };
 
@@ -83,10 +86,10 @@ export const NotificationPrompt: React.FC = () => {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-slate-900 dark:text-white">
-            Stay in the loop
+            {NOTIFICATION_PROMPT_COPY.title}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Get notified when new nuggets drop. You can customize frequency anytime in settings.
+            {NOTIFICATION_PROMPT_COPY.body}
           </p>
           <div className="flex gap-2 mt-3">
             <button
@@ -94,13 +97,15 @@ export const NotificationPrompt: React.FC = () => {
               disabled={isSubscribing}
               className="px-3 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              {isSubscribing ? 'Enabling...' : 'Enable notifications'}
+              {isSubscribing
+                ? NOTIFICATION_PROMPT_COPY.enableButtonLoading
+                : NOTIFICATION_PROMPT_COPY.enableButton}
             </button>
             <button
               onClick={handleDismiss}
               className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
             >
-              Not now
+              {NOTIFICATION_PROMPT_COPY.dismissButton}
             </button>
           </div>
         </div>

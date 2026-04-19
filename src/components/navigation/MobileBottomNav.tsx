@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { startTransition, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Activity, Home, Layers } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
@@ -12,12 +12,23 @@ import { formatNavBadgeCount, hasNavBadge } from '@/utils/navBadge';
 
 const NAV_LABEL_CLASS = 'text-[11px] font-medium leading-tight tracking-[0.01em]';
 
+// Warm the destination route's chunk before the user commits to navigating, so
+// tap-to-commit doesn't stall behind a Suspense fallback on the first visit.
+// Browser module cache dedupes against the React.lazy() call in App.tsx.
+const preloadHome = () => {
+  void import('@/pages/HomePage');
+};
+const preloadCollections = () => {
+  void import('@/pages/CollectionsPage');
+};
+
 interface BottomNavItemProps {
   to: string;
   label: string;
   icon: React.ReactNode;
   active: boolean;
   onClick?: () => void;
+  onPreload?: () => void;
   ariaLabel?: string;
   indicator?: React.ReactNode;
 }
@@ -28,12 +39,15 @@ const BottomNavItem: React.FC<BottomNavItemProps> = ({
   icon,
   active,
   onClick,
+  onPreload,
   ariaLabel,
   indicator,
 }) => (
   <Link
     to={to}
     onClick={onClick}
+    onTouchStart={onPreload}
+    onPointerDown={onPreload}
     className={twMerge(
       'relative flex min-h-[58px] flex-col items-center justify-center rounded-xl px-2 py-1.5 transition-all duration-200 ease-out',
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950',
@@ -68,7 +82,7 @@ const BottomNavItem: React.FC<BottomNavItemProps> = ({
 );
 
 /**
- * Mobile-only primary destinations: Home, Market Pulse (feature-flagged), Collections.
+ * Mobile-only primary destinations: Nuggets, Market Pulse (feature-flagged), Collections.
  * Coordinates with filter state (contentStream) and document scroll chrome (hide on scroll down).
  */
 export const MobileBottomNav: React.FC = () => {
@@ -103,6 +117,26 @@ export const MobileBottomNav: React.FC = () => {
     };
   }, [showShell]);
 
+  // Prefetch the sibling route chunk when the nav is visible so the first tap
+  // doesn't pay the lazy-import cost. Runs once per mount during idle time.
+  useEffect(() => {
+    if (!showShell || typeof window === 'undefined') return;
+    const win = window as typeof window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const warm = () => {
+      preloadHome();
+      preloadCollections();
+    };
+    if (typeof win.requestIdleCallback === 'function') {
+      const id = win.requestIdleCallback(warm, { timeout: 1500 });
+      return () => win.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(warm, 600);
+    return () => window.clearTimeout(id);
+  }, [showShell]);
+
   const chromeHidden = narrowHeaderHidden;
 
   const isHome = location.pathname === '/';
@@ -117,7 +151,7 @@ export const MobileBottomNav: React.FC = () => {
     : '';
   const standardHasUpdates = hasNavBadge(standardUnseenCount);
   const standardBadgeLabel = standardHasUpdates
-    ? `${formatNavBadgeCount(standardUnseenCount ?? 0)} unseen Home updates`
+    ? `${formatNavBadgeCount(standardUnseenCount ?? 0)} unseen Nuggets updates`
     : '';
 
   if (!showShell) {
@@ -142,12 +176,21 @@ export const MobileBottomNav: React.FC = () => {
       <div className={twMerge('grid min-h-[64px] items-stretch px-2 pb-1 pt-1', gridCols)}>
         <BottomNavItem
           to="/"
-          label="Home"
+          label="Nuggets"
           icon={<Home size={19} strokeWidth={isStandard ? 2.3 : 2.1} />}
           active={isStandard}
+          onPreload={preloadHome}
           onClick={() => {
-            filters.setContentStream('standard');
-            if (isStandard) window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (isStandard) {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              return;
+            }
+            // Yield the event handler so Link's synchronous navigate() commits
+            // first; the stream update follows as a low-priority transition so
+            // HomePage can mount without being blocked by filter-driven effects.
+            startTransition(() => {
+              filters.setContentStream('standard');
+            });
           }}
           indicator={standardHasUpdates ? (
             <span
@@ -166,9 +209,15 @@ export const MobileBottomNav: React.FC = () => {
             label="Market Pulse"
             icon={<Activity size={19} strokeWidth={isPulse ? 2.3 : 2.1} />}
             active={isPulse}
+            onPreload={preloadHome}
             onClick={() => {
-              filters.setContentStream('pulse');
-              if (isPulse) window.scrollTo({ top: 0, behavior: 'smooth' });
+              if (isPulse) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+              }
+              startTransition(() => {
+                filters.setContentStream('pulse');
+              });
             }}
             aria-label="Market Pulse"
             indicator={pulseHasUpdates ? (
@@ -188,6 +237,7 @@ export const MobileBottomNav: React.FC = () => {
           label="Collections"
           icon={<Layers size={19} strokeWidth={isCollections ? 2.3 : 2.1} />}
           active={isCollections}
+          onPreload={preloadCollections}
           onClick={() => {
             if (isCollections) window.scrollTo({ top: 0, behavior: 'smooth' });
           }}

@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 import { twMerge } from 'tailwind-merge';
-import { isYouTubeTimestampLink, extractYouTubeVideoIdAndTimestamp } from '@/utils/youtubeUtils';
+import { isYouTubeUrl, extractYouTubeVideoIdAndTimestamp } from '@/utils/youtubeUtils';
 
 /** Tailwind Typography stack for `prose` mode (long-form docs). */
 const DOCUMENT_MARKDOWN_PROSE_CLASSES = [
@@ -302,28 +302,18 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           }
         }
         
-        // Handle YouTube timestamp links (actual YouTube URLs with timestamp parameter)
-        if (href && isYouTubeTimestampLink(href) && onYouTubeTimestampClick) {
+        // Handle YouTube video links (with or without timestamp) — route all to in-app player
+        if (href && isYouTubeUrl(href) && onYouTubeTimestampClick) {
           const { videoId, timestamp } = extractYouTubeVideoIdAndTimestamp(href);
-          if (import.meta.env.DEV) {
-            console.log('[MarkdownRenderer] YouTube timestamp link detected:', {
-              href,
-              videoId,
-              timestamp,
-              children: typeof children === 'string' ? children : 'ReactNode',
-            });
-          }
-          if (videoId && timestamp !== null) {
+          if (videoId) {
+            const startTime = timestamp ?? 0;
             return (
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (import.meta.env.DEV) {
-                    console.log('[MarkdownRenderer] Timestamp clicked:', { videoId, timestamp, href });
-                  }
-                  onYouTubeTimestampClick(videoId, timestamp, href);
+                  onYouTubeTimestampClick(videoId, startTime, href);
                 }}
                 className="text-primary-600 dark:text-primary-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
               >

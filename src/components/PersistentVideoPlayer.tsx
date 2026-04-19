@@ -14,14 +14,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { getOverlayHost } from '@/utils/overlayHosts';
 import { X } from 'lucide-react';
-import { useVideoPlayer } from '@/context/VideoPlayerContext';
+import { useVideoPlayerActions, useVideoPlayerState } from '@/context/VideoPlayerContext';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 
 const MINI_RIGHT = 16;
 const MINI_BOTTOM = 16;
 
 export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => {
-  const { state, closeMiniPlayer } = useVideoPlayer();
+  const state = useVideoPlayerState();
+  const { closeMiniPlayer } = useVideoPlayerActions();
   const [swipeOffset, setSwipeOffset] = useState({ x: 0, y: 0 });
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
 

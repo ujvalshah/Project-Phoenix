@@ -45,9 +45,12 @@ import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import { useFilterResults } from '@/context/FilterResultsContext';
 import { useMarkFeedSeen } from '@/hooks/usePulseUnseen';
 import { endActiveSearchDraft, recordSearchEvent } from '@/observability/telemetry';
-
-const VALUEPROP_DISMISSED_KEY = 'nuggets_valueprop_dismissed';
-const PULSE_INTRO_DISMISSED_KEY = 'market_pulse_intro_dismissed';
+import {
+  MARKET_PULSE_INTRO_COPY,
+  PULSE_INTRO_DISMISSED_KEY,
+  VALUE_PROP_STRIP_COPY,
+  VALUEPROP_DISMISSED_KEY,
+} from '@/constants/onboardingCopy';
 
 /** Compact value proposition strip shown to first-time visitors */
 const ValuePropStrip: React.FC = () => {
@@ -74,12 +77,8 @@ const ValuePropStrip: React.FC = () => {
       >
         <X size={14} />
       </button>
-      <p className="text-sm font-semibold text-gray-900 pr-6">
-        Nuggets: The Knowledge App
-      </p>
-      <p className="text-xs text-gray-600 mt-0.5">
-        Curated high-signal insights across Markets, Geopolitics, AI, and Tech. Save time — follow signal, not noise.
-      </p>
+      <p className="text-sm font-semibold text-gray-900 pr-6">{VALUE_PROP_STRIP_COPY.title}</p>
+      <p className="text-xs text-gray-600 mt-0.5">{VALUE_PROP_STRIP_COPY.body}</p>
     </div>
   );
 };
@@ -110,11 +109,9 @@ const MarketPulseIntroBanner: React.FC = () => {
         <X size={14} />
       </button>
       <p className="text-sm font-semibold text-gray-900 pr-6 flex items-center gap-1.5">
-        <Zap size={14} className="text-amber-500" /> Market Pulse
+        <Zap size={14} className="text-amber-500" /> {MARKET_PULSE_INTRO_COPY.title}
       </p>
-      <p className="text-xs text-gray-600 mt-0.5">
-        Daily stream of high-signal market updates and macro intelligence. Refreshed every day.
-      </p>
+      <p className="text-xs text-gray-600 mt-0.5">{MARKET_PULSE_INTRO_COPY.body}</p>
     </div>
   );
 };

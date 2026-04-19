@@ -18,7 +18,7 @@ export const MetricsStrip: React.FC<MetricsStripProps> = ({ metrics, className }
         'flex flex-wrap items-center gap-y-2',
         className ?? '',
       ].join(' ')}
-      aria-label="Library summary"
+      aria-label="Workspace summary"
     >
       {metrics.map((m, i) => (
         <div

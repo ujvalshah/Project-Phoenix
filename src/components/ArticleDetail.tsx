@@ -59,7 +59,7 @@ import { CreateNuggetModal } from './CreateNuggetModal';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 import { useDisclaimerConfig, resolveDisclaimer } from '@/hooks/useDisclaimerConfig';
-import { useVideoPlayer } from '@/context/VideoPlayerContext';
+import { useVideoPlayerActions } from '@/context/VideoPlayerContext';
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
@@ -121,7 +121,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
 
   const { withAuth } = useRequireAuth();
   const { currentUser, isAdmin, featureFlags } = useAuth();
-  const { playVideo } = useVideoPlayer();
+  const { playVideo } = useVideoPlayerActions();
   const queryClient = useQueryClient();
   const toast = useToast();
   const { data: disclaimerConfig } = useDisclaimerConfig();

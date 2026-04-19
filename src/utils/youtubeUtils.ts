@@ -150,35 +150,37 @@ export function extractYouTubeTimestamp(url: string): number | null {
  */
 function parseTimestamp(timestamp: string): number | null {
   if (!timestamp) return null;
-  
+
   // If it's just a number, treat as seconds
   const numericOnly = /^\d+$/.test(timestamp);
   if (numericOnly) {
     return parseInt(timestamp, 10);
   }
-  
-  // Parse complex formats like "1m30s" or "1h2m30s"
+
+  // Parse complex formats like "1m30s" or "1h2m30s".
+  // Track whether any unit matched so we can distinguish "zero seconds" from "no match".
   let totalSeconds = 0;
-  
-  // Match hours: "1h" or "1h2m30s"
+  let matched = false;
+
   const hoursMatch = timestamp.match(/(\d+)h/);
   if (hoursMatch) {
     totalSeconds += parseInt(hoursMatch[1], 10) * 3600;
+    matched = true;
   }
-  
-  // Match minutes: "2m" or "1h2m30s"
+
   const minutesMatch = timestamp.match(/(\d+)m/);
   if (minutesMatch) {
     totalSeconds += parseInt(minutesMatch[1], 10) * 60;
+    matched = true;
   }
-  
-  // Match seconds: "30s" or "1h2m30s" or just "30" at the end
+
   const secondsMatch = timestamp.match(/(\d+)s?$/);
   if (secondsMatch) {
     totalSeconds += parseInt(secondsMatch[1], 10);
+    matched = true;
   }
-  
-  return totalSeconds > 0 ? totalSeconds : null;
+
+  return matched ? totalSeconds : null;
 }
 
 /**

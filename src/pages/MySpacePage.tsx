@@ -691,7 +691,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
         <div className="grid grid-cols-12 gap-x-6">
           <section className="col-span-12" aria-labelledby="library-main-heading">
             <h2 id="library-main-heading" className="sr-only">
-              Library content
+              Workspace content
             </h2>
 
             <div className="sticky top-14 lg:top-16" style={{ zIndex: Z_INDEX.STICKY_SUBHEADER }}>
@@ -699,7 +699,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                 header={
                   <div className="flex flex-col gap-2.5">
                     <WorkspaceHeader
-                      title="Library"
+                      title="Workspace"
                       tagline={pageTagline}
                       isOwner={isOwner}
                       selectionMode={selectionMode}
@@ -717,7 +717,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                           tabs={contentTabs}
                           activeId={activeTab}
                           onChange={(id) => setActiveTab(id as MainTab)}
-                          ariaLabel="Library sections"
+                          ariaLabel="Workspace sections"
                         />
                       </div>
                       {isOwner && currentList.length > 0 && selectionMode && (

@@ -18,7 +18,7 @@ export function formatSuggestionPublishedLabel(iso: string | undefined): string 
 export function formatContentStreamLabel(stream: string | undefined): string {
   if (stream === 'pulse') return 'Market Pulse';
   if (stream === 'both') return 'Both feeds';
-  return 'Home';
+  return 'Nuggets';
 }
 
 export function formatSourceTypeLabel(sourceType: string | null | undefined): string {

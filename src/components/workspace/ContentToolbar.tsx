@@ -152,7 +152,7 @@ export const ContentToolbar: React.FC<ContentToolbarProps> = ({
             aria-hidden
           />
           <label htmlFor="library-search" className="sr-only">
-            Search library
+            Search workspace
           </label>
           <input
             id="library-search"
