@@ -126,7 +126,6 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({
   viewMode,
 }) => {
-  const MIN_QUERY_LEN = 3;
   const firstContentMarkedRef = useRef(false);
   // Consume filter state from context — no prop drilling required
   const {
@@ -237,7 +236,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     articles = [],
     totalCount,
     isLoading: isLoadingArticles,
-    isFilterRefetching,
+    isFeedRefetching,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
@@ -263,7 +262,84 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   useEffect(() => {
     performance.mark('home:feed:query-state');
-  }, [isLoadingArticles, isFilterRefetching, contentStream]);
+  }, [isLoadingArticles, isFeedRefetching, contentStream]);
+
+  /** Feed dimensions excluding committed text search — for telemetry when results are empty. */
+  const hasStructuralFilters = useMemo(
+    () =>
+      selectedCategories.length > 0 ||
+      !!selectedTag ||
+      sortOrder !== 'latest' ||
+      !!collectionId ||
+      favorites ||
+      unread ||
+      formats.length > 0 ||
+      timeRange !== 'all' ||
+      formatTagIds.length > 0 ||
+      domainTagIds.length > 0 ||
+      subtopicTagIds.length > 0,
+    [
+      selectedCategories,
+      selectedTag,
+      sortOrder,
+      collectionId,
+      favorites,
+      unread,
+      formats,
+      timeRange,
+      formatTagIds,
+      domainTagIds,
+      subtopicTagIds,
+    ],
+  );
+
+  const homeFilterSignature = useMemo(
+    () =>
+      JSON.stringify({
+        sortOrder,
+        selectedTag,
+        collectionId,
+        favorites,
+        unread,
+        formats: [...formats].sort(),
+        timeRange,
+        formatTagIds: [...formatTagIds].sort(),
+        domainTagIds: [...domainTagIds].sort(),
+        subtopicTagIds: [...subtopicTagIds].sort(),
+        contentStream,
+        activeCategory,
+        categories: [...selectedCategories].sort(),
+      }),
+    [
+      sortOrder,
+      selectedTag,
+      collectionId,
+      favorites,
+      unread,
+      formats,
+      timeRange,
+      formatTagIds,
+      domainTagIds,
+      subtopicTagIds,
+      contentStream,
+      activeCategory,
+      selectedCategories,
+    ],
+  );
+
+  const prevHomeFilterSignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevHomeFilterSignatureRef.current === null) {
+      prevHomeFilterSignatureRef.current = homeFilterSignature;
+      return;
+    }
+    if (prevHomeFilterSignatureRef.current === homeFilterSignature) return;
+    prevHomeFilterSignatureRef.current = homeFilterSignature;
+    recordSearchEvent({
+      name: 'search_filter_applied',
+      payload: { surface: 'home-feed' },
+    });
+  }, [homeFilterSignature]);
 
   const routeContentMarkedRef = useRef<string | null>(null);
   const pathname = useLocation().pathname;
@@ -296,7 +372,6 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const committedQuery = searchQuery.trim();
   const isCommittedSearch = committedQuery.length > 0;
-  const isQueryTooShort = isCommittedSearch && committedQuery.length < MIN_QUERY_LEN;
 
   /** Suppress duplicate success/rendered/zero when infinite scroll finishes (same committed search). */
   const suppressResultsTelemetryAfterAppendRef = useRef(false);
@@ -315,7 +390,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   }, [isCommittedSearch]);
 
   useEffect(() => {
-    if (!isCommittedSearch || isQueryTooShort) return;
+    if (!isCommittedSearch) return;
 
     const prevQ = prevCommittedQueryForRequestTelemetryRef.current;
     const feedRefetchCause =
@@ -332,7 +407,6 @@ export const HomePage: React.FC<HomePageProps> = ({
     });
   }, [
     isCommittedSearch,
-    isQueryTooShort,
     committedQuery,
     sortOrder,
     selectedTag,
@@ -350,7 +424,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   ]);
 
   useEffect(() => {
-    if (!isCommittedSearch || isQueryTooShort || isLoadingArticles || isFilterRefetching) return;
+    if (!isCommittedSearch || isLoadingArticles || isFeedRefetching) return;
 
     if (isFetchingNextPage) {
       suppressResultsTelemetryAfterAppendRef.current = true;
@@ -380,7 +454,10 @@ export const HomePage: React.FC<HomePageProps> = ({
     if ((totalCount ?? 0) === 0) {
       recordSearchEvent({
         name: 'search_zero_results',
-        payload: { query: committedQuery },
+        payload: {
+          query: committedQuery,
+          hasStructuralFilters,
+        },
       });
     }
     endActiveSearchDraft();
@@ -388,13 +465,13 @@ export const HomePage: React.FC<HomePageProps> = ({
     // success/rendered/zero (handled via isFetchingNextPage + suppressResultsTelemetryAfterAppendRef).
   }, [
     isCommittedSearch,
-    isQueryTooShort,
     isLoadingArticles,
-    isFilterRefetching,
+    isFeedRefetching,
     isFetchingNextPage,
     articlesError,
     committedQuery,
     totalCount,
+    hasStructuralFilters,
   ]);
 
   const handleRefreshFeed = async () => {
@@ -493,27 +570,23 @@ export const HomePage: React.FC<HomePageProps> = ({
             role="status"
             aria-live="polite"
           >
-            {isQueryTooShort
-              ? `Type at least ${MIN_QUERY_LEN} characters to search.`
-              : isLoadingArticles || isFilterRefetching
-                ? `Searching for "${committedQuery}"...`
-                : articlesError
-                  ? `Search failed for "${committedQuery}". Please retry.`
-                  : (totalCount ?? 0) === 0
-                    ? `No results for "${committedQuery}".`
-                    : `${totalCount ?? 0} results for "${committedQuery}".`}
+            {isLoadingArticles || isFeedRefetching
+              ? `Searching for "${committedQuery}"...`
+              : articlesError
+                ? `Search failed for "${committedQuery}". Please retry.`
+                : (totalCount ?? 0) === 0
+                  ? `No results for "${committedQuery}".`
+                  : `${totalCount ?? 0} results for "${committedQuery}".`}
           </div>
         )}
         <ArticleGrid
           articles={articles}
           viewMode={viewMode}
           isLoading={isLoadingArticles}
-          isFilterRefetching={isFilterRefetching}
-          searchHighlightQuery={
-            isCommittedSearch && !isQueryTooShort ? committedQuery : undefined
-          }
+          isFeedRefetching={isFeedRefetching}
+          searchHighlightQuery={isCommittedSearch ? committedQuery : undefined}
           onArticleClick={(article) => {
-            if (isCommittedSearch && !isQueryTooShort) {
+            if (isCommittedSearch) {
               const rank = articles.findIndex((a) => a.id === article.id) + 1;
               recordSearchEvent({
                 name: 'search_result_clicked',

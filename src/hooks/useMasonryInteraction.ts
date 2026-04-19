@@ -3,6 +3,7 @@ import { Article } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
+import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
 
 interface UseMasonryInteractionProps {
   article: Article;
@@ -69,7 +70,8 @@ export const useMasonryInteraction = ({
     if (window.confirm('Delete this nugget permanently?')) {
       try {
         await storageService.deleteArticle(article.id);
-        await queryClient.invalidateQueries({ queryKey: ['articles'] });
+        await invalidateArticleListCaches(queryClient);
+        await queryClient.invalidateQueries({ queryKey: articleKeys.detail(article.id), exact: true });
         toast.success('Nugget deleted');
       } catch (error) {
         toast.error('Failed to delete nugget');
@@ -80,10 +82,14 @@ export const useMasonryInteraction = ({
   const handleToggleVisibility = useCallback(async () => {
     try {
       const newVisibility = article.visibility === 'private' ? 'public' : 'private';
-      await storageService.updateArticle(article.id, {
+      const updated = await storageService.updateArticle(article.id, {
         visibility: newVisibility,
       });
-      await queryClient.invalidateQueries({ queryKey: ['articles'] });
+      if (updated) {
+        patchArticleAcrossCaches(queryClient, article.id, () => updated);
+        queryClient.setQueryData(articleKeys.detail(article.id), updated);
+      }
+      await invalidateArticleListCaches(queryClient);
       toast.success(`Made ${newVisibility}`);
     } catch (error) {
       toast.error('Failed to update visibility');

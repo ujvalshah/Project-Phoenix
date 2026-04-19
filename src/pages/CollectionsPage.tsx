@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Collection, User } from '@/types';
+import { Collection } from '@/types';
 import { storageService } from '@/services/storageService';
 import { Folder, Plus, X } from 'lucide-react';
 import { EmptyState } from '@/components/UI/EmptyState';
@@ -80,9 +80,10 @@ export const CollectionsPage: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>('created');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showInstruction, setShowInstruction] = useState(false);
-  // NOTE: This page currently has no visible pagination controls,
-  // so we fetch all matching collections across pages.
-  const pageLimit = 100;
+  const pageLimit = 24;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Selection State
   const [selectionMode, setSelectionMode] = useState(false);
@@ -123,84 +124,46 @@ export const CollectionsPage: React.FC = () => {
 
   // Reload collections when debounced search/sort changes (backend handles filtering/sorting)
   useEffect(() => {
-    loadCollections();
+    setCurrentPage(1);
+    void loadCollections(1, false);
   }, [searchQuery, sortField, sortDirection]);
 
-  const loadCollections = async () => {
-    setIsLoading(true);
+  const loadCollections = async (page: number = 1, append: boolean = false) => {
+    if (append) setIsLoadingMore(true);
+    else setIsLoading(true);
+
     try {
-      const fetchCollectionsPage = (page: number) =>
-        storageService.getCollections({
-          type: 'public',
-          includeCount: true,
-          searchQuery: searchQuery || undefined,
-          sortField,
-          sortDirection,
-          page,
-          limit: pageLimit,
-        });
+      const response = await storageService.getCollections({
+        type: 'public',
+        includeCount: true,
+        searchQuery: searchQuery || undefined,
+        sortField,
+        sortDirection,
+        page,
+        limit: pageLimit,
+        includeEntries: false,
+      });
+      const pageData = Array.isArray(response) ? response : (response?.data || []);
+      const total = Array.isArray(response)
+        ? pageData.length
+        : (typeof response?.count === 'number' ? response.count : pageData.length);
 
-      // First page gives us total count; fetch remaining pages if needed.
-      const firstPageResponse = await fetchCollectionsPage(1);
-      const firstPageData = Array.isArray(firstPageResponse)
-        ? firstPageResponse
-        : (firstPageResponse?.data || []);
-      const total = Array.isArray(firstPageResponse)
-        ? firstPageData.length
-        : (typeof firstPageResponse?.count === 'number' ? firstPageResponse.count : firstPageData.length);
-
-      let collectionsData: Collection[] = [...firstPageData];
-      if (total > firstPageData.length) {
-        const totalPages = Math.ceil(total / pageLimit);
-        const remainingPagePromises: Array<Promise<Collection[] | { data: Collection[]; count: number }>> = [];
-        for (let page = 2; page <= totalPages; page++) {
-          remainingPagePromises.push(
-            storageService.getCollections({
-              type: 'public',
-              searchQuery: searchQuery || undefined,
-              sortField,
-              sortDirection,
-              page,
-              limit: pageLimit,
-            })
-          );
-        }
-
-        const remainingPageResponses = await Promise.all(remainingPagePromises);
-        remainingPageResponses.forEach((response) => {
-          if (Array.isArray(response)) {
-            collectionsData.push(...response);
-          } else if (response?.data && Array.isArray(response.data)) {
-            collectionsData.push(...response.data);
-          }
-        });
-      }
-
-      // User list requires authentication; guests still see collections without creator hydration
-      let allUsers: User[] = [];
-      try {
-        const allUsersResponse = await storageService.getUsers();
-        allUsers = Array.isArray(allUsersResponse) ? allUsersResponse : [];
-      } catch {
-        allUsers = [];
-      }
-
-      const hydrated = collectionsData.map(col => ({
-          ...col,
-          creator: allUsers.find(u => u.id === col.creatorId)
-      }));
-
-      setCollections(hydrated);
+      setCollections((prev) => (append ? [...prev, ...pageData] : pageData));
       setTotalCount(total);
+      setHasMore(page * pageLimit < total);
+      setCurrentPage(page);
     } catch (error: any) {
       // Handle cancelled requests gracefully
       if (error?.message !== 'Request cancelled') {
         console.error('Error loading collections:', error);
       }
-      setCollections([]);
-      setTotalCount(0);
+      if (!append) {
+        setCollections([]);
+        setTotalCount(0);
+      }
     } finally {
-      setIsLoading(false);
+      if (append) setIsLoadingMore(false);
+      else setIsLoading(false);
     }
   };
 
@@ -527,30 +490,58 @@ export const CollectionsPage: React.FC = () => {
                 }
               />
             ) : effectiveViewMode === 'grid' ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-                {processedCollections.map((collection) => (
-                  <CollectionCard
-                    key={collection.id}
-                    collection={collection}
-                    onClick={() =>
-                      selectionMode
-                        ? handleSelect(collection.id)
-                        : navigate(`/collections/${collection.id}`)
-                    }
-                    selectionMode={selectionMode}
-                    isSelected={selectedIds.includes(collection.id)}
-                    onSelect={handleSelect}
-                    onCollectionUpdate={handleCollectionUpdate}
-                    taxonomyLabel={taxonomyLabelById[collection.id]}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                  {processedCollections.map((collection) => (
+                    <CollectionCard
+                      key={collection.id}
+                      collection={collection}
+                      onClick={() =>
+                        selectionMode
+                          ? handleSelect(collection.id)
+                          : navigate(`/collections/${collection.id}`)
+                      }
+                      selectionMode={selectionMode}
+                      isSelected={selectedIds.includes(collection.id)}
+                      onSelect={handleSelect}
+                      onCollectionUpdate={handleCollectionUpdate}
+                      taxonomyLabel={taxonomyLabelById[collection.id]}
+                    />
+                  ))}
+                </div>
+                {hasMore && !selectionMode && (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => void loadCollections(currentPage + 1, true)}
+                      disabled={isLoadingMore}
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      {isLoadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
-              <CollectionTable
-                collections={processedCollections}
-                taxonomyLabelById={taxonomyLabelById}
-                onClick={(id) => navigate(`/collections/${id}`)}
-              />
+              <>
+                <CollectionTable
+                  collections={processedCollections}
+                  taxonomyLabelById={taxonomyLabelById}
+                  onClick={(id) => navigate(`/collections/${id}`)}
+                />
+                {hasMore && !selectionMode && (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => void loadCollections(currentPage + 1, true)}
+                      disabled={isLoadingMore}
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      {isLoadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </section>
         </div>

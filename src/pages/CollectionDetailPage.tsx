@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Collection, Article, Contributor } from '@/types';
+import { Collection, Article } from '@/types';
 import { storageService } from '@/services/storageService';
 import { ArrowLeft, Folder, Users, Layers, Plus, Info, Pencil, Check, X, CheckSquare } from 'lucide-react';
 import { ArticleGrid } from '@/components/ArticleGrid';
@@ -14,7 +14,6 @@ import { LAYOUT_CLASSES } from '@/constants/layout';
 import { Z_INDEX } from '@/constants/zIndex';
 import { BulkActionBar } from '@/components/shared/BulkActionBar';
 import { AddToCollectionModal } from '@/components/AddToCollectionModal';
-import { getSafeUsernameHandle } from '@/utils/userIdentity';
 import { ModalShell } from '@/components/UI/ModalShell';
 
 export const CollectionDetailPage: React.FC = () => {
@@ -41,143 +40,62 @@ export const CollectionDetailPage: React.FC = () => {
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const pageSize = 30;
 
-  // PHASE 5: Track nuggets length for polling comparison
-  const nuggetsRef = useRef<Article[]>([]);
-  useEffect(() => {
-    nuggetsRef.current = nuggets;
-  }, [nuggets]);
+  const loadCollectionPage = useCallback(
+    async (id: string, pageToLoad: number, append: boolean) => {
+      if (append) setIsLoadingMore(true);
+      else setIsLoading(true);
 
-  // URL-driven fetching: collectionId from useParams is the ONLY fetch trigger
-  // Effect depends ONLY on collectionId to prevent render loops
+      try {
+        const [col, articlesPage] = await Promise.all([
+          storageService.getCollectionById(id, { includeEntries: false }),
+          storageService.getCollectionArticles(id, {
+            page: pageToLoad,
+            limit: pageSize,
+            sort: 'latest',
+          }),
+        ]);
+        if (!col) {
+          navigate('/collections', { replace: true });
+          return;
+        }
+        setCollection(col);
+        setNuggets((prev) => (append ? [...prev, ...articlesPage.data] : articlesPage.data));
+        setHasMore(Boolean(articlesPage.hasMore));
+        setPage(pageToLoad);
+      } catch (e) {
+        console.error('Failed to load collection data:', e);
+        toast.error('Failed to load collection', {
+          description: 'Please try again later.',
+        });
+      } finally {
+        if (append) setIsLoadingMore(false);
+        else setIsLoading(false);
+      }
+    },
+    [navigate, toast]
+  );
+
   useEffect(() => {
-    // If no collectionId in URL, redirect to collections page
     if (!collectionId) {
       navigate('/collections', { replace: true });
       return;
     }
 
-    // Clear previous state when collectionId changes (prevents stale data)
     setCollection(null);
     setNuggets([]);
+    setPage(1);
+    setHasMore(false);
     setIsLoading(true);
     setSelectedArticle(null);
     setSelectionMode(false);
     setSelectedIds([]);
-
-    // Track if this effect is still valid (prevents race conditions)
-    let isMounted = true;
-
-    const loadData = async (id: string) => {
-      setIsLoading(true);
-      try {
-        // Fetch collection first
-        const col = await storageService.getCollectionById(id);
-        
-        // Check if component is still mounted and collectionId hasn't changed
-        if (!isMounted || collectionId !== id) return;
-        
-        if (!col) { 
-          navigate('/collections', { replace: true }); 
-          return; 
-        }
-        
-        // Extract unique user IDs needed for contributor resolution
-        const uniqueUserIds = [...new Set(col.entries.map(entry => entry.addedByUserId))];
-        
-        // Fetch only required users in parallel
-        const userPromises = uniqueUserIds.map(userId => 
-          storageService.getUserById(userId).catch(() => undefined)
-        );
-        const users = await Promise.all(userPromises);
-        const userMap = new Map(users.filter((u): u is NonNullable<typeof u> => u !== undefined).map(u => [u.id, u]));
-
-        // Fetch specific articles in parallel using Promise.all
-        const articlePromises = col.entries.map(async (entry) => {
-          try {
-            const article = await storageService.getArticleById(entry.articleId);
-            if (!article) return null;
-            
-            // Inject addedBy data for display
-            const adder = userMap.get(entry.addedByUserId);
-            const contributor: Contributor | undefined = adder ? {
-                userId: adder.id,
-                name: adder.name,
-                username: getSafeUsernameHandle({
-                  username: adder.username,
-                  displayName: adder.name,
-                  userId: adder.id,
-                }),
-                avatarUrl: adder.avatarUrl,
-                addedAt: entry.addedAt
-            } : undefined;
-
-            return {
-                ...article,
-                addedBy: contributor
-            };
-          } catch (error) {
-            // Handle case where article was deleted but entry still exists
-            console.warn(`Failed to fetch article ${entry.articleId}:`, error);
-            return null;
-          }
-        });
-
-        // Wait for all article fetches to complete and filter out nulls
-        const articleResults = await Promise.all(articlePromises);
-        const collectionNuggets = articleResults.filter((article): article is Article => article !== null);
-
-        // Only update state if still mounted and collectionId hasn't changed
-        if (isMounted && collectionId === id) {
-          setCollection(col);
-          setNuggets(collectionNuggets);
-        }
-      } catch (e) { 
-        // Only show error if still mounted and collectionId hasn't changed
-        if (isMounted && collectionId === id) {
-          console.error('Failed to load collection data:', e);
-          toast.error('Failed to load collection', {
-            description: 'Please try again later.'
-          });
-        }
-      } finally { 
-        // Only update loading state if still mounted and collectionId hasn't changed
-        if (isMounted && collectionId === id) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadData(collectionId);
-
-    // PHASE 5: Add polling for real-time updates (poll every 30 seconds)
-    // This ensures the detail page stays in sync when entries are added/removed elsewhere
-    const pollInterval = setInterval(() => {
-      if (isMounted && collectionId) {
-        // Silently refetch collection data
-        storageService.getCollectionById(collectionId)
-          .then(col => {
-            if (col && isMounted && collectionId === col.id) {
-              setCollection(col);
-              // Refetch articles if entries changed (compare with ref to avoid stale closure)
-              if (col.entries.length !== nuggetsRef.current.length) {
-                loadData(collectionId);
-              }
-            }
-          })
-          .catch(() => {
-            // Silently fail - don't show error for background polling
-          });
-      }
-    }, 30000); // Poll every 30 seconds
-
-    // Cleanup: mark as unmounted and clear polling interval
-    return () => {
-      isMounted = false;
-      clearInterval(pollInterval);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectionId]); // Only collectionId triggers fetch - navigate and toast are stable and don't need to be in deps
+    void loadCollectionPage(collectionId, 1, false);
+  }, [collectionId, navigate, loadCollectionPage]);
 
 
   const handleAddNugget = () => {
@@ -253,52 +171,11 @@ export const CollectionDetailPage: React.FC = () => {
 
   const handleBulkModalClose = useCallback(async () => {
     setBulkModalOpen(false);
-    // Refresh collection data — nuggets may have been added/removed during multi-select
     if (collectionId) {
-      try {
-        const col = await storageService.getCollectionById(collectionId);
-        if (col) {
-          setCollection(col);
-          // Fetch user data for contributor display
-          const uniqueUserIds = [...new Set(col.entries.map(entry => entry.addedByUserId))];
-          const users = await Promise.all(
-            uniqueUserIds.map(userId => storageService.getUserById(userId).catch(() => undefined))
-          );
-          const userMap = new Map(
-            users.filter((u): u is NonNullable<typeof u> => u !== undefined).map(u => [u.id, u])
-          );
-
-          // Refetch articles for updated entries
-          const articlePromises = col.entries.map(async (entry) => {
-            try {
-              const article = await storageService.getArticleById(entry.articleId);
-              if (!article) return null;
-              const adder = userMap.get(entry.addedByUserId);
-              const contributor: Contributor | undefined = adder ? {
-                userId: adder.id,
-                name: adder.name,
-                username: getSafeUsernameHandle({
-                  username: adder.username,
-                  displayName: adder.name,
-                  userId: adder.id,
-                }),
-                avatarUrl: adder.avatarUrl,
-                addedAt: entry.addedAt
-              } : undefined;
-              return { ...article, addedBy: contributor } as Article;
-            } catch {
-              return null;
-            }
-          });
-          const results = await Promise.all(articlePromises);
-          setNuggets(results.filter((a): a is Article => a !== null));
-        }
-      } catch {
-        toast.error('Failed to refresh collection');
-      }
+      await loadCollectionPage(collectionId, 1, false);
     }
     exitSelectionMode();
-  }, [collectionId, toast, exitSelectionMode]);
+  }, [collectionId, exitSelectionMode, loadCollectionPage]);
 
   const handleBulkRemove = useCallback(async () => {
     if (!collectionId || selectedIds.length === 0) return;
@@ -462,7 +339,10 @@ export const CollectionDetailPage: React.FC = () => {
         <ArticleGrid
             articles={nuggets}
             viewMode="grid"
-            isLoading={false}
+            isLoading={isLoading}
+            isFetchingNextPage={isLoadingMore}
+            hasNextPage={hasMore}
+            onLoadMore={collectionId ? () => void loadCollectionPage(collectionId, page + 1, true) : undefined}
             onArticleClick={setSelectedArticle}
             onCategoryClick={() => {}}
             emptyTitle="Empty Collection"

@@ -321,9 +321,12 @@ export class LocalAdapter implements IAdapter {
   async getCollections(params?: {
     type?: 'public' | 'private';
     includeCount?: boolean;
+    includeEntries?: boolean;
+    summary?: boolean;
     searchQuery?: string;
     sortField?: 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
     sortDirection?: 'asc' | 'desc';
+    creatorId?: string;
     page?: number;
     limit?: number;
     parentId?: string;
@@ -344,6 +347,9 @@ export class LocalAdapter implements IAdapter {
       if (params?.type) {
         collections = collections.filter(c => c.type === params.type);
       }
+    if (params?.creatorId) {
+      collections = collections.filter(c => c.creatorId === params.creatorId);
+    }
       if (params?.parentId) {
         collections = collections.filter(c => c.parentId === params.parentId);
       } else if (params?.rootOnly) {
@@ -387,7 +393,7 @@ export class LocalAdapter implements IAdapter {
     };
   }
 
-  async getCollectionById(id: string): Promise<Collection | undefined> {
+  async getCollectionById(id: string, _options?: { includeEntries?: boolean }): Promise<Collection | undefined> {
     const collections = await this.getCollections();
     const all = Array.isArray(collections) ? collections : (collections as { data: Collection[] }).data;
     return all.find(c => c.id === id);

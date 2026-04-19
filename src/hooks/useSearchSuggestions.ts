@@ -12,6 +12,10 @@ export function useSearchSuggestions(query: string, limit: number = 6) {
     queryKey: ['search', 'suggestions', trimmed, limit],
     enabled,
     staleTime: 1000 * 20,
+    gcTime: 1000 * 60 * 5,
+    retry: 0,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       recordSearchEvent({
         name: 'search_suggestions_requested',

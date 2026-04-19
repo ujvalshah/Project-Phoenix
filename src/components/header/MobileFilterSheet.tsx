@@ -217,14 +217,19 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
   const hasTopicMatches = formatTags.length > 0 || domainTags.length > 0 || subtopicTags.length > 0;
   const hasCollectionMatches = groupedCollections.length > 0;
 
-  // Animation lifecycle: open → entering → open, close → exiting → closed
+  // Animation lifecycle: open → entering → open, close → exiting → closed.
+  // Reopen while exiting must be handled: closing clears the exit timer, so without
+  // the exiting branch we would stick in exiting with an invisible full-screen layer.
   useEffect(() => {
-    if (isOpen && animState === 'closed') {
-      setAnimState('entering');
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setAnimState('open'));
-      });
-    } else if (!isOpen && (animState === 'open' || animState === 'entering')) {
+    if (isOpen) {
+      if (animState === 'closed' || animState === 'exiting') {
+        setAnimState('entering');
+        const raf1 = requestAnimationFrame(() => {
+          requestAnimationFrame(() => setAnimState('open'));
+        });
+        return () => cancelAnimationFrame(raf1);
+      }
+    } else if (animState === 'open' || animState === 'entering') {
       setAnimState('exiting');
       const timer = setTimeout(() => setAnimState('closed'), 250);
       return () => clearTimeout(timer);
@@ -246,14 +251,15 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
     }, SEARCH_ANALYTICS_DEBOUNCE_MS);
   }, [activeTab]);
 
+  const sheetMounted = animState !== 'closed';
   useEffect(() => {
-    if (animState !== 'open' && animState !== 'entering') return;
+    if (!sheetMounted) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [animState]);
+  }, [sheetMounted]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -373,7 +379,7 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 pointer-events-auto bg-slate-900/40 backdrop-blur-[1px] transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+      className={`fixed inset-0 bg-slate-900/40 backdrop-blur-[1px] transition-opacity duration-200 ${isVisible ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
       onClick={onClose}
       role="presentation"
     >
@@ -382,7 +388,7 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label="Filters"
-        className={`absolute bottom-0 left-0 right-0 mx-auto flex h-[90dvh] w-full max-w-[640px] flex-col rounded-t-3xl bg-white text-gray-900 shadow-2xl transition-transform duration-250 ease-out motion-reduce:transition-none dark:bg-slate-900 dark:text-slate-100 ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}
+        className={`absolute bottom-0 left-0 right-0 mx-auto flex h-[90dvh] w-full max-w-[640px] flex-col rounded-t-3xl bg-white text-gray-900 shadow-2xl transition-transform duration-250 ease-out motion-reduce:transition-none dark:bg-slate-900 dark:text-slate-100 ${isVisible ? 'pointer-events-auto translate-y-0' : 'pointer-events-none translate-y-full'}`}
         onClick={(event) => event.stopPropagation()}
       >
         {/* Single sticky header block — avoids fragile hardcoded top offsets */}

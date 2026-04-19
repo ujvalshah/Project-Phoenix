@@ -28,6 +28,7 @@ import { useQuery } from '@tanstack/react-query';
 import { articleService } from '@/services/articleService';
 import { Article } from '@/types';
 import { PageStack } from '@/components/layouts/PageStack';
+import { articleKeys } from '@/services/queryKeys/articleKeys';
 
 export const FeedPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -53,7 +54,7 @@ export const FeedPage: React.FC = () => {
   
   // Fetch single article if detail route is active
   const { data: detailArticle } = useQuery<Article | undefined>({
-    queryKey: ['article', id],
+    queryKey: id ? articleKeys.detail(id) : articleKeys.detail(''),
     queryFn: async () => {
       if (!id) return undefined;
       return articleService.getArticleById(id);

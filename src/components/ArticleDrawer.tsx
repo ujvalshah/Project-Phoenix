@@ -165,7 +165,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 flex justify-end isolation-auto pointer-events-auto"
+      className={`fixed inset-0 flex justify-end isolation-auto ${isClosing ? 'pointer-events-none' : 'pointer-events-auto'}`}
       role="dialog"
       aria-modal="true"
       aria-label="Article details drawer"
@@ -176,7 +176,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
         className={`
           absolute inset-0 bg-black/40 backdrop-blur-sm
           transition-opacity duration-300
-          ${isClosing ? 'opacity-0' : 'opacity-100'}
+          ${isClosing ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'}
         `}
         onClick={handleClose}
         aria-hidden="true"
@@ -186,7 +186,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
       <div
         ref={drawerRef}
         className={`
-          relative w-full sm:w-[400px] lg:w-[500px] h-full
+          pointer-events-auto relative w-full sm:w-[400px] lg:w-[500px] h-full
           bg-white dark:bg-slate-950 shadow-2xl
           flex flex-col border-l border-slate-200 dark:border-slate-800
           transform transition-transform duration-300 ease-out

@@ -2,6 +2,14 @@ import React from 'react';
 import { X } from 'lucide-react';
 import type { SortOrder } from '@/types';
 
+/**
+ * Active-filter chip strip (search, categories, collection, dimension tags, …).
+ *
+ * Not mounted in the production shell — exercised by unit tests only. If the
+ * app needs an inline chip row again, wire it explicitly rather than assuming
+ * this module is live.
+ */
+
 interface DimensionChip {
   id: string;
   label: string;

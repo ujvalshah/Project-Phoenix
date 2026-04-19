@@ -480,7 +480,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         <NotificationBadge visible={unreadCount > 0} />
       </button>
 
-      {/* Dropdown — portaled to document.body so it escapes header stacking context */}
+      {/* Dropdown — portaled to #dropdown-root (see getOverlayHost) for z-index above in-root stickies */}
       {isOpen && position && createPortal(
         <div
           ref={dropdownRef}

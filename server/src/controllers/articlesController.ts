@@ -70,13 +70,21 @@ export function invalidateSearchCache(): void {
  */
 function getOptionalUserId(req: Request): string | undefined {
   // First check if middleware already set req.user
-  if ((req as any).user?.userId) {
-    return (req as any).user.userId;
+  const requestUser = (req as any).user;
+  if (requestUser?.userId) {
+    return requestUser.userId;
+  }
+  if (requestUser?.id) {
+    return requestUser.id;
   }
   
-  // Try to extract from Authorization header
+  // Cookie-based auth is the canonical browser path in this app.
+  const cookieToken = (req as any).cookies?.access_token as string | undefined;
+
+  // Fallback: Authorization header for API clients.
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const headerToken = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const token = cookieToken || headerToken;
   
   if (!token) {
     return undefined;
@@ -165,6 +173,7 @@ export const getArticles = async (req: Request, res: Response) => {
       // Content stream routing (standard vs Market Pulse)
       contentStream,
       searchMode,
+      visibility,
     } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
@@ -201,14 +210,23 @@ export const getArticles = async (req: Request, res: Response) => {
     // Rule 2: Otherwise, only show public articles (or articles without visibility set, defaulting to public)
     const isViewingOwnArticles = currentUserId && authorId === currentUserId;
     
+    const publicVisibilityFilter = [
+      { visibility: 'public' },
+      { visibility: { $exists: false } }, // Default to public if field doesn't exist
+      { visibility: null } // Handle null as public
+    ];
+    const requestedVisibility =
+      visibility === 'public' || visibility === 'private' ? visibility : undefined;
+    
     if (!isViewingOwnArticles) {
       // Public feed or viewing another user's articles: only show public
-      // Handle undefined/null visibility as public (default behavior)
-      query.$or = [
-        { visibility: 'public' },
-        { visibility: { $exists: false } }, // Default to public if field doesn't exist
-        { visibility: null } // Handle null as public
-      ];
+      query.$or = publicVisibilityFilter;
+    } else if (requestedVisibility === 'private') {
+      // Owner requesting drafts
+      query.visibility = 'private';
+    } else if (requestedVisibility === 'public') {
+      // Owner explicitly requesting published items (includes legacy missing visibility)
+      query.$or = publicVisibilityFilter;
     }
     // If isViewingOwnArticles is true, no privacy filter needed - user can see all their articles
 

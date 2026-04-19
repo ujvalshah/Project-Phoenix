@@ -185,6 +185,13 @@ export interface UseFilterStateReturn {
   toggleSubtopicTag: (tagId: string) => void;
   setContentStream: (stream: ContentStream) => void;
 
+  /**
+   * After abandoning in-progress typing (e.g. mobile overlay dismiss without commit),
+   * reset header draft text and inputs to match the committed query and bump
+   * `searchInputResetSignal` so `SearchInput` mirrors the canonical value.
+   */
+  revertSearchDraftToCommitted: () => void;
+
   // Reset
   clearAll: () => void;
   clearSearch: () => void;
@@ -394,6 +401,11 @@ export function useFilterState(): UseFilterStateReturn {
     setSearchInputResetSignal((n) => n + 1);
   }, []);
 
+  const revertSearchDraftToCommitted = useCallback(() => {
+    setSearchInputValueRaw(committedQuery);
+    setSearchInputResetSignal((n) => n + 1);
+  }, [committedQuery]);
+
   const clearCategories = useCallback(() => setCategories([]), []);
   const clearTag = useCallback(() => setTag(null), []);
   const clearSort = useCallback(() => setSort('latest'), []);
@@ -453,6 +465,7 @@ export function useFilterState(): UseFilterStateReturn {
     toggleDomainTag,
     toggleSubtopicTag,
     setContentStream,
+    revertSearchDraftToCommitted,
     clearAll,
     clearSearch,
     clearCategories,

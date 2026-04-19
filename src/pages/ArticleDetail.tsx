@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { articleService } from '@/services/articleService';
 import { ArticleDetail } from '@/components/ArticleDetail';
 import { Loader2 } from 'lucide-react';
+import { articleKeys } from '@/services/queryKeys/articleKeys';
 
 export const ArticleDetailPage: React.FC = () => {
   const { articleId } = useParams<{ articleId: string }>();
@@ -23,7 +24,7 @@ export const ArticleDetailPage: React.FC = () => {
 
   // Fetch article by ID
   const { data: article, isLoading, isError } = useQuery({
-    queryKey: ['article', articleId],
+    queryKey: articleId ? articleKeys.detail(articleId) : articleKeys.detail(''),
     queryFn: async () => {
       if (!articleId) return undefined;
       return articleService.getArticleById(articleId);

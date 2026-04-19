@@ -10,6 +10,7 @@ import { getAllImageUrls, getGridImageUrls, getPersistedImageUrls, classifyArtic
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 import { useVideoPlayer } from '@/context/VideoPlayerContext';
 import { useAuthSelector } from '@/context/AuthContext';
+import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
 // formatDate removed - using relative time formatting in CardMeta instead
 
 // ────────────────────────────────────────
@@ -583,7 +584,8 @@ export const useNewsCard = ({
     setShowMenu(false);
     if (window.confirm('Delete this nugget permanently?')) {
       await storageService.deleteArticle(article.id);
-      await queryClient.invalidateQueries({ queryKey: ['articles'] });
+      await invalidateArticleListCaches(queryClient);
+      await queryClient.invalidateQueries({ queryKey: articleKeys.detail(article.id), exact: true });
       toast.success('Nugget deleted');
     }
   };
@@ -704,29 +706,7 @@ export const useNewsCard = ({
     // Optimistic update: update local article immediately
     const optimisticArticle = { ...article, visibility: newVisibility };
     
-    // Update query cache optimistically
-    queryClient.setQueryData(['articles'], (oldData: any) => {
-      if (!oldData) return oldData;
-      
-      // Handle paginated response
-      if (oldData.data && Array.isArray(oldData.data)) {
-        return {
-          ...oldData,
-          data: oldData.data.map((a: Article) => 
-            a.id === article.id ? optimisticArticle : a
-          )
-        };
-      }
-      
-      // Handle array response
-      if (Array.isArray(oldData)) {
-        return oldData.map((a: Article) => 
-          a.id === article.id ? optimisticArticle : a
-        );
-      }
-      
-      return oldData;
-    });
+    patchArticleAcrossCaches(queryClient, article.id, () => optimisticArticle);
     
     try {
       const updatedArticle = await storageService.updateArticle(article.id, { visibility: newVisibility });
@@ -735,55 +715,15 @@ export const useNewsCard = ({
         throw new Error('Failed to update visibility');
       }
       
-      // Update cache with server response
-      queryClient.setQueryData(['articles'], (oldData: any) => {
-        if (!oldData) return oldData;
-        
-        if (oldData.data && Array.isArray(oldData.data)) {
-          return {
-            ...oldData,
-            data: oldData.data.map((a: Article) => 
-              a.id === article.id ? updatedArticle : a
-            )
-          };
-        }
-        
-        if (Array.isArray(oldData)) {
-          return oldData.map((a: Article) => 
-            a.id === article.id ? updatedArticle : a
-          );
-        }
-        
-        return oldData;
-      });
-      
-      // Invalidate to ensure consistency across all queries
-      await queryClient.invalidateQueries({ queryKey: ['articles'] });
+      patchArticleAcrossCaches(queryClient, article.id, () => updatedArticle);
+      queryClient.setQueryData(articleKeys.detail(article.id), updatedArticle);
+      await invalidateArticleListCaches(queryClient);
       
       toast.success(`Nugget is now ${newVisibility}`);
       setShowMenu(false);
     } catch (error: any) {
       // Rollback on error
-      queryClient.setQueryData(['articles'], (oldData: any) => {
-        if (!oldData) return oldData;
-        
-        if (oldData.data && Array.isArray(oldData.data)) {
-          return {
-            ...oldData,
-            data: oldData.data.map((a: Article) => 
-              a.id === article.id ? previousArticle : a
-            )
-          };
-        }
-        
-        if (Array.isArray(oldData)) {
-          return oldData.map((a: Article) => 
-            a.id === article.id ? previousArticle : a
-          );
-        }
-        
-        return oldData;
-      });
+      patchArticleAcrossCaches(queryClient, article.id, () => previousArticle);
       
       const errorMessage = error?.response?.status === 403
         ? 'You can only edit your own nuggets'

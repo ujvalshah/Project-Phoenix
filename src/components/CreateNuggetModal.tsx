@@ -38,6 +38,7 @@ import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeAr
 import { useImageManager } from '@/hooks/useImageManager';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
+import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
 import { useAllCollections } from '@/hooks/useNuggetFormData';
 import { useDisclaimerConfig } from '@/hooks/useDisclaimerConfig';
 
@@ -218,10 +219,18 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (isOpen) {
       // Data loading is now handled by React Query hooks (useAllCollections)
       // No need to call loadData() - React Query provides caching and automatic refetch
-      document.body.style.overflow = 'hidden';
       
       // Initialize form from initialData when in edit mode (only once per nugget)
       if (mode === 'edit' && initialData && initializedFromDataRef.current !== initialData.id) {
@@ -308,10 +317,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         // Reset initialization ref when switching to create mode
         initializedFromDataRef.current = null;
       }
-    } else {
-      document.body.style.overflow = 'unset';
     }
-    return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen, mode, initialData]);
 
   // Load editorial collection membership when editing (runs after init effect sets visibility)
@@ -874,8 +880,9 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
       toast.success('Image deleted successfully');
 
       // Invalidate query cache
-      queryClient.invalidateQueries({ queryKey: ['article', initialData.id] });
-      queryClient.invalidateQueries({ queryKey: ['articles'] });
+      queryClient.invalidateQueries({ queryKey: articleKeys.detail(initialData.id), exact: true });
+      queryClient.invalidateQueries({ queryKey: articleKeys.legacyDetail(initialData.id), exact: true });
+      await invalidateArticleListCaches(queryClient);
     } catch (error: any) {
       console.error('[CreateNuggetModal] Failed to delete image:', error);
       // Rollback via imageManager
@@ -1763,31 +1770,14 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             
             // CRITICAL: Invalidate and refresh all query caches
             // This ensures feed, drawer, and inline views show updated media
-            await queryClient.invalidateQueries({ queryKey: ['articles'] });
+            await invalidateArticleListCaches(queryClient);
             
             // Also update specific article cache if it exists
-            queryClient.setQueryData(['article', initialData.id], updatedArticle);
+            queryClient.setQueryData(articleKeys.detail(initialData.id), updatedArticle);
+            queryClient.setQueryData(articleKeys.legacyDetail(initialData.id), updatedArticle);
             
             // Optimistically update query cache for immediate UI update
-            queryClient.setQueryData(['articles'], (oldData: any) => {
-                if (!oldData) return oldData;
-                // Handle paginated response
-                if (oldData.data && Array.isArray(oldData.data)) {
-                    return {
-                        ...oldData,
-                        data: oldData.data.map((a: Article) => 
-                            a.id === updatedArticle.id ? updatedArticle : a
-                        )
-                    };
-                }
-                // Handle array response
-                if (Array.isArray(oldData)) {
-                    return oldData.map((a: Article) => 
-                        a.id === updatedArticle.id ? updatedArticle : a
-                    );
-                }
-                return oldData;
-            });
+            patchArticleAcrossCaches(queryClient, updatedArticle.id, () => updatedArticle);
             
             // REGRESSION SAFEGUARD: Assert that if URL exists, media must be present
             // This prevents silent failures where URL is added but media doesn't appear
@@ -2035,7 +2025,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             await storageService.addArticleToCollection(collectionId, newArticle.id, currentUserId);
         }
 
-        await queryClient.invalidateQueries({ queryKey: ['articles'] });
+        await invalidateArticleListCaches(queryClient);
 
         // REGRESSION SAFEGUARD: Assert that if URL exists, media must be present
         const regressionCheckPrimaryUrl = normalized.primaryUrl ?? null;

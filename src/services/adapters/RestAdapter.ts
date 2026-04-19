@@ -396,10 +396,13 @@ export class RestAdapter implements IAdapter {
   getCollections(params?: { 
     type?: 'public' | 'private'; 
     includeCount?: boolean;
+    includeEntries?: boolean;
+    summary?: boolean;
     // PHASE 5: Add backend sorting/searching support
     searchQuery?: string;
     sortField?: 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
     sortDirection?: 'asc' | 'desc';
+    creatorId?: string;
     page?: number;
     limit?: number;
     parentId?: string;
@@ -411,10 +414,13 @@ export class RestAdapter implements IAdapter {
     const queryParams = new URLSearchParams();
     if (params?.type) queryParams.set('type', params.type);
     if (params?.includeCount) queryParams.set('includeCount', 'true');
+    if (params?.includeEntries === false) queryParams.set('includeEntries', 'false');
+    if (params?.summary) queryParams.set('summary', 'true');
     // PHASE 5: Add search and sort parameters
     if (params?.searchQuery) queryParams.set('q', params.searchQuery);
     if (params?.sortField) queryParams.set('sortField', params.sortField);
     if (params?.sortDirection) queryParams.set('sortDirection', params.sortDirection);
+    if (params?.creatorId) queryParams.set('creatorId', params.creatorId);
     if (params?.page) queryParams.set('page', params.page.toString());
     if (params?.limit) queryParams.set('limit', params.limit.toString());
     if (params?.parentId) queryParams.set('parentId', params.parentId);
@@ -457,8 +463,9 @@ export class RestAdapter implements IAdapter {
     return apiClient.get<PaginatedArticlesResponse>(`/collections/${collectionId}/articles?${queryParams}`);
   }
 
-  getCollectionById(id: string): Promise<Collection | undefined> {
-    return apiClient.get<Collection>(`/collections/${id}`).catch(() => undefined);
+  getCollectionById(id: string, options?: { includeEntries?: boolean }): Promise<Collection | undefined> {
+    const query = options?.includeEntries === false ? '?includeEntries=false' : '';
+    return apiClient.get<Collection>(`/collections/${id}${query}`).catch(() => undefined);
   }
 
   getCollectionsContainingArticle(articleId: string): Promise<Collection[]> {

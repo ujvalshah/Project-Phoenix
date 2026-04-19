@@ -63,6 +63,7 @@ import { useVideoPlayer } from '@/context/VideoPlayerContext';
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
+import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
 
 interface ArticleDetailProps {
   article: Article;
@@ -160,7 +161,8 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
     if (window.confirm('Delete this nugget permanently?')) {
       try {
         await storageService.deleteArticle(article.id);
-        await queryClient.invalidateQueries({ queryKey: ['articles'] });
+        await invalidateArticleListCaches(queryClient);
+        await queryClient.invalidateQueries({ queryKey: articleKeys.detail(article.id), exact: true });
         toast.success('Nugget deleted');
         onClose?.();
       } catch {
@@ -176,8 +178,12 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
     }
     try {
       const newVisibility = article.visibility === 'private' ? 'public' : 'private';
-      await storageService.updateArticle(article.id, { visibility: newVisibility });
-      await queryClient.invalidateQueries({ queryKey: ['articles'] });
+      const updated = await storageService.updateArticle(article.id, { visibility: newVisibility });
+      if (updated) {
+        patchArticleAcrossCaches(queryClient, article.id, () => updated);
+        queryClient.setQueryData(articleKeys.detail(article.id), updated);
+      }
+      await invalidateArticleListCaches(queryClient);
       toast.success(`Made ${newVisibility}`);
     } catch {
       toast.error('Failed to update visibility');

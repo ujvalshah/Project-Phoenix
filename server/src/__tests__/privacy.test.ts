@@ -18,7 +18,9 @@ const createMockRequest = (userId?: string) => ({
   user: userId ? { userId, role: 'user' } : undefined,
   query: {},
   params: {},
-  body: {}
+  body: {},
+  headers: {},
+  cookies: {},
 } as any);
 
 const createMockResponse = () => {
@@ -147,6 +149,27 @@ describe('Privacy System', () => {
 
       expect(articleIds).toContain(publicArticle._id.toString());
       expect(articleIds).toContain(privateArticle._id.toString());
+    });
+
+    it('should return only private articles when owner requests visibility=private via cookie auth', async () => {
+      const req = createMockRequest();
+      const res = createMockResponse();
+      req.query = {
+        authorId: ownerUser._id.toString(),
+        visibility: 'private',
+      };
+      req.cookies = {
+        access_token: generateToken(ownerUser._id.toString(), 'user', ownerUser.email),
+      };
+
+      const { getArticles } = await import('../controllers/articlesController.js');
+      await getArticles(req, res);
+
+      const articles = res.json.mock.calls[0]?.[0]?.data || [];
+      const articleIds = articles.map((a: any) => a.id);
+
+      expect(articleIds).toContain(privateArticle._id.toString());
+      expect(articleIds).not.toContain(publicArticle._id.toString());
     });
 
     it('should exclude private articles when viewing another user\'s articles', async () => {

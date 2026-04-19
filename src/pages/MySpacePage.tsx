@@ -11,7 +11,7 @@ import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
 import { queryClient } from '@/queryClient';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { useAuth } from '@/hooks/useAuth';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { PaginatedArticlesResponse } from '@/services/adapters/IAdapter';
 import { apiClient } from '@/services/apiClient';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
@@ -120,19 +120,12 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   const navigate = useNavigate();
   const toast = useToast();
   
-  // Data State
-  const [profileUser, setProfileUser] = useState<ProfilePageUser | null>(null);
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [articleCounts, setArticleCounts] = useState<{ total: number; public: number; private: number } | null>(null);
-
   type MainTab = 'library' | 'drafts' | 'collections';
   const [activeTab, setActiveTab] = useState<MainTab>('library');
 
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
   const wasEditingRef = useRef(false);
-  const [loading, setLoading] = useState(true);
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -141,6 +134,12 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const mySpaceActionsAnchorRef = useRef<HTMLButtonElement>(null);
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
+  const requestCountersRef = useRef({
+    profile: 0,
+    collections: 0,
+    counts: 0,
+    articles: 0,
+  });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sort, setSort] = useState<ContentSort>('published-desc');
@@ -154,13 +153,38 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
 
   const targetUserId = userId || currentUserId;
   const isOwner = currentUserId === targetUserId;
-
-  const getVisibility = (article: Article): 'public' | 'private' => {
-    return article.visibility ?? 'private';
-  };
-
   const nuggetListVisibility: 'public' | 'private' = activeTab === 'drafts' ? 'private' : 'public';
   const showNuggets = activeTab === 'library' || activeTab === 'drafts';
+  const myspaceArticlesBaseKey = useMemo(
+    () => ['articles', 'myspace', targetUserId] as const,
+    [targetUserId]
+  );
+  const myspaceArticlesKey = useMemo(
+    () => [...myspaceArticlesBaseKey, nuggetListVisibility] as const,
+    [myspaceArticlesBaseKey, nuggetListVisibility]
+  );
+  const myspaceCollectionsKey = useMemo(
+    () =>
+      [
+        'collections',
+        'myspace',
+        targetUserId,
+        'scope:public',
+        'summary:true',
+        'includeEntries:false',
+        'page:1',
+        'limit:100',
+      ] as const,
+    [targetUserId]
+  );
+  const myspaceCountsKey = useMemo(
+    () => ['articles', 'myspace', 'counts', targetUserId] as const,
+    [targetUserId]
+  );
+
+  const getVisibility = (article: Article): 'public' | 'private' => {
+    return article.visibility ?? 'public';
+  };
 
   useEffect(() => {
     if (!isOwner && activeTab === 'drafts') {
@@ -174,16 +198,76 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     }
   }, [recentUpdatesMode]);
 
-  const myspaceQueryKey = useMemo(
-    () => ['articles', 'myspace', targetUserId, nuggetListVisibility] as const,
-    [targetUserId, nuggetListVisibility]
-  );
+  const profileUserQuery = useQuery({
+    queryKey: ['user', 'profile', targetUserId],
+    queryFn: async () => {
+      if (import.meta.env.DEV) {
+        requestCountersRef.current.profile += 1;
+        console.debug('[MySpace] profile query', {
+          userId: targetUserId,
+          count: requestCountersRef.current.profile,
+        });
+      }
+      const user = await storageService.getUserById(targetUserId);
+      return user ?? null;
+    },
+    staleTime: 1000 * 60,
+  });
+
+  const collectionsQuery = useQuery<Collection[]>({
+    queryKey: myspaceCollectionsKey,
+    queryFn: async () => {
+      if (import.meta.env.DEV) {
+        requestCountersRef.current.collections += 1;
+        console.debug('[MySpace] collections query', {
+          userId: targetUserId,
+          count: requestCountersRef.current.collections,
+        });
+      }
+      const result = await storageService.getCollections({
+        type: 'public',
+        creatorId: targetUserId,
+        includeEntries: false,
+        summary: true,
+        page: 1,
+        limit: 100,
+      });
+      return Array.isArray(result) ? result : result.data;
+    },
+    staleTime: 1000 * 30,
+  });
+
+  const articleCountsQuery = useQuery({
+    queryKey: myspaceCountsKey,
+    queryFn: () => {
+      if (import.meta.env.DEV) {
+        requestCountersRef.current.counts += 1;
+        console.debug('[MySpace] owner counts query', {
+          userId: targetUserId,
+          count: requestCountersRef.current.counts,
+        });
+      }
+      return storageService.getMyArticleCounts();
+    },
+    enabled: isOwner,
+    staleTime: 1000 * 20,
+  });
 
   const infiniteArticlesQuery = useInfiniteQuery<PaginatedArticlesResponse>({
-    queryKey: myspaceQueryKey,
+    queryKey: myspaceArticlesKey,
     queryFn: async ({ pageParam = 1 }) => {
+      if (import.meta.env.DEV) {
+        requestCountersRef.current.articles += 1;
+        console.debug('[MySpace] articles page query', {
+          userId: targetUserId,
+          visibility: nuggetListVisibility,
+          page: pageParam,
+          count: requestCountersRef.current.articles,
+        });
+      }
       const queryParams = new URLSearchParams();
       queryParams.set('authorId', targetUserId);
+      queryParams.set('visibility', nuggetListVisibility);
       queryParams.set('page', (pageParam as number).toString());
       queryParams.set('limit', '25');
 
@@ -202,10 +286,8 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       return [];
     }
 
-    const allArticles = infiniteArticlesQuery.data.pages.flatMap((page) => page.data);
-
-    return allArticles.filter((a: Article) => getVisibility(a) === nuggetListVisibility);
-  }, [infiniteArticlesQuery.data, nuggetListVisibility]);
+    return infiniteArticlesQuery.data.pages.flatMap((page) => page.data);
+  }, [infiniteArticlesQuery.data]);
 
   // Infinite scroll handler (same pattern as Feed.tsx)
   const handleLoadMore = useCallback(() => {
@@ -213,18 +295,6 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       infiniteArticlesQuery.fetchNextPage();
     }
   }, [infiniteArticlesQuery]);
-
-  useEffect(() => {
-    const isMounted = { current: true };
-    
-    loadData(isMounted);
-    
-    // Cleanup on unmount
-    return () => {
-      isMounted.current = false;
-    };
-  }, [targetUserId]);
-
 
   useEffect(() => {
     setSelectionMode(false);
@@ -240,100 +310,17 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     }
     if (!editingArticle && wasEditingRef.current) {
       wasEditingRef.current = false;
-      void loadData();
-      void refreshCounts();
-    }
-  }, [editingArticle]);
-
-  // Helper function to refresh counts independently
-  const refreshCounts = async () => {
-    if (!isOwner) return; // Only fetch counts for owner
-    
-    try {
-      const counts = await storageService.getMyArticleCounts();
-      setArticleCounts(counts);
-    } catch (e: any) {
-      console.error("Failed to refresh article counts", e);
-      // On error, keep existing counts (don't reset to null)
-    }
-  };
-
-  const loadData = async (isMounted: { current: boolean } = { current: true }) => {
-    setLoading(true);
-    
-    try {
-      // Fetch counts independently (only for owner)
-      const fetchCounts = isOwner ? storageService.getMyArticleCounts().catch((e) => {
-        console.error("Failed to fetch article counts", e);
-        return null; // Return null on error, counts will be undefined
-      }) : Promise.resolve(null);
-
-      const [user, userArticles, allCollections, counts] = await Promise.all([
-        storageService.getUserById(targetUserId),
-        storageService.getArticlesByAuthor(targetUserId),
-        storageService.getCollections(),
-        fetchCounts
-      ]);
-
-      // Only update state if component is still mounted
-      if (!isMounted.current) return;
-
-      // Defensive checks: ensure arrays are always arrays
-      const safeUserArticles = Array.isArray(userArticles) ? userArticles : [];
-      const safeAllCollections = Array.isArray(allCollections) ? allCollections : [];
-
-      setProfileUser(user || null);
-      setArticles(safeUserArticles);
-      setCollections(safeAllCollections.filter(c => c.creatorId === targetUserId));
-      
-      // Set counts if fetched successfully (only for owner)
-      if (counts && isMounted.current) {
-        setArticleCounts(counts);
-      }
-      
-
-    } catch (e: any) {
-      // Ignore cancellation errors - they're expected when component unmounts or new requests start
-      if (e?.message === 'Request cancelled') {
-        return;
-      }
-      console.error("Failed to load profile data", e);
-      // On error, ensure arrays are set to empty arrays to prevent filter crashes
-      if (isMounted.current) {
-        setArticles([]);
-        setCollections([]);
-      }
-    } finally {
-      if (isMounted.current) {
-        setLoading(false);
+      void queryClient.invalidateQueries({ queryKey: myspaceArticlesBaseKey, exact: false });
+      if (isOwner) {
+        void queryClient.invalidateQueries({ queryKey: myspaceCountsKey, exact: true });
       }
     }
-  };
+  }, [editingArticle, isOwner, myspaceArticlesBaseKey, myspaceCountsKey]);
 
-  const safeCollections = Array.isArray(collections) ? collections : [];
-  const publicCollections = safeCollections.filter((c) => c.type === 'public');
-
-  const visitorPublicCount = useMemo(() => {
-    if (!Array.isArray(articles)) return 0;
-    return articles.filter((a) => getVisibility(a) === 'public').length;
-  }, [articles]);
-
-  const derivedOwnerCounts = useMemo(() => {
-    if (!Array.isArray(articles)) {
-      return { total: 0, public: 0, private: 0 };
-    }
-    let publicCount = 0;
-    let privateCount = 0;
-    for (const article of articles) {
-      if (getVisibility(article) === 'public') publicCount += 1;
-      else privateCount += 1;
-    }
-    return {
-      total: publicCount + privateCount,
-      public: publicCount,
-      private: privateCount,
-    };
-  }, [articles]);
+  const profileUser = profileUserQuery.data as ProfilePageUser | null;
+  const publicCollections = collectionsQuery.data ?? [];
+  const ownerCounts = articleCountsQuery.data;
+  const visitorPublicCount = infiniteArticlesQuery.data?.pages?.[0]?.total ?? 0;
 
   const withinDatePreset = (iso: string, preset: 'all' | '7d' | '30d'): boolean => {
     if (preset === 'all') return true;
@@ -417,8 +404,10 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   }, [publicCollections, searchQuery, collectionSort]);
 
   const contentTabs: ContentTabItem[] = useMemo(() => {
-    const ownerPublic = articleCounts?.public ?? derivedOwnerCounts.public;
-    const ownerPrivate = articleCounts?.private ?? derivedOwnerCounts.private;
+    const loadedPublic = infiniteArticles.filter((a) => getVisibility(a) === 'public').length;
+    const loadedPrivate = infiniteArticles.filter((a) => getVisibility(a) === 'private').length;
+    const ownerPublic = ownerCounts?.public ?? loadedPublic;
+    const ownerPrivate = ownerCounts?.private ?? loadedPrivate;
     const tabs: ContentTabItem[] = [
       {
         id: 'library',
@@ -439,13 +428,13 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       count: publicCollections.length,
     });
     return tabs;
-  }, [isOwner, articleCounts?.public, articleCounts?.private, derivedOwnerCounts.public, derivedOwnerCounts.private, visitorPublicCount, publicCollections.length]);
+  }, [isOwner, ownerCounts?.public, ownerCounts?.private, visitorPublicCount, publicCollections.length, infiniteArticles]);
 
   const publishedCount = isOwner
-    ? (articleCounts?.public ?? derivedOwnerCounts.public)
+    ? (ownerCounts?.public ?? infiniteArticles.filter((a) => getVisibility(a) === 'public').length)
     : visitorPublicCount;
   const draftsCount = isOwner
-    ? (articleCounts?.private ?? derivedOwnerCounts.private)
+    ? (ownerCounts?.private ?? infiniteArticles.filter((a) => getVisibility(a) === 'private').length)
     : 0;
   // "Total" mirrors the connected set shown in the header row:
   // Published + Drafts (+ Collections for this workspace).
@@ -492,7 +481,11 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       setShowDeleteConfirm(false);
       setSelectionMode(false);
       setSelectedIds([]);
-      loadData();
+      await queryClient.invalidateQueries({ queryKey: myspaceCollectionsKey, exact: true });
+      await queryClient.invalidateQueries({ queryKey: myspaceArticlesBaseKey, exact: false });
+      if (isOwner) {
+        await queryClient.invalidateQueries({ queryKey: myspaceCountsKey, exact: true });
+      }
   };
 
   const handleBulkVisibility = async (visibility: 'public' | 'private') => {
@@ -517,7 +510,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       const previousArticles = [...infiniteArticles];
       const failedIds: string[] = [];
 
-      queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceQueryKey, (oldData) =>
+      queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceArticlesKey, (oldData) =>
         patchMyspacePages(oldData, nuggetsToUpdate, visibility)
       );
       
@@ -541,7 +534,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
           const failureCount = results.filter(r => !r.success).length;
           
           if (failureCount > 0) {
-              queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceQueryKey, (oldData) => {
+              queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceArticlesKey, (oldData) => {
                 if (!oldData?.pages) return oldData;
                 return {
                   ...oldData,
@@ -565,10 +558,10 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
               }
           } else {
               // All succeeded - invalidate query to refetch with updated visibility
-              await queryClient.invalidateQueries({ queryKey: ['articles', 'myspace', targetUserId] });
-              
-              // Refresh counts after visibility change
-              await refreshCounts();
+              await queryClient.invalidateQueries({ queryKey: myspaceArticlesBaseKey, exact: false });
+              if (isOwner) {
+                await queryClient.invalidateQueries({ queryKey: myspaceCountsKey, exact: true });
+              }
               
               toast.success(`Updated ${successCount} nugget${successCount > 1 ? 's' : ''} to ${visibility}`);
           }
@@ -577,7 +570,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
           setSelectedIds([]);
           setIsActionMenuOpen(false);
       } catch {
-          queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceQueryKey, (oldData) => {
+          queryClient.setQueryData<InfiniteData<PaginatedArticlesResponse>>(myspaceArticlesKey, (oldData) => {
             if (!oldData?.pages) return oldData;
             return {
               ...oldData,
@@ -591,30 +584,6 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
             };
           });
 
-          queryClient.setQueryData(['articles'], (oldData: unknown) => {
-              if (!oldData || typeof oldData !== 'object') return oldData;
-
-              const o = oldData as { data?: Article[] };
-              if (o.data && Array.isArray(o.data)) {
-                  return {
-                      ...o,
-                      data: o.data.map((a: Article) => {
-                          const original = previousArticles.find((pa) => pa.id === a.id);
-                          return original || a;
-                      })
-                  };
-              }
-
-              if (Array.isArray(oldData)) {
-                  return (oldData as Article[]).map((a: Article) => {
-                      const original = previousArticles.find((pa) => pa.id === a.id);
-                      return original || a;
-                  });
-              }
-
-              return oldData;
-          });
-          
           toast.error('Failed to update visibility. Please try again.');
       } finally {
           setIsUpdatingVisibility(false);
@@ -625,23 +594,19 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       if (selectedIds.length === 0 || activeTab !== 'collections') return;
       
       // Store previous state for rollback
-      const previousCollections = [...collections];
+      const previousCollections = [...publicCollections];
       
       // Optimistic update
-      setCollections(prev => prev.map(c => {
-          if (selectedIds.includes(c.id)) {
-              const change = action === 'follow' ? 1 : -1;
-              const newFollowersCount = Math.max(0, c.followersCount + change);
-              return { 
-                  ...c, 
-                  followersCount: newFollowersCount,
-                  followers: action === 'follow' 
-                      ? [...(c.followers || []), 'temp'] // Temporary, will be updated by backend
-                      : (c.followers || []).slice(0, -1) // Remove last (optimistic)
-              };
-          }
-          return c;
-      }));
+      queryClient.setQueryData<Collection[]>(myspaceCollectionsKey, (prev = []) =>
+        prev.map((c) => {
+          if (!selectedIds.includes(c.id)) return c;
+          const change = action === 'follow' ? 1 : -1;
+          return {
+            ...c,
+            followersCount: Math.max(0, c.followersCount + change),
+          };
+        })
+      );
 
       try {
           // Parallel API calls
@@ -653,23 +618,22 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
               )
           );
           
-          // Reload data to get accurate state from backend
-          await loadData();
+          await queryClient.invalidateQueries({ queryKey: myspaceCollectionsKey, exact: true });
           
           toast.success(`${action === 'follow' ? 'Followed' : 'Unfollowed'} ${selectedIds.length} collections`);
           setSelectionMode(false);
           setSelectedIds([]);
           setIsActionMenuOpen(false);
       } catch {
-          setCollections(previousCollections);
+          queryClient.setQueryData<Collection[]>(myspaceCollectionsKey, previousCollections);
           toast.error(`Failed to ${action} collections`);
       }
   };
 
   const handleCollectionUpdate = (updatedCollection: Collection) => {
-      setCollections(prev => prev.map(c => 
-          c.id === updatedCollection.id ? updatedCollection : c
-      ));
+      queryClient.setQueryData<Collection[]>(myspaceCollectionsKey, (prev = []) =>
+        prev.map((c) => (c.id === updatedCollection.id ? updatedCollection : c))
+      );
   };
 
   const handleDeleteSingleArticle = async (article: Article) => {
@@ -677,8 +641,10 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     if (!ok) return;
     try {
       await storageService.deleteArticle(article.id);
-      await loadData();
-      await refreshCounts();
+      await queryClient.invalidateQueries({ queryKey: myspaceArticlesBaseKey, exact: false });
+      if (isOwner) {
+        await queryClient.invalidateQueries({ queryKey: myspaceCountsKey, exact: true });
+      }
       toast.success('Nugget deleted');
     } catch {
       toast.error('Failed to delete nugget');
@@ -686,7 +652,12 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   };
 
   // Early returns for loading and error states
-  if (loading) {
+  const isPageLoading =
+    profileUserQuery.isLoading ||
+    collectionsQuery.isLoading ||
+    (showNuggets && infiniteArticlesQuery.isLoading);
+
+  if (isPageLoading) {
     return (
       <div className="bg-slate-50 dark:bg-slate-950 min-h-screen">
         <HeaderSpacer />

@@ -128,15 +128,13 @@ export const DetailViewBottomSheet: React.FC<DetailViewBottomSheetProps> = ({
     }
   }, [article?.id]);
   
-  // Lock body scroll when open
+  // Lock body scroll when open — restore previous overflow so nested overlays are not stomped
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen]);
   

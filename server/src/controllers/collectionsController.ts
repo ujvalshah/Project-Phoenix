@@ -65,6 +65,8 @@ export const getCollections = async (req: Request, res: Response) => {
     const searchQuery = req.query.q as string | undefined;
     const creatorId = req.query.creatorId as string | undefined;
     const includeCount = req.query.includeCount === 'true';
+    const summaryOnly = req.query.summary === 'true';
+    const includeEntries = req.query.includeEntries !== 'false' && !summaryOnly;
     const userId = (req as any).user?.userId;
     const parentId = req.query.parentId as string | undefined;
     const rootOnly = req.query.rootOnly === 'true';
@@ -161,9 +163,19 @@ export const getCollections = async (req: Request, res: Response) => {
       sortObj.createdAt = -1;
     }
     
+    // Build projection based on caller needs.
+    // Hot paths (filter surfaces/list pages) should request summary payloads so
+    // we avoid shipping large entries arrays on every interaction.
+    const projection = includeEntries
+      ? undefined
+      : {
+          entries: 0,
+        };
+
     // Get collections with pagination and sorting
     const [collections, total] = await Promise.all([
       Collection.find(query)
+        .select(projection)
         .sort(sortObj)
         .skip(skip)
         .limit(limit)
@@ -171,72 +183,9 @@ export const getCollections = async (req: Request, res: Response) => {
       Collection.countDocuments(query)
     ]);
     
-    // PATCH 5: Batch entry validation - replace N+1 queries with single batch query
-    // Collect all article IDs from all collections
-    const allArticleIds = new Set<string>();
-    collections.forEach(collection => {
-      collection.entries.forEach(entry => {
-        allArticleIds.add(entry.articleId);
-      });
-    });
-
-    // Single batch query to get all valid article IDs
-    const validArticleIds = new Set(
-      (await Article.find({ _id: { $in: Array.from(allArticleIds) } }).select('_id').lean())
-        .map(doc => doc._id.toString())
-    );
-
-    // Process collections to validate entries and set validEntriesCount
-    const validatedCollections = await Promise.all(
-      collections.map(async (collection) => {
-        // Filter entries to only those with valid article IDs
-        const validEntries = collection.entries.filter(entry => validArticleIds.has(entry.articleId));
-        
-        const validCount = validEntries.length;
-        
-        // PHASE 2: If entries were filtered or validEntriesCount is missing/incorrect, update atomically
-        if (validEntries.length !== collection.entries.length || 
-            collection.validEntriesCount === undefined || 
-            collection.validEntriesCount === null ||
-            collection.validEntriesCount !== validCount) {
-          
-          // PHASE 6: Log invalid entry removals for observability
-          const removedCount = collection.entries.length - validEntries.length;
-          if (removedCount > 0) {
-            const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
-            requestLogger.warn({
-              msg: '[Collections] Invalid entries removed during validation',
-              collectionId: collection._id.toString(),
-              removedCount,
-              totalEntries: collection.entries.length,
-              validEntries: validCount,
-            });
-          }
-          
-          // PHASE 2: Use findOneAndUpdate for atomic update to prevent race conditions
-          // This ensures only one validation update happens at a time per collection
-          await Collection.findOneAndUpdate(
-            { _id: collection._id },
-            {
-              entries: validEntries,
-              validEntriesCount: validCount,
-              updatedAt: new Date().toISOString()
-            },
-            { new: false } // Don't need to return updated doc
-          );
-          
-          // Update local object for response
-          collection.entries = validEntries;
-          collection.validEntriesCount = validCount;
-        }
-        
-        return collection;
-      })
-    );
-    
     // Return paginated response
     res.json({
-      data: normalizeDocs(validatedCollections),
+      data: normalizeDocs(collections),
       total,
       page,
       limit,
@@ -259,7 +208,10 @@ export const getCollections = async (req: Request, res: Response) => {
 
 export const getCollectionById = async (req: Request, res: Response) => {
   try {
-    const collection = await Collection.findById(req.params.id).lean();
+    const includeEntries = req.query.includeEntries !== 'false';
+    const collection = await Collection.findById(req.params.id)
+      .select(includeEntries ? undefined : { entries: 0 })
+      .lean();
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
     
     // PHASE 1: Check collection access with admin override
@@ -267,52 +219,6 @@ export const getCollectionById = async (req: Request, res: Response) => {
     const userRole = (req as any).user?.role;
     if (!canViewCollectionPolicy(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to view this collection' });
-    }
-    
-    // PATCH 5: Batch entry validation - replace N+1 queries with single batch query
-    const articleIds = collection.entries.map(entry => entry.articleId);
-    const validArticleIds = new Set(
-      (await Article.find({ _id: { $in: articleIds } }).select('_id').lean())
-        .map(doc => doc._id.toString())
-    );
-    const validEntries = collection.entries.filter(entry => validArticleIds.has(entry.articleId));
-    
-    const validCount = validEntries.length;
-    
-    // PHASE 2: If entries were filtered or validEntriesCount is missing/incorrect, update atomically
-    if (validEntries.length !== collection.entries.length || 
-        collection.validEntriesCount === undefined || 
-        collection.validEntriesCount === null ||
-        collection.validEntriesCount !== validCount) {
-      
-      // PHASE 6: Log invalid entry removals for observability
-      const removedCount = collection.entries.length - validEntries.length;
-      if (removedCount > 0) {
-        const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
-        requestLogger.warn({
-          msg: '[Collections] Invalid entries removed during validation',
-          collectionId: req.params.id,
-          removedCount,
-          totalEntries: collection.entries.length,
-          validEntries: validCount,
-        });
-      }
-      
-      // PHASE 2: Use findOneAndUpdate for atomic update to prevent race conditions
-      // This ensures only one validation update happens at a time per collection
-      await Collection.findOneAndUpdate(
-        { _id: req.params.id },
-        {
-          entries: validEntries,
-          validEntriesCount: validCount,
-          updatedAt: new Date().toISOString()
-        },
-        { new: false } // Don't need to return updated doc
-      );
-      
-      // Update local object for response
-      collection.entries = validEntries;
-      collection.validEntriesCount = validCount;
     }
     
     res.json(normalizeDoc(collection));

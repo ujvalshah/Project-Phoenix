@@ -2,6 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { articleService, PaginatedArticlesResponse } from '@/services/articleService';
 import { FilterState, SortOrder, ContentStream, Article } from '@/types';
+import { articleKeys } from '@/services/queryKeys/articleKeys';
 
 interface UseInfiniteArticlesOptions {
   searchQuery: string;
@@ -34,7 +35,15 @@ export interface UseInfiniteArticlesResult {
   articles: Article[];
   totalCount?: number;
   isLoading: boolean;
-  /** True when fetching due to filter/sort change (not initial load or next page) */
+  /**
+   * True while the home/articles infinite query is refetching after the first load,
+   * excluding pagination (`fetchNextPage`). Includes filter, committed-search, stream,
+   * and manual `refetch` — not “filters only”.
+   */
+  isFeedRefetching: boolean;
+  /**
+   * @deprecated Use `isFeedRefetching`. Same boolean; kept for incremental migration.
+   */
   isFilterRefetching: boolean;
   isFetchingNextPage: boolean;
   hasNextPage: boolean;
@@ -64,42 +73,29 @@ export type InfiniteArticlesOptions = Required<
 > &
   Pick<UseInfiniteArticlesOptions, 'contentStream'>;
 
-const MIN_COMMITTED_QUERY_LENGTH = 3;
+/** Minimum length to send `searchMode: 'relevance'` (server uses $text); shorter queries still hit the API with regex/tag paths. */
+const MIN_RELEVANCE_SEARCH_LENGTH = 3;
 
 export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptions) => ({
-  queryKey: [
-    'articles',
-    'infinite',
-    options.searchQuery.trim(),
-    options.activeCategory,
-    // Multi-select categories must participate in the key; otherwise changes
-    // to selectedCategories don't refetch when activeCategory happens to
-    // remain the same.
-    options.selectedCategories.join(','),
-    options.sortOrder,
-    options.limit,
-    options.tag ?? '',
-    options.collectionId ?? '',
-    options.favorites,
-    options.unread,
-    options.formats.join(','),
-    options.timeRange,
-    options.formatTagIds.join(','),
-    options.domainTagIds.join(','),
-    options.subtopicTagIds.join(','),
-    options.contentStream ?? '',
-  ],
+  queryKey: articleKeys.infiniteList({
+    q: options.searchQuery.trim(),
+    activeCategory: options.activeCategory,
+    selectedCategories: options.selectedCategories,
+    sortOrder: options.sortOrder,
+    limit: options.limit,
+    tag: options.tag ?? '',
+    collectionId: options.collectionId ?? '',
+    favorites: options.favorites,
+    unread: options.unread,
+    formats: options.formats,
+    timeRange: options.timeRange,
+    formatTagIds: options.formatTagIds,
+    domainTagIds: options.domainTagIds,
+    subtopicTagIds: options.subtopicTagIds,
+    contentStream: options.contentStream ?? '',
+  }),
   queryFn: async ({ pageParam = 1 }: { pageParam?: unknown }) => {
     const trimmedQuery = options.searchQuery.trim();
-    if (trimmedQuery.length > 0 && trimmedQuery.length < MIN_COMMITTED_QUERY_LENGTH) {
-      return {
-        data: [],
-        total: 0,
-        page: pageParam as number,
-        limit: options.limit,
-        hasMore: false,
-      };
-    }
 
     const categoryParam =
       options.selectedCategories && options.selectedCategories.length > 0
@@ -110,7 +106,7 @@ export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptio
 
     const filters: FilterState = {
       query: trimmedQuery,
-      searchMode: trimmedQuery.length >= MIN_COMMITTED_QUERY_LENGTH ? 'relevance' : undefined,
+      searchMode: trimmedQuery.length >= MIN_RELEVANCE_SEARCH_LENGTH ? 'relevance' : undefined,
       categories: categoryParam,
       tag: options.tag || null,
       sort: options.sortOrder,
@@ -211,11 +207,15 @@ export const useInfiniteArticles = ({
 
   const totalCount = query.data?.pages?.[0]?.total;
 
+  const isFeedRefetching =
+    query.isFetching && !query.isLoading && !query.isFetchingNextPage;
+
   return {
     articles, // Return articles directly - backend has already filtered them
     totalCount,
     isLoading: query.isLoading,
-    isFilterRefetching: query.isFetching && !query.isLoading && !query.isFetchingNextPage,
+    isFeedRefetching,
+    isFilterRefetching: isFeedRefetching,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: query.hasNextPage ?? false, // Backend's hasMore is now accurate for filtered data
     fetchNextPage: () => query.fetchNextPage(),

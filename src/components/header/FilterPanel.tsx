@@ -42,9 +42,11 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     queryFn: async () => {
       const result = await storageService.getCollections({
         type: 'public',
-        limit: 300,
+        limit: 120,
         sortField: 'name',
         sortDirection: 'asc',
+        summary: true,
+        includeEntries: false,
       });
       return Array.isArray(result) ? result : result.data;
     },

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Activity, Home, Layers } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
@@ -67,24 +67,6 @@ const BottomNavItem: React.FC<BottomNavItemProps> = ({
   </Link>
 );
 
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false,
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const onChange = () => setReduced(mq.matches);
-    onChange();
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-
-  return reduced;
-}
-
 /**
  * Mobile-only primary destinations: Home, Market Pulse (feature-flagged), Collections.
  * Coordinates with filter state (contentStream) and document scroll chrome (hide on scroll down).
@@ -99,7 +81,6 @@ export const MobileBottomNav: React.FC = () => {
     shallowEqual,
   );
   const { isViewportNarrow, narrowHeaderHidden, setChromeInteractionActive } = useAppChromeScroll();
-  const prefersReducedMotion = usePrefersReducedMotion();
   const { data: pulseUnseenCount } = usePulseUnseenCount();
   const { data: standardUnseenCount } = useStandardUnseenCount();
   const pulseEnabled = isFeatureEnabled('MARKET_PULSE');
@@ -122,7 +103,7 @@ export const MobileBottomNav: React.FC = () => {
     };
   }, [showShell]);
 
-  const chromeHidden = narrowHeaderHidden && !prefersReducedMotion;
+  const chromeHidden = narrowHeaderHidden;
 
   const isHome = location.pathname === '/';
   const isCollections = location.pathname.startsWith('/collections');

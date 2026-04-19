@@ -69,9 +69,12 @@ export interface IAdapter {
   getCollections(params?: {
     type?: 'public' | 'private';
     includeCount?: boolean;
+    includeEntries?: boolean;
+    summary?: boolean;
     searchQuery?: string;
     sortField?: 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
     sortDirection?: 'asc' | 'desc';
+    creatorId?: string;
     page?: number;
     limit?: number;
     parentId?: string;
@@ -79,7 +82,7 @@ export interface IAdapter {
   }): Promise<Collection[] | { data: Collection[]; count: number }>;
   getFeaturedCollections(): Promise<Collection[]>;
   getCollectionArticles(collectionId: string, params: { q?: string; page: number; limit: number; sort?: string }): Promise<PaginatedArticlesResponse>;
-  getCollectionById(id: string): Promise<Collection | undefined>;
+  getCollectionById(id: string, options?: { includeEntries?: boolean }): Promise<Collection | undefined>;
   /** Editorial collections that include this article (author or admin only). */
   getCollectionsContainingArticle(articleId: string): Promise<Collection[]>;
   createCollection(name: string, description: string, creatorId: string, type: 'public' | 'private', parentId?: string | null): Promise<Collection>;

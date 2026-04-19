@@ -36,6 +36,7 @@ import {
   takePendingSuggestionArticleId,
 } from '@/observability/searchTelemetryIds';
 import { useSearchSuggestions } from '@/hooks/useSearchSuggestions';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   formatContentStreamLabel,
   formatSourceTypeLabel,
@@ -114,6 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
       activeFilterCount: s.activeFilterCount,
       contentStream: s.contentStream,
       setContentStream: s.setContentStream,
+      revertSearchDraftToCommitted: s.revertSearchDraftToCommitted,
     }),
     shallowEqualFilters,
   );
@@ -123,6 +125,7 @@ export const Header: React.FC<HeaderProps> = ({
     searchInputResetSignal,
     setSearchInput: setSearchDraft,
     commitSearch,
+    revertSearchDraftToCommitted,
     sortOrder,
     setSortOrder,
   } = filters;
@@ -222,7 +225,9 @@ export const Header: React.FC<HeaderProps> = ({
     }
   }, [isLoggingOut, logout, headerToast]);
   const { withAuth } = useRequireAuth();
-  const desktopSuggestions = useSearchSuggestions(searchInputValue, 6);
+  /** Match mobile overlay suggestion cadence (~180ms) — avoids firing `/search/suggest` on every keystroke. */
+  const debouncedSearchInputForSuggestions = useDebouncedValue(searchInputValue, 180);
+  const desktopSuggestions = useSearchSuggestions(debouncedSearchInputForSuggestions, 6);
   const desktopSuggestionItems = useMemo(
     () => desktopSuggestions.data?.suggestions ?? [],
     [desktopSuggestions.data?.suggestions],
@@ -283,8 +288,12 @@ export const Header: React.FC<HeaderProps> = ({
     }
   }, []);
 
-  // Stable callback: SearchInput calls this after its internal debounce.
-  // This propagates the trimmed value up to useFilterState (which triggers the API query).
+  /**
+   * Called from SearchInput after its internal 250ms debounce (and on blur/Enter paths).
+   * Updates global **draft** (`searchInputValue`) only. The home feed `/api/articles` query
+   * keys off **committed** `searchQuery` — updated via `commitSearch` on submit / suggestion
+   * pick / clear, or when the draft is cleared to empty (immediate “exit search” behavior).
+   */
   const handleDebouncedSearch = useCallback((value: string) => {
     setSearchDraft(value);
     setActiveSuggestionIndex(-1);
@@ -1337,6 +1346,8 @@ export const Header: React.FC<HeaderProps> = ({
               name: 'search_abandoned',
               payload: { surface: 'mobile-overlay', draft: searchInputValue },
             });
+            // Discard overlay typing: global draft must not diverge from committed query.
+            revertSearchDraftToCommitted();
           }
           setIsMobileSearchOpen(false);
         }}
@@ -1531,10 +1542,13 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   const state = isVisible && isOpen ? 'open' : 'closed';
 
   return createPortal(
-    <div className="fixed inset-0 pointer-events-auto" data-state={state}>
+    <div
+      className={`fixed inset-0 ${state === 'open' ? 'pointer-events-auto' : 'pointer-events-none'}`}
+      data-state={state}
+    >
       <div
         data-state={state}
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none data-[state=closed]:opacity-0 data-[state=open]:opacity-100"
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100"
         onClick={onClose}
       />
       <div
@@ -1543,7 +1557,7 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
         onTransitionEnd={handleTransitionEnd}
         role="dialog"
         aria-modal="true"
-        className="absolute bottom-0 left-0 top-0 flex w-[280px] flex-col border-r border-gray-200 bg-white shadow-2xl transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform motion-reduce:transition-none data-[state=closed]:-translate-x-full data-[state=closed]:opacity-0 data-[state=open]:translate-x-0 data-[state=open]:opacity-100 dark:border-slate-700 dark:bg-slate-900"
+        className="absolute bottom-0 left-0 top-0 flex w-[280px] flex-col border-r border-gray-200 bg-white shadow-2xl transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform motion-reduce:transition-none data-[state=closed]:pointer-events-none data-[state=closed]:-translate-x-full data-[state=closed]:opacity-0 data-[state=open]:pointer-events-auto data-[state=open]:translate-x-0 data-[state=open]:opacity-100 dark:border-slate-700 dark:bg-slate-900"
       >
         
         <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-5 dark:border-slate-800 dark:bg-slate-900/95">

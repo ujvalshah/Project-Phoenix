@@ -28,6 +28,17 @@ import { Z_INDEX } from '@/constants/zIndex';
  * IDs must match `index.html` overlay siblings of `#root`.
  * Each host is `position: fixed; inset: 0; pointer-events: none`; children set
  * `pointer-events: auto` where they handle input.
+ *
+ * **Mobile overlay checklist** (avoid invisible full-screen blockers):
+ * - When `isOpen` is false, unmount or use `pointer-events-none` on any `fixed inset-0` shell
+ *   (including exit animations: `opacity-0` must not pair with `pointer-events-auto`).
+ * - If exit uses a timer, handle **reopen while exiting** (cancel timer + transition back to open),
+ *   or the machine can stick with an invisible blocking layer.
+ * - Full-screen surfaces: one bounded scroll region; restore `document.body` overflow/position on cleanup.
+ * - Body `overflow` scroll lock: own a `useEffect` keyed **only** on `isOpen` (or equivalent). Capture
+ *   `document.body.style.overflow` before setting `hidden`, restore that value on cleanup — same pattern as
+ *   `ModalShell`. Never run lock cleanup from effects with unrelated deps (e.g. `initialData`), or reopen
+ *   can clear another overlay’s lock mid-flight.
  */
 const HOST_IDS = {
   dropdown: 'dropdown-root',

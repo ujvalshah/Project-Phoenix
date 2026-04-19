@@ -17,7 +17,12 @@ interface ArticleGridProps {
   articles: Article[];
   viewMode: 'grid' | 'feed' | 'masonry';
   isLoading: boolean;
-  /** True when refetching due to filter/sort change — shows subtle overlay instead of full skeleton */
+  /**
+   * True while the articles infinite query is refetching (filters, search commit, stream, etc.) —
+   * shows a subtle overlay instead of replacing the grid with skeletons.
+   */
+  isFeedRefetching?: boolean;
+  /** @deprecated Use `isFeedRefetching` */
   isFilterRefetching?: boolean;
   onArticleClick: (article: Article) => void;
   onCategoryClick: (category: string) => void;
@@ -98,7 +103,8 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   articles,
   viewMode,
   isLoading,
-  isFilterRefetching = false,
+  isFeedRefetching: isFeedRefetchingProp,
+  isFilterRefetching: isFilterRefetchingLegacy = false,
   onArticleClick,
   onCategoryClick,
   emptyTitle = "No nuggets found",
@@ -117,6 +123,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   onRetry,
   searchHighlightQuery,
 }) => {
+  const isFeedRefetching = isFeedRefetchingProp ?? isFilterRefetchingLegacy;
   const { expandedId, toggleExpansion, registerCard } = useRowExpansion();
   // Default to animated-visible when we already have data at mount so cards
   // never get stuck at opacity-0 if the loading transition is missed (e.g.
@@ -445,20 +452,19 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   // - Tablet+ (2+ cols): auto-rows-fr - equal height rows for visual consistency
   return (
     <div className="relative">
-      {/* Filter-change overlay: shows subtle fade + spinner over existing content
-          instead of replacing everything with skeletons. Only visible during filter/sort changes. */}
-      {isFilterRefetching && (
+      {/* Feed refetch overlay (filters, search commit, stream, manual refresh, …) */}
+      {isFeedRefetching && (
         <div className="absolute inset-0 bg-white/60 dark:bg-slate-950/60 z-10 flex items-start justify-center pt-24 backdrop-blur-[1px] transition-opacity duration-200">
           <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-full shadow-lg border border-slate-200 dark:border-slate-700">
             <Loader2 size={16} className="animate-spin text-primary-500" />
-            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Updating…</span>
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Refreshing feed…</span>
           </div>
         </div>
       )}
     <div
       className={`
         transition-opacity duration-300 motion-reduce:transition-none
-        ${isFilterRefetching ? 'opacity-40 pointer-events-none' : 'opacity-100'}
+        ${isFeedRefetching ? 'opacity-40 pointer-events-none' : 'opacity-100'}
         ${viewMode === 'feed'
           ? "max-w-2xl mx-auto flex flex-col gap-8"
           : "grid grid-cols-1 auto-rows-auto md:grid-cols-2 md:auto-rows-fr lg:grid-cols-3 xl:grid-cols-4 gap-6 mx-auto w-full"

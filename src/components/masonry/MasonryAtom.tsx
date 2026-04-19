@@ -14,6 +14,7 @@ import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
 import { getMasonryVisibleMedia, resolveMasonrySourceLink } from '@/utils/masonryMediaHelper';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { articleKeys, invalidateArticleListCaches } from '@/services/queryKeys/articleKeys';
 
 interface MasonryAtomProps {
   article: Article;
@@ -124,7 +125,8 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
     if (window.confirm('Delete this nugget permanently?')) {
       try {
         await storageService.deleteArticle(article.id);
-        await queryClient.invalidateQueries({ queryKey: ['articles'] });
+        await invalidateArticleListCaches(queryClient);
+        await queryClient.invalidateQueries({ queryKey: articleKeys.detail(article.id), exact: true });
         toast.success('Nugget deleted');
       } catch (error) {
         toast.error('Failed to delete nugget');

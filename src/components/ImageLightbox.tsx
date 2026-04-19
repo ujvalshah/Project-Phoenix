@@ -114,15 +114,13 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
     setPanY(0);
   }, [currentIndex]);
 
-  // Lock body scroll when viewer is open
+  // Lock body scroll when viewer is open — restore prior overflow for nested overlays
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen]);
 
