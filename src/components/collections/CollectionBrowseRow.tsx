@@ -17,18 +17,104 @@ export interface CollectionBrowseRowProps {
   taxonomyLabel?: string;
 }
 
+/** Lowercase, trim, strip punctuation for duplicate / near-duplicate checks. */
+function normalizeForCompare(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/\s*[/|]+\s*/g, ' ')
+    .replace(/[\u2018\u2019'"]/g, '')
+    .replace(/[^a-z0-9]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isRedundantVersusTitle(title: string, candidate: string | undefined): boolean {
+  if (!candidate?.trim()) return true;
+  const nt = normalizeForCompare(title);
+  const nc = normalizeForCompare(candidate);
+  if (!nt || !nc) return true;
+  return nt === nc;
+}
+
+/** Long taxonomy labels that only extend the title slightly (truncation / shared heading) — taxonomy only. */
+function isTaxonomyNearDuplicateOfTitle(title: string, taxonomy: string): boolean {
+  if (isRedundantVersusTitle(title, taxonomy)) return true;
+  const nt = normalizeForCompare(title);
+  const ntx = normalizeForCompare(taxonomy);
+  if (nt.length < 12 || ntx.length < 12) return false;
+  if (ntx.startsWith(nt) && ntx.length - nt.length <= 28) return true;
+  if (nt.startsWith(ntx) && nt.length - ntx.length <= 28) return true;
+  return false;
+}
+
 /**
- * Secondary line priority for scan-first browse:
- * 1) taxonomy path, 2) creator display name, 3) short description excerpt (no placeholder copy).
+ * Taxonomy from page is `Parent / Child` or root label (often same as collection name).
+ * When the leaf repeats the title, return only the parent segment if it adds new context.
  */
-function browseRowSubtitle(collection: Collection, taxonomyLabel?: string): string | undefined {
+function refineTaxonomySubtitle(taxonomyLabel: string, collectionName: string): string | undefined {
+  const tax = taxonomyLabel.trim();
+  const name = collectionName.trim();
+  if (!tax) return undefined;
+
+  const sep = ' / ';
+  const idx = tax.indexOf(sep);
+  if (idx === -1) {
+    if (isTaxonomyNearDuplicateOfTitle(name, tax)) return undefined;
+    return tax;
+  }
+
+  const parent = tax.slice(0, idx).trim();
+  const child = tax.slice(idx + sep.length).trim();
+  if (isRedundantVersusTitle(name, child)) {
+    if (!parent || isRedundantVersusTitle(name, parent)) return undefined;
+    // Very long parent labels with ultra-short titles read as internal folder noise, not browse context
+    if (name.length <= 6 && parent.length > 52) return undefined;
+    return parent;
+  }
+
+  if (isTaxonomyNearDuplicateOfTitle(name, tax)) return undefined;
+  return tax;
+}
+
+function clipDescription(raw: string): string {
+  const t = raw.trim();
+  if (t.length <= 120) return t;
+  return `${t.slice(0, 117)}…`;
+}
+
+/**
+ * Single scan-friendly secondary line. Priority: creator → short description → refined taxonomy.
+ * Omits the line when it would duplicate the title or add no new context.
+ */
+function resolveBrowseRowSubtitle(
+  collection: Collection,
+  taxonomyLabel?: string,
+): string | undefined {
+  const title = collection.name.trim();
+  const candidates: string[] = [];
+
+  if (collection.type !== 'private') {
+    const creator = collection.creator?.name?.trim();
+    if (creator && !isRedundantVersusTitle(title, creator)) {
+      candidates.push(creator);
+    }
+  }
+
+  const rawDesc = collection.description?.trim();
+  if (rawDesc && rawDesc.length >= 10 && !isRedundantVersusTitle(title, rawDesc)) {
+    candidates.push(clipDescription(rawDesc));
+  }
+
   const tax = taxonomyLabel?.trim();
-  if (tax) return tax;
-  const creatorName = collection.creator?.name?.trim();
-  if (creatorName) return creatorName;
-  const raw = collection.description?.trim();
-  if (!raw) return undefined;
-  return raw.length > 140 ? `${raw.slice(0, 137)}…` : raw;
+  if (tax) {
+    const refined = refineTaxonomySubtitle(tax, title);
+    if (refined && !isRedundantVersusTitle(title, refined)) {
+      candidates.push(refined);
+    }
+  }
+
+  return candidates[0];
 }
 
 export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
@@ -46,7 +132,7 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
 
   const isFollowing = currentUserId ? (collection.followers || []).includes(currentUserId) : false;
   const isPrivate = collection.type === 'private';
-  const subtitle = browseRowSubtitle(collection, taxonomyLabel);
+  const subtitle = resolveBrowseRowSubtitle(collection, taxonomyLabel);
   const nuggetCount = collection.validEntriesCount ?? collection.entries?.length ?? 0;
   const updatedLabel = formatDate(collection.updatedAt || collection.createdAt, false);
 
@@ -127,11 +213,16 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
   return (
     <li
       className={[
-        'relative list-none border-b border-slate-100 bg-white last:border-b-0 dark:border-slate-800 dark:bg-slate-900',
+        'relative list-none bg-white dark:bg-slate-900',
         isSelected ? 'ring-2 ring-inset ring-primary-500 dark:ring-primary-400' : '',
       ].join(' ')}
     >
-      <div className="relative flex min-h-[4.5rem] items-stretch">
+      <div
+        className={[
+          'relative flex items-stretch',
+          subtitle ? 'min-h-[4.25rem]' : 'min-h-[3.5rem]',
+        ].join(' ')}
+      >
         <button
           type="button"
           onClick={handleRowClick}
@@ -180,7 +271,12 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
                 {subtitle}
               </p>
             ) : null}
-            <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
+            <p
+              className={[
+                'flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400',
+                subtitle ? 'mt-1' : 'mt-0.5',
+              ].join(' ')}
+            >
               <span className="inline-flex shrink-0 items-center gap-1" title="Nuggets">
                 <Folder size={12} className="shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
                 {nuggetCount}
@@ -206,11 +302,13 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
             </p>
           </div>
 
-          <ChevronRight
-            size={18}
-            className="shrink-0 self-center text-slate-400 dark:text-slate-500"
-            aria-hidden
-          />
+          {!selectionMode && (
+            <ChevronRight
+              size={18}
+              className="shrink-0 self-center text-slate-400 dark:text-slate-500"
+              aria-hidden
+            />
+          )}
         </button>
 
         {!selectionMode && (

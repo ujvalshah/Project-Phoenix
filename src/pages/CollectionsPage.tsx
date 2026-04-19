@@ -479,35 +479,37 @@ export const CollectionsPage: React.FC = () => {
             ) : (
               <>
                 <div className="lg:hidden">
-                  <ul
-                    className="list-none overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200 dark:border-slate-800 dark:bg-slate-900"
-                    aria-label="Collections"
-                  >
-                    {processedCollections.map((collection) => (
-                      <CollectionBrowseRow
-                        key={collection.id}
-                        collection={collection}
-                        onClick={() => navigate(`/collections/${collection.id}`)}
-                        selectionMode={selectionMode}
-                        isSelected={selectedIds.includes(collection.id)}
-                        onSelect={handleSelect}
-                        onCollectionUpdate={handleCollectionUpdate}
-                        taxonomyLabel={taxonomyLabelById[collection.id]}
-                      />
-                    ))}
-                  </ul>
-                  {hasMore && !selectionMode && (
-                    <div className="mt-4 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => void loadCollections(currentPage + 1, true)}
-                        disabled={isLoadingMore}
-                        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                      >
-                        {isLoadingMore ? 'Loading…' : 'Load more'}
-                      </button>
-                    </div>
-                  )}
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200 dark:border-slate-800 dark:bg-slate-900">
+                    <ul
+                      className="list-none divide-y divide-slate-100 dark:divide-slate-800"
+                      aria-label="Collections"
+                    >
+                      {processedCollections.map((collection) => (
+                        <CollectionBrowseRow
+                          key={collection.id}
+                          collection={collection}
+                          onClick={() => navigate(`/collections/${collection.id}`)}
+                          selectionMode={selectionMode}
+                          isSelected={selectedIds.includes(collection.id)}
+                          onSelect={handleSelect}
+                          onCollectionUpdate={handleCollectionUpdate}
+                          taxonomyLabel={taxonomyLabelById[collection.id]}
+                        />
+                      ))}
+                    </ul>
+                    {hasMore && !selectionMode && (
+                      <div className="border-t border-slate-200 bg-slate-50/90 dark:border-slate-800 dark:bg-slate-950/50">
+                        <button
+                          type="button"
+                          onClick={() => void loadCollections(currentPage + 1, true)}
+                          disabled={isLoadingMore}
+                          className="flex min-h-11 w-full items-center justify-center px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:opacity-60 dark:text-slate-100 dark:hover:bg-slate-800/80"
+                        >
+                          {isLoadingMore ? 'Loading…' : 'Load more'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="hidden lg:block">
