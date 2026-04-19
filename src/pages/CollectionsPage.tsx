@@ -4,6 +4,7 @@ import { storageService } from '@/services/storageService';
 import { Folder, Plus, X } from 'lucide-react';
 import { EmptyState } from '@/components/UI/EmptyState';
 import { useNavigate } from 'react-router-dom';
+import { CollectionBrowseRow } from '@/components/collections/CollectionBrowseRow';
 import { CollectionCard } from '@/components/collections/CollectionCard';
 import { CollectionTable } from '@/components/collections/CollectionTable';
 import { CollectionsHeader } from '@/components/collections/CollectionsHeader';
@@ -92,20 +93,6 @@ export const CollectionsPage: React.FC = () => {
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
-
-  // Table layout can't breathe on narrow screens; force grid without clobbering the user's
-  // explicit desktop preference.
-  const [isSmallScreen, setIsSmallScreen] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false,
-  );
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 639px)');
-    const handler = (event: MediaQueryListEvent) => setIsSmallScreen(event.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  const effectiveViewMode: ViewMode = isSmallScreen ? 'grid' : viewMode;
 
   const navigate = useNavigate();
   const toast = useToast();
@@ -489,58 +476,80 @@ export const CollectionsPage: React.FC = () => {
                     : 'No collections available yet. Create the first collection to get started.'
                 }
               />
-            ) : effectiveViewMode === 'grid' ? (
-              <>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-                  {processedCollections.map((collection) => (
-                    <CollectionCard
-                      key={collection.id}
-                      collection={collection}
-                      onClick={() =>
-                        selectionMode
-                          ? handleSelect(collection.id)
-                          : navigate(`/collections/${collection.id}`)
-                      }
-                      selectionMode={selectionMode}
-                      isSelected={selectedIds.includes(collection.id)}
-                      onSelect={handleSelect}
-                      onCollectionUpdate={handleCollectionUpdate}
-                      taxonomyLabel={taxonomyLabelById[collection.id]}
-                    />
-                  ))}
-                </div>
-                {hasMore && !selectionMode && (
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => void loadCollections(currentPage + 1, true)}
-                      disabled={isLoadingMore}
-                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      {isLoadingMore ? 'Loading…' : 'Load more'}
-                    </button>
-                  </div>
-                )}
-              </>
             ) : (
               <>
-                <CollectionTable
-                  collections={processedCollections}
-                  taxonomyLabelById={taxonomyLabelById}
-                  onClick={(id) => navigate(`/collections/${id}`)}
-                />
-                {hasMore && !selectionMode && (
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => void loadCollections(currentPage + 1, true)}
-                      disabled={isLoadingMore}
-                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      {isLoadingMore ? 'Loading…' : 'Load more'}
-                    </button>
-                  </div>
-                )}
+                <div className="lg:hidden">
+                  <ul
+                    className="list-none overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200 dark:border-slate-800 dark:bg-slate-900"
+                    aria-label="Collections"
+                  >
+                    {processedCollections.map((collection) => (
+                      <CollectionBrowseRow
+                        key={collection.id}
+                        collection={collection}
+                        onClick={() => navigate(`/collections/${collection.id}`)}
+                        selectionMode={selectionMode}
+                        isSelected={selectedIds.includes(collection.id)}
+                        onSelect={handleSelect}
+                        onCollectionUpdate={handleCollectionUpdate}
+                        taxonomyLabel={taxonomyLabelById[collection.id]}
+                      />
+                    ))}
+                  </ul>
+                  {hasMore && !selectionMode && (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => void loadCollections(currentPage + 1, true)}
+                        disabled={isLoadingMore}
+                        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        {isLoadingMore ? 'Loading…' : 'Load more'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="hidden lg:block">
+                  {viewMode === 'grid' ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                      {processedCollections.map((collection) => (
+                        <CollectionCard
+                          key={collection.id}
+                          collection={collection}
+                          onClick={() =>
+                            selectionMode
+                              ? handleSelect(collection.id)
+                              : navigate(`/collections/${collection.id}`)
+                          }
+                          selectionMode={selectionMode}
+                          isSelected={selectedIds.includes(collection.id)}
+                          onSelect={handleSelect}
+                          onCollectionUpdate={handleCollectionUpdate}
+                          taxonomyLabel={taxonomyLabelById[collection.id]}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <CollectionTable
+                      collections={processedCollections}
+                      taxonomyLabelById={taxonomyLabelById}
+                      onClick={(id) => navigate(`/collections/${id}`)}
+                    />
+                  )}
+                  {hasMore && !selectionMode && (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => void loadCollections(currentPage + 1, true)}
+                        disabled={isLoadingMore}
+                        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        {isLoadingMore ? 'Loading…' : 'Load more'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </section>
