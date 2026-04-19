@@ -151,7 +151,14 @@ export function getEnv(): ValidatedEnv {
 }
 
 /**
- * Build CORS allowlist: comma-separated CORS_ALLOWED_ORIGINS plus FRONTEND_URL (deduped).
+ * Canonical public frontend origins always merged into the CORS allowlist.
+ * `server/src/index.ts` expands apex ↔ www for each entry via `withWwwVariant`.
+ */
+const BUILTIN_CORS_BROWSER_ORIGINS: readonly string[] = ['https://nuggets.one'];
+
+/**
+ * Build CORS allowlist: BUILTIN_CORS_BROWSER_ORIGINS, comma-separated CORS_ALLOWED_ORIGINS,
+ * and FRONTEND_URL (deduped).
  */
 export function getCorsAllowedOrigins(): string[] {
   const env = getEnv();
@@ -160,6 +167,12 @@ export function getCorsAllowedOrigins(): string[] {
     .map((s) => normalizeOrigin(s))
     .filter((s) => s.length > 0);
   const set = new Set<string>(fromList);
+  for (const origin of BUILTIN_CORS_BROWSER_ORIGINS) {
+    const normalized = normalizeOrigin(origin);
+    if (normalized) {
+      set.add(normalized);
+    }
+  }
   if (env.FRONTEND_URL) {
     set.add(normalizeOrigin(env.FRONTEND_URL));
   }
