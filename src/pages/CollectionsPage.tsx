@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Collection } from '@/types';
 import { storageService } from '@/services/storageService';
-import { Folder, Plus, X } from 'lucide-react';
+import { Folder, Loader2, Plus, X } from 'lucide-react';
 import { EmptyState } from '@/components/UI/EmptyState';
 import { useNavigate } from 'react-router-dom';
 import { CollectionBrowseRow } from '@/components/collections/CollectionBrowseRow';
@@ -69,6 +69,35 @@ const CreateCollectionInstructionModal: React.FC<{
       </div>
     </div>
   </ModalShell>
+);
+
+const LoadMore: React.FC<{
+  onClick: () => void;
+  isLoading: boolean;
+  remaining: number;
+}> = ({ onClick, isLoading, remaining }) => (
+  <div className="mt-3 flex justify-center">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isLoading}
+      className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-primary-300 dark:hover:bg-primary-900/20"
+    >
+      {isLoading ? (
+        <>
+          <Loader2 size={14} className="animate-spin" aria-hidden />
+          Loading…
+        </>
+      ) : (
+        <>
+          Load more
+          {remaining > 0 && (
+            <span className="text-slate-400 dark:text-slate-500">· {remaining} more</span>
+          )}
+        </>
+      )}
+    </button>
+  </div>
 );
 
 export const CollectionsPage: React.FC = () => {
@@ -218,6 +247,16 @@ export const CollectionsPage: React.FC = () => {
       labels[collection.id] = parent ? `${parent.name} / ${collection.name}` : collection.name;
     });
     return labels;
+  }, [collections, parentCollectionMap]);
+
+  const parentNameById = useMemo<Record<string, string>>(() => {
+    const names: Record<string, string> = {};
+    collections.forEach((collection) => {
+      if (!collection.parentId) return;
+      const parent = parentCollectionMap.get(collection.parentId);
+      if (parent) names[collection.id] = parent.name;
+    });
+    return names;
   }, [collections, parentCollectionMap]);
 
   const breadcrumb = useMemo(() => {
@@ -494,22 +533,18 @@ export const CollectionsPage: React.FC = () => {
                           onSelect={handleSelect}
                           onCollectionUpdate={handleCollectionUpdate}
                           taxonomyLabel={taxonomyLabelById[collection.id]}
+                          parentName={parentNameById[collection.id]}
                         />
                       ))}
                     </ul>
-                    {hasMore && !selectionMode && (
-                      <div className="border-t border-slate-200 bg-slate-50/90 dark:border-slate-800 dark:bg-slate-950/50">
-                        <button
-                          type="button"
-                          onClick={() => void loadCollections(currentPage + 1, true)}
-                          disabled={isLoadingMore}
-                          className="flex min-h-11 w-full items-center justify-center px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:opacity-60 dark:text-slate-100 dark:hover:bg-slate-800/80"
-                        >
-                          {isLoadingMore ? 'Loading…' : 'Load more'}
-                        </button>
-                      </div>
-                    )}
                   </div>
+                  {hasMore && !selectionMode && (
+                    <LoadMore
+                      onClick={() => void loadCollections(currentPage + 1, true)}
+                      isLoading={isLoadingMore}
+                      remaining={Math.max(0, totalCount - collections.length)}
+                    />
+                  )}
                 </div>
 
                 <div className="hidden lg:block">
@@ -540,16 +575,11 @@ export const CollectionsPage: React.FC = () => {
                     />
                   )}
                   {hasMore && !selectionMode && (
-                    <div className="mt-4 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => void loadCollections(currentPage + 1, true)}
-                        disabled={isLoadingMore}
-                        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                      >
-                        {isLoadingMore ? 'Loading…' : 'Load more'}
-                      </button>
-                    </div>
+                    <LoadMore
+                      onClick={() => void loadCollections(currentPage + 1, true)}
+                      isLoading={isLoadingMore}
+                      remaining={Math.max(0, totalCount - collections.length)}
+                    />
                   )}
                 </div>
               </>

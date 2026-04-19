@@ -21,8 +21,8 @@ interface CollectionCardProps {
   taxonomyLabel?: string;
 }
 
-export const CollectionCard: React.FC<CollectionCardProps> = ({ 
-    collection, 
+export const CollectionCard: React.FC<CollectionCardProps> = ({
+    collection,
     onClick,
     selectionMode,
     isSelected,
@@ -33,11 +33,12 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
   const { currentUserId } = useAuth();
   const toast = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  
+
   // Derive isFollowing from backend data (collection.followers array)
   const isFollowing = currentUserId ? (collection.followers || []).includes(currentUserId) : false;
-  
+
   const isPrivate = collection.type === 'private';
+  const isSubCollection = Boolean(collection.parentId);
 
   const handleFollow = async (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -128,9 +129,13 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
 
         <div className="flex flex-1 flex-col p-4">
             <div className="mb-2.5 flex items-start justify-between">
-                {/* Icon Logic: Folder/Lock for Private, Colored Folder/Layers for Public */}
-                <div className={`rounded-md border p-1.5 ${isPrivate ? 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800' : 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-900/60 dark:bg-primary-900/20 dark:text-primary-300'}`}>
-                    {isPrivate ? <Lock size={18} strokeWidth={2} /> : <Layers size={18} strokeWidth={2} />}
+                {/* Icon Logic: Lock = private, Layers = parent/standalone, Folder = sub-collection */}
+                <div className={`rounded-md border p-1.5 ${isPrivate || isSubCollection ? 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800' : 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-900/60 dark:bg-primary-900/20 dark:text-primary-300'}`}>
+                    {isPrivate
+                      ? <Lock size={18} strokeWidth={2} />
+                      : isSubCollection
+                        ? <Folder size={18} strokeWidth={2} />
+                        : <Layers size={18} strokeWidth={2} />}
                 </div>
 
                 {/* Follow Button - Hide in selection mode & Hide for private folders (can't follow private) */}

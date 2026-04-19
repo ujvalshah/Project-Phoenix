@@ -15,6 +15,8 @@ export interface CollectionBrowseRowProps {
   onSelect?: (id: string) => void;
   onCollectionUpdate?: (updatedCollection: Collection) => void;
   taxonomyLabel?: string;
+  /** Resolved parent name when this row is a sub-collection. Drives icon and subtitle. */
+  parentName?: string;
 }
 
 /** Lowercase, trim, strip punctuation for duplicate / near-duplicate checks. */
@@ -125,6 +127,7 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
   onSelect,
   onCollectionUpdate,
   taxonomyLabel,
+  parentName,
 }) => {
   const { currentUserId } = useAuth();
   const toast = useToast();
@@ -132,7 +135,9 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
 
   const isFollowing = currentUserId ? (collection.followers || []).includes(currentUserId) : false;
   const isPrivate = collection.type === 'private';
-  const subtitle = resolveBrowseRowSubtitle(collection, taxonomyLabel);
+  const isSubCollection = Boolean(collection.parentId);
+  const parentSubtitle = parentName?.trim() ? `Under ${parentName.trim()}` : undefined;
+  const subtitle = parentSubtitle ?? resolveBrowseRowSubtitle(collection, taxonomyLabel);
   const nuggetCount = collection.validEntriesCount ?? collection.entries?.length ?? 0;
   const updatedLabel = formatDate(collection.updatedAt || collection.createdAt, false);
 
@@ -253,13 +258,19 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
           <div
             className={[
               'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border',
-              isPrivate
+              isPrivate || isSubCollection
                 ? 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800'
                 : 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-900/60 dark:bg-primary-900/20 dark:text-primary-300',
             ].join(' ')}
             aria-hidden
           >
-            {isPrivate ? <Lock size={16} strokeWidth={2} /> : <Layers size={16} strokeWidth={2} />}
+            {isPrivate ? (
+              <Lock size={16} strokeWidth={2} />
+            ) : isSubCollection ? (
+              <Folder size={16} strokeWidth={2} />
+            ) : (
+              <Layers size={16} strokeWidth={2} />
+            )}
           </div>
 
           <div className="min-w-0 flex-1">
