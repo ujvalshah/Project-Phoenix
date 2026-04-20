@@ -123,6 +123,7 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({
   viewMode,
 }) => {
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(), []);
   const firstContentMarkedRef = useRef(false);
   // Consume filter state from context — no prop drilling required
   const {
@@ -369,6 +370,98 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const committedQuery = searchQuery.trim();
   const isCommittedSearch = committedQuery.length > 0;
+  const isPulseStream = contentStream === 'pulse';
+  const summaryNoun = isPulseStream ? 'updates' : 'nuggets';
+  const loadedCount = articles.length;
+  const safeTotalCount = totalCount ?? 0;
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedCategories.length > 0) count += selectedCategories.length;
+    if (selectedTag) count += 1;
+    if (collectionId) count += 1;
+    if (favorites) count += 1;
+    if (unread) count += 1;
+    if (formats.length > 0) count += formats.length;
+    if (timeRange !== 'all') count += 1;
+    count += formatTagIds.length;
+    count += domainTagIds.length;
+    count += subtopicTagIds.length;
+    return count;
+  }, [
+    selectedCategories,
+    selectedTag,
+    collectionId,
+    favorites,
+    unread,
+    formats,
+    timeRange,
+    formatTagIds,
+    domainTagIds,
+    subtopicTagIds,
+  ]);
+
+  const sortLabel = sortOrder === 'oldest' ? 'Oldest first' : null;
+
+  const resultSummaryText = useMemo(() => {
+    const formattedLoaded = numberFormatter.format(loadedCount);
+    const formattedTotal = numberFormatter.format(safeTotalCount);
+    const filterContext =
+      activeFilterCount > 0
+        ? ` in ${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''}`
+        : '';
+
+    if (isLoadingArticles || isFeedRefetching) {
+      if (isCommittedSearch) {
+        return `Searching for "${committedQuery}"...`;
+      }
+      return `Updating ${summaryNoun}...`;
+    }
+
+    if (articlesError) {
+      if (isCommittedSearch) {
+        return `Search failed for "${committedQuery}". Please retry.`;
+      }
+      return 'Could not update nuggets. Please retry.';
+    }
+
+    if (safeTotalCount === 0) {
+      if (isCommittedSearch && activeFilterCount > 0) {
+        return `No ${summaryNoun} found for "${committedQuery}" in the current filters`;
+      }
+      if (isCommittedSearch) {
+        return `No ${summaryNoun} found for "${committedQuery}"`;
+      }
+      if (activeFilterCount > 0) {
+        return `No ${summaryNoun} found in the current filters`;
+      }
+      return `No ${summaryNoun} available yet`;
+    }
+
+    if (isCommittedSearch) {
+      if (loadedCount < safeTotalCount) {
+        return `Showing ${formattedLoaded} of ${formattedTotal} ${summaryNoun} for "${committedQuery}"${filterContext}`;
+      }
+      return `${formattedTotal} ${summaryNoun} for "${committedQuery}"${filterContext}`;
+    }
+
+    if (loadedCount < safeTotalCount) {
+      return `Showing ${formattedLoaded} of ${formattedTotal} ${summaryNoun}${filterContext}`;
+    }
+
+    return filterContext ? `${formattedTotal} ${summaryNoun}${filterContext}` : `${formattedTotal} ${summaryNoun}`;
+  }, [
+    activeFilterCount,
+    articlesError,
+    committedQuery,
+    summaryNoun,
+    isCommittedSearch,
+    isFeedRefetching,
+    isLoadingArticles,
+    loadedCount,
+    numberFormatter,
+    safeTotalCount,
+  ]);
 
   /** Suppress duplicate success/rendered/zero when infinite scroll finishes (same committed search). */
   const suppressResultsTelemetryAfterAppendRef = useRef(false);
@@ -561,21 +654,10 @@ export const HomePage: React.FC<HomePageProps> = ({
     <div className="max-w-[1800px] mx-auto pb-4">
       {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
       <div className="px-4 lg:px-6">
-        {isCommittedSearch && (
-          <div
-            className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-            role="status"
-            aria-live="polite"
-          >
-            {isLoadingArticles || isFeedRefetching
-              ? `Searching for "${committedQuery}"...`
-              : articlesError
-                ? `Search failed for "${committedQuery}". Please retry.`
-                : (totalCount ?? 0) === 0
-                  ? `No results for "${committedQuery}".`
-                  : `${totalCount ?? 0} results for "${committedQuery}".`}
-          </div>
-        )}
+        <div className="mt-1 mb-2 text-xs text-slate-500 dark:text-slate-400" role="status" aria-live="polite">
+          {resultSummaryText}
+          {sortLabel && safeTotalCount > 0 && ` · Sorted by ${sortLabel.toLowerCase()}`}
+        </div>
         <ArticleGrid
           articles={articles}
           viewMode={viewMode}
@@ -636,12 +718,21 @@ export const HomePage: React.FC<HomePageProps> = ({
             <div className="flex w-full min-w-0 flex-1 items-stretch">
               <DesktopFilterSidebar />
               <div className="min-h-0 min-w-0 flex-1">
-                <PageStack suppressHeaderSpacer categoryToolbar={categoryToolbarEl} mainContent={feedMain} />
+                <PageStack
+                  suppressHeaderSpacer
+                  categoryToolbar={categoryToolbarEl}
+                  mainContent={feedMain}
+                  contentTopSpacerClassName="h-1 shrink-0"
+                />
               </div>
             </div>
           </>
         ) : (
-          <PageStack categoryToolbar={categoryToolbarEl} mainContent={feedMain} />
+          <PageStack
+            categoryToolbar={categoryToolbarEl}
+            mainContent={feedMain}
+            contentTopSpacerClassName="h-1 shrink-0"
+          />
         )}
       </div>
 

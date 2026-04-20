@@ -21,6 +21,8 @@ interface PageStackProps {
    * Content must never overlap fixed/sticky elements.
    */
   mainContent: React.ReactNode;
+  /** Optional custom top spacer class before main content. */
+  contentTopSpacerClassName?: string;
 }
 
 /**
@@ -51,6 +53,7 @@ export const PageStack: React.FC<PageStackProps> = ({
   suppressHeaderSpacer = false,
   categoryToolbar,
   mainContent,
+  contentTopSpacerClassName,
 }) => {
   // Sticky offset is STATIC. Previously this toggled between top-0 (with
   // safe-area padding + background + backdrop-blur + shadow) and top-14 based
@@ -84,7 +87,7 @@ export const PageStack: React.FC<PageStackProps> = ({
       {/* CategorySpacer: MUST follow CategoryToolbar to reserve space */}
       {categoryToolbar && <CategorySpacer />}
 
-      <MainContentTopSpacer />
+      <MainContentTopSpacer className={contentTopSpacerClassName} />
       
       {/* MainContent - NO padding-top hack, spacers handle spacing */}
       <div>
