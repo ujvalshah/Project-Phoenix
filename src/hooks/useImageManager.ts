@@ -199,6 +199,7 @@ function detectMediaType(url: string): MediaType {
 function articleToImageItems(article: Article): ImageItem[] {
   const items: ImageItem[] = [];
   const seenUrls = new Set<string>();
+  const hasExplicitPrimary = !!article.primaryMedia?.url;
 
   const addItem = (
     url: string,
@@ -232,8 +233,8 @@ function articleToImageItems(article: Article): ImageItem[] {
     });
   };
 
-  // 1. Primary media
-  if (article.primaryMedia?.url) {
+  // 1. Primary media (explicit primaryMedia takes precedence)
+  if (hasExplicitPrimary) {
     addItem(article.primaryMedia.url, 'primary', 'primaryMedia', {
       showInMasonry: article.primaryMedia.showInMasonry ?? true,
       showInGrid: article.primaryMedia.showInGrid ?? true,
@@ -241,6 +242,16 @@ function articleToImageItems(article: Article): ImageItem[] {
       type: article.primaryMedia.type,
       thumbnail: article.primaryMedia.thumbnail,
       previewMetadata: article.primaryMedia.previewMetadata,
+    });
+  } else if (article.media?.url) {
+    // Fallback for legacy nuggets: treat media as primary when primaryMedia is absent.
+    // This preserves intended primary-first ordering during edit hydration.
+    addItem(article.media.url, 'primary', 'media', {
+      showInMasonry: article.media.showInMasonry ?? true,
+      showInGrid: article.media.showInGrid ?? true,
+      masonryTitle: article.media.masonryTitle,
+      type: article.media.type || 'image',
+      previewMetadata: article.media.previewMetadata,
     });
   }
 
@@ -261,9 +272,10 @@ function articleToImageItems(article: Article): ImageItem[] {
     });
   }
 
-  // 3. Legacy media field (ALL types, not just images - needed for deduplication)
-  // DEDUPLICATION FIX: Process all media types to prevent duplicates across different sources
-  if (article.media?.url) {
+  // 3. Legacy media field (when explicit primary exists)
+  // DEDUPLICATION FIX: Process all media types to prevent duplicates across different sources.
+  // If primaryMedia is absent, media was already consumed as primary fallback in Step 1.
+  if (hasExplicitPrimary && article.media?.url) {
     addItem(article.media.url, 'legacy', 'media', {
       showInMasonry: article.media.showInMasonry ?? false,
       showInGrid: article.media.showInGrid ?? true,
@@ -589,21 +601,25 @@ export function useImageManager(
         (img) => !prev.explicitlyDeleted.has(img.normalizedUrl)
       );
 
-      // IDEMPOTENCY CHECK: If images haven't changed, don't update state
-      // Compare normalized URLs to detect actual changes
-      const currentNormalizedUrls = new Set(
-        prev.images
+      // IDEMPOTENCY CHECK: If images and per-item presentation state haven't changed,
+      // don't update state. URL-only comparison can miss masonryTitle/show flags updates.
+      const buildSyncSignature = (items: ImageItem[]): string[] =>
+        items
           .filter(img => img.status === 'active')
-          .map(img => img.normalizedUrl)
-      );
-      const newNormalizedUrls = new Set(
-        filteredImages.map(img => img.normalizedUrl)
-      );
+          .map((img) => [
+            img.normalizedUrl,
+            img.type,
+            img.showInMasonry ? 'm1' : 'm0',
+            img.showInGrid ? 'g1' : 'g0',
+            (img.masonryTitle || '').trim(),
+          ].join('|'))
+          .sort();
 
-      // Check if sets are equal (same images)
-      const imagesUnchanged = 
-        currentNormalizedUrls.size === newNormalizedUrls.size &&
-        [...currentNormalizedUrls].every(url => newNormalizedUrls.has(url));
+      const currentSignatures = buildSyncSignature(prev.images);
+      const nextSignatures = buildSyncSignature(filteredImages);
+      const imagesUnchanged =
+        currentSignatures.length === nextSignatures.length &&
+        currentSignatures.every((sig, idx) => sig === nextSignatures[idx]);
 
       // If images are unchanged and already initialized, return prev state (no update)
       if (imagesUnchanged && prev.isInitialized) {

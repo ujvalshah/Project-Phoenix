@@ -169,6 +169,109 @@ describe('useImageManager', () => {
       expect(image1Items.length).toBe(1);
       expect(image1Items[0].source).toBe('primary');
     });
+
+    it('keeps primaryMedia-only nuggets with primary first', () => {
+      const article: Article = {
+        ...mockArticle,
+        supportingMedia: [],
+        images: [],
+        media: null,
+      };
+
+      const items = articleToImageItems(article);
+      expect(items).toHaveLength(1);
+      expect(items[0].source).toBe('primary');
+      expect(items[0].url).toBe('https://example.com/image1.jpg');
+    });
+
+    it('treats media-only nuggets as primary fallback', () => {
+      const article: Article = {
+        ...mockArticle,
+        primaryMedia: null,
+        supportingMedia: [],
+        images: [],
+        media: {
+          type: 'image',
+          url: 'https://example.com/media-primary.jpg',
+          showInMasonry: true,
+        },
+      };
+
+      const items = articleToImageItems(article);
+      expect(items).toHaveLength(1);
+      expect(items[0].source).toBe('primary');
+      expect(items[0].url).toBe('https://example.com/media-primary.jpg');
+    });
+
+    it('puts media fallback before supportingMedia', () => {
+      const article: Article = {
+        ...mockArticle,
+        primaryMedia: null,
+        supportingMedia: [
+          { type: 'image', url: 'https://example.com/support-1.jpg' },
+          { type: 'image', url: 'https://example.com/support-2.jpg' },
+        ],
+        images: [],
+        media: {
+          type: 'image',
+          url: 'https://example.com/media-primary.jpg',
+        },
+      };
+
+      const items = articleToImageItems(article);
+      expect(items.map((item) => item.url)).toEqual([
+        'https://example.com/media-primary.jpg',
+        'https://example.com/support-1.jpg',
+        'https://example.com/support-2.jpg',
+      ]);
+      expect(items[0].source).toBe('primary');
+    });
+
+    it('keeps explicit primaryMedia precedence with supportingMedia after it', () => {
+      const article: Article = {
+        ...mockArticle,
+        primaryMedia: {
+          type: 'image',
+          url: 'https://example.com/explicit-primary.jpg',
+          showInMasonry: true,
+        },
+        supportingMedia: [
+          { type: 'image', url: 'https://example.com/support-1.jpg' },
+        ],
+        images: [],
+        media: {
+          type: 'image',
+          url: 'https://example.com/legacy-media.jpg',
+        },
+      };
+
+      const items = articleToImageItems(article);
+      expect(items[0].url).toBe('https://example.com/explicit-primary.jpg');
+      expect(items[0].source).toBe('primary');
+      expect(items[1].url).toBe('https://example.com/support-1.jpg');
+      expect(items[1].source).toBe('supporting');
+    });
+
+    it('deduplicates duplicate URL across media fallback and supportingMedia (primary wins)', () => {
+      const duplicateUrl = 'https://example.com/shared.jpg';
+      const article: Article = {
+        ...mockArticle,
+        primaryMedia: null,
+        supportingMedia: [
+          { type: 'image', url: duplicateUrl },
+        ],
+        images: [],
+        media: {
+          type: 'image',
+          url: duplicateUrl,
+        },
+      };
+
+      const items = articleToImageItems(article);
+      const matches = items.filter((item) => item.url === duplicateUrl);
+      expect(matches).toHaveLength(1);
+      expect(matches[0].source).toBe('primary');
+    });
   });
 
   // NOTE: React hook tests (useImageManager) are disabled until jsdom is installed.

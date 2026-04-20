@@ -1151,9 +1151,10 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
    * V2: Handle media reordering (drag-and-drop or arrow buttons)
    */
   const handleReorderMedia = (sourceIndex: number, destinationIndex: number) => {
-    if (isFeatureEnabled('NUGGET_EDITOR_V2')) {
-      imageManager.reorderImages(sourceIndex, destinationIndex);
-    }
+    // Reordering must always be active when UnifiedMediaManager is rendered.
+    // Gating this behind NUGGET_EDITOR_V2 caused production no-op behavior when
+    // the env flag differed from localhost, even though drag UI remained visible.
+    imageManager.reorderImages(sourceIndex, destinationIndex);
   };
 
   /**

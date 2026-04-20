@@ -1527,7 +1527,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
       expect(normalized3.supportingMedia?.[1].showInMasonry).toBe(true);
     });
 
-    it('should NOT move images from images[] to supportingMedia[] when masonry is toggled', async () => {
+    it('should persist legacy image masonry overrides in supportingMedia while keeping images[] intact', async () => {
       const existingImages = ['https://example.com/legacy-image.jpg'];
       const initialData = {
         id: 'test-article',
@@ -1557,6 +1557,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
             url: 'https://example.com/legacy-image.jpg',
             source: 'legacy-image',
             showInMasonry: true,
+            masonryTitle: 'Legacy Title',
           },
         ],
         existingImages,
@@ -1571,9 +1572,84 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
 
       // Image should remain in images[] array
       expect(normalized.images).toContain('https://example.com/legacy-image.jpg');
-      
-      // Image should NOT be moved to supportingMedia
-      expect(normalized.supportingMedia).toBeUndefined();
+
+      // Legacy image should be promoted into supportingMedia to persist per-item state
+      expect(normalized.supportingMedia).toBeDefined();
+      expect(normalized.supportingMedia?.length).toBe(1);
+      expect(normalized.supportingMedia?.[0].url).toBe('https://example.com/legacy-image.jpg');
+      expect(normalized.supportingMedia?.[0].showInMasonry).toBe(true);
+      expect(normalized.supportingMedia?.[0].masonryTitle).toBe('Legacy Title');
+    });
+
+    it('should persist distinct masonryTitle values for multiple legacy images in edit mode', async () => {
+      const existingImages = [
+        'https://example.com/legacy-1.jpg',
+        'https://example.com/legacy-2.jpg',
+        'https://example.com/legacy-3.jpg',
+      ];
+      const initialData = {
+        id: 'test-article',
+        title: 'Test Article',
+        content: 'Test content',
+        author: { id: 'user-1', name: 'Test User' },
+        publishedAt: new Date().toISOString(),
+        tags: ['Tech'],
+        visibility: 'public',
+        images: existingImages,
+      } as any;
+
+      const input: ArticleInputData = {
+        title: 'Test Article',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        masonryMediaItems: [
+          {
+            id: 'legacy-image-0',
+            type: 'image',
+            url: 'https://example.com/legacy-1.jpg',
+            source: 'legacy-image',
+            showInMasonry: true,
+            masonryTitle: 'First Masonry Title',
+          },
+          {
+            id: 'legacy-image-1',
+            type: 'image',
+            url: 'https://example.com/legacy-2.jpg',
+            source: 'legacy-image',
+            showInMasonry: true,
+            masonryTitle: 'Second Masonry Title',
+          },
+          {
+            id: 'legacy-image-2',
+            type: 'image',
+            url: 'https://example.com/legacy-3.jpg',
+            source: 'legacy-image',
+            showInMasonry: true,
+            masonryTitle: 'Third Masonry Title',
+          },
+        ],
+        existingImages,
+        existingSupportingMedia: [],
+        initialData,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      expect(normalized.supportingMedia).toBeDefined();
+      expect(normalized.supportingMedia?.length).toBe(3);
+
+      const byUrl = new Map((normalized.supportingMedia || []).map((item) => [item.url, item]));
+      expect(byUrl.get('https://example.com/legacy-1.jpg')?.masonryTitle).toBe('First Masonry Title');
+      expect(byUrl.get('https://example.com/legacy-2.jpg')?.masonryTitle).toBe('Second Masonry Title');
+      expect(byUrl.get('https://example.com/legacy-3.jpg')?.masonryTitle).toBe('Third Masonry Title');
     });
   });
 
@@ -1746,6 +1822,105 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
       // URLs must remain the same
       expect(image1?.url).toBe('https://example.com/image1.jpg');
       expect(image2?.url).toBe('https://example.com/image2.jpg');
+    });
+  });
+
+  describe('Edit deletion semantics - explicitlyDeletedImages', () => {
+    const mockEnrichMediaItemIfNeeded = async (mediaItem: any): Promise<any> => {
+      return {
+        ...mediaItem,
+        previewMetadata: mediaItem.previewMetadata || {
+          url: mediaItem.url,
+          mediaType: mediaItem.type || 'image',
+        },
+      };
+    };
+
+    it('removes explicitly deleted supporting media from normalized output', async () => {
+      const deletedUrl = 'https://example.com/delete-me.jpg';
+      const keptUrl = 'https://example.com/keep-me.jpg';
+
+      const input: ArticleInputData = {
+        title: 'Test',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        masonryMediaItems: [
+          {
+            id: 'supporting-0',
+            type: 'image',
+            url: keptUrl,
+            source: 'supporting',
+            showInMasonry: true,
+          },
+        ],
+        existingSupportingMedia: [
+          { type: 'image', url: deletedUrl, showInMasonry: true },
+          { type: 'image', url: keptUrl, showInMasonry: true },
+        ],
+        explicitlyDeletedImages: new Set([deletedUrl.toLowerCase()]),
+        initialData: {
+          id: 'test-article',
+          title: 'Test',
+          content: 'Test content',
+          author: { id: 'u1', name: 'User' },
+          publishedAt: new Date().toISOString(),
+          tags: ['Tech'],
+        } as any,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      const urls = (normalized.supportingMedia || []).map((item: any) => item.url);
+      expect(urls).toContain(keptUrl);
+      expect(urls).not.toContain(deletedUrl);
+    });
+
+    it('clears media when existing media URL was explicitly deleted and no replacement URL is provided', async () => {
+      const deletedPrimaryUrl = 'https://example.com/primary-delete.jpg';
+
+      const input: ArticleInputData = {
+        title: 'Test',
+        content: 'Test content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        masonryMediaItems: [],
+        existingMedia: {
+          type: 'image',
+          url: deletedPrimaryUrl,
+        },
+        explicitlyDeletedImages: new Set([deletedPrimaryUrl.toLowerCase()]),
+        initialData: {
+          id: 'test-article',
+          title: 'Test',
+          content: 'Test content',
+          author: { id: 'u1', name: 'User' },
+          publishedAt: new Date().toISOString(),
+          tags: ['Tech'],
+          media: {
+            type: 'image',
+            url: deletedPrimaryUrl,
+          },
+        } as any,
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      expect(normalized.media).toBeNull();
     });
   });
 });

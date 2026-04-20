@@ -48,8 +48,9 @@ const MASONRY_TITLE_DISPLAY_MOBILE = 28;
 const normalizeMasonryTitle = (input: string): string => {
   return input
     .replace(/\n/g, ' ') // Remove newlines
-    .replace(/\s+/g, ' ') // Collapse duplicate spaces
-    .trim()
+    // Keep normal text-entry spacing behavior while typing (Space should insert).
+    // We only collapse repeated spaces; do not trim on each keystroke.
+    .replace(/ {2,}/g, ' ')
     .substring(0, MASONRY_TITLE_MAX_LENGTH); // Hard cap at 80 chars
 };
 

@@ -141,7 +141,6 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => {
           setIsHovered(false);
-          setShowMoreMenu(false);
         }}
         onFocusCapture={() => {
           // Show Action HUD when any tile content receives focus (keyboard + tap-to-focus behavior).
@@ -150,7 +149,15 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
         onBlurCapture={(e) => {
           const relatedTarget = e.relatedTarget as Node | null;
           const currentTarget = e.currentTarget as HTMLElement;
+          const movedFocusToPortaledMenu =
+            relatedTarget instanceof HTMLElement &&
+            !!relatedTarget.closest('[data-masonry-more-menu="true"]');
           // Only hide when focus actually leaves the entire masonry tile subtree.
+          // Portaled menu items are outside the tile subtree; keep HUD/menu alive when focus
+          // moves there so keyboard and pointer activation remain reliable.
+          if (movedFocusToPortaledMenu) {
+            return;
+          }
           if (relatedTarget && currentTarget.contains(relatedTarget)) {
             return;
           }
@@ -182,7 +189,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
           )}
 
           {/* Hover-triggered Action HUD (desktop) + Always-visible Source (mobile/tablet) */}
-          {(!!sourceLink && (isHovered || !isDesktop)) && (
+          {(!!sourceLink && (isHovered || showMoreMenu || !isDesktop)) && (
             <ActionHUD
               article={article}
               onAddToCollection={

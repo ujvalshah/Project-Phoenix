@@ -386,7 +386,18 @@ async function buildMediaObjectEdit(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
 ): Promise<NuggetMedia | null | undefined> {
-  const { linkMetadata, urls, detectedLink, customDomain, title, masonryMediaItems, existingMedia, initialData, allowMetadataOverride } = input;
+  const {
+    linkMetadata,
+    urls,
+    detectedLink,
+    customDomain,
+    title,
+    masonryMediaItems,
+    existingMedia,
+    initialData,
+    allowMetadataOverride,
+    explicitlyDeletedImages,
+  } = input;
   const { enrichMediaItemIfNeeded, classifyArticleMedia } = options;
   const primaryUrl = getPrimaryUrl(urls) || detectedLink || null;
 
@@ -405,9 +416,19 @@ async function buildMediaObjectEdit(
 
   const existingUrl = existingMedia?.url ? normalizeUrl(existingMedia.url) : null;
   const newUrl = primaryUrl ? normalizeUrl(primaryUrl) : null;
+  const existingMediaExplicitlyDeleted = !!(
+    existingMedia?.url &&
+    explicitlyDeletedImages?.has(normalizeImageUrl(existingMedia.url))
+  );
   const urlChanged = existingUrl !== null && newUrl !== null && existingUrl !== newUrl;
   const urlRemoved = existingUrl !== null && newUrl === null;
   const urlAdded = existingUrl === null && newUrl !== null;
+
+  // If the current media URL was explicitly deleted in the editor and user did not
+  // provide a replacement primary URL, clear media so stale initialData doesn't restore it.
+  if (existingMediaExplicitlyDeleted && newUrl === null) {
+    return null;
+  }
 
   // ============================================================================
   // STEP 2: URL CHANGE → FULL REBUILD (Rule: Rebuild ONLY when URL changes)
@@ -652,7 +673,7 @@ async function buildSupportingMediaEdit(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
 ): Promise<{ supportingMedia?: any[] }> {
-  const { masonryMediaItems, existingSupportingMedia } = input;
+  const { masonryMediaItems, existingSupportingMedia, explicitlyDeletedImages } = input;
   const { enrichMediaItemIfNeeded } = options;
 
   if (!enrichMediaItemIfNeeded) {
@@ -671,6 +692,10 @@ async function buildSupportingMediaEdit(
   for (const media of existingSupportingMedia || []) {
     if (media.url) {
       const normalizedUrl = normalizeImageUrl(media.url);
+      if (explicitlyDeletedImages?.has(normalizedUrl)) {
+        console.log('[normalizeArticleInput] Skipping explicitly deleted supportingMedia item:', { url: media.url });
+        continue;
+      }
       if (!addedUrls.has(normalizedUrl)) {
         addedUrls.add(normalizedUrl);
         deduplicatedExisting.push(media);
@@ -731,17 +756,28 @@ async function buildSupportingMediaEdit(
     })
   );
 
-  // FIX: Also add new items from masonryMediaItems that have showInMasonry: true
-  // but aren't in existingSupportingMedia
-  // IMPORTANT: Exclude legacy-image source items (from images[] array) - they should NOT be moved to supportingMedia
+  // FIX: Also add new items from masonryMediaItems that have explicit persisted state
+  // but aren't in existingSupportingMedia.
+  //
+  // Legacy-image handling:
+  // - Keep images[] as-is (do not remove/move legacy image URLs)
+  // - Promote legacy-image items to supportingMedia ONLY when they carry per-item
+  //   persisted state (masonry title / showInMasonry / showInGrid override)
+  //   so those fields survive edit save/reload.
   // DEDUPLICATION FIX: Also check against addedUrls to prevent duplicates
   const newMasonryItems = masonryMediaItems.filter(item => {
-    // Only non-primary items that are selected for masonry
-    if (item.source === 'primary' || !item.showInMasonry) return false;
+    if (item.source === 'primary' || item.source === 'legacy') return false;
 
-    // IMAGE PRESERVATION INVARIANT: Never move legacy images from images[] to supportingMedia[]
-    // Legacy images remain in images[] array regardless of masonry selection
-    if (item.source === 'legacy-image' || item.source === 'legacy') return false;
+    const legacyImageHasPersistedOverrides = item.source === 'legacy-image' && (
+      item.showInMasonry === true || // default legacy behavior is false
+      item.showInGrid === false || // default legacy behavior is true
+      Boolean(item.masonryTitle && item.masonryTitle.trim().length > 0)
+    );
+
+    // For non-legacy items, keep existing behavior: only include masonry-selected items.
+    // For legacy-image items, include when explicit per-item state needs persistence.
+    if (item.source !== 'legacy-image' && !item.showInMasonry) return false;
+    if (item.source === 'legacy-image' && !legacyImageHasPersistedOverrides) return false;
 
     // Skip if already in existingSupportingMedia or already added
     const itemUrlNormalized = normalizeImageUrl(item.url);

@@ -12,6 +12,55 @@ import { ImageLightbox } from '@/components/ImageLightbox';
 import { ArticleDetail } from '@/components/ArticleDetail';
 import { Maximize2 } from 'lucide-react';
 
+/**
+ * Visible title for non-YouTube masonry tiles (Path A).
+ * Precedence: masonryTitle → article.title → item previewMetadata.title.
+ * YouTube tiles use EmbeddedMedia’s built-in strip only — do not add a second band here.
+ */
+function resolveNonYouTubeMasonryTileTitle(
+  item: MasonryMediaItem,
+  article: Article,
+): string | null {
+  const masonry = item.masonryTitle?.trim();
+  if (masonry) return masonry;
+  const articleTitle = article.title?.trim();
+  if (articleTitle) return articleTitle;
+  const metaTitle = item.previewMetadata?.title?.trim();
+  if (metaTitle) return metaTitle;
+  return null;
+}
+
+function buildMasonryTileAriaLabel(item: MasonryMediaItem, article: Article): string {
+  if (item.type === 'youtube') {
+    const videoLabel =
+      item.previewMetadata?.title?.trim() || article.title?.trim();
+    return videoLabel ? `View video: ${videoLabel}` : 'View video details';
+  }
+  const resolved = resolveNonYouTubeMasonryTileTitle(item, article);
+  if (item.type === 'image') {
+    return resolved ? `View image in gallery: ${resolved}` : 'View image in gallery';
+  }
+  return resolved ? `View article details: ${resolved}` : 'View article details';
+}
+
+/** Bottom scrim + clamped title; always visible (hover is not required to read the tile). */
+const MasonryNonYouTubeTitleScrim: React.FC<{ text: string; titleId: string }> = ({
+  text,
+  titleId,
+}) => (
+  <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
+    <div className="bg-gradient-to-t from-black/85 via-black/65 to-transparent pb-1.5 pt-7 sm:pt-9 px-2.5">
+      <p
+        id={titleId}
+        className="text-left text-[11px] sm:text-xs font-semibold leading-snug text-white drop-shadow-md line-clamp-2 max-sm:line-clamp-1"
+        title={text.length > 80 ? text : undefined}
+      >
+        {text}
+      </p>
+    </div>
+  </div>
+);
+
 interface MediaBlockProps {
   article: Article;
   mediaItemId?: string; // If specified, render only this media item (for individual tile rendering)
@@ -47,6 +96,11 @@ interface MediaBlockProps {
  * - No shadow
  * - Media element renders directly
  * - Optional minimal border-radius only if needed
+ *
+ * Masonry titles (Path A):
+ * - Non-YouTube: bottom gradient + clamped title (masonryTitle → article.title → preview title);
+ *   always visible; fine-pointer hover polish remains on `.masonry-tile` (index.css).
+ * - YouTube: title strip comes only from EmbeddedMedia (no second scrim here).
  */
 export const MediaBlock: React.FC<MediaBlockProps> = ({
   article,
@@ -150,116 +204,74 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
     }
   };
 
-  // PART A: Unified hover effect for ALL masonry tiles
-  // Apply the same premium hover effect to all tiles (including YouTube/video)
-  // for visual consistency across the Masonry layout
-  const shouldApplyHover = (item: MasonryMediaItem): boolean => {
-    // All tiles now get the unified hover effect
-    return true;
-  };
-
-  /**
-   * Truncate masonry title for display
-   * Desktop: 40 chars, Mobile: 28 chars, single-line with ellipsis
-   */
-  const truncateTitle = (title: string, isMobile: boolean = false): string => {
-    const maxLength = isMobile ? 28 : 40;
-    if (title.length <= maxLength) return title;
-    return title.substring(0, maxLength).trim() + '…';
-  };
-
   // Render the media item(s) - typically just one when mediaItemId is specified
   // When mediaItemId is specified, itemsToRender contains exactly one item
   return (
     <>
       {itemsToRender.map((item, index) => {
-          const applyHover = shouldApplyHover(item);
-          
+          const isYouTube = item.type === 'youtube';
+          const nonYouTubeTitle =
+            !isYouTube ? resolveNonYouTubeMasonryTileTitle(item, article) : null;
+          const ariaLabel = buildMasonryTileAriaLabel(item, article);
+          const visibleTitleId = nonYouTubeTitle
+            ? `masonry-tile-title-${article.id}-${item.id}`
+            : undefined;
+          const imageAlt = nonYouTubeTitle
+            ? `Image ${index + 1} for ${nonYouTubeTitle}`
+            : article.title
+              ? `Image ${index + 1} for ${article.title}`
+              : `Article image ${index + 1}`;
+
           return (
             <div
               key={item.id}
-              className={`group relative w-full cursor-pointer ${applyHover ? 'masonry-tile' : ''}`}
+              className="group relative w-full cursor-pointer masonry-tile"
               onClick={(e) => handleMediaClick(e, item, index)}
               onKeyDown={(e) => handleKeyDown(e, item, index)}
               tabIndex={0}
               role="button"
-              aria-label={item.type === 'image' ? 'View image in gallery' : 'View article details'}
+              aria-labelledby={visibleTitleId}
+              aria-label={!visibleTitleId ? ariaLabel : undefined}
             >
               {item.type === 'image' ? (
-                // Render image tile with unified hover effects
                 <div className="relative w-full rounded-lg overflow-hidden">
-                  {/* PART A: Unified hover pattern (premium subtle UX) */}
-                  {/* Applies to ALL tiles including YouTube/video for visual consistency */}
-                  {applyHover && (
-                    <>
-                      {/* Dim overlay (2-4% opacity) */}
-                      <div className="hover-overlay absolute inset-0 bg-black pointer-events-none z-10" />
-                      
-                      {/* Hover icon (top-right) */}
-                      <div className="hover-icon absolute top-3 right-3 z-20 pointer-events-none">
-                        <Maximize2 
-                          size={16} 
-                          className="text-white drop-shadow-lg"
-                          strokeWidth={2}
-                        />
-                      </div>
-                    </>
-                  )}
-                  
+                  <>
+                    <div className="hover-overlay absolute inset-0 bg-black pointer-events-none z-10" />
+                    <div className="hover-icon absolute top-3 right-3 z-20 pointer-events-none">
+                      <Maximize2
+                        size={16}
+                        className="text-white drop-shadow-lg"
+                        strokeWidth={2}
+                      />
+                    </div>
+                  </>
+
                   <Image
                     src={item.url}
-                    alt={article.title ? `Image ${index + 1} for ${article.title}` : `Article image ${index + 1}`}
+                    alt={imageAlt}
                     className="w-full h-auto object-contain"
                   />
-                  
-                  {/* PART C: Masonry tile title caption (hover-only, bottom of tile) */}
-                  {/* Masonry caption must live inside the same stacking context as the tile */}
-                  {/* so it appears above the dim overlay and does not get clipped */}
-                  {item.masonryTitle && (
-                    <div
-                      className="
-                        absolute bottom-0 left-0 right-0
-                        z-20
-                        px-2 py-1
-                        text-xs font-medium
-                        truncate
-                        bg-black/60 text-white
-                        opacity-100 lg:opacity-0
-                        lg:group-hover:opacity-100
-                        lg:group-focus-within:opacity-100
-                        lg:group-focus-visible:opacity-100
-                        transition-opacity duration-150
-                        pointer-events-none
-                      "
-                      title={item.masonryTitle.length > 40 ? item.masonryTitle : undefined}
-                    >
-                      {/* Desktop: show up to 40 chars, Mobile: show up to 28 chars */}
-                      <span className="hidden md:inline">{truncateTitle(item.masonryTitle, false)}</span>
-                      <span className="md:hidden">{truncateTitle(item.masonryTitle, true)}</span>
-                    </div>
-                  )}
+
+                  {nonYouTubeTitle ? (
+                    <MasonryNonYouTubeTitleScrim
+                      text={nonYouTubeTitle}
+                      titleId={visibleTitleId as string}
+                    />
+                  ) : null}
                 </div>
               ) : (
-                // Render non-image media (YouTube, etc.) with unified hover effects
-                // PART A: YouTube/video thumbnails now get the same hover treatment
                 <div className="relative w-full rounded-lg overflow-hidden">
-                  {/* Unified hover pattern for YouTube/video tiles */}
-                  {applyHover && (
-                    <>
-                      {/* Dim overlay (2-4% opacity) */}
-                      <div className="hover-overlay absolute inset-0 bg-black pointer-events-none z-10" />
-                      
-                      {/* Hover icon (top-right) */}
-                      <div className="hover-icon absolute top-3 right-3 z-20 pointer-events-none">
-                        <Maximize2 
-                          size={16} 
-                          className="text-white drop-shadow-lg"
-                          strokeWidth={2}
-                        />
-                      </div>
-                    </>
-                  )}
-                  
+                  <>
+                    <div className="hover-overlay absolute inset-0 bg-black pointer-events-none z-10" />
+                    <div className="hover-icon absolute top-3 right-3 z-20 pointer-events-none">
+                      <Maximize2
+                        size={16}
+                        className="text-white drop-shadow-lg"
+                        strokeWidth={2}
+                      />
+                    </div>
+                  </>
+
                   <EmbeddedMedia
                     media={{
                       type: item.type,
@@ -268,11 +280,9 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
                       previewMetadata: item.previewMetadata,
                     }}
                     onClick={(e) => {
-                      // EmbeddedMedia may pass an event or not, handle both cases
                       if (e && 'stopPropagation' in e) {
                         handleMediaClick(e as React.MouseEvent, item, index);
                       } else {
-                        // Fallback if no event provided
                         const syntheticEvent = {
                           stopPropagation: () => {},
                         } as React.MouseEvent;
@@ -280,33 +290,13 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
                       }
                     }}
                   />
-                  
-                  {/* PART C: Masonry tile title caption (hover-only, bottom of tile) */}
-                  {/* Masonry caption must live inside the same stacking context as the tile */}
-                  {/* so it appears above the dim overlay and does not get clipped */}
-                  {item.masonryTitle && (
-                    <div
-                      className="
-                        absolute bottom-0 left-0 right-0
-                        z-20
-                        px-2 py-1
-                        text-xs font-medium
-                        truncate
-                        bg-black/60 text-white
-                        opacity-100 lg:opacity-0
-                        lg:group-hover:opacity-100
-                        lg:group-focus-within:opacity-100
-                        lg:group-focus-visible:opacity-100
-                        transition-opacity duration-150
-                        pointer-events-none
-                      "
-                      title={item.masonryTitle.length > 40 ? item.masonryTitle : undefined}
-                    >
-                      {/* Desktop: show up to 40 chars, Mobile: show up to 28 chars */}
-                      <span className="hidden md:inline">{truncateTitle(item.masonryTitle, false)}</span>
-                      <span className="md:hidden">{truncateTitle(item.masonryTitle, true)}</span>
-                    </div>
-                  )}
+
+                  {!isYouTube && nonYouTubeTitle ? (
+                    <MasonryNonYouTubeTitleScrim
+                      text={nonYouTubeTitle}
+                      titleId={visibleTitleId as string}
+                    />
+                  ) : null}
                 </div>
               )}
             </div>
