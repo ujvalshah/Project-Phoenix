@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react';
+import type { AppliedFilterChip } from '@/components/collections/AppliedFiltersBar';
 
 type ViewMode = 'grid' | 'table';
 type SortField = 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
@@ -43,6 +44,9 @@ interface CollectionsToolbarProps {
   actionMenu: React.ReactNode;
   onOpenFiltersMobile: () => void;
   mobileFilterCount?: number;
+  appliedFilters: AppliedFilterChip[];
+  onClearFilters: () => void;
+  showSortField?: boolean;
 }
 
 export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
@@ -65,26 +69,26 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
   actionMenu,
   onOpenFiltersMobile,
   mobileFilterCount = 0,
+  appliedFilters,
+  onClearFilters,
+  showSortField = true,
 }) => {
   const actionsAnchorRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-      <div className="relative w-full md:max-w-[420px]">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-          size={15}
-        />
-        <input
-          type="text"
-          placeholder="Search collections and sub-collections…"
-          value={searchInputValue}
-          onChange={(event) => onSearchInput(event.target.value)}
-          className={`${TOOLBAR_INPUT} w-full pl-9 pr-3 text-[13px] focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:bg-slate-900`}
-        />
-      </div>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-1.5 overflow-x-auto">
+        <div className="relative min-w-[220px] flex-1 md:max-w-[420px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+          <input
+            type="text"
+            placeholder="Search collections and sub-collections..."
+            value={searchInputValue}
+            onChange={(event) => onSearchInput(event.target.value)}
+            className={`${TOOLBAR_INPUT} h-9 w-full pl-9 pr-3 text-[13px] focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:bg-slate-900`}
+          />
+        </div>
 
-      <div className="flex items-center gap-1.5 overflow-x-auto md:justify-end">
         <button
           onClick={onOpenFiltersMobile}
           className={`relative inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 lg:hidden ${
@@ -103,29 +107,43 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           )}
         </button>
 
-        <div className="flex h-9 items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-          <label className="sr-only" htmlFor="collections-sort">Sort</label>
-          <select
-            id="collections-sort"
-            value={sortField}
-            onChange={(event) => setSortField(event.target.value as SortField)}
-            className={`${TOOLBAR_SELECT} h-full rounded-none border-none bg-transparent pl-2.5 pr-1 text-[13px] dark:bg-transparent`}
-          >
-            <option value="created">Created</option>
-            <option value="updated">Updated</option>
-            <option value="followers">Followers</option>
-            <option value="nuggets">Nuggets</option>
-            <option value="name">Name</option>
-          </select>
+        {showSortField ? (
+          <div className="flex h-9 items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+            <label className="sr-only" htmlFor="collections-sort">
+              Sort
+            </label>
+            <select
+              id="collections-sort"
+              value={sortField}
+              onChange={(event) => setSortField(event.target.value as SortField)}
+              className={`${TOOLBAR_SELECT} h-full rounded-none border-none bg-transparent pl-2.5 pr-1 text-[13px] dark:bg-transparent`}
+            >
+              <option value="created">Created</option>
+              <option value="updated">Updated</option>
+              <option value="followers">Followers</option>
+              <option value="nuggets">Nuggets</option>
+              <option value="name">Name</option>
+            </select>
+            <button
+              onClick={toggleSortDirection}
+              className="inline-flex h-full w-8 items-center justify-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+              aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+              title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+            >
+              {sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+            </button>
+          </div>
+        ) : (
           <button
             onClick={toggleSortDirection}
-            className="inline-flex h-full w-8 items-center justify-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
-            title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            aria-label={`Sort ${sortDirection === 'asc' ? 'oldest first' : 'latest first'}`}
+            title={sortDirection === 'asc' ? 'Oldest first' : 'Latest first'}
           >
             {sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+            {sortDirection === 'asc' ? 'Oldest' : 'Latest'}
           </button>
-        </div>
+        )}
 
         <div className={`${TOOLBAR_TOGGLE_GROUP} hidden h-9 p-0.5 lg:flex dark:bg-slate-900`}>
           <button
@@ -205,8 +223,31 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
             <X size={14} />
           </button>
         )}
-
       </div>
+
+      {appliedFilters.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          <span className="shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
+            Filters
+          </span>
+          {appliedFilters.map((filter) => (
+            <button
+              key={filter.id}
+              onClick={filter.onRemove}
+              className="inline-flex h-7 max-w-[220px] shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            >
+              <span className="truncate">{filter.label}</span>
+              <X size={11} className="text-slate-400" />
+            </button>
+          ))}
+          <button
+            onClick={onClearFilters}
+            className="h-7 shrink-0 rounded-full px-2 text-[11px] font-semibold text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-400 dark:hover:text-white"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
     </div>
   );
 };

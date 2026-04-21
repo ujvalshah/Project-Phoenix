@@ -353,6 +353,18 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
       ? 'bg-white dark:bg-slate-950 min-h-full flex flex-col w-full max-w-[720px] mx-auto px-4 py-6 xl:px-6'
       : 'bg-white dark:bg-slate-950 min-h-full flex flex-col w-full px-4 py-6 xl:px-6';
 
+  const resolvedBodyContent = useMemo(() => {
+    const content = article?.content;
+    if (typeof content === 'string' && content.trim().length > 0) {
+      return content;
+    }
+    const excerpt = article?.excerpt;
+    if (typeof excerpt === 'string' && excerpt.trim().length > 0) {
+      return excerpt;
+    }
+    return '';
+  }, [article?.content, article?.excerpt]);
+
   return (
     <div className={rootContainerClasses}>
        {shouldShowHeader && (
@@ -537,7 +549,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                   identically to the card preview. */}
               <div className="nugget-content text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   <MarkdownRenderer
-                    content={article?.content ?? article?.excerpt ?? ''}
+                    content={resolvedBodyContent}
                     onYouTubeTimestampClick={handleDrawerTimestampClick}
                   />
               </div>

@@ -15,6 +15,7 @@ import { useAuthSelector } from '@/context/AuthContext';
 import { consumePendingNavigation, recordRouteStartMark } from '@/utils/routeProfiling';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { AdminRoute } from '@/components/auth/AdminRoute';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
 import { PersistentVideoPlayer } from '@/components/PersistentVideoPlayer';
 import { NotificationPrompt } from '@/components/NotificationPrompt';
@@ -231,9 +232,11 @@ const AppContent: React.FC = () => {
             </ErrorBoundary>
           } />
           <Route path="/collections/:collectionId" element={
-            <ErrorBoundary>
-              <CollectionDetailPage />
-            </ErrorBoundary>
+            <AdminRoute>
+              <ErrorBoundary>
+                <CollectionDetailPage />
+              </ErrorBoundary>
+            </AdminRoute>
           } />
 
           {/* Bookmarks - Protected */}

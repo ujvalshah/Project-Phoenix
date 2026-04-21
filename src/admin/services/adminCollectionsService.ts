@@ -14,6 +14,7 @@ interface PaginatedResponse<T> {
 class AdminCollectionsService {
   // In-flight request guard to prevent duplicate concurrent stats requests
   private inFlightStatsRequest: Promise<{ totalCommunity: number; totalNuggetsInCommunity: number }> | null = null;
+  private static readonly PAGE_LIMIT = 100;
 
   async listCollections(options?: string | { query?: string; parentId?: string; rootOnly?: boolean }): Promise<AdminCollection[]> {
     try {
@@ -21,25 +22,38 @@ class AdminCollectionsService {
       const parentId = typeof options === 'string' ? undefined : options?.parentId;
       const rootOnly = typeof options === 'string' ? undefined : options?.rootOnly;
 
-      // Request high limit (100) to get all collections for admin panel
-      const params = new URLSearchParams();
-      params.set('limit', '100');
-      if (query) params.set('q', query);
-      if (parentId) params.set('parentId', parentId);
-      if (rootOnly) params.set('rootOnly', 'true');
+      const allCollections: Collection[] = [];
+      let page = 1;
+      let total = Number.POSITIVE_INFINITY;
 
-      const endpoint = `/collections?${params.toString()}`;
-      const response = await apiClient.get<PaginatedResponse<Collection>>(endpoint, undefined, 'adminCollectionsService.listCollections');
-      
-      // Backend always returns paginated response format { data: [...], total, ... }
-      const collections = response?.data || [];
-      
-      if (!Array.isArray(collections)) {
-        console.error('[AdminCollectionsService.listCollections] Expected collections array but got:', typeof collections, response);
-        return [];
+      while (allCollections.length < total) {
+        const params = new URLSearchParams();
+        params.set('limit', String(AdminCollectionsService.PAGE_LIMIT));
+        params.set('page', String(page));
+        if (query) params.set('q', query);
+        if (parentId) params.set('parentId', parentId);
+        if (rootOnly) params.set('rootOnly', 'true');
+
+        const endpoint = `/collections?${params.toString()}`;
+        const response = await apiClient.get<PaginatedResponse<Collection>>(endpoint, undefined, `adminCollectionsService.listCollections.page.${page}`);
+        const pageData = response?.data || [];
+
+        if (!Array.isArray(pageData)) {
+          console.error('[AdminCollectionsService.listCollections] Expected collections array but got:', typeof pageData, response);
+          return [];
+        }
+
+        total = typeof response?.total === 'number' ? response.total : pageData.length;
+        allCollections.push(...pageData);
+
+        if (pageData.length === 0 || allCollections.length >= total) {
+          break;
+        }
+        page += 1;
       }
-      
-      return collections.map(mapCollectionToAdminCollection);
+
+      const uniqueCollections = Array.from(new Map(allCollections.map((c) => [c.id, c])).values());
+      return uniqueCollections.map(mapCollectionToAdminCollection);
     } catch (error: any) {
       console.error('[AdminCollectionsService.listCollections] Error fetching collections:', error);
       throw error;

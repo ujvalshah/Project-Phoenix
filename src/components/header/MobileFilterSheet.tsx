@@ -8,6 +8,7 @@ import { storageService } from '@/services/storageService';
 import { Collection, TaxonomyTag } from '@/types';
 import type { FilterState } from './filterTypes';
 import { getOverlayHost } from '@/utils/overlayHosts';
+import { buildCollectionFilterGroups } from './collectionFilterUtils';
 
 interface MobileFilterSheetProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ type FilterTab = 'topics' | 'collections';
 type SectionKey = 'formats' | 'domains' | 'subtopics';
 
 const INITIAL_VISIBLE = 8;
+const COLLECTIONS_PAGE_LIMIT = 100;
 
 const emitFilterAnalytics = (
   eventName: 'filter_selected' | 'filter_removed' | 'clear_all_clicked' | 'filter_search_used' | 'no_results_triggered',
@@ -90,13 +92,34 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
   const { data: publicCollections = [], isLoading: isPublicLoading } = useQuery<Collection[]>({
     queryKey: ['collections', 'public', 'filter-surface'],
     queryFn: async () => {
-      const result = await storageService.getCollections({
-        type: 'public',
-        limit: 300,
-        sortField: 'name',
-        sortDirection: 'asc',
-      });
-      return Array.isArray(result) ? result : result.data;
+      const allCollections: Collection[] = [];
+      let page = 1;
+      let totalCount = Number.POSITIVE_INFINITY;
+
+      while (allCollections.length < totalCount) {
+        const result = await storageService.getCollections({
+          type: 'public',
+          page,
+          limit: COLLECTIONS_PAGE_LIMIT,
+          sortField: 'name',
+          sortDirection: 'asc',
+          summary: true,
+          includeEntries: false,
+          includeCount: true,
+        });
+
+        const pageData = Array.isArray(result) ? result : result.data;
+        const pageCount = Array.isArray(result) ? pageData.length : result.count;
+        totalCount = pageCount;
+        allCollections.push(...pageData);
+
+        if (pageData.length === 0 || allCollections.length >= totalCount) {
+          break;
+        }
+        page += 1;
+      }
+
+      return Array.from(new Map(allCollections.map((c) => [c.id, c])).values());
     },
     staleTime: 1000 * 60,
   });
@@ -186,23 +209,15 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
     return chips;
   }, [activeTab, collectionsById, filters, onChange, resultCount, selectedDomainIds, selectedFormatIds, selectedSubtopicIds, tagMaps.domains, tagMaps.formats, tagMaps.subtopics]);
 
-  const groupedCollections = useMemo(() => {
-    const q = normalize(searchQuery);
-    return featuredCollections
-      .map((parent) => {
-        const children = publicCollections
-          .filter((c) => c.parentId === parent.id)
-          .sort((a, b) => a.name.localeCompare(b.name));
-        const parentMatches = parent.name.toLowerCase().includes(q);
-        const matchingChildren = q ? children.filter((c) => c.name.toLowerCase().includes(q)) : children;
-        if (q && !parentMatches && matchingChildren.length === 0) return null;
-        return {
-          parent,
-          children: parentMatches ? children : matchingChildren,
-        };
-      })
-      .filter((value): value is { parent: Collection; children: Collection[] } => Boolean(value));
-  }, [featuredCollections, publicCollections, searchQuery]);
+  const groupedCollections = useMemo(
+    () =>
+      buildCollectionFilterGroups({
+        featuredCollections,
+        publicCollections,
+        searchQuery,
+      }),
+    [featuredCollections, publicCollections, searchQuery]
+  );
 
   const filterTagsBySearch = (tags: TaxonomyTag[]) => {
     const q = normalize(searchQuery);

@@ -176,6 +176,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [searchParams, setSearchParams] = useSearchParams();
   const { setResultCount } = useFilterResults();
   const isLg = useMediaQuery('(min-width: 1024px)');
+  const isSmallViewport = useMediaQuery('(max-width: 640px)');
   const { setInlineDesktopFiltersActive } = useDesktopFilterSidebar();
 
   const { currentUserId, isAuthenticated } = useAuthSelector(
@@ -410,6 +411,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       activeFilterCount > 0
         ? ` in ${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''}`
         : '';
+    const compactFilterContext = activeFilterCount > 0 ? ` in ${activeFilterCount}` : '';
 
     if (isLoadingArticles || isFeedRefetching) {
       if (isCommittedSearch) {
@@ -427,12 +429,15 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     if (safeTotalCount === 0) {
       if (isCommittedSearch && activeFilterCount > 0) {
+        if (isSmallViewport) return `No results for "${committedQuery}"`;
         return `No ${summaryNoun} found for "${committedQuery}" in the current filters`;
       }
       if (isCommittedSearch) {
+        if (isSmallViewport) return `No results for "${committedQuery}"`;
         return `No ${summaryNoun} found for "${committedQuery}"`;
       }
       if (activeFilterCount > 0) {
+        if (isSmallViewport) return `No ${summaryNoun} in filters`;
         return `No ${summaryNoun} found in the current filters`;
       }
       return `No ${summaryNoun} available yet`;
@@ -440,21 +445,34 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     if (isCommittedSearch) {
       if (loadedCount < safeTotalCount) {
+        if (isSmallViewport) {
+          return `${formattedLoaded} of ${formattedTotal} ${summaryNoun} for "${committedQuery}"`;
+        }
         return `Showing ${formattedLoaded} of ${formattedTotal} ${summaryNoun} for "${committedQuery}"${filterContext}`;
+      }
+      if (isSmallViewport) {
+        return `${formattedTotal} ${summaryNoun} for "${committedQuery}"${compactFilterContext}`;
       }
       return `${formattedTotal} ${summaryNoun} for "${committedQuery}"${filterContext}`;
     }
 
     if (loadedCount < safeTotalCount) {
+      if (isSmallViewport) return `${formattedLoaded} of ${formattedTotal} ${summaryNoun}${compactFilterContext}`;
       return `Showing ${formattedLoaded} of ${formattedTotal} ${summaryNoun}${filterContext}`;
     }
 
+    if (isSmallViewport) {
+      return compactFilterContext
+        ? `${formattedTotal} ${summaryNoun}${compactFilterContext}`
+        : `${formattedTotal} ${summaryNoun}`;
+    }
     return filterContext ? `${formattedTotal} ${summaryNoun}${filterContext}` : `${formattedTotal} ${summaryNoun}`;
   }, [
     activeFilterCount,
     articlesError,
     committedQuery,
     summaryNoun,
+    isSmallViewport,
     isCommittedSearch,
     isFeedRefetching,
     isLoadingArticles,
@@ -654,9 +672,13 @@ export const HomePage: React.FC<HomePageProps> = ({
     <div className="max-w-[1800px] mx-auto pb-4">
       {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
       <div className="px-4 lg:px-6">
-        <div className="mt-1 mb-2 text-xs text-slate-500 dark:text-slate-400" role="status" aria-live="polite">
+        <div
+          className="mt-0.5 mb-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400 sm:mt-1 sm:mb-2 sm:text-xs sm:leading-5"
+          role="status"
+          aria-live="polite"
+        >
           {resultSummaryText}
-          {sortLabel && safeTotalCount > 0 && ` · Sorted by ${sortLabel.toLowerCase()}`}
+          {!isSmallViewport && sortLabel && safeTotalCount > 0 && ` · Sorted by ${sortLabel.toLowerCase()}`}
         </div>
         <ArticleGrid
           articles={articles}

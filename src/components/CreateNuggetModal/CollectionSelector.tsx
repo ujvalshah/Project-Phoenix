@@ -12,7 +12,7 @@ function collectionPrimaryLine(collection: Collection, nameById: Map<string, str
   const name = collection.name || '';
   if (!collection.parentId) return name;
   const parentName = nameById.get(collection.parentId);
-  return parentName ? `${parentName} → ${name}` : name;
+  return parentName ? `${parentName} / ${name}` : `Parent collection / ${name}`;
 }
 
 function collectionOptionLabel(
@@ -25,7 +25,7 @@ function collectionOptionLabel(
   const key = scopedNameKey(collection);
   const ambiguousPath = (pathCounts.get(key) || 0) > 1;
   const suffix =
-    showTechnicalIds || ambiguousPath || collection.parentId
+    showTechnicalIds || ambiguousPath
       ? ` · …${collection.id.slice(-8)}`
       : '';
   return `${primary}${suffix}`;

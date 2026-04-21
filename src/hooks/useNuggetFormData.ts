@@ -20,6 +20,55 @@ export const nuggetFormKeys = {
     [...nuggetFormKeys.all, 'collections', type || 'all'] as const,
 };
 
+const COLLECTIONS_PAGE_LIMIT = 100;
+
+async function fetchCollectionsPage(params: {
+  type?: 'public' | 'private';
+  page: number;
+  limit: number;
+}): Promise<{ data: Collection[]; count: number }> {
+  const result = await storageService.getCollections({
+    ...(params.type ? { type: params.type } : {}),
+    page: params.page,
+    limit: params.limit,
+    includeCount: true,
+    includeEntries: false,
+    summary: true,
+  });
+
+  if (Array.isArray(result)) {
+    return { data: result, count: result.length };
+  }
+
+  return {
+    data: result?.data ?? [],
+    count: result?.count ?? 0,
+  };
+}
+
+async function fetchAllCollectionsByType(type?: 'public' | 'private'): Promise<Collection[]> {
+  const collected: Collection[] = [];
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (collected.length < total) {
+    const response = await fetchCollectionsPage({
+      type,
+      page,
+      limit: COLLECTIONS_PAGE_LIMIT,
+    });
+    total = response.count;
+    collected.push(...response.data);
+
+    if (response.data.length === 0 || collected.length >= total) {
+      break;
+    }
+    page += 1;
+  }
+
+  return collected;
+}
+
 /**
  * Hook to get all available tags (categories).
  * Cached for 5 minutes to prevent refetch on every modal open.
@@ -98,16 +147,7 @@ export function useCreateTag() {
 export function useCollections(type?: 'public' | 'private') {
   return useQuery({
     queryKey: nuggetFormKeys.collections(type),
-    queryFn: async () => {
-      const result = await storageService.getCollections(
-        type ? { type, limit: 100 } : { limit: 100 }
-      );
-      // Handle union type: Collection[] | { data: Collection[], count: number }
-      const collections: Collection[] = Array.isArray(result)
-        ? result
-        : result?.data ?? [];
-      return collections;
-    },
+    queryFn: async () => fetchAllCollectionsByType(type),
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 30, // Keep in cache for 30 minutes
     refetchOnWindowFocus: false,
@@ -121,11 +161,16 @@ export function useAllCollections() {
   return useQuery({
     queryKey: nuggetFormKeys.collections(),
     queryFn: async () => {
-      const result = await storageService.getCollections({ limit: 100 });
-      const collections: Collection[] = Array.isArray(result)
-        ? result
-        : result?.data ?? [];
-      return collections;
+      const [publicCollections, privateCollections] = await Promise.all([
+        fetchAllCollectionsByType('public'),
+        fetchAllCollectionsByType('private'),
+      ]);
+
+      return Array.from(
+        new Map(
+          [...publicCollections, ...privateCollections].map((collection) => [collection.id, collection])
+        ).values()
+      );
     },
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,

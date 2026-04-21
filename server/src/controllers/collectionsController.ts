@@ -26,6 +26,11 @@ function buildRootCollectionQuery() {
   return { $or: [{ parentId: null }, { parentId: { $exists: false } }] };
 }
 
+const MAX_BATCH_ENTRIES = {
+  admin: 200,
+  nonAdmin: 100,
+} as const;
+
 async function addEntryIfMissing(
   collectionId: string,
   articleId: string,
@@ -837,6 +842,18 @@ export const addBatchEntries = async (req: Request, res: Response) => {
     }
 
     const { articleIds } = validationResult.data;
+    const requestUserRole = (req as any).user?.role;
+    const normalizedRole = typeof requestUserRole === 'string' ? requestUserRole.toLowerCase().trim() : '';
+    const maxAllowed = normalizedRole === 'admin' ? MAX_BATCH_ENTRIES.admin : MAX_BATCH_ENTRIES.nonAdmin;
+
+    if (articleIds.length > maxAllowed) {
+      return res.status(400).json({
+        message: `Validation failed: maximum ${maxAllowed} articles per batch for ${normalizedRole === 'admin' ? 'admins' : 'non-admins'}`,
+        code: 'BATCH_LIMIT_EXCEEDED',
+        maxAllowed,
+        received: articleIds.length,
+      });
+    }
 
     // PHASE 1: Check collection access with admin override
     const collection = await Collection.findById(req.params.id);
@@ -844,7 +861,7 @@ export const addBatchEntries = async (req: Request, res: Response) => {
 
     // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
     const currentUserId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const userRole = requestUserRole;
     if (!canModifyCollectionEntriesPolicy(collection, currentUserId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
     }
@@ -972,13 +989,25 @@ export const removeBatchEntries = async (req: Request, res: Response) => {
     }
 
     const { articleIds } = validationResult.data;
+    const requestUserRole = (req as any).user?.role;
+    const normalizedRole = typeof requestUserRole === 'string' ? requestUserRole.toLowerCase().trim() : '';
+    const maxAllowed = normalizedRole === 'admin' ? MAX_BATCH_ENTRIES.admin : MAX_BATCH_ENTRIES.nonAdmin;
+
+    if (articleIds.length > maxAllowed) {
+      return res.status(400).json({
+        message: `Validation failed: maximum ${maxAllowed} articles per batch for ${normalizedRole === 'admin' ? 'admins' : 'non-admins'}`,
+        code: 'BATCH_LIMIT_EXCEEDED',
+        maxAllowed,
+        received: articleIds.length,
+      });
+    }
 
     // PHASE 1: Check collection access with admin override
     const collection = await Collection.findById(req.params.id);
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
 
     const currentUserId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const userRole = requestUserRole;
     if (!canModifyCollectionEntriesPolicy(collection, currentUserId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to remove entries from this collection' });
     }
@@ -1344,7 +1373,12 @@ export const reorderFeatured = async (req: Request, res: Response) => {
  */
 export const getCollectionArticles = async (req: Request, res: Response) => {
   try {
-    const collection = await Collection.findById(req.params.id).select('entries type').lean();
+    const collectionId = req.params.id?.trim();
+    if (!collectionId) {
+      return res.status(404).json({ message: 'Collection not found' });
+    }
+
+    const collection = await Collection.findById(collectionId).select('_id entries type parentId').lean();
     if (!collection) {
       return res.status(404).json({ message: 'Collection not found' });
     }
@@ -1356,7 +1390,21 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const articleIds = collection.entries.map((e: { articleId: string }) => e.articleId);
+    const allEntries = [...collection.entries];
+
+    // Keep detail-view behavior aligned with filter behavior:
+    // parent collections represent a union of parent + child entries.
+    if (!collection.parentId) {
+      const childCollections = await Collection.find({
+        type: collection.type,
+        parentId: String((collection as any)._id),
+      })
+        .select('entries')
+        .lean();
+      childCollections.forEach((child) => allEntries.push(...(child.entries || [])));
+    }
+
+    const articleIds = Array.from(new Set(allEntries.map((e: { articleId: string }) => e.articleId)));
     if (articleIds.length === 0) {
       return res.json({ data: [], total: 0, page: 1, limit: 25, hasMore: false });
     }

@@ -26,6 +26,7 @@ export const CollectionDetailPage: React.FC = () => {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [nuggets, setNuggets] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
 
   // Edit mode state
@@ -49,26 +50,30 @@ export const CollectionDetailPage: React.FC = () => {
     async (id: string, pageToLoad: number, append: boolean) => {
       if (append) setIsLoadingMore(true);
       else setIsLoading(true);
+      setLoadError(null);
 
       try {
-        const [col, articlesPage] = await Promise.all([
-          storageService.getCollectionById(id, { includeEntries: false }),
-          storageService.getCollectionArticles(id, {
-            page: pageToLoad,
-            limit: pageSize,
-            sort: 'latest',
-          }),
-        ]);
+        const col = await storageService.getCollectionById(id, { includeEntries: false });
         if (!col) {
           navigate('/collections', { replace: true });
           return;
         }
         setCollection(col);
+        const articlesPage = await storageService.getCollectionArticles(id, {
+          page: pageToLoad,
+          limit: pageSize,
+          sort: 'latest',
+        });
         setNuggets((prev) => (append ? [...prev, ...articlesPage.data] : articlesPage.data));
         setHasMore(Boolean(articlesPage.hasMore));
         setPage(pageToLoad);
       } catch (e) {
         console.error('Failed to load collection data:', e);
+        setLoadError('Could not load collection nuggets right now.');
+        if (!append) {
+          setNuggets([]);
+          setHasMore(false);
+        }
         toast.error('Failed to load collection', {
           description: 'Please try again later.',
         });
@@ -336,6 +341,11 @@ export const CollectionDetailPage: React.FC = () => {
         </div>
       </div>
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {loadError && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+            {loadError}
+          </div>
+        )}
         <ArticleGrid
             articles={nuggets}
             viewMode="grid"

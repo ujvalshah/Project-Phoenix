@@ -311,7 +311,7 @@ export const addEntrySchema = z.object({
 }).strict();
 
 export const batchEntriesSchema = z.object({
-  articleIds: z.array(z.string().min(1)).min(1, 'At least one article ID is required').max(100, 'Maximum 100 articles per batch'),
+  articleIds: z.array(z.string().min(1)).min(1, 'At least one article ID is required').max(200, 'Maximum 200 articles per batch'),
   userId: z.string().optional()
 }).strict();
 

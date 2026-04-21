@@ -2215,7 +2215,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                         availableCollections={allCollections}
                         visibility={visibility}
                         onSelectedChange={setSelectedCollectionIds}
-                        showTechnicalIds={isAdmin}
+                        showTechnicalIds={false}
                         comboboxRef={collectionsComboboxRef}
                         listboxRef={collectionsListboxRef}
                     />

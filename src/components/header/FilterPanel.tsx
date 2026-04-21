@@ -6,9 +6,11 @@ import { useQuery } from '@tanstack/react-query';
 import { storageService } from '@/services/storageService';
 import { Collection, TaxonomyTag } from '@/types';
 import type { FilterState } from './filterTypes';
+import { buildCollectionFilterGroups } from './collectionFilterUtils';
 
 const FACET_INITIAL = 6;
 const COLLECTION_CHILD_INITIAL = 6;
+const COLLECTIONS_PAGE_LIMIT = 100;
 
 interface FilterPanelProps {
   filters: FilterState;
@@ -40,15 +42,34 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   const { data: publicCollections = [], isLoading: isPublicLoading } = useQuery<Collection[]>({
     queryKey: ['collections', 'public', 'filter-surface'],
     queryFn: async () => {
-      const result = await storageService.getCollections({
-        type: 'public',
-        limit: 120,
-        sortField: 'name',
-        sortDirection: 'asc',
-        summary: true,
-        includeEntries: false,
-      });
-      return Array.isArray(result) ? result : result.data;
+      const allCollections: Collection[] = [];
+      let page = 1;
+      let totalCount = Number.POSITIVE_INFINITY;
+
+      while (allCollections.length < totalCount) {
+        const result = await storageService.getCollections({
+          type: 'public',
+          page,
+          limit: COLLECTIONS_PAGE_LIMIT,
+          sortField: 'name',
+          sortDirection: 'asc',
+          summary: true,
+          includeEntries: false,
+          includeCount: true,
+        });
+
+        const pageData = Array.isArray(result) ? result : result.data;
+        const pageCount = Array.isArray(result) ? pageData.length : result.count;
+        totalCount = pageCount;
+        allCollections.push(...pageData);
+
+        if (pageData.length === 0 || allCollections.length >= totalCount) {
+          break;
+        }
+        page += 1;
+      }
+
+      return Array.from(new Map(allCollections.map((c) => [c.id, c])).values());
     },
     staleTime: 1000 * 60,
   });
@@ -69,21 +90,15 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     return new Map(allCollections.map((c) => [c.id, c]));
   }, [featuredCollections, publicCollections]);
 
-  const groupedCollections = useMemo(() => {
-    return featuredCollections
-      .map((parent) => {
-        const children = publicCollections
-          .filter((c) => c.parentId === parent.id)
-          .sort((a, b) => a.name.localeCompare(b.name));
-        const parentMatches = parent.name.toLowerCase().includes(normalizedSearch);
-        const matchingChildren = normalizedSearch
-          ? children.filter((c) => c.name.toLowerCase().includes(normalizedSearch))
-          : children;
-        if (normalizedSearch && !parentMatches && matchingChildren.length === 0) return null;
-        return { parent, children: parentMatches ? children : matchingChildren };
-      })
-      .filter((g): g is { parent: Collection; children: Collection[] } => Boolean(g));
-  }, [featuredCollections, publicCollections, normalizedSearch]);
+  const groupedCollections = useMemo(
+    () =>
+      buildCollectionFilterGroups({
+        featuredCollections,
+        publicCollections,
+        searchQuery: normalizedSearch,
+      }),
+    [featuredCollections, publicCollections, normalizedSearch]
+  );
 
   const toggleFormatTag = (tagId: string) => {
     const current = selectedFormatIds;

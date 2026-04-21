@@ -186,14 +186,55 @@ export const getArticles = async (req: Request, res: Response) => {
     // Build MongoDB query object
     const query: any = {};
 
-    // Collection filter: restrict to articles in a specific community collection
+    // Collection filter: restrict to articles in a specific community collection.
+    // Supports current ID-based filters and legacy name-based values from older URLs.
     if (collectionId && typeof collectionId === 'string') {
-      const collection = await Collection.findById(collectionId).select('entries type').lean();
+      const requestedCollectionKey = collectionId.trim();
+      const isObjectIdLike = /^[a-f0-9]{24}$/i.test(requestedCollectionKey);
+
+      const collection = await Collection.findOne(
+        isObjectIdLike
+          ? { _id: requestedCollectionKey }
+          : {
+              type: 'public',
+              $or: [
+                { canonicalName: requestedCollectionKey.toLowerCase() },
+                { rawName: new RegExp(`^${escapeRegExp(requestedCollectionKey)}$`, 'i') },
+              ],
+            }
+      )
+        .select('_id entries type parentId')
+        .lean();
+
       if (!collection || collection.type !== 'public') {
-        // Non-existent or private collection → empty result (not a 404, so the feed degrades gracefully)
+        // Non-existent or private collection -> empty result (not a 404, so the feed degrades gracefully)
         return res.json({ data: [], total: 0, page, limit, hasMore: false });
       }
-      const articleIds = collection.entries.map((e: { articleId: string }) => e.articleId);
+
+      const selectedCollectionId = String((collection as any)._id);
+      const allEntries = [...(collection.entries || [])];
+
+      // Parent collections in the filter UI represent an "All in parent" scope.
+      // Include child entries to support legacy parent data where entries were not backfilled.
+      if (!collection.parentId) {
+        const childCollections = await Collection.find({
+          type: 'public',
+          parentId: selectedCollectionId,
+        })
+          .select('entries')
+          .lean();
+        childCollections.forEach((child) => {
+          allEntries.push(...(child.entries || []));
+        });
+      }
+
+      const articleIds = Array.from(
+        new Set(
+          allEntries
+            .map((e: { articleId?: string }) => e.articleId)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        )
+      );
       if (articleIds.length === 0) {
         return res.json({ data: [], total: 0, page, limit, hasMore: false });
       }

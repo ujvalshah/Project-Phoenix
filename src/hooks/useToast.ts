@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react';
 import { useToastContext, ToastType } from '@/context/ToastContext';
 
 interface ToastOptions {
@@ -10,34 +11,40 @@ interface ToastOptions {
 export const useToast = () => {
   const { showToast } = useToastContext();
 
-  const trigger = (type: ToastType, title: string, optionsOrDesc?: string | ToastOptions) => {
-    let options: ToastOptions = {};
-    
-    if (typeof optionsOrDesc === 'string') {
-      options = { description: optionsOrDesc };
-    } else if (optionsOrDesc) {
-      options = optionsOrDesc;
-    }
+  const trigger = useCallback(
+    (type: ToastType, title: string, optionsOrDesc?: string | ToastOptions) => {
+      let options: ToastOptions = {};
 
-    showToast({
-      type,
-      title,
-      description: options.description,
-      duration: options.duration,
-      actionLabel: options.actionLabel,
-      onAction: options.onAction,
-    });
-  };
+      if (typeof optionsOrDesc === 'string') {
+        options = { description: optionsOrDesc };
+      } else if (optionsOrDesc) {
+        options = optionsOrDesc;
+      }
 
-  return {
-    success: (title: string, options?: string | ToastOptions) => trigger('success', title, options),
-    error: (title: string, options?: string | ToastOptions) => trigger('error', title, options),
-    warning: (title: string, options?: string | ToastOptions) => trigger('warning', title, options),
-    info: (title: string, options?: string | ToastOptions) => trigger('info', title, options),
-    
-    // Low-level access
-    show: (opts: { type: ToastType; title: string } & ToastOptions) => showToast(opts)
-  };
+      showToast({
+        type,
+        title,
+        description: options.description,
+        duration: options.duration,
+        actionLabel: options.actionLabel,
+        onAction: options.onAction,
+      });
+    },
+    [showToast],
+  );
+
+  return useMemo(
+    () => ({
+      success: (title: string, options?: string | ToastOptions) => trigger('success', title, options),
+      error: (title: string, options?: string | ToastOptions) => trigger('error', title, options),
+      warning: (title: string, options?: string | ToastOptions) => trigger('warning', title, options),
+      info: (title: string, options?: string | ToastOptions) => trigger('info', title, options),
+
+      // Low-level access
+      show: (opts: { type: ToastType; title: string } & ToastOptions) => showToast(opts),
+    }),
+    [trigger, showToast],
+  );
 };
 
 

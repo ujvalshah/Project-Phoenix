@@ -18,6 +18,7 @@ import { Article } from '@/types';
 import { adminCollectionsService } from '../services/adminCollectionsService';
 
 const NUGGETS_VIEW_MODE_STORAGE_KEY = 'admin_nuggets_view_mode';
+const ADMIN_BATCH_ADD_CAP = 200;
 
 function getYouTubeThumbnail(url?: string): string | undefined {
   if (!url) return undefined;
@@ -365,6 +366,10 @@ export const AdminNuggetsPage: React.FC = () => {
       toast.error('Select at least one nugget');
       return;
     }
+    if (selectedIds.length > ADMIN_BATCH_ADD_CAP) {
+      toast.error(`You can add up to ${ADMIN_BATCH_ADD_CAP} nuggets at once. Reduce your selection and try again.`);
+      return;
+    }
     setIsAssigning(true);
     try {
       await adminCollectionsService.addNuggetsToCollection(targetCollectionId, selectedIds);
@@ -668,6 +673,12 @@ export const AdminNuggetsPage: React.FC = () => {
   const BulkActions = useMemo(() => selectedIds.length > 0 ? (
       <div className="flex min-w-0 w-full max-w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:max-w-[min(100%,36rem)] animate-in fade-in slide-in-from-right-2 duration-200 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 px-2 py-1.5">
           <span className="shrink-0 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">{selectedIds.length} selected</span>
+          {selectedIds.length > ADMIN_BATCH_ADD_CAP && (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-300 whitespace-nowrap">
+              <AlertTriangle size={12} />
+              Max {ADMIN_BATCH_ADD_CAP} per add
+            </span>
+          )}
           <div className="min-w-0 w-full max-w-full flex-1 basis-[10rem] sm:w-auto sm:min-w-[11rem] sm:max-w-[14rem] md:max-w-[18rem]">
             <select
               value={targetCollectionId}
@@ -685,7 +696,7 @@ export const AdminNuggetsPage: React.FC = () => {
           </div>
           <button
             onClick={handleBulkAction}
-            disabled={isAssigning || !targetCollectionId}
+            disabled={isAssigning || !targetCollectionId || selectedIds.length > ADMIN_BATCH_ADD_CAP}
             className="shrink-0 px-3 py-1.5 bg-primary-500 text-white hover:bg-primary-600 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
           >
             {isAssigning ? 'Adding...' : 'Add to collection'}

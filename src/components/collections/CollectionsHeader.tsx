@@ -6,6 +6,8 @@ interface CollectionsHeaderProps {
   visibleCount: number;
   breadcrumb: string[];
   actions?: React.ReactNode;
+  title?: string;
+  countAriaLabel?: string;
 }
 
 export const CollectionsHeader: React.FC<CollectionsHeaderProps> = ({
@@ -13,20 +15,22 @@ export const CollectionsHeader: React.FC<CollectionsHeaderProps> = ({
   visibleCount,
   breadcrumb,
   actions,
+  title = 'Community Collections',
+  countAriaLabel,
 }) => {
   const hasPath = breadcrumb.length > 0;
   const isFiltered = visibleCount !== totalCount;
 
   return (
-    <header className="flex flex-col gap-3 sm:gap-2 md:flex-row md:items-end md:justify-between">
+    <header className="flex flex-col gap-2 sm:gap-1.5 md:flex-row md:items-end md:justify-between">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h1 className="truncate text-[1.35rem] font-semibold leading-tight tracking-[-0.02em] text-slate-900 dark:text-slate-50 sm:text-[1.55rem]">
-            Community Collections
+          <h1 className="truncate text-[1.25rem] font-semibold leading-tight tracking-[-0.02em] text-slate-900 dark:text-slate-50 sm:text-[1.45rem]">
+            {title}
           </h1>
           <span
             className="hidden items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 sm:inline-flex"
-            aria-label={`${totalCount} total collections`}
+            aria-label={countAriaLabel ?? `${totalCount} total`}
           >
             {isFiltered ? `${visibleCount} / ${totalCount}` : totalCount}
           </span>

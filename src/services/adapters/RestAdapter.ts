@@ -465,7 +465,10 @@ export class RestAdapter implements IAdapter {
 
   getCollectionById(id: string, options?: { includeEntries?: boolean }): Promise<Collection | undefined> {
     const query = options?.includeEntries === false ? '?includeEntries=false' : '';
-    return apiClient.get<Collection>(`/collections/${id}${query}`).catch(() => undefined);
+    return apiClient.get<Collection>(`/collections/${id}${query}`).catch((error: any) => {
+      if (error?.response?.status === 404) return undefined;
+      throw error;
+    });
   }
 
   getCollectionsContainingArticle(articleId: string): Promise<Collection[]> {

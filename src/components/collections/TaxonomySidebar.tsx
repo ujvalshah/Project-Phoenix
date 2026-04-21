@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, FolderTree, X } from 'lucide-react';
+import { ChevronDown, PanelLeftClose, RotateCcw, X } from 'lucide-react';
 import { getOverlayHost } from '@/utils/overlayHosts';
 
 export interface TaxonomyNode {
@@ -24,22 +24,38 @@ interface TaxonomySidebarProps {
   onCloseMobile: () => void;
   resultCount?: number;
   onClearAll?: () => void;
+  isDesktopCollapsed?: boolean;
+  onExpandDesktop?: () => void;
+  onCollapseDesktop?: () => void;
 }
 
-const TaxonomySidebarContent: React.FC<Omit<TaxonomySidebarProps, 'isMobileOpen' | 'onCloseMobile'>> = ({
+const TaxonomySidebarContent: React.FC<
+  Omit<TaxonomySidebarProps, 'isMobileOpen' | 'onCloseMobile'> & {
+    showCollapseButton?: boolean;
+  }
+> = ({
   groups,
   selectedParentId,
   selectedChildId,
   onSelectParent,
   onSelectChild,
+  onCollapseDesktop,
+  showCollapseButton = false,
 }) => {
-  const initialExpanded = useMemo(() => {
-    if (selectedParentId) {
-      return new Set([selectedParentId]);
-    }
-    return new Set<string>();
+  const [expanded, setExpanded] = useState<Set<string>>(() =>
+    selectedParentId ? new Set([selectedParentId]) : new Set<string>(),
+  );
+
+  // Auto-expand when a parent is selected externally (e.g., chip strip click)
+  useEffect(() => {
+    if (!selectedParentId) return;
+    setExpanded((prev) => {
+      if (prev.has(selectedParentId)) return prev;
+      const next = new Set(prev);
+      next.add(selectedParentId);
+      return next;
+    });
   }, [selectedParentId]);
-  const [expanded, setExpanded] = useState<Set<string>>(initialExpanded);
 
   const toggleExpanded = (id: string) => {
     setExpanded((prev) => {
@@ -57,31 +73,49 @@ const TaxonomySidebarContent: React.FC<Omit<TaxonomySidebarProps, 'isMobileOpen'
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-1 pb-2.5">
+      <div className="flex items-center justify-between gap-2 px-1 pb-2.5">
         <p className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
           Taxonomy
         </p>
-        <span className="text-[10.5px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
-          {groups.length}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10.5px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+            {groups.length}
+          </span>
+          {showCollapseButton && onCollapseDesktop && (
+            <button
+              type="button"
+              onClick={onCollapseDesktop}
+              aria-label="Collapse taxonomy sidebar"
+              title="Collapse"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              <PanelLeftClose size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
-      <button
-        onClick={() => {
-          onSelectParent(null);
-          onSelectChild(null);
-        }}
-        className={`flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
-          isAllSelected
-            ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-        }`}
-      >
-        <FolderTree size={15} className={isAllSelected ? '' : 'text-slate-400 dark:text-slate-500'} />
-        <span className="flex-1 truncate">All collections</span>
-      </button>
+      <div className="mt-0.5 rounded-md border border-dashed border-slate-200/80 px-2.5 py-2 dark:border-slate-700/70">
+        <button
+          onClick={() => {
+            onSelectParent(null);
+            onSelectChild(null);
+          }}
+          className={`inline-flex items-center gap-1.5 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+            isAllSelected
+              ? 'text-primary-700 dark:text-primary-300'
+              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          <RotateCcw size={13} />
+          Browse all collections
+        </button>
+      </div>
 
       <div className="mt-2 flex-1 space-y-0.5 overflow-y-auto pr-1">
+        <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
+          Parent collections
+        </p>
         {groups.map((group) => {
           const isExpanded = expanded.has(group.id);
           const isParentSelected = selectedParentId === group.id && !selectedChildId;
@@ -113,8 +147,19 @@ const TaxonomySidebarContent: React.FC<Omit<TaxonomySidebarProps, 'isMobileOpen'
 
                 <button
                   onClick={() => {
-                    onSelectParent(group.id);
-                    onSelectChild(null);
+                    if (isParentActive) {
+                      onSelectParent(null);
+                      onSelectChild(null);
+                      setExpanded((prev) => {
+                        if (!prev.has(group.id)) return prev;
+                        const next = new Set(prev);
+                        next.delete(group.id);
+                        return next;
+                      });
+                    } else {
+                      onSelectParent(group.id);
+                      onSelectChild(null);
+                    }
                   }}
                   className={`flex h-9 min-w-0 flex-1 items-center justify-between gap-2 rounded-r-md pr-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                     isParentSelected
@@ -190,6 +235,9 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
   onCloseMobile,
   resultCount,
   onClearAll,
+  isDesktopCollapsed = false,
+  onExpandDesktop,
+  onCollapseDesktop,
   ...props
 }) => {
   const [animState, setAnimState] = useState<'closed' | 'entering' | 'open' | 'exiting'>('closed');
@@ -242,11 +290,28 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
 
   return (
     <>
-      <aside className="hidden lg:sticky lg:top-[146px] lg:block lg:self-start">
-        <div className="h-[calc(100vh-170px)] min-h-[420px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <TaxonomySidebarContent {...props} />
-        </div>
-      </aside>
+      {!isDesktopCollapsed ? (
+        <aside className="hidden lg:sticky lg:top-[146px] lg:block lg:self-start">
+          <div className="h-[calc(100vh-170px)] min-h-[420px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <TaxonomySidebarContent
+              {...props}
+              onCollapseDesktop={onCollapseDesktop}
+              showCollapseButton
+            />
+          </div>
+        </aside>
+      ) : (
+        <aside className="hidden lg:sticky lg:top-[146px] lg:block lg:self-start">
+          <button
+            type="button"
+            onClick={onExpandDesktop}
+            className="flex h-[calc(100vh-170px)] min-h-[420px] w-10 flex-col items-center justify-start gap-2 rounded-2xl border border-slate-200 bg-white px-2 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+            aria-label="Expand taxonomy sidebar"
+          >
+            <span className="[writing-mode:vertical-rl]">Taxonomy</span>
+          </button>
+        </aside>
+      )}
 
       {shouldRenderSheet && typeof document !== 'undefined' &&
         createPortal(
@@ -315,7 +380,7 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
                     className="min-h-11 flex-1 rounded-full bg-slate-900 px-4 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
                   >
                     {typeof resultCount === 'number'
-                      ? `Show ${resultCount} collection${resultCount !== 1 ? 's' : ''}`
+                      ? `Show ${resultCount} result${resultCount !== 1 ? 's' : ''}`
                       : 'View results'}
                   </button>
                 </div>
