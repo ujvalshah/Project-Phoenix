@@ -16,3 +16,10 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 export function getServiceWorkerRegistration(): ServiceWorkerRegistration | null {
   return swRegistration;
 }
+
+export async function resolveServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (swRegistration) return swRegistration;
+  if (!('serviceWorker' in navigator)) return null;
+  swRegistration = await navigator.serviceWorker.getRegistration('/') || await navigator.serviceWorker.getRegistration() || null;
+  return swRegistration;
+}

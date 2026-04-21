@@ -21,6 +21,7 @@ const CSRF_EXEMPT_PATHS = new Set<string>([
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
   '/api/auth/resend-verification',
+  '/api/notifications/sw-renew-subscription',
 ]);
 
 /**

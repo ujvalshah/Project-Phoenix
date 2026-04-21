@@ -14,6 +14,10 @@ export interface IPushSubscription extends Document {
   keys?: IPushSubscriptionKeys;
   fcmToken?: string;
   active: boolean;
+  failureCount: number;
+  lastSeenAt?: Date;
+  lastSuccessAt?: Date;
+  invalidatedReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,12 +34,17 @@ const PushSubscriptionSchema = new Schema<IPushSubscription>({
   keys: { type: PushSubscriptionKeysSchema, required: false },
   fcmToken: { type: String, required: false },
   active: { type: Boolean, default: true },
+  failureCount: { type: Number, default: 0 },
+  lastSeenAt: { type: Date, required: false },
+  lastSuccessAt: { type: Date, required: false },
+  invalidatedReason: { type: String, required: false },
 }, {
   timestamps: true,
 });
 
 PushSubscriptionSchema.index({ userId: 1, platform: 1 });
 PushSubscriptionSchema.index({ active: 1, platform: 1 });
+PushSubscriptionSchema.index({ userId: 1, endpoint: 1 }, { unique: true });
 
 export const PushSubscription = mongoose.model<IPushSubscription>(
   'PushSubscription',

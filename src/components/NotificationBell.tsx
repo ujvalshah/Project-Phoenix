@@ -353,7 +353,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     }),
     shallowEqualAuth,
   );
-  const { unreadCount, useNotificationList, markAsRead, markAllAsRead } =
+  const { unreadCount, useNotificationList, markAsRead, markAllAsRead, isSubscriptionDesynced, permissionStatus } =
     useNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const [modalArticle, setModalArticle] = useState<Article | null>(null);
@@ -522,6 +522,11 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
           {/* Notification list */}
           <div className="max-h-80 overflow-y-auto">
+            {permissionStatus === 'granted' && isSubscriptionDesynced && (
+              <div className="px-4 py-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50/60 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/30">
+                Push delivery is disconnected on this device. Re-enable notifications in Settings.
+              </div>
+            )}
             {notifications.length === 0 ? (
               <div className="px-4 py-10 text-center">
                 <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-700/50 flex items-center justify-center mx-auto mb-3">

@@ -17,8 +17,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: payload.body,
-    icon: payload.icon || '/icon.svg',
-    badge: payload.badge || '/icon.svg',
+    icon: payload.icon || '/icons/icon-192.png',
+    badge: payload.badge || '/icons/badge-72.png',
     data: payload.data || {},
     tag: payload.data?.articleId || 'nugget-notification',
     renotify: true,
@@ -40,39 +40,66 @@ self.addEventListener('notificationclick', (event) => {
 
   const url = event.notification.data?.url || '/';
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Focus existing tab if open
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.navigate(url);
-          return client.focus();
-        }
+  event.waitUntil((async () => {
+    const absoluteUrl = new URL(url, self.location.origin).toString();
+    const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+    // First try exact URL match to avoid hijacking unrelated tabs.
+    for (const client of clientList) {
+      if (client.url === absoluteUrl && 'focus' in client) {
+        return client.focus();
       }
-      // Open new tab
-      return clients.openWindow(url);
-    })
-  );
+    }
+    // Then any same-origin client; navigate it to target.
+    for (const client of clientList) {
+      if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+        client.navigate(absoluteUrl);
+        return client.focus();
+      }
+    }
+    return clients.openWindow(absoluteUrl);
+  })());
 });
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function renewSubscriptionWithBackend(newSubscription) {
+  await fetch('/api/notifications/sw-renew-subscription', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      platform: 'web',
+      endpoint: newSubscription.endpoint,
+      keys: {
+        p256dh: btoa(String.fromCharCode(...new Uint8Array(newSubscription.getKey('p256dh')))),
+        auth: btoa(String.fromCharCode(...new Uint8Array(newSubscription.getKey('auth')))),
+      },
+    }),
+  });
+}
 
 self.addEventListener('pushsubscriptionchange', (event) => {
   // Re-subscribe when the browser rotates the push subscription
-  event.waitUntil(
-    self.registration.pushManager
-      .subscribe(event.oldSubscription?.options || { userVisibleOnly: true })
-      .then((newSubscription) => {
-        return fetch('/api/notifications/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            platform: 'web',
-            endpoint: newSubscription.endpoint,
-            keys: {
-              p256dh: btoa(String.fromCharCode(...new Uint8Array(newSubscription.getKey('p256dh')))),
-              auth: btoa(String.fromCharCode(...new Uint8Array(newSubscription.getKey('auth')))),
-            },
-          }),
-        });
-      })
-  );
+  event.waitUntil((async () => {
+    const keyResponse = await fetch('/api/notifications/vapid-key', { credentials: 'include' });
+    const keyData = await keyResponse.json();
+    if (!keyData?.publicKey) {
+      throw new Error('VAPID key unavailable for SW renewal');
+    }
+    const newSubscription = await self.registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+    });
+    await renewSubscriptionWithBackend(newSubscription);
+  })());
 });

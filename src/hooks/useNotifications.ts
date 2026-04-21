@@ -11,6 +11,7 @@ import {
   isPushSubscribed,
   getPreferences,
   updatePreferences,
+  getServerSubscriptionStatus,
   type NotificationPreferences,
 } from '@/services/notificationService';
 import { useCallback, useEffect, useState } from 'react';
@@ -28,13 +29,27 @@ export function useNotifications() {
     getPermissionStatus()
   );
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscriptionDesynced, setIsSubscriptionDesynced] = useState(false);
 
   // Check subscription status on mount
   useEffect(() => {
     if (currentUserId) {
-      isPushSubscribed().then(setIsSubscribed).catch(() => setIsSubscribed(false));
+      Promise.all([isPushSubscribed(), getServerSubscriptionStatus().catch(() => null)])
+        .then(([localSubscribed, serverStatus]) => {
+          setIsSubscribed(localSubscribed);
+          if (permissionStatus === 'granted') {
+            const hasServerSub = serverStatus?.hasSubscription ?? false;
+            setIsSubscriptionDesynced(!localSubscribed || !hasServerSub);
+          } else {
+            setIsSubscriptionDesynced(false);
+          }
+        })
+        .catch(() => {
+          setIsSubscribed(false);
+          setIsSubscriptionDesynced(permissionStatus === 'granted');
+        });
     }
-  }, [currentUserId]);
+  }, [currentUserId, permissionStatus]);
 
   // Unread count — polls every 60s
   const { data: unreadCount = 0 } = useQuery({
@@ -99,6 +114,7 @@ export function useNotifications() {
       const success = await subscribeToPush();
       if (success) {
         setIsSubscribed(true);
+        setIsSubscriptionDesynced(false);
         queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.preferences });
       }
       return success;
@@ -111,6 +127,7 @@ export function useNotifications() {
     try {
       await unsubscribeFromPush();
       setIsSubscribed(false);
+      setIsSubscriptionDesynced(false);
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.preferences });
     } catch {
       // Silently fail
@@ -128,6 +145,7 @@ export function useNotifications() {
     subscribe,
     unsubscribe,
     isSubscribed,
+    isSubscriptionDesynced,
     permissionStatus,
     isPushSupported: 'serviceWorker' in navigator && 'PushManager' in window,
   };

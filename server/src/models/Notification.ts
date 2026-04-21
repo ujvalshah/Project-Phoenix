@@ -16,6 +16,7 @@ export interface INotification extends Document {
   data: INotificationData;
   read: boolean;
   deliveredVia: string[];
+  dedupeKey?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,11 +35,13 @@ const NotificationSchema = new Schema<INotification>({
   data: { type: NotificationDataSchema, required: true },
   read: { type: Boolean, default: false },
   deliveredVia: { type: [String], default: [] },
+  dedupeKey: { type: String, required: false },
 }, {
   timestamps: true,
 });
 
 NotificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
+NotificationSchema.index({ userId: 1, dedupeKey: 1 }, { unique: true, sparse: true });
 // Auto-delete notifications after 90 days
 NotificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 3600 });
 

@@ -504,25 +504,45 @@ ArticleSchema.pre('findOneAndUpdate', async function() {
   }
 });
 
-// Post-save hook: trigger push notifications for newly published public articles
+// Track pre-save visibility to detect public transition exactly once.
+ArticleSchema.pre('save', async function () {
+  (this as unknown as { $locals: Record<string, unknown> }).$locals ||= {};
+  (this as unknown as { $locals: Record<string, unknown> }).$locals.wasNew = this.isNew;
+  if (this.isNew) {
+    (this as unknown as { $locals: Record<string, unknown> }).$locals.previousVisibility = undefined;
+    return;
+  }
+  try {
+    const oldDoc = await this.constructor.findById(this._id).select('visibility').lean();
+    (this as unknown as { $locals: Record<string, unknown> }).$locals.previousVisibility = oldDoc?.visibility;
+  } catch {
+    (this as unknown as { $locals: Record<string, unknown> }).$locals.previousVisibility = undefined;
+  }
+});
+
+// Post-save hook: trigger notifications only for create-as-public or private->public transition.
 ArticleSchema.post('save', function (doc) {
-  if (!doc.isNew && !doc.isModified?.('visibility')) {
-    // Only trigger on new documents or when visibility changes to public
-    // Note: doc.isNew is always false in post-save, so we use a workaround below
+  const locals = (doc as unknown as { $locals?: Record<string, unknown> }).$locals || {};
+  const wasNew = locals.wasNew === true;
+  const previousVisibility = locals.previousVisibility as string | undefined;
+  const isPublicNow = doc.visibility === 'public';
+  const becamePublic = previousVisibility === 'private' && isPublicNow;
+  const createdPublic = wasNew && isPublicNow;
+
+  if (!createdPublic && !becamePublic) {
+    return;
   }
 
-  if (doc.visibility === 'public') {
-    import('../services/notificationService.js')
-      .then(({ onArticlePublished }) => {
-        onArticlePublished(doc._id.toString()).catch(async (err) => {
-          const { getLogger } = await import('../utils/logger.js');
-          getLogger().error({ err, articleId: doc._id }, '[Notifications] post-save dispatch failed');
-        });
-      })
-      .catch(() => {
-        // Notification service not available — silently skip
+  import('../services/notificationService.js')
+    .then(({ onArticlePublished }) => {
+      onArticlePublished(doc._id.toString()).catch(async (err) => {
+        const { getLogger } = await import('../utils/logger.js');
+        getLogger().error({ err, articleId: doc._id }, '[Notifications] post-save dispatch failed');
       });
-  }
+    })
+    .catch(() => {
+      // Notification service not available — silently skip
+    });
 });
 
 export const Article = mongoose.model<IArticle>('Article', ArticleSchema);

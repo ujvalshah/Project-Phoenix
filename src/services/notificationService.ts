@@ -1,5 +1,5 @@
 import { apiClient } from './apiClient';
-import { getServiceWorkerRegistration } from '@/utils/serviceWorkerRegistration';
+import { getServiceWorkerRegistration, resolveServiceWorkerRegistration } from '@/utils/serviceWorkerRegistration';
 import type { NotificationFrequency } from '@/types/user';
 
 // ── Types ──
@@ -99,7 +99,7 @@ export async function subscribeToPush(): Promise<boolean> {
 }
 
 export async function unsubscribeFromPush(): Promise<void> {
-  const registration = getServiceWorkerRegistration();
+  const registration = getServiceWorkerRegistration() || await resolveServiceWorkerRegistration() || await navigator.serviceWorker.ready;
   if (!registration) return;
 
   const subscription = await registration.pushManager.getSubscription();
@@ -117,11 +117,15 @@ export function getPermissionStatus(): NotificationPermission | 'unsupported' {
 }
 
 export async function isPushSubscribed(): Promise<boolean> {
-  const registration = getServiceWorkerRegistration();
+  const registration = getServiceWorkerRegistration() || await resolveServiceWorkerRegistration() || await navigator.serviceWorker.ready;
   if (!registration) return false;
 
   const subscription = await registration.pushManager.getSubscription();
   return subscription !== null;
+}
+
+export async function getServerSubscriptionStatus(): Promise<{ hasSubscription: boolean; activeSubscriptions: number }> {
+  return apiClient.get<{ hasSubscription: boolean; activeSubscriptions: number }>('/notifications/subscription-status');
 }
 
 // ── Preferences ──
@@ -169,4 +173,12 @@ export async function getNotificationSystemStatus(): Promise<boolean> {
 
 export async function toggleNotificationSystem(enabled: boolean): Promise<void> {
   await apiClient.put('/notifications/admin/toggle', { enabled });
+}
+
+export async function getNotificationDiagnostics(): Promise<{
+  enabled: boolean;
+  runtime: { queueInitialized: boolean; vapidConfigured: boolean };
+  user: { activeSubscriptions: number; unreadCount: number };
+}> {
+  return apiClient.get('/notifications/admin/diagnostics');
 }

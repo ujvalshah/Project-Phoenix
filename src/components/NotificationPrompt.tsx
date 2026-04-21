@@ -13,12 +13,12 @@ const VIEW_THRESHOLD = 3;
 
 export const NotificationPrompt: React.FC = () => {
   const currentUserId = useAuthSelector((a) => a.user?.id || '');
-  const { subscribe, permissionStatus, isSubscribed, isPushSupported } = useNotifications();
+  const { subscribe, permissionStatus, isSubscribed, isPushSupported, isSubscriptionDesynced } = useNotifications();
   const [visible, setVisible] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
 
   const shouldSuppress = !currentUserId || !isPushSupported || isSubscribed ||
-    permissionStatus === 'granted' || permissionStatus === 'denied';
+    (permissionStatus === 'granted' && !isSubscriptionDesynced) || permissionStatus === 'denied';
 
   const isDismissed = useCallback((): boolean => {
     const dismissed = localStorage.getItem(NOTIFICATION_PROMPT_DISMISSED_KEY);
@@ -86,10 +86,12 @@ export const NotificationPrompt: React.FC = () => {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-slate-900 dark:text-white">
-            {NOTIFICATION_PROMPT_COPY.title}
+            {isSubscriptionDesynced ? 'Reconnect notifications' : NOTIFICATION_PROMPT_COPY.title}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {NOTIFICATION_PROMPT_COPY.body}
+            {isSubscriptionDesynced
+              ? 'Your browser permission is enabled, but push delivery is disconnected. Re-enable to restore phone alerts.'
+              : NOTIFICATION_PROMPT_COPY.body}
           </p>
           <div className="flex gap-2 mt-3">
             <button

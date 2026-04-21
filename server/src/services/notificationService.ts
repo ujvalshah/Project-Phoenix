@@ -4,6 +4,7 @@ import { getLogger } from '../utils/logger.js';
 import { getRedisClient, isRedisAvailable, getRedisClientOrFallback } from '../utils/redisClient.js';
 import { PushSubscription, IPushSubscription } from '../models/PushSubscription.js';
 import { Notification } from '../models/Notification.js';
+import { NotificationDelivery } from '../models/NotificationDelivery.js';
 import { User } from '../models/User.js';
 import { Article, IArticle } from '../models/Article.js';
 import { getTagNameMap } from '../utils/db.js';
@@ -97,7 +98,7 @@ async function isNotificationsEnabled(): Promise<boolean> {
 async function sendWebPushToSubscription(
   sub: IPushSubscription,
   payload: NotificationPayload
-): Promise<{ success: boolean; removed: boolean }> {
+): Promise<{ success: boolean; removed: boolean; statusCode?: number; error?: string }> {
   const logger = getLogger();
 
   try {
@@ -114,6 +115,10 @@ async function sendWebPushToSubscription(
         data: { ...payload.data, url: payload.url },
       })
     );
+    await PushSubscription.updateOne(
+      { _id: sub._id },
+      { $set: { lastSuccessAt: new Date(), invalidatedReason: undefined, failureCount: 0 } }
+    );
     return { success: true, removed: false };
   } catch (error: unknown) {
     const statusCode = (error as { statusCode?: number }).statusCode;
@@ -126,7 +131,7 @@ async function sendWebPushToSubscription(
         statusCode,
       });
       await PushSubscription.deleteOne({ _id: sub._id });
-      return { success: false, removed: true };
+      return { success: false, removed: true, statusCode, error: 'subscription_invalid' };
     }
 
     logger.error({
@@ -135,7 +140,16 @@ async function sendWebPushToSubscription(
       statusCode,
       error: error instanceof Error ? error.message : String(error),
     });
-    return { success: false, removed: false };
+    await PushSubscription.updateOne(
+      { _id: sub._id },
+      { $inc: { failureCount: 1 } }
+    );
+    return {
+      success: false,
+      removed: false,
+      statusCode,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -156,6 +170,7 @@ async function processFanOut(job: Job): Promise<void> {
   }
 
   const payload = buildPayload(article);
+  const dedupeKey = `fanout:${articleId}`;
 
   // Find users who want instant notifications
   const instantUsers = await User.find({
@@ -202,6 +217,8 @@ async function processFanOut(job: Job): Promise<void> {
   let sent = 0;
   let failed = 0;
   let removed = 0;
+  const successfulUserIds = new Set<string>();
+  const deliveryDocs: Array<Record<string, unknown>> = [];
 
   const batches = chunk(subscriptions, BATCH_SIZE);
   for (const batch of batches) {
@@ -209,11 +226,54 @@ async function processFanOut(job: Job): Promise<void> {
       batch.map(sub => sendWebPushToSubscription(sub as IPushSubscription, payload))
     );
 
-    for (const result of results) {
+    for (const [idx, result] of results.entries()) {
       if (result.status === 'fulfilled') {
-        if (result.value.success) sent++;
-        else if (result.value.removed) removed++;
-        else failed++;
+        const currentSub = batch[idx] as IPushSubscription;
+        if (result.value.success) {
+          sent++;
+          successfulUserIds.add(currentSub.userId.toString());
+          deliveryDocs.push({
+            userId: currentSub.userId.toString(),
+            subscriptionId: currentSub._id.toString(),
+            endpoint: currentSub.endpoint,
+            channel: 'push',
+            status: 'sent_to_provider',
+            jobName: job.name,
+            dedupeKey,
+            attempt: (job.attemptsMade || 0) + 1,
+            payloadType: payload.data.type,
+          });
+        } else if (result.value.removed) {
+          removed++;
+          deliveryDocs.push({
+            userId: currentSub.userId.toString(),
+            subscriptionId: currentSub._id.toString(),
+            endpoint: currentSub.endpoint,
+            channel: 'push',
+            status: 'subscription_removed',
+            jobName: job.name,
+            dedupeKey,
+            attempt: (job.attemptsMade || 0) + 1,
+            providerStatusCode: result.value.statusCode,
+            error: result.value.error,
+            payloadType: payload.data.type,
+          });
+        } else {
+          failed++;
+          deliveryDocs.push({
+            userId: currentSub.userId.toString(),
+            subscriptionId: currentSub._id.toString(),
+            endpoint: currentSub.endpoint,
+            channel: 'push',
+            status: 'provider_failed',
+            jobName: job.name,
+            dedupeKey,
+            attempt: (job.attemptsMade || 0) + 1,
+            providerStatusCode: result.value.statusCode,
+            error: result.value.error,
+            payloadType: payload.data.type,
+          });
+        }
       } else {
         failed++;
       }
@@ -228,12 +288,36 @@ async function processFanOut(job: Job): Promise<void> {
     body: payload.body,
     data: { articleId, url: payload.url },
     read: false,
-    deliveredVia: ['push', 'in_app'],
+    dedupeKey: `${dedupeKey}:${userId}`,
+    deliveredVia: successfulUserIds.has(userId) ? ['push', 'in_app'] : ['in_app'],
   }));
 
+  let insertedNotifications: Array<{ _id: { toString: () => string }; userId: string }> = [];
   if (notificationDocs.length > 0) {
-    await Notification.insertMany(notificationDocs, { ordered: false }).catch(err => {
+    insertedNotifications = await Notification.insertMany(notificationDocs, { ordered: false }).catch(err => {
       logger.error({ msg: '[Notifications] Failed to insert in-app notifications', error: err.message });
+      return [];
+    });
+  }
+
+  if (insertedNotifications.length > 0) {
+    for (const doc of insertedNotifications) {
+      deliveryDocs.push({
+        notificationId: doc._id.toString(),
+        userId: doc.userId,
+        channel: 'in_app',
+        status: 'shown_in_app',
+        jobName: job.name,
+        dedupeKey,
+        attempt: (job.attemptsMade || 0) + 1,
+        payloadType: payload.data.type,
+      });
+    }
+  }
+
+  if (deliveryDocs.length > 0) {
+    await NotificationDelivery.insertMany(deliveryDocs, { ordered: false }).catch((err) => {
+      logger.error({ msg: '[Notifications] Failed to insert delivery logs', error: err.message });
     });
   }
 
@@ -256,7 +340,8 @@ async function processDailyDigest(job: Job): Promise<void> {
     return;
   }
 
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const lookbackHours = job.name === 'weekly-digest' ? 24 * 7 : 24;
+  const oneDayAgo = new Date(Date.now() - lookbackHours * 60 * 60 * 1000).toISOString();
   const recentArticles = await Article.find({
     publishedAt: { $gte: oneDayAgo },
     visibility: 'public',
@@ -269,7 +354,7 @@ async function processDailyDigest(job: Job): Promise<void> {
 
   const digestUsers = await User.find({
     'preferences.notifications.pushEnabled': true,
-    'preferences.notifications.frequency': 'daily',
+    'preferences.notifications.frequency': job.name === 'weekly-digest' ? 'weekly' : 'daily',
   }).select('_id').lean();
 
   if (digestUsers.length === 0) {
@@ -286,13 +371,17 @@ async function processDailyDigest(job: Job): Promise<void> {
   }).lean() as IPushSubscription[];
 
   let sent = 0;
+  const dedupeKey = `${job.name}:${oneDayAgo}`;
+  const deliveryDocs: Array<Record<string, unknown>> = [];
   const batches = chunk(subscriptions, BATCH_SIZE);
   for (const batch of batches) {
     const results = await Promise.allSettled(
       batch.map(sub => sendWebPushToSubscription(sub as IPushSubscription, payload))
     );
     for (const r of results) {
-      if (r.status === 'fulfilled' && r.value.success) sent++;
+      if (r.status === 'fulfilled' && r.value.success) {
+        sent++;
+      }
     }
   }
 
@@ -307,12 +396,32 @@ async function processDailyDigest(job: Job): Promise<void> {
       url: '/',
     },
     read: false,
-    deliveredVia: ['push', 'in_app'],
+    dedupeKey: `${dedupeKey}:${userId}`,
+    deliveredVia: ['in_app'],
   }));
 
   if (notificationDocs.length > 0) {
-    await Notification.insertMany(notificationDocs, { ordered: false }).catch(err => {
+    const docs = await Notification.insertMany(notificationDocs, { ordered: false }).catch(err => {
       logger.error({ msg: '[Notifications] Failed to insert digest notifications', error: err.message });
+      return [];
+    });
+    for (const doc of docs) {
+      deliveryDocs.push({
+        notificationId: doc._id.toString(),
+        userId: doc.userId,
+        channel: 'in_app',
+        status: 'shown_in_app',
+        jobName: job.name,
+        dedupeKey,
+        attempt: (job.attemptsMade || 0) + 1,
+        payloadType: payload.data.type,
+      });
+    }
+  }
+
+  if (deliveryDocs.length > 0) {
+    await NotificationDelivery.insertMany(deliveryDocs, { ordered: false }).catch(() => {
+      // non-blocking observability path
     });
   }
 
@@ -461,17 +570,35 @@ export async function onArticlePublished(articleId: string): Promise<void> {
   const logger = getLogger();
 
   if (!notificationQueue) {
-    logger.warn({ msg: '[Notifications] Queue not initialized — skipping', articleId });
-    return;
-  }
-
-  if (!vapidConfigured) {
-    logger.debug({ msg: '[Notifications] VAPID not configured — skipping push', articleId });
+    logger.warn({ msg: '[Notifications] Queue not initialized — creating in-app fallback only', articleId });
+    const article = await Article.findById(articleId).lean() as IArticle | null;
+    if (!article || article.visibility !== 'public') return;
+    const payload = buildPayload(article);
+    const instantUsers = await User.find({
+      'preferences.notifications.pushEnabled': true,
+      'preferences.notifications.frequency': 'instant',
+    }).select('_id').lean();
+    if (instantUsers.length > 0) {
+      await Notification.insertMany(
+        instantUsers.map((u) => ({
+          userId: u._id.toString(),
+          type: 'new_nugget' as const,
+          title: payload.title,
+          body: payload.body,
+          data: { articleId, url: payload.url },
+          read: false,
+          dedupeKey: `fanout:${articleId}:${u._id.toString()}`,
+          deliveredVia: ['in_app'],
+        })),
+        { ordered: false }
+      ).catch(() => {});
+    }
     return;
   }
 
   try {
     await notificationQueue.add('fan-out', { articleId }, {
+      jobId: `fanout:${articleId}`,
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: { count: 100 },
@@ -500,6 +627,16 @@ export async function setNotificationsEnabled(enabled: boolean): Promise<void> {
  */
 export async function getNotificationsEnabled(): Promise<boolean> {
   return isNotificationsEnabled();
+}
+
+export function getNotificationRuntimeStatus(): {
+  queueInitialized: boolean;
+  vapidConfigured: boolean;
+} {
+  return {
+    queueInitialized: notificationQueue !== null,
+    vapidConfigured,
+  };
 }
 
 /**

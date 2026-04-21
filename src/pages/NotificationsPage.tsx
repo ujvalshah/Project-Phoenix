@@ -18,6 +18,8 @@ import { LAYOUT_CLASSES } from '@/constants/layout';
 import { Z_INDEX } from '@/constants/zIndex';
 import type { Article } from '@/types';
 import type { InAppNotification } from '@/services/notificationService';
+import { getNotificationDiagnostics } from '@/services/notificationService';
+import { useQuery } from '@tanstack/react-query';
 
 // ── Helpers ──
 
@@ -83,7 +85,7 @@ const TABS: { value: FilterTab; label: string }[] = [
 // ── Main component ──
 
 export const NotificationsPage: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAdmin } = useAuth();
   const { unreadCount, useNotificationList, markAsRead, markAllAsRead } = useNotifications();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
@@ -91,6 +93,12 @@ export const NotificationsPage: React.FC = () => {
   const [modalArticle, setModalArticle] = useState<Article | null>(null);
 
   const { data: notificationsData, isLoading } = useNotificationList(page);
+  const { data: diagnostics } = useQuery({
+    queryKey: ['notifications', 'diagnostics'],
+    queryFn: getNotificationDiagnostics,
+    enabled: !!isAdmin,
+    staleTime: 30_000,
+  });
   const notifications = notificationsData?.data || [];
   const hasMore = notificationsData?.hasMore ?? false;
   const total = notificationsData?.total ?? 0;
@@ -177,6 +185,14 @@ export const NotificationsPage: React.FC = () => {
 
       {/* Notification list */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 mt-4">
+        {isAdmin && diagnostics && (
+          <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 p-3 text-xs">
+            <div className="font-bold text-slate-700 dark:text-slate-200 mb-1">Notification diagnostics</div>
+            <div className="text-slate-500 dark:text-slate-400">
+              enabled: {String(diagnostics.enabled)} · queue: {String(diagnostics.runtime.queueInitialized)} · vapid: {String(diagnostics.runtime.vapidConfigured)} · activeSubscriptions: {diagnostics.user.activeSubscriptions}
+            </div>
+          </div>
+        )}
         {/* "All caught up" banner */}
         {notifications.length > 0 && unreadCount === 0 && (
           <div className="flex items-center gap-2 px-4 py-2.5 mb-3 bg-green-50/60 dark:bg-green-900/10 border border-green-100/60 dark:border-green-800/20 rounded-xl">

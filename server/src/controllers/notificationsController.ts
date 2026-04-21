@@ -7,6 +7,7 @@ import { getEnv } from '../config/envValidation.js';
 import {
   setNotificationsEnabled,
   getNotificationsEnabled,
+  getNotificationRuntimeStatus,
 } from '../services/notificationService.js';
 import {
   sendValidationError,
@@ -76,9 +77,8 @@ export const subscribe = async (req: Request, res: Response) => {
   const { platform, endpoint, keys, fcmToken } = result.data;
 
   try {
-    // Upsert: update if same endpoint exists, otherwise create
     await PushSubscription.findOneAndUpdate(
-      { endpoint },
+      { userId, endpoint },
       {
         userId,
         platform,
@@ -86,8 +86,17 @@ export const subscribe = async (req: Request, res: Response) => {
         keys,
         fcmToken,
         active: true,
+        invalidatedReason: undefined,
+        lastSeenAt: new Date(),
       },
       { upsert: true, new: true }
+    );
+
+    // Prevent endpoint ownership drift across accounts by deactivating any
+    // duplicate endpoint records attached to other users.
+    await PushSubscription.updateMany(
+      { endpoint, userId: { $ne: userId }, active: true },
+      { active: false, invalidatedReason: 'reassigned_to_another_user' }
     );
 
     // Mark pushEnabled in user preferences
@@ -102,6 +111,12 @@ export const subscribe = async (req: Request, res: Response) => {
   }
 };
 
+export const renewSubscriptionFromServiceWorker = async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return sendUnauthorizedError(res);
+  return subscribe(req, res);
+};
+
 export const unsubscribe = async (req: Request, res: Response) => {
   const userId = getUserId(req);
   if (!userId) return sendUnauthorizedError(res);
@@ -114,7 +129,10 @@ export const unsubscribe = async (req: Request, res: Response) => {
   }
 
   try {
-    await PushSubscription.deleteOne({ endpoint, userId });
+    await PushSubscription.updateOne(
+      { endpoint, userId },
+      { active: false, invalidatedReason: 'user_unsubscribed' }
+    );
 
     // If no more active subscriptions, disable push
     const remaining = await PushSubscription.countDocuments({ userId, active: true });
@@ -125,6 +143,18 @@ export const unsubscribe = async (req: Request, res: Response) => {
     }
 
     res.json({ message: 'Subscription removed' });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    sendInternalError(res, msg);
+  }
+};
+
+export const getSubscriptionStatus = async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return sendUnauthorizedError(res);
+  try {
+    const count = await PushSubscription.countDocuments({ userId, active: true });
+    res.json({ hasSubscription: count > 0, activeSubscriptions: count });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     sendInternalError(res, msg);
@@ -300,6 +330,30 @@ export const getNotificationStatus = async (_req: Request, res: Response) => {
   try {
     const enabled = await getNotificationsEnabled();
     res.json({ enabled });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    sendInternalError(res, msg);
+  }
+};
+
+export const getNotificationDiagnostics = async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return sendUnauthorizedError(res);
+  try {
+    const [activeSubscriptions, unreadCount, enabled] = await Promise.all([
+      PushSubscription.countDocuments({ userId, active: true }),
+      Notification.countDocuments({ userId, read: false }),
+      getNotificationsEnabled(),
+    ]);
+    const runtime = getNotificationRuntimeStatus();
+    res.json({
+      enabled,
+      runtime,
+      user: {
+        activeSubscriptions,
+        unreadCount,
+      },
+    });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     sendInternalError(res, msg);

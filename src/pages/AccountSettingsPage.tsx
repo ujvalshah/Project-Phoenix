@@ -47,6 +47,7 @@ const NotificationPreferencesSection: React.FC = () => {
     isSubscribed,
     permissionStatus,
     isPushSupported,
+    isSubscriptionDesynced,
   } = useNotifications();
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
@@ -114,6 +115,12 @@ const NotificationPreferencesSection: React.FC = () => {
         {permissionStatus === 'denied' && (
           <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-400 font-medium">
             Notifications are blocked by your browser. Please enable them in your browser settings and refresh.
+          </div>
+        )}
+
+        {permissionStatus === 'granted' && isSubscriptionDesynced && (
+          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-700 dark:text-amber-400 font-medium">
+            Notification permission is granted, but this device is not fully subscribed. Toggle push off and on to restore delivery.
           </div>
         )}
 
