@@ -10,6 +10,15 @@ export interface NotificationPreferences {
   categoryFilter: string[];
   quietHoursStart?: string | null;
   quietHoursEnd?: string | null;
+  timezone?: string;
+}
+
+export function detectTimezone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
 }
 
 export interface InAppNotification {
@@ -20,7 +29,8 @@ export interface InAppNotification {
   body: string;
   data: { articleId?: string; batchIds?: string[]; url: string };
   read: boolean;
-  deliveredVia: string[];
+  // Channels attempted — not a guarantee of device-side receipt.
+  attemptedVia: string[];
   createdAt: string;
 }
 
@@ -94,6 +104,18 @@ export async function subscribeToPush(): Promise<boolean> {
       auth: arrayBufferToBase64(subscription.getKey('auth')),
     },
   });
+
+  // Capture the device's IANA zone so server-side quiet hours can be evaluated
+  // against the user's wall clock rather than UTC. Best-effort — a failure here
+  // must not break the subscribe flow.
+  const tz = detectTimezone();
+  if (tz) {
+    try {
+      await updatePreferences({ timezone: tz });
+    } catch {
+      // ignore
+    }
+  }
 
   return true;
 }
@@ -175,10 +197,34 @@ export async function toggleNotificationSystem(enabled: boolean): Promise<void> 
   await apiClient.put('/notifications/admin/toggle', { enabled });
 }
 
-export async function getNotificationDiagnostics(): Promise<{
+export interface NotificationDiagnostics {
   enabled: boolean;
   runtime: { queueInitialized: boolean; vapidConfigured: boolean };
-  user: { activeSubscriptions: number; unreadCount: number };
-}> {
-  return apiClient.get('/notifications/admin/diagnostics');
+  fleet: {
+    totalActiveSubscriptions: number;
+    totalUsersSubscribed: number;
+    subscriptionsByPlatform: Record<string, number>;
+  };
+  delivery24h: {
+    sentToProvider: number;
+    shownInApp: number;
+    providerFailures: number;
+    subscriptionsRemoved: number;
+  };
+  delivery1h: {
+    providerFailures: number;
+  };
+  recentFailures: Array<{
+    _id: string;
+    userId: string;
+    endpoint?: string;
+    providerStatusCode?: number;
+    error?: string;
+    createdAt: string;
+    jobName: string;
+  }>;
+}
+
+export async function getNotificationDiagnostics(): Promise<NotificationDiagnostics> {
+  return apiClient.get<NotificationDiagnostics>('/notifications/admin/diagnostics');
 }

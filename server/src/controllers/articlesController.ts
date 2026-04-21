@@ -968,8 +968,13 @@ export const updateArticle = async (req: Request, res: Response) => {
       { $set: mongoUpdate },
       { new: true, runValidators: false } // Disable runValidators for partial updates
     ).lean();
-    
+
     if (!article) return sendNotFoundError(res, 'Article not found');
+
+    // Notifications for private→public transitions are dispatched by the
+    // Article schema's post('findOneAndUpdate') hook. Do not also dispatch
+    // here: two Date.now() calls would produce different publishEventIds and
+    // thus different dedupe keys, leading to duplicate notifications.
 
     res.json(await normalizeArticleDoc(article));
   } catch (error: any) {

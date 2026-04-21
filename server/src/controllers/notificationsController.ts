@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { PushSubscription } from '../models/PushSubscription.js';
 import { Notification } from '../models/Notification.js';
+import { NotificationDelivery } from '../models/NotificationDelivery.js';
 import { User } from '../models/User.js';
 import { getEnv } from '../config/envValidation.js';
 import {
@@ -16,17 +17,70 @@ import {
   sendInternalError,
 } from '../utils/errorResponse.js';
 
+// ── Push Provider Allowlist ──
+//
+// We only accept endpoints whose host belongs to a known push provider.
+// Without this, an attacker (or a misconfigured client) could register an
+// arbitrary HTTPS URL that we'd then POST encrypted payloads to on every
+// publish — turning our push pipeline into a free outbound webhook.
+const PUSH_HOST_ALLOWLIST: Array<RegExp> = [
+  /(^|\.)googleapis\.com$/i,           // FCM (Chrome/Edge/Brave)
+  /(^|\.)mozilla\.com$/i,              // Firefox
+  /(^|\.)push\.services\.mozilla\.com$/i,
+  /(^|\.)push\.apple\.com$/i,          // Safari/iOS web push
+  /(^|\.)windows\.com$/i,              // WNS
+  /(^|\.)notify\.windows\.com$/i,
+];
+
+function isAllowedPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== 'https:') return false;
+    return PUSH_HOST_ALLOWLIST.some((re) => re.test(url.hostname));
+  } catch {
+    return false;
+  }
+}
+
 // ── Validation Schemas ──
 
-const subscribeSchema = z.object({
-  platform: z.enum(['web', 'android', 'ios']),
-  endpoint: z.string().url(),
-  keys: z.object({
-    p256dh: z.string().min(1),
-    auth: z.string().min(1),
-  }).optional(),
-  fcmToken: z.string().min(1).optional(),
-});
+const subscribeSchema = z
+  .object({
+    platform: z.enum(['web', 'android', 'ios']),
+    endpoint: z.string().url(),
+    keys: z
+      .object({
+        p256dh: z.string().min(1),
+        auth: z.string().min(1),
+      })
+      .optional(),
+    fcmToken: z.string().min(1).optional(),
+  })
+  .refine(
+    (data) => (data.platform === 'web' ? !!data.keys : true),
+    { message: 'keys.p256dh and keys.auth are required for web push', path: ['keys'] }
+  )
+  .refine(
+    (data) => (data.platform === 'android' ? !!data.fcmToken : true),
+    { message: 'fcmToken is required for android', path: ['fcmToken'] }
+  );
+
+const renewSchema = z
+  .object({
+    platform: z.enum(['web', 'android', 'ios']),
+    endpoint: z.string().url(),
+    previousEndpoint: z.string().url(),
+    keys: z
+      .object({
+        p256dh: z.string().min(1),
+        auth: z.string().min(1),
+      })
+      .optional(),
+  })
+  .refine((data) => (data.platform === 'web' ? !!data.keys : true), {
+    message: 'keys.p256dh and keys.auth are required for web push',
+    path: ['keys'],
+  });
 
 const preferencesSchema = z.object({
   pushEnabled: z.boolean().optional(),
@@ -34,6 +88,21 @@ const preferencesSchema = z.object({
   categoryFilter: z.array(z.string()).optional(),
   quietHoursStart: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(),
   quietHoursEnd: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(),
+  // IANA tz string (e.g. "Asia/Kolkata"). We validate via Intl so unknown
+  // zones are rejected rather than silently stored and breaking quiet hours.
+  timezone: z
+    .string()
+    .min(1)
+    .max(64)
+    .refine((tz) => {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: tz });
+        return true;
+      } catch {
+        return false;
+      }
+    }, 'Invalid IANA timezone')
+    .optional(),
 });
 
 const toggleSchema = z.object({
@@ -76,6 +145,12 @@ export const subscribe = async (req: Request, res: Response) => {
 
   const { platform, endpoint, keys, fcmToken } = result.data;
 
+  if (platform === 'web' && !isAllowedPushEndpoint(endpoint)) {
+    return sendValidationError(res, 'Endpoint host not allowed', [
+      { path: ['endpoint'], message: 'Endpoint must be from a known push provider' },
+    ]);
+  }
+
   try {
     await PushSubscription.findOneAndUpdate(
       { userId, endpoint },
@@ -111,10 +186,93 @@ export const subscribe = async (req: Request, res: Response) => {
   }
 };
 
+// SW-driven renewal after `pushsubscriptionchange`. Unlike plain subscribe,
+// this requires the SW to prove which subscription it's renewing — without a
+// `previousEndpoint` ownership check, any authenticated caller could swap
+// arbitrary endpoints onto the account by hitting this route.
 export const renewSubscriptionFromServiceWorker = async (req: Request, res: Response) => {
   const userId = getUserId(req);
   if (!userId) return sendUnauthorizedError(res);
-  return subscribe(req, res);
+
+  const result = renewSchema.safeParse(req.body);
+  if (!result.success) {
+    return sendValidationError(
+      res,
+      'Invalid renewal payload',
+      result.error.errors.map((e) => ({ path: e.path, message: e.message }))
+    );
+  }
+
+  const { platform, endpoint, previousEndpoint, keys } = result.data;
+
+  if (platform === 'web' && !isAllowedPushEndpoint(endpoint)) {
+    return sendValidationError(res, 'Endpoint host not allowed', [
+      { path: ['endpoint'], message: 'Endpoint must be from a known push provider' },
+    ]);
+  }
+
+  // No-op renewals (browser handed back the same endpoint) shouldn't fail.
+  if (endpoint === previousEndpoint) {
+    try {
+      await PushSubscription.updateOne(
+        { userId, endpoint, active: true },
+        { lastSeenAt: new Date(), keys }
+      );
+      return res.json({ message: 'Subscription unchanged' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return sendInternalError(res, msg);
+    }
+  }
+
+  try {
+    // Require that the previousEndpoint belongs to this user and was active.
+    // Anything else is either drift, replay, or a forged renewal.
+    const previous = await PushSubscription.findOne({
+      userId,
+      endpoint: previousEndpoint,
+    });
+
+    if (!previous) {
+      return sendValidationError(res, 'Unknown previous endpoint', [
+        { path: ['previousEndpoint'], message: 'No matching subscription for this user' },
+      ]);
+    }
+
+    // Atomic-ish swap: write the new sub, then deactivate the old one. Order
+    // matters — if the new write fails, the old record stays usable.
+    await PushSubscription.findOneAndUpdate(
+      { userId, endpoint },
+      {
+        userId,
+        platform,
+        endpoint,
+        keys,
+        active: true,
+        invalidatedReason: undefined,
+        lastSeenAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    await PushSubscription.updateOne(
+      { _id: previous._id },
+      { active: false, invalidatedReason: 'rotated_by_pushsubscriptionchange' }
+    );
+
+    // Defense in depth: if the new endpoint also exists under another user
+    // (rare — would require two users to land on the exact same token), drop
+    // the duplicate.
+    await PushSubscription.updateMany(
+      { endpoint, userId: { $ne: userId }, active: true },
+      { active: false, invalidatedReason: 'reassigned_to_another_user' }
+    );
+
+    res.json({ message: 'Subscription renewed' });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    sendInternalError(res, msg);
+  }
 };
 
 export const unsubscribe = async (req: Request, res: Response) => {
@@ -209,6 +367,9 @@ export const updatePreferences = async (req: Request, res: Response) => {
     }
     if (data.quietHoursEnd !== undefined) {
       update['preferences.notifications.quietHoursEnd'] = data.quietHoursEnd;
+    }
+    if (data.timezone !== undefined) {
+      update['preferences.notifications.timezone'] = data.timezone;
     }
 
     const user = await User.findByIdAndUpdate(userId, update, { new: true })
@@ -336,23 +497,74 @@ export const getNotificationStatus = async (_req: Request, res: Response) => {
   }
 };
 
-export const getNotificationDiagnostics = async (req: Request, res: Response) => {
-  const userId = getUserId(req);
-  if (!userId) return sendUnauthorizedError(res);
+// Admin diagnostics: a fleet-wide health snapshot. Designed to answer the
+// questions an on-caller actually has at 3am — "is push working at all,
+// what's failing, and what just got removed?" — not the previous per-caller
+// counts which were never meaningful at admin scope.
+export const getNotificationDiagnostics = async (_req: Request, res: Response) => {
   try {
-    const [activeSubscriptions, unreadCount, enabled] = await Promise.all([
-      PushSubscription.countDocuments({ userId, active: true }),
-      Notification.countDocuments({ userId, read: false }),
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since1h = new Date(Date.now() - 60 * 60 * 1000);
+
+    const [
+      enabled,
+      totalActiveSubscriptions,
+      totalUsersSubscribed,
+      subscriptionsByPlatform,
+      providerFailures24h,
+      providerFailures1h,
+      stalenessRemovals24h,
+      sentToProvider24h,
+      shownInApp24h,
+      recentFailures,
+    ] = await Promise.all([
       getNotificationsEnabled(),
+      PushSubscription.countDocuments({ active: true }),
+      PushSubscription.distinct('userId', { active: true }).then((u) => u.length),
+      PushSubscription.aggregate([
+        { $match: { active: true } },
+        { $group: { _id: '$platform', count: { $sum: 1 } } },
+      ]),
+      NotificationDelivery.countDocuments({ status: 'provider_failed', createdAt: { $gte: since24h } }),
+      NotificationDelivery.countDocuments({ status: 'provider_failed', createdAt: { $gte: since1h } }),
+      NotificationDelivery.countDocuments({ status: 'subscription_removed', createdAt: { $gte: since24h } }),
+      NotificationDelivery.countDocuments({ status: 'sent_to_provider', createdAt: { $gte: since24h } }),
+      NotificationDelivery.countDocuments({ status: 'shown_in_app', createdAt: { $gte: since24h } }),
+      NotificationDelivery.find({ status: 'provider_failed' })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .select('userId endpoint providerStatusCode error createdAt jobName')
+        .lean(),
     ]);
+
     const runtime = getNotificationRuntimeStatus();
+
+    const platformBreakdown = subscriptionsByPlatform.reduce<Record<string, number>>(
+      (acc, row: { _id: string; count: number }) => {
+        acc[row._id || 'unknown'] = row.count;
+        return acc;
+      },
+      {}
+    );
+
     res.json({
       enabled,
       runtime,
-      user: {
-        activeSubscriptions,
-        unreadCount,
+      fleet: {
+        totalActiveSubscriptions,
+        totalUsersSubscribed,
+        subscriptionsByPlatform: platformBreakdown,
       },
+      delivery24h: {
+        sentToProvider: sentToProvider24h,
+        shownInApp: shownInApp24h,
+        providerFailures: providerFailures24h,
+        subscriptionsRemoved: stalenessRemovals24h,
+      },
+      delivery1h: {
+        providerFailures: providerFailures1h,
+      },
+      recentFailures,
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);

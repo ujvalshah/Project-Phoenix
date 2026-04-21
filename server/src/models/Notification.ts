@@ -15,7 +15,9 @@ export interface INotification extends Document {
   body: string;
   data: INotificationData;
   read: boolean;
-  deliveredVia: string[];
+  // Channels we *attempted* to deliver on. Provider-ack'd (push) does not
+  // mean device-received; for per-attempt truth read NotificationDelivery.
+  attemptedVia: string[];
   dedupeKey?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -34,7 +36,7 @@ const NotificationSchema = new Schema<INotification>({
   body: { type: String, required: true },
   data: { type: NotificationDataSchema, required: true },
   read: { type: Boolean, default: false },
-  deliveredVia: { type: [String], default: [] },
+  attemptedVia: { type: [String], default: [] },
   dedupeKey: { type: String, required: false },
 }, {
   timestamps: true,

@@ -13,6 +13,86 @@ import { getEnv } from '../config/envValidation.js';
 const REDIS_KEY_NOTIFICATIONS_ENABLED = 'notifications:enabled';
 const BATCH_SIZE = 100;
 
+/**
+ * Insert many with ordered:false and recover insertedDocs on bulk errors.
+ * Mongoose's default .catch swallows the array of successes that the bulk
+ * error carries, which made the delivery ledger blind to any fan-out that
+ * overlapped an existing dedupe key.
+ */
+async function safeInsertMany<T extends { _id: unknown }>(
+  model: { insertMany: (d: unknown[], opts: unknown) => Promise<T[]> },
+  docs: unknown[],
+  label: string
+): Promise<T[]> {
+  if (docs.length === 0) return [];
+  try {
+    return (await model.insertMany(docs, { ordered: false })) as T[];
+  } catch (err) {
+    const logger = getLogger();
+    const bulkErr = err as { insertedDocs?: T[]; message?: string; writeErrors?: unknown[] };
+    const inserted = Array.isArray(bulkErr?.insertedDocs) ? bulkErr.insertedDocs : [];
+    logger.warn({
+      msg: `[Notifications] ${label} partial insert (dedupe conflicts preserved)`,
+      inserted: inserted.length,
+      total: docs.length,
+      writeErrors: Array.isArray(bulkErr?.writeErrors) ? bulkErr.writeErrors.length : undefined,
+      error: bulkErr?.message,
+    });
+    return inserted;
+  }
+}
+
+/**
+ * Parse HH:MM to minutes-since-midnight; return null on malformed input.
+ */
+function parseHHMM(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const m = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (hh > 23 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+/**
+ * Minutes-since-local-midnight for a timezone. Falls back to UTC on bad tz.
+ */
+function nowMinutesInZone(timezone: string | null | undefined): number {
+  const tz = timezone || 'Etc/UTC';
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date());
+    const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+    const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+    // Intl sometimes emits "24" for hour in hour12:false — normalize.
+    return ((hh % 24) * 60 + mm) | 0;
+  } catch {
+    const now = new Date();
+    return now.getUTCHours() * 60 + now.getUTCMinutes();
+  }
+}
+
+/**
+ * Is the user currently inside their configured quiet window? Windows that
+ * wrap midnight (e.g. 22:00–07:00) are handled.
+ */
+function isInQuietHours(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  timezone: string | null | undefined
+): boolean {
+  const s = parseHHMM(start);
+  const e = parseHHMM(end);
+  if (s === null || e === null || s === e) return false;
+  const now = nowMinutesInZone(timezone);
+  return s < e ? now >= s && now < e : now >= s || now < e;
+}
+
 let notificationQueue: Queue | null = null;
 let notificationWorker: Worker | null = null;
 let vapidConfigured = false;
@@ -155,7 +235,10 @@ async function sendWebPushToSubscription(
 
 async function processFanOut(job: Job): Promise<void> {
   const logger = getLogger();
-  const { articleId } = job.data;
+  const { articleId, publishEventId } = job.data as { articleId: string; publishEventId?: number };
+  // Guarantee a publishEventId even for legacy enqueues that predate the field;
+  // fall back to the job creation timestamp so dedupe keys remain unique per job.
+  const eventId = publishEventId || job.timestamp || Date.now();
 
   const enabled = await isNotificationsEnabled();
   if (!enabled) {
@@ -170,13 +253,15 @@ async function processFanOut(job: Job): Promise<void> {
   }
 
   const payload = buildPayload(article);
-  const dedupeKey = `fanout:${articleId}`;
+  const dedupeKey = `fanout:${articleId}:${eventId}`;
 
   // Find users who want instant notifications
   const instantUsers = await User.find({
     'preferences.notifications.pushEnabled': true,
     'preferences.notifications.frequency': 'instant',
-  }).select('_id preferences.notifications.categoryFilter').lean();
+  })
+    .select('_id preferences.notifications.categoryFilter preferences.notifications.quietHoursStart preferences.notifications.quietHoursEnd preferences.notifications.timezone')
+    .lean();
 
   if (instantUsers.length === 0) {
     logger.info({ msg: '[Notifications] No instant subscribers — skipping', articleId });
@@ -188,29 +273,54 @@ async function processFanOut(job: Job): Promise<void> {
   const articleTagNames = (article.tagIds || [])
     .map((tid) => tagNameMap.get(tid.toString())?.toLowerCase())
     .filter(Boolean) as string[];
-  const eligibleUserIds = instantUsers
-    .filter(user => {
-      const catFilter = user.preferences?.notifications?.categoryFilter || [];
-      if (catFilter.length === 0) return true;
-      return catFilter.some(cat => articleTagNames.includes(cat.toLowerCase()));
-    })
-    .map(user => user._id.toString());
 
-  if (eligibleUserIds.length === 0) {
+  // Build two sets: users eligible for in-app (passes category filter),
+  // and users eligible for push (also outside quiet hours). Quiet hours must
+  // not suppress the inbox — only the device alert.
+  const inAppEligibleIds: string[] = [];
+  const pushSuppressedForQuiet = new Set<string>();
+  for (const user of instantUsers) {
+    const prefs = user.preferences?.notifications;
+    const catFilter = prefs?.categoryFilter || [];
+    const passesCategory =
+      catFilter.length === 0 ||
+      catFilter.some((cat) => articleTagNames.includes(cat.toLowerCase()));
+    if (!passesCategory) continue;
+    const userId = user._id.toString();
+    inAppEligibleIds.push(userId);
+    if (
+      isInQuietHours(
+        prefs?.quietHoursStart,
+        prefs?.quietHoursEnd,
+        (prefs as { timezone?: string } | undefined)?.timezone
+      )
+    ) {
+      pushSuppressedForQuiet.add(userId);
+    }
+  }
+
+  if (inAppEligibleIds.length === 0) {
     logger.info({ msg: '[Notifications] No users match category filter — skipping', articleId });
     return;
   }
 
-  // Get active push subscriptions for eligible users
-  const subscriptions = await PushSubscription.find({
-    userId: { $in: eligibleUserIds },
-    active: true,
-  }).lean() as IPushSubscription[];
+  const pushEligibleIds = inAppEligibleIds.filter((id) => !pushSuppressedForQuiet.has(id));
+
+  // Get active push subscriptions for push-eligible users (quiet hours excluded)
+  const subscriptions = pushEligibleIds.length
+    ? ((await PushSubscription.find({
+        userId: { $in: pushEligibleIds },
+        active: true,
+      }).lean()) as IPushSubscription[])
+    : [];
 
   logger.info({
     msg: '[Notifications] Starting fan-out',
     articleId,
-    eligibleUsers: eligibleUserIds.length,
+    eventId,
+    inAppEligible: inAppEligibleIds.length,
+    pushEligible: pushEligibleIds.length,
+    quietSuppressed: pushSuppressedForQuiet.size,
     subscriptions: subscriptions.length,
   });
 
@@ -280,8 +390,9 @@ async function processFanOut(job: Job): Promise<void> {
     }
   }
 
-  // Create in-app notifications for all eligible users
-  const notificationDocs = eligibleUserIds.map(userId => ({
+  // Create in-app notifications for all category-eligible users. `attemptedVia`
+  // reflects the channels we tried — 'push' means provider-acked, not delivered.
+  const notificationDocs = inAppEligibleIds.map((userId) => ({
     userId,
     type: 'new_nugget' as const,
     title: payload.title,
@@ -289,45 +400,44 @@ async function processFanOut(job: Job): Promise<void> {
     data: { articleId, url: payload.url },
     read: false,
     dedupeKey: `${dedupeKey}:${userId}`,
-    deliveredVia: successfulUserIds.has(userId) ? ['push', 'in_app'] : ['in_app'],
+    attemptedVia: successfulUserIds.has(userId) ? ['push', 'in_app'] : ['in_app'],
   }));
 
-  let insertedNotifications: Array<{ _id: { toString: () => string }; userId: string }> = [];
-  if (notificationDocs.length > 0) {
-    insertedNotifications = await Notification.insertMany(notificationDocs, { ordered: false }).catch(err => {
-      logger.error({ msg: '[Notifications] Failed to insert in-app notifications', error: err.message });
-      return [];
-    });
-  }
+  const insertedNotifications = await safeInsertMany<{
+    _id: { toString: () => string };
+    userId: string;
+  }>(Notification as unknown as Parameters<typeof safeInsertMany>[0], notificationDocs, 'in-app fan-out');
 
-  if (insertedNotifications.length > 0) {
-    for (const doc of insertedNotifications) {
-      deliveryDocs.push({
-        notificationId: doc._id.toString(),
-        userId: doc.userId,
-        channel: 'in_app',
-        status: 'shown_in_app',
-        jobName: job.name,
-        dedupeKey,
-        attempt: (job.attemptsMade || 0) + 1,
-        payloadType: payload.data.type,
-      });
-    }
+  for (const doc of insertedNotifications) {
+    deliveryDocs.push({
+      notificationId: doc._id.toString(),
+      userId: doc.userId,
+      channel: 'in_app',
+      status: 'shown_in_app',
+      jobName: job.name,
+      dedupeKey,
+      attempt: (job.attemptsMade || 0) + 1,
+      payloadType: payload.data.type,
+    });
   }
 
   if (deliveryDocs.length > 0) {
-    await NotificationDelivery.insertMany(deliveryDocs, { ordered: false }).catch((err) => {
-      logger.error({ msg: '[Notifications] Failed to insert delivery logs', error: err.message });
-    });
+    await safeInsertMany(
+      NotificationDelivery as unknown as Parameters<typeof safeInsertMany>[0],
+      deliveryDocs,
+      'delivery-ledger'
+    );
   }
 
   logger.info({
     msg: '[Notifications] Fan-out complete',
     articleId,
+    eventId,
     sent,
     failed,
     removed,
-    inAppCreated: notificationDocs.length,
+    inAppCreated: insertedNotifications.length,
+    inAppAttempted: notificationDocs.length,
   });
 }
 
@@ -355,7 +465,9 @@ async function processDailyDigest(job: Job): Promise<void> {
   const digestUsers = await User.find({
     'preferences.notifications.pushEnabled': true,
     'preferences.notifications.frequency': job.name === 'weekly-digest' ? 'weekly' : 'daily',
-  }).select('_id').lean();
+  })
+    .select('_id preferences.notifications.quietHoursStart preferences.notifications.quietHoursEnd preferences.notifications.timezone')
+    .lean();
 
   if (digestUsers.length === 0) {
     logger.info({ msg: '[Notifications] No daily-digest subscribers' });
@@ -363,66 +475,98 @@ async function processDailyDigest(job: Job): Promise<void> {
   }
 
   const payload = buildDigestPayload(recentArticles);
-  const userIds = digestUsers.map(u => u._id.toString());
+  const userIds = digestUsers.map((u) => u._id.toString());
+  const pushSuppressedForQuiet = new Set<string>();
+  for (const u of digestUsers) {
+    const prefs = u.preferences?.notifications;
+    if (
+      isInQuietHours(
+        prefs?.quietHoursStart,
+        prefs?.quietHoursEnd,
+        (prefs as { timezone?: string } | undefined)?.timezone
+      )
+    ) {
+      pushSuppressedForQuiet.add(u._id.toString());
+    }
+  }
+  const pushEligibleIds = userIds.filter((id) => !pushSuppressedForQuiet.has(id));
 
-  const subscriptions = await PushSubscription.find({
-    userId: { $in: userIds },
-    active: true,
-  }).lean() as IPushSubscription[];
+  const subscriptions = pushEligibleIds.length
+    ? ((await PushSubscription.find({
+        userId: { $in: pushEligibleIds },
+        active: true,
+      }).lean()) as IPushSubscription[])
+    : [];
 
   let sent = 0;
   const dedupeKey = `${job.name}:${oneDayAgo}`;
+  const successfulUserIds = new Set<string>();
   const deliveryDocs: Array<Record<string, unknown>> = [];
   const batches = chunk(subscriptions, BATCH_SIZE);
   for (const batch of batches) {
     const results = await Promise.allSettled(
-      batch.map(sub => sendWebPushToSubscription(sub as IPushSubscription, payload))
+      batch.map((sub) => sendWebPushToSubscription(sub as IPushSubscription, payload))
     );
-    for (const r of results) {
+    for (const [idx, r] of results.entries()) {
+      const currentSub = batch[idx] as IPushSubscription;
       if (r.status === 'fulfilled' && r.value.success) {
         sent++;
+        successfulUserIds.add(currentSub.userId.toString());
+        deliveryDocs.push({
+          userId: currentSub.userId.toString(),
+          subscriptionId: currentSub._id.toString(),
+          endpoint: currentSub.endpoint,
+          channel: 'push',
+          status: 'sent_to_provider',
+          jobName: job.name,
+          dedupeKey,
+          attempt: (job.attemptsMade || 0) + 1,
+          payloadType: payload.data.type,
+        });
       }
     }
   }
 
-  // Create in-app digest notifications
-  const notificationDocs = userIds.map(userId => ({
+  // Create in-app digest notifications for every digest subscriber, regardless
+  // of quiet hours — the inbox stays accurate; only the device alert is gated.
+  const notificationDocs = userIds.map((userId) => ({
     userId,
     type: 'digest' as const,
     title: payload.title,
     body: payload.body,
     data: {
-      batchIds: recentArticles.map(a => a._id.toString()),
+      batchIds: recentArticles.map((a) => a._id.toString()),
       url: '/',
     },
     read: false,
     dedupeKey: `${dedupeKey}:${userId}`,
-    deliveredVia: ['in_app'],
+    attemptedVia: successfulUserIds.has(userId) ? ['push', 'in_app'] : ['in_app'],
   }));
 
-  if (notificationDocs.length > 0) {
-    const docs = await Notification.insertMany(notificationDocs, { ordered: false }).catch(err => {
-      logger.error({ msg: '[Notifications] Failed to insert digest notifications', error: err.message });
-      return [];
+  const insertedDigestDocs = await safeInsertMany<{
+    _id: { toString: () => string };
+    userId: string;
+  }>(Notification as unknown as Parameters<typeof safeInsertMany>[0], notificationDocs, 'in-app digest');
+
+  for (const doc of insertedDigestDocs) {
+    deliveryDocs.push({
+      notificationId: doc._id.toString(),
+      userId: doc.userId,
+      channel: 'in_app',
+      status: 'shown_in_app',
+      jobName: job.name,
+      dedupeKey,
+      attempt: (job.attemptsMade || 0) + 1,
+      payloadType: payload.data.type,
     });
-    for (const doc of docs) {
-      deliveryDocs.push({
-        notificationId: doc._id.toString(),
-        userId: doc.userId,
-        channel: 'in_app',
-        status: 'shown_in_app',
-        jobName: job.name,
-        dedupeKey,
-        attempt: (job.attemptsMade || 0) + 1,
-        payloadType: payload.data.type,
-      });
-    }
   }
 
   if (deliveryDocs.length > 0) {
-    await NotificationDelivery.insertMany(deliveryDocs, { ordered: false }).catch(() => {
-      // non-blocking observability path
-    });
+    await safeInsertMany(
+      NotificationDelivery as unknown as Parameters<typeof safeInsertMany>[0],
+      deliveryDocs,
+      'delivery-ledger-digest'
+    );
   }
 
   logger.info({
@@ -430,6 +574,7 @@ async function processDailyDigest(job: Job): Promise<void> {
     articles: recentArticles.length,
     users: userIds.length,
     pushSent: sent,
+    quietSuppressed: pushSuppressedForQuiet.size,
   });
 }
 
@@ -474,6 +619,22 @@ export async function initNotificationService(): Promise<void> {
     };
   } catch {
     connectionConfig = { host: 'localhost', port: 6379 };
+  }
+
+  // One-shot index migration: drop the legacy endpoint-only unique index.
+  // The schema now only enforces {userId, endpoint} unique, so account switching
+  // on a shared browser no longer E11000s. Best-effort; ignore if missing.
+  try {
+    const indexes = await PushSubscription.collection.indexes();
+    if (indexes.some((i) => i.name === 'endpoint_1' && (i as { unique?: boolean }).unique)) {
+      await PushSubscription.collection.dropIndex('endpoint_1');
+      logger.info({ msg: '[Notifications] Dropped legacy unique index endpoint_1' });
+    }
+  } catch (err) {
+    logger.warn({
+      msg: '[Notifications] endpoint_1 index migration skipped',
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   notificationQueue = new Queue('notifications', { connection: connectionConfig });
@@ -564,51 +725,85 @@ export async function initNotificationService(): Promise<void> {
 
 /**
  * Enqueue a push notification fan-out for a newly published article.
- * Called from Mongoose post-save hook on Article.
+ * Called from Article model save/findOneAndUpdate hooks and from controllers
+ * that mutate visibility via paths that skip Mongoose document hooks.
+ *
+ * `publishEventId` (caller-supplied ms timestamp) scopes idempotency to this
+ * publish event, so a private→public→private→public toggle produces two
+ * distinct fan-outs rather than colliding on a single article-scoped key.
  */
-export async function onArticlePublished(articleId: string): Promise<void> {
+export async function onArticlePublished(
+  articleId: string,
+  publishEventId: number = Date.now()
+): Promise<void> {
   const logger = getLogger();
 
   if (!notificationQueue) {
     logger.warn({ msg: '[Notifications] Queue not initialized — creating in-app fallback only', articleId });
-    const article = await Article.findById(articleId).lean() as IArticle | null;
+    const article = (await Article.findById(articleId).lean()) as IArticle | null;
     if (!article || article.visibility !== 'public') return;
     const payload = buildPayload(article);
+
     const instantUsers = await User.find({
       'preferences.notifications.pushEnabled': true,
       'preferences.notifications.frequency': 'instant',
-    }).select('_id').lean();
-    if (instantUsers.length > 0) {
-      await Notification.insertMany(
-        instantUsers.map((u) => ({
-          userId: u._id.toString(),
-          type: 'new_nugget' as const,
-          title: payload.title,
-          body: payload.body,
-          data: { articleId, url: payload.url },
-          read: false,
-          dedupeKey: `fanout:${articleId}:${u._id.toString()}`,
-          deliveredVia: ['in_app'],
-        })),
-        { ordered: false }
-      ).catch(() => {});
-    }
+    })
+      .select('_id preferences.notifications.categoryFilter')
+      .lean();
+    if (instantUsers.length === 0) return;
+
+    // Mirror the queued path's category filter so the fallback doesn't over-notify.
+    const tagNameMap = await getTagNameMap();
+    const articleTagNames = (article.tagIds || [])
+      .map((tid) => tagNameMap.get(tid.toString())?.toLowerCase())
+      .filter(Boolean) as string[];
+    const eligibleIds = instantUsers
+      .filter((u) => {
+        const catFilter = u.preferences?.notifications?.categoryFilter || [];
+        return (
+          catFilter.length === 0 ||
+          catFilter.some((cat) => articleTagNames.includes(cat.toLowerCase()))
+        );
+      })
+      .map((u) => u._id.toString());
+
+    if (eligibleIds.length === 0) return;
+
+    await safeInsertMany(
+      Notification as unknown as Parameters<typeof safeInsertMany>[0],
+      eligibleIds.map((userId) => ({
+        userId,
+        type: 'new_nugget' as const,
+        title: payload.title,
+        body: payload.body,
+        data: { articleId, url: payload.url },
+        read: false,
+        dedupeKey: `fanout:${articleId}:${publishEventId}:${userId}`,
+        attemptedVia: ['in_app'],
+      })),
+      'in-app fallback (queue down)'
+    );
     return;
   }
 
   try {
-    await notificationQueue.add('fan-out', { articleId }, {
-      jobId: `fanout:${articleId}`,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 },
-      removeOnComplete: { count: 100 },
-      removeOnFail: { count: 200 },
-    });
-    logger.info({ msg: '[Notifications] Fan-out job enqueued', articleId });
+    await notificationQueue.add(
+      'fan-out',
+      { articleId, publishEventId },
+      {
+        jobId: `fanout:${articleId}:${publishEventId}`,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 200 },
+      }
+    );
+    logger.info({ msg: '[Notifications] Fan-out job enqueued', articleId, publishEventId });
   } catch (error: unknown) {
     logger.error({
       msg: '[Notifications] Failed to enqueue fan-out job',
       articleId,
+      publishEventId,
       error: error instanceof Error ? error.message : String(error),
     });
   }

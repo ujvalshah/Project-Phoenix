@@ -52,6 +52,9 @@ export interface IUserPreferences {
     categoryFilter: string[];
     quietHoursStart?: string;
     quietHoursEnd?: string;
+    // IANA timezone (e.g. "Asia/Kolkata"). Defaults to UTC so quiet hours are
+    // meaningful even when the client didn't send a zone.
+    timezone?: string;
   };
 }
 
@@ -128,6 +131,7 @@ const UserPreferencesSchema = new Schema<IUserPreferences>({
     categoryFilter: { type: [String], default: [] },
     quietHoursStart: { type: String, required: false },
     quietHoursEnd: { type: String, required: false },
+    timezone: { type: String, required: false, default: 'Etc/UTC' },
   }
 }, { _id: false });
 

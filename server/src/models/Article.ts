@@ -520,6 +520,21 @@ ArticleSchema.pre('save', async function () {
   }
 });
 
+// Helper: fire fan-out after a detected public transition. Best-effort; the
+// notification service import is lazy so model loads can't cycle on startup.
+function dispatchArticlePublished(articleId: string, publishEventId: number) {
+  import('../services/notificationService.js')
+    .then(({ onArticlePublished }) => {
+      onArticlePublished(articleId, publishEventId).catch(async (err) => {
+        const { getLogger } = await import('../utils/logger.js');
+        getLogger().error({ err, articleId }, '[Notifications] post-publish dispatch failed');
+      });
+    })
+    .catch(() => {
+      // Notification service not available — silently skip
+    });
+}
+
 // Post-save hook: trigger notifications only for create-as-public or private->public transition.
 ArticleSchema.post('save', function (doc) {
   const locals = (doc as unknown as { $locals?: Record<string, unknown> }).$locals || {};
@@ -533,16 +548,54 @@ ArticleSchema.post('save', function (doc) {
     return;
   }
 
-  import('../services/notificationService.js')
-    .then(({ onArticlePublished }) => {
-      onArticlePublished(doc._id.toString()).catch(async (err) => {
-        const { getLogger } = await import('../utils/logger.js');
-        getLogger().error({ err, articleId: doc._id }, '[Notifications] post-save dispatch failed');
-      });
-    })
-    .catch(() => {
-      // Notification service not available — silently skip
-    });
+  dispatchArticlePublished(doc._id.toString(), Date.now());
+});
+
+// findOneAndUpdate / findByIdAndUpdate path — the admin & author edit flows
+// use this, NOT .save(), so without a hook here a private→public toggle would
+// silently ship the article without notifying anyone. Snapshot visibility in
+// the query options so the post hook can compare without a second round-trip.
+ArticleSchema.pre('findOneAndUpdate', async function () {
+  const update = this.getUpdate() as Record<string, unknown> | null;
+  if (!update) return;
+
+  // Extract the proposed visibility (supports both shorthand and $set form).
+  const setPart = (update.$set as Record<string, unknown> | undefined) || {};
+  const hasVisibilityField =
+    Object.prototype.hasOwnProperty.call(setPart, 'visibility') ||
+    Object.prototype.hasOwnProperty.call(update, 'visibility');
+  if (!hasVisibilityField) {
+    // No visibility change in this update — nothing to notify about.
+    (this as unknown as { _notifyVisibilityState?: unknown })._notifyVisibilityState = null;
+    return;
+  }
+
+  try {
+    const query = this.getQuery();
+    const Model = (this as unknown as { model?: mongoose.Model<IArticle> }).model
+      || mongoose.model<IArticle>('Article');
+    const oldDoc = await Model.findOne(query).select('_id visibility').lean();
+    (this as unknown as { _notifyVisibilityState?: unknown })._notifyVisibilityState = oldDoc
+      ? { id: String(oldDoc._id), previousVisibility: oldDoc.visibility }
+      : null;
+  } catch {
+    (this as unknown as { _notifyVisibilityState?: unknown })._notifyVisibilityState = null;
+  }
+});
+
+ArticleSchema.post('findOneAndUpdate', function (doc: IArticle | null) {
+  if (!doc) return;
+
+  const state = (this as unknown as { _notifyVisibilityState?: { id: string; previousVisibility?: string } | null })
+    ._notifyVisibilityState;
+  if (!state) return;
+
+  // Only notify on private → public transition. Create-as-public does not
+  // reach findOneAndUpdate (that's .save()/.create() territory).
+  if (state.previousVisibility !== 'private') return;
+  if (doc.visibility !== 'public') return;
+
+  dispatchArticlePublished(state.id, Date.now());
 });
 
 export const Article = mongoose.model<IArticle>('Article', ArticleSchema);

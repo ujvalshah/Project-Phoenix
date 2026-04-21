@@ -186,11 +186,35 @@ export const NotificationsPage: React.FC = () => {
       {/* Notification list */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 mt-4">
         {isAdmin && diagnostics && (
-          <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 p-3 text-xs">
-            <div className="font-bold text-slate-700 dark:text-slate-200 mb-1">Notification diagnostics</div>
+          <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 p-3 text-xs space-y-1.5">
+            <div className="font-bold text-slate-700 dark:text-slate-200">Notification diagnostics (fleet)</div>
             <div className="text-slate-500 dark:text-slate-400">
-              enabled: {String(diagnostics.enabled)} · queue: {String(diagnostics.runtime.queueInitialized)} · vapid: {String(diagnostics.runtime.vapidConfigured)} · activeSubscriptions: {diagnostics.user.activeSubscriptions}
+              enabled: {String(diagnostics.enabled)} · queue: {String(diagnostics.runtime.queueInitialized)} · vapid: {String(diagnostics.runtime.vapidConfigured)}
             </div>
+            <div className="text-slate-500 dark:text-slate-400">
+              subs: {diagnostics.fleet.totalActiveSubscriptions} active across {diagnostics.fleet.totalUsersSubscribed} users
+              {Object.keys(diagnostics.fleet.subscriptionsByPlatform).length > 0 && (
+                <> · {Object.entries(diagnostics.fleet.subscriptionsByPlatform).map(([p, n]) => `${p}:${n}`).join(' ')}</>
+              )}
+            </div>
+            <div className="text-slate-500 dark:text-slate-400">
+              24h: sent {diagnostics.delivery24h.sentToProvider} · in-app {diagnostics.delivery24h.shownInApp} · failed {diagnostics.delivery24h.providerFailures} · removed {diagnostics.delivery24h.subscriptionsRemoved}
+              {diagnostics.delivery1h.providerFailures > 0 && (
+                <span className="text-red-500 dark:text-red-400"> · 1h failures: {diagnostics.delivery1h.providerFailures}</span>
+              )}
+            </div>
+            {diagnostics.recentFailures.length > 0 && (
+              <details className="text-slate-500 dark:text-slate-400">
+                <summary className="cursor-pointer">recent failures ({diagnostics.recentFailures.length})</summary>
+                <ul className="mt-1 ml-3 space-y-0.5">
+                  {diagnostics.recentFailures.slice(0, 5).map((f) => (
+                    <li key={f._id} className="font-mono text-[10px]">
+                      {new Date(f.createdAt).toLocaleTimeString()} · {f.providerStatusCode ?? '—'} · {f.error?.slice(0, 80) || f.jobName}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         )}
         {/* "All caught up" banner */}
