@@ -273,7 +273,11 @@ export const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
   role: z.enum(['admin', 'user']).optional(),
-  status: z.enum(['active', 'inactive']).optional(),
+  // PR7b: account status (active/suspended/banned) is mutated only via the
+  // dedicated /api/admin/users/:id/{suspend,ban,activate} endpoints, which
+  // also bump tokenVersion + revoke refresh tokens and write AdminAuditLog
+  // rows. Accepting `status` here would let an admin flip lifecycle state
+  // through the generic PUT path with none of those guarantees.
   preferences: z.object({
     interestedCategories: z.array(z.string())
   }).optional(),

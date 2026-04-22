@@ -19,6 +19,10 @@ import {
 } from '../services/disclaimerConfigService.js';
 import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { getLogger } from '../utils/logger.js';
+import { auditAdminAction } from '../utils/auditAdminAction.js';
+import { revokeAllRefreshTokens } from '../services/tokenService.js';
+import type { AdminAction } from '../models/AdminAuditLog.js';
+import type { UserStatus } from '../models/User.js';
 
 const updateMediaLimitsSchema = z.object({
   maxFilesPerUser: z.number().int().min(1).max(100000).optional(),
@@ -30,6 +34,12 @@ const updateDisclaimerSchema = z.object({
   defaultText: z.string().min(1, 'Disclaimer text is required').max(500, 'Disclaimer text too long').optional(),
   enableByDefault: z.boolean().optional()
 });
+
+// Optional `reason` body for lifecycle endpoints. Free-text is captured in the
+// audit metadata; we cap length so a typo can't bloat the audit collection.
+const lifecycleBodySchema = z.object({
+  reason: z.string().max(500).optional()
+}).strict().optional();
 
 // Short-lived cache to avoid hammering the database
 // Cache up to 10 entries for 2 minutes each
@@ -477,3 +487,225 @@ export async function updateDisclaimerSettings(req: AdminRequest, res: Response)
   }
 }
 
+// ============================================================================
+// Account lifecycle (suspend / ban / activate / revoke-sessions)
+// ----------------------------------------------------------------------------
+// These endpoints are the SOLE write path for `User.status` — the PUT user
+// schema deliberately omits the field so every status transition is forced
+// through here and audited. Suspend and ban additionally bump tokenVersion
+// and revoke refresh tokens so live sessions die immediately, not at the
+// next access-token TTL. Activate intentionally does NOT bump tokenVersion:
+// the user was already locked out by the suspend/ban transition, so they
+// have to reauthenticate anyway and a second bump would just invalidate
+// the fresh tokens of any admin tooling already inspecting the account.
+// ============================================================================
+
+type LifecycleVerb = 'suspend' | 'ban' | 'activate';
+
+const LIFECYCLE_TARGET_STATUS: Record<LifecycleVerb, UserStatus> = {
+  suspend: 'suspended',
+  ban: 'banned',
+  activate: 'active'
+};
+
+const LIFECYCLE_AUDIT_ACTION: Record<LifecycleVerb, AdminAction> = {
+  suspend: 'SUSPEND_USER',
+  ban: 'BAN_USER',
+  activate: 'ACTIVATE_USER'
+};
+
+/**
+ * Shared body for the three status-mutating endpoints.
+ */
+async function applyLifecycle(
+  verb: LifecycleVerb,
+  req: AdminRequest,
+  res: Response
+): Promise<Response> {
+  const adminId = req.userId;
+  const targetUserId = req.params.userId;
+
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+  if (!targetUserId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+  // Self-action prevention: an admin can lock themselves out by suspending or
+  // banning their own account, and "activate self" is meaningless. Force the
+  // admin to use a peer admin so there's always a second pair of eyes on the
+  // mutation.
+  if (adminId === targetUserId) {
+    return res.status(400).json({
+      message: 'Admins cannot change their own account status',
+      code: 'CANNOT_MUTATE_SELF'
+    });
+  }
+
+  const parsed = lifecycleBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: 'Invalid request',
+      errors: parsed.error.flatten().fieldErrors
+    });
+  }
+  const reason = parsed.data?.reason;
+  const targetStatus = LIFECYCLE_TARGET_STATUS[verb];
+
+  try {
+    const user = await User.findById(targetUserId).select('role status auth.email profile.username');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const previousStatus: UserStatus = (user.status ?? 'active') as UserStatus;
+    const wasAlreadyInState = previousStatus === targetStatus;
+
+    // Bump tokenVersion + revoke refresh tokens only on transitions that
+    // actually take privileges away (suspend, ban). Activate is recovery —
+    // see the header comment for why we don't bump on it.
+    const shouldRevokeSessions =
+      !wasAlreadyInState && (verb === 'suspend' || verb === 'ban');
+
+    const updateOp: Record<string, unknown> = { $set: { status: targetStatus } };
+    if (shouldRevokeSessions) {
+      updateOp.$inc = { tokenVersion: 1 };
+    }
+
+    await User.findByIdAndUpdate(targetUserId, updateOp, { runValidators: true });
+
+    if (shouldRevokeSessions) {
+      try {
+        await revokeAllRefreshTokens(targetUserId);
+      } catch (revokeErr) {
+        // Non-fatal: tokenVersion enforcement still kills access tokens.
+        // Log so a Redis outage during a security event is visible.
+        getLogger().warn({
+          msg: '[Lifecycle] Failed to revoke refresh tokens after status change',
+          targetUserId,
+          verb,
+          err: revokeErr instanceof Error ? { message: revokeErr.message, name: revokeErr.name } : { message: String(revokeErr) }
+        });
+      }
+    }
+
+    await auditAdminAction(req, {
+      action: LIFECYCLE_AUDIT_ACTION[verb],
+      targetType: 'user',
+      targetId: targetUserId,
+      previousValue: { status: previousStatus },
+      newValue: { status: targetStatus },
+      reason,
+      metadata: {
+        targetEmail: user.auth?.email,
+        targetUsername: user.profile?.username,
+        wasAlreadyInState,
+        sessionsRevoked: shouldRevokeSessions
+      }
+    });
+
+    return res.json({
+      message: wasAlreadyInState
+        ? `User was already ${targetStatus}`
+        : `User ${targetStatus}`,
+      status: targetStatus,
+      sessionsRevoked: shouldRevokeSessions
+    });
+  } catch (error) {
+    getLogger().error({ err: error, adminId, targetUserId, verb }, 'Failed to change user status');
+    return res.status(500).json({ message: `Failed to ${verb} user` });
+  }
+}
+
+export async function suspendUser(req: AdminRequest, res: Response) {
+  return applyLifecycle('suspend', req, res);
+}
+
+export async function banUser(req: AdminRequest, res: Response) {
+  return applyLifecycle('ban', req, res);
+}
+
+export async function activateUser(req: AdminRequest, res: Response) {
+  return applyLifecycle('activate', req, res);
+}
+
+/**
+ * POST /api/admin/users/:userId/revoke-sessions
+ *
+ * Force-logs the user out everywhere by bumping tokenVersion (kills every
+ * access token the next time it's presented, immediately when
+ * ENFORCE_TOKEN_VERSION=true) and clearing every refresh token in Redis.
+ * Status is unchanged — use suspend/ban to also block re-login.
+ */
+export async function revokeUserSessions(req: AdminRequest, res: Response) {
+  const adminId = req.userId;
+  const targetUserId = req.params.userId;
+
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+  if (!targetUserId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+  if (adminId === targetUserId) {
+    return res.status(400).json({
+      message: 'Admins cannot revoke their own sessions through this endpoint',
+      code: 'CANNOT_MUTATE_SELF'
+    });
+  }
+
+  const parsed = lifecycleBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: 'Invalid request',
+      errors: parsed.error.flatten().fieldErrors
+    });
+  }
+  const reason = parsed.data?.reason;
+
+  try {
+    const user = await User.findByIdAndUpdate(
+      targetUserId,
+      { $inc: { tokenVersion: 1 } },
+      { new: true }
+    ).select('tokenVersion auth.email profile.username');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    let sessionsRevoked = true;
+    try {
+      await revokeAllRefreshTokens(targetUserId);
+    } catch (revokeErr) {
+      sessionsRevoked = false;
+      getLogger().warn({
+        msg: '[Lifecycle] Failed to revoke refresh tokens during explicit revoke-sessions',
+        targetUserId,
+        err: revokeErr instanceof Error ? { message: revokeErr.message, name: revokeErr.name } : { message: String(revokeErr) }
+      });
+    }
+
+    await auditAdminAction(req, {
+      action: 'REVOKE_SESSIONS',
+      targetType: 'user',
+      targetId: targetUserId,
+      newValue: { tokenVersion: user.tokenVersion },
+      reason,
+      metadata: {
+        targetEmail: user.auth?.email,
+        targetUsername: user.profile?.username,
+        refreshTokensRevoked: sessionsRevoked
+      }
+    });
+
+    return res.json({
+      message: 'Sessions revoked',
+      tokenVersion: user.tokenVersion,
+      refreshTokensRevoked: sessionsRevoked
+    });
+  } catch (error) {
+    getLogger().error({ err: error, adminId, targetUserId }, 'Failed to revoke user sessions');
+    return res.status(500).json({ message: 'Failed to revoke sessions' });
+  }
+}

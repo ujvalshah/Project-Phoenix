@@ -249,6 +249,29 @@ export const login = async (req: Request, res: Response) => {
       return sendUnauthorizedError(res, LOGIN_FAILURE_MSG);
     }
 
+    // Account-status gate (PR7b): suspended/banned users authenticate
+    // successfully (the password is right) but are denied a session. We check
+    // AFTER the password check so we can't be used as a probe — an attacker
+    // without the password gets the same generic failure either way. Failed
+    // attempts are NOT cleared here, so a banned account stays in its lockout
+    // bucket if password attempts continue.
+    const userStatus = (user as { status?: string }).status ?? 'active';
+    if (userStatus === 'suspended' || userStatus === 'banned') {
+      requestLogger.warn({
+        msg: 'Login blocked - account not active',
+        userId: user._id.toString(),
+        status: userStatus,
+        email: email.substring(0, 3) + '***'
+      });
+      return res.status(403).json({
+        error: true,
+        message: userStatus === 'banned'
+          ? 'This account has been banned.'
+          : 'This account has been suspended.',
+        code: userStatus === 'banned' ? 'ACCOUNT_BANNED' : 'ACCOUNT_SUSPENDED'
+      });
+    }
+
     // Successful login - clear failed attempts
     await clearFailedLogins(email);
 

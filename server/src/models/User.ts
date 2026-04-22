@@ -64,9 +64,20 @@ export interface IUserAppState {
   featureFlags?: Record<string, boolean>;
 }
 
+export type UserStatus = 'active' | 'suspended' | 'banned';
+
 export interface IUser extends Document {
   role: 'admin' | 'user';
   password?: string; // Hashed password (not selected by default)
+  /**
+   * Account lifecycle state, mutated only by the audited admin endpoints
+   * (POST /api/admin/users/:id/{suspend,ban,activate}). 'suspended' is
+   * reversible; 'banned' is intended to be permanent. Both block new logins
+   * and (via tokenVersion bump on transition) invalidate any live access
+   * token. Missing/undefined is coerced to 'active' so pre-migration users
+   * stay loggable.
+   */
+  status?: UserStatus;
   /**
    * Monotonically increasing counter bumped whenever every live access token
    * for this user must be invalidated immediately (role change, email change,
@@ -158,6 +169,9 @@ const UserSchema = new Schema<IUser>({
     type: String,
     select: false // Don't include password in queries by default
   },
+  // See IUser.status. Default 'active'; pre-migration docs without the field
+  // are coerced to 'active' on read by the login gate.
+  status: { type: String, enum: ['active', 'suspended', 'banned'], default: 'active', index: true },
   // See IUser.tokenVersion. Default 0; absent fields are coerced to 0 in the
   // middleware comparison so existing pre-migration tokens still validate.
   tokenVersion: { type: Number, default: 0 },
