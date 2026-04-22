@@ -16,7 +16,7 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // GET /api/admin/stats
-router.get('/stats', authenticateToken, getAdminStats);
+router.get('/stats', authenticateToken, requireAdminRole, getAdminStats);
 
 // PATCH /api/admin/users/:userId/verify-email - Manually verify a user's email
 router.patch('/users/:userId/verify-email', authenticateToken, requireAdminRole, verifyUserEmail);

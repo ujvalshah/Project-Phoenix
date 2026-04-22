@@ -8,6 +8,7 @@ import { resolveTagNamesToIds } from '../utils/tagHelpers.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import { accessUserMutation } from '../utils/userAccess.js';
+import { auditAdminAction } from '../utils/auditAdminAction.js';
 
 export const getUsers = async (req: Request, res: Response) => {
   try {
@@ -140,6 +141,14 @@ export const updateUser = async (req: Request, res: Response) => {
 
     const userId = targetUserId;
 
+    // For admin-on-other mutations we need a snapshot of the prior user state
+    // so the audit log can record before/after. Self-edits don't need this —
+    // they're not admin actions and don't go to AdminAuditLog.
+    const isAdminOnOther = authRole === 'admin' && authUserId !== targetUserId;
+    const priorUser = isAdminOnOther
+      ? await User.findById(userId).select('role auth.email profile.displayName profile.username')
+      : null;
+
     // Check for email uniqueness if email is being updated
     if (updateData.email) {
       const normalizedEmail = updateData.email.toLowerCase();
@@ -251,8 +260,68 @@ export const updateUser = async (req: Request, res: Response) => {
       { $set: updateObj },
       { new: true, runValidators: true }
     ).select('-password');
-    
+
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Audit admin-on-other mutations. Two events because the AdminAuditLog
+    // enum splits role and profile actions, and an admin doing both in one
+    // request should leave both rows for the security timeline.
+    if (isAdminOnOther && priorUser) {
+      const roleChanged =
+        updateData.role !== undefined && priorUser.role !== user.role;
+
+      const profileFieldDiff: Record<string, { from: unknown; to: unknown }> = {};
+      if (
+        updateData.email !== undefined &&
+        priorUser.auth?.email !== user.auth?.email
+      ) {
+        profileFieldDiff.email = { from: priorUser.auth?.email, to: user.auth?.email };
+      }
+      if (
+        (updateData.name !== undefined || (updateData.profile as { displayName?: string } | undefined)?.displayName !== undefined) &&
+        priorUser.profile?.displayName !== user.profile?.displayName
+      ) {
+        profileFieldDiff.displayName = {
+          from: priorUser.profile?.displayName,
+          to: user.profile?.displayName,
+        };
+      }
+      if (
+        updateData.profile?.username !== undefined &&
+        priorUser.profile?.username !== user.profile?.username
+      ) {
+        profileFieldDiff.username = {
+          from: priorUser.profile?.username,
+          to: user.profile?.username,
+        };
+      }
+
+      if (roleChanged) {
+        await auditAdminAction(req, {
+          action: 'UPDATE_USER_ROLE',
+          targetType: 'user',
+          targetId: userId,
+          previousValue: { role: priorUser.role },
+          newValue: { role: user.role },
+          metadata: { targetEmail: user.auth?.email },
+        });
+      }
+      if (Object.keys(profileFieldDiff).length > 0) {
+        await auditAdminAction(req, {
+          action: 'UPDATE_USER_PROFILE',
+          targetType: 'user',
+          targetId: userId,
+          previousValue: Object.fromEntries(
+            Object.entries(profileFieldDiff).map(([k, v]) => [k, v.from])
+          ),
+          newValue: Object.fromEntries(
+            Object.entries(profileFieldDiff).map(([k, v]) => [k, v.to])
+          ),
+          metadata: { changedFields: Object.keys(profileFieldDiff) },
+        });
+      }
+    }
+
     res.json(normalizeDoc(user));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -294,7 +363,8 @@ export const deleteUser = async (req: Request, res: Response) => {
   try {
     const authUserId = (req as { user?: { userId?: string; role?: string } }).user?.userId;
     const authRole = (req as { user?: { userId?: string; role?: string } }).user?.role;
-    const access = accessUserMutation(authUserId, authRole, req.params.id);
+    const targetUserId = req.params.id;
+    const access = accessUserMutation(authUserId, authRole, targetUserId);
     if (access === 'unauthenticated') {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -302,8 +372,25 @@ export const deleteUser = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'You can only delete your own account' });
     }
 
-    const user = await User.findByIdAndDelete(req.params.id);
+    const isAdminOnOther = authRole === 'admin' && authUserId !== targetUserId;
+
+    const user = await User.findByIdAndDelete(targetUserId);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (isAdminOnOther) {
+      await auditAdminAction(req, {
+        action: 'DELETE_USER',
+        targetType: 'user',
+        targetId: targetUserId,
+        previousValue: {
+          email: user.auth?.email,
+          username: user.profile?.username,
+          displayName: user.profile?.displayName,
+          role: user.role,
+        },
+      });
+    }
+
     res.status(204).send();
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -323,8 +410,23 @@ export const deleteUser = async (req: Request, res: Response) => {
 export const getPersonalizedFeed = async (req: Request, res: Response) => {
   try {
     const userId = req.params.id;
+
+    // Authz: only the owner or an admin may read another user's personalized
+    // feed. Without this any authenticated user could enumerate another
+    // user's interest tags AND forge their `appState.lastLoginAt` (which
+    // corrupts dormancy and security-event signals).
+    const authUserId = (req as { user?: { userId?: string; role?: string } }).user?.userId;
+    const authRole = (req as { user?: { userId?: string; role?: string } }).user?.role;
+    const access = accessUserMutation(authUserId, authRole, userId);
+    if (access === 'unauthenticated') {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    if (access === 'forbid') {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
     const user = await User.findById(userId);
-    
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -362,12 +464,16 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
     };
     const newCount = await Article.countDocuments(countQuery);
 
-    // Update last feed visit using findByIdAndUpdate (atomic operation)
-    await User.findByIdAndUpdate(
-      userId,
-      { $set: { 'appState.lastLoginAt': new Date().toISOString() } },
-      { new: false } // Don't need to return updated document
-    );
+    // Only the owner's own feed read advances lastLoginAt. Admin reads of
+    // another user's feed are observation-only — overwriting lastLoginAt
+    // there would silently mask user dormancy.
+    if (authUserId === userId) {
+      await User.findByIdAndUpdate(
+        userId,
+        { $set: { 'appState.lastLoginAt': new Date().toISOString() } },
+        { new: false } // Don't need to return updated document
+      );
+    }
 
     res.json({
       articles: await normalizeArticleDocs(articles),

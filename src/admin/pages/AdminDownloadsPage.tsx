@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Download, Save, Check } from 'lucide-react';
+import { Download, Save } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { useAdminHeader } from '../layout/AdminLayout';
 
@@ -17,8 +17,11 @@ export const AdminDownloadsPage: React.FC = () => {
   const userCols = ['id', 'name', 'email', 'role', 'status', 'joinedAt', 'nuggets_count'];
   const nuggetCols = ['id', 'title', 'author', 'visibility', 'createdAt', 'reports_count'];
 
+  // Backend export endpoints (POST /api/admin/users/export, GET /api/admin/exports/:jobId)
+  // are not implemented yet — see plan P2.5. Until then the download button is
+  // disabled to avoid the misleading "Downloading…" toast that produced no file.
   const handleDownload = () => {
-      toast.success(`Downloading ${entity} report...`);
+    toast.info('Data export is not available yet.');
   };
 
   const toggleCol = (c: string) => {
@@ -53,7 +56,12 @@ export const AdminDownloadsPage: React.FC = () => {
               <button className="flex items-center gap-2 text-slate-500 font-bold text-sm hover:text-slate-800">
                   <Save size={16} /> Save Template
               </button>
-              <button onClick={handleDownload} disabled={selectedColumns.length === 0} className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm hover:opacity-90 disabled:opacity-50">
+              <button
+                onClick={handleDownload}
+                disabled
+                title="Data export is not available yet."
+                className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm opacity-50 cursor-not-allowed"
+              >
                   <Download size={16} /> Download CSV
               </button>
           </div>
