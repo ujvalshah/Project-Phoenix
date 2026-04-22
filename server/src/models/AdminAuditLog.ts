@@ -11,7 +11,9 @@ export type AdminAction =
   | 'VERIFY_USER_EMAIL'
   | 'UPDATE_USER_ROLE'
   | 'SUSPEND_USER'
+  | 'BAN_USER'
   | 'ACTIVATE_USER'
+  | 'REVOKE_SESSIONS'
   | 'DELETE_USER'
   | 'UPDATE_USER_PROFILE'
   | 'RESET_USER_PASSWORD'
@@ -43,7 +45,9 @@ const AdminAuditLogSchema = new Schema<IAdminAuditLog>({
       'VERIFY_USER_EMAIL',
       'UPDATE_USER_ROLE',
       'SUSPEND_USER',
+      'BAN_USER',
       'ACTIVATE_USER',
+      'REVOKE_SESSIONS',
       'DELETE_USER',
       'UPDATE_USER_PROFILE',
       'RESET_USER_PASSWORD',

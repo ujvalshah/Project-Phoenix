@@ -256,8 +256,10 @@ export const login = async (req: Request, res: Response) => {
     user.appState.lastLoginAt = new Date().toISOString();
     await user.save();
 
-    // Generate tokens
-    const accessToken = generateAccessToken(user._id.toString(), user.role, user.auth.email);
+    // Generate tokens — embed current tokenVersion so future bumps invalidate
+    // this token. Old tokens (issued before the field existed) compare via
+    // `?? 0` coercion in authenticateToken.
+    const accessToken = generateAccessToken(user._id.toString(), user.role, user.auth.email, user.tokenVersion ?? 0);
 
     // Generate and store refresh token (if token service available)
     let refreshToken: string | undefined;
@@ -440,8 +442,8 @@ export const signup = async (req: Request, res: Response) => {
       });
     }
 
-    // Generate tokens
-    const accessToken = generateAccessToken(newUser._id.toString(), newUser.role, newUser.auth.email);
+    // Generate tokens — see login flow comment about tokenVersion.
+    const accessToken = generateAccessToken(newUser._id.toString(), newUser.role, newUser.auth.email, newUser.tokenVersion ?? 0);
 
     // Generate and store refresh token (if token service available)
     let refreshToken: string | undefined;
@@ -534,7 +536,7 @@ export const signup = async (req: Request, res: Response) => {
             appState: { onboardingCompleted: retryData.onboarding?.completed ?? false }
           });
           await retryUser.save();
-          const accessToken = generateAccessToken(retryUser._id.toString(), retryUser.role, retryUser.auth.email);
+          const accessToken = generateAccessToken(retryUser._id.toString(), retryUser.role, retryUser.auth.email, retryUser.tokenVersion ?? 0);
           let refreshToken: string | undefined;
           if (isTokenServiceAvailable()) {
             refreshToken = generateRefreshToken();
@@ -893,13 +895,13 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     requestLogger.debug({ msg: 'Token rotation successful', userId });
 
     // Fetch user to generate new access token
-    const user = await User.findById(userId).select('role auth.email');
+    const user = await User.findById(userId).select('role auth.email tokenVersion');
     if (!user) {
       return sendNotFoundError(res, 'User not found');
     }
 
-    // Generate new access token
-    const accessToken = generateAccessToken(user._id.toString(), user.role, user.auth.email);
+    // Generate new access token (carries current tokenVersion).
+    const accessToken = generateAccessToken(user._id.toString(), user.role, user.auth.email, user.tokenVersion ?? 0);
 
     requestLogger.info({ msg: 'Token refreshed successfully', userId });
 
@@ -1221,10 +1223,15 @@ export const resetPassword = async (req: Request, res: Response) => {
     // Hash new password (12 rounds for security)
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Update password
+    // Update password and bump tokenVersion. Bumping invalidates every live
+    // access token for this user (refresh tokens are revoked separately
+    // below) — without this, access tokens minted before the reset stay
+    // valid until their 15-min TTL, leaving a window where a stolen access
+    // token still works after the password was changed.
     user.password = hashedPassword;
     user.security.lastPasswordChangeAt = new Date().toISOString();
     user.auth.updatedAt = new Date().toISOString();
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
 
     // Revoke all refresh tokens (force re-login on all devices)

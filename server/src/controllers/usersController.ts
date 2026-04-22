@@ -9,6 +9,10 @@ import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import { accessUserMutation } from '../utils/userAccess.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
+import { revokeAllRefreshTokens } from '../services/tokenService.js';
+import { sendVerificationEmail, sendEmailChangedNoticeEmail } from '../services/emailService.js';
+import { generateEmailVerificationToken } from '../utils/jwt.js';
+import { getEnv } from '../config/envValidation.js';
 
 export const getUsers = async (req: Request, res: Response) => {
   try {
@@ -141,12 +145,14 @@ export const updateUser = async (req: Request, res: Response) => {
 
     const userId = targetUserId;
 
-    // For admin-on-other mutations we need a snapshot of the prior user state
-    // so the audit log can record before/after. Self-edits don't need this —
-    // they're not admin actions and don't go to AdminAuditLog.
+    // Load a snapshot of the prior user state when we'll need it: either to
+    // populate AdminAuditLog before/after diffs (admin-on-other) OR to
+    // decide whether the requested email is actually a change (any caller).
+    // Self-edits without an email change skip the read.
     const isAdminOnOther = authRole === 'admin' && authUserId !== targetUserId;
-    const priorUser = isAdminOnOther
-      ? await User.findById(userId).select('role auth.email profile.displayName profile.username')
+    const needPriorSnapshot = isAdminOnOther || updateData.email !== undefined;
+    const priorUser = needPriorSnapshot
+      ? await User.findById(userId).select('role auth.email auth.emailVerified profile.displayName profile.username tokenVersion')
       : null;
 
     // Check for email uniqueness if email is being updated
@@ -188,13 +194,41 @@ export const updateUser = async (req: Request, res: Response) => {
     if (updateData.name) {
       updateObj['profile.displayName'] = updateData.name;
     }
+    // Email change semantics (PR6):
+    // - Treat case-only differences as no-op (auth.email is stored lowercase).
+    // - On a real change, drop emailVerified back to false so the new address
+    //   has to prove ownership before it's trusted again. Without this, a
+    //   compromised account could be retargeted to an attacker-controlled
+    //   address while keeping the verified flag.
+    // - tokenVersion is bumped so any access token still encoding the OLD
+    //   email payload claim cannot ride past the change.
+    let emailChanged = false;
     if (updateData.email) {
-      updateObj['auth.email'] = updateData.email.toLowerCase();
+      const normalizedNewEmail = updateData.email.toLowerCase();
+      emailChanged = !!priorUser && priorUser.auth?.email !== normalizedNewEmail;
+      updateObj['auth.email'] = normalizedNewEmail;
       updateObj['auth.updatedAt'] = new Date().toISOString();
+      if (emailChanged) {
+        updateObj['auth.emailVerified'] = false;
+      }
     }
     if (updateData.role !== undefined) {
       updateObj.role = updateData.role;
     }
+    // Bump tokenVersion (and revoke refresh tokens after save) whenever the
+    // request meaningfully changes a security-relevant fact about the user:
+    //   - admin demotion/promotion (role change, admin-on-other only)
+    //   - email change (anyone — self or admin-on-other; the new address
+    //     hasn't been re-verified, so any token still encoding the old
+    //     email claim must die)
+    // Tracked as a boolean so the $inc is applied at the Mongo update site
+    // rather than being accidentally nested inside $set.
+    const roleChanged =
+      isAdminOnOther &&
+      updateData.role !== undefined &&
+      priorUser !== null &&
+      priorUser.role !== updateData.role;
+    const bumpTokenVersion = roleChanged || emailChanged;
     if (updateData.preferences) {
       updateObj['preferences.interestedCategories'] = updateData.preferences.interestedCategories;
     }
@@ -255,13 +289,72 @@ export const updateUser = async (req: Request, res: Response) => {
       });
     }
     
+    const updateOp: Record<string, unknown> = { $set: updateObj };
+    if (bumpTokenVersion) {
+      updateOp.$inc = { tokenVersion: 1 };
+    }
+
     const user = await User.findByIdAndUpdate(
       userId,
-      { $set: updateObj },
+      updateOp,
       { new: true, runValidators: true }
     ).select('-password');
 
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // A bumped tokenVersion invalidates every live access token for this
+    // user. Refresh tokens live in Redis and don't carry tokenVersion, so
+    // revoke them too — otherwise the very next /auth/refresh would mint a
+    // fresh access token for the now-stale role/email.
+    if (bumpTokenVersion) {
+      try {
+        await revokeAllRefreshTokens(targetUserId);
+      } catch (revokeErr) {
+        // Non-fatal: tokenVersion enforcement still revokes access tokens.
+        // Log so we can see Redis-related coverage gaps.
+        const requestLogger = createRequestLogger(req.id || 'unknown', authUserId, req.path);
+        requestLogger.warn({
+          msg: '[TokenVersion] Failed to revoke refresh tokens after security-relevant update',
+          targetUserId,
+          roleChanged,
+          emailChanged,
+          err: revokeErr instanceof Error ? { message: revokeErr.message, name: revokeErr.name } : { message: String(revokeErr) },
+        });
+      }
+    }
+
+    // Email change side-effects (PR6): fire-and-forget verification to the
+    // new address and a notice to the old one. Failures here MUST NOT undo
+    // the email change — the user can re-request verification later, and
+    // the change is already audit-logged below. We log delivery failures
+    // explicitly so SMTP outages are visible rather than swallowed.
+    if (emailChanged && priorUser) {
+      const newEmail = updateObj['auth.email'] as string;
+      const oldEmail = priorUser.auth?.email;
+      const baseUrl = getEnv().FRONTEND_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+      const verificationToken = generateEmailVerificationToken(targetUserId, newEmail);
+      const verificationUrl = `${baseUrl.replace(/\/$/, '')}/verify-email?token=${encodeURIComponent(verificationToken)}`;
+
+      void sendVerificationEmail(newEmail, verificationUrl).catch((err: Error) => {
+        const requestLogger = createRequestLogger(req.id || 'unknown', authUserId, req.path);
+        requestLogger.warn({
+          msg: 'Failed to send post-change verification email to new address',
+          targetUserId,
+          err: { message: err.message, name: err.name },
+        });
+      });
+
+      if (oldEmail && oldEmail !== newEmail) {
+        void sendEmailChangedNoticeEmail(oldEmail, { newEmail }).catch((err: Error) => {
+          const requestLogger = createRequestLogger(req.id || 'unknown', authUserId, req.path);
+          requestLogger.warn({
+            msg: 'Failed to send change-notice email to old address',
+            targetUserId,
+            err: { message: err.message, name: err.name },
+          });
+        });
+      }
+    }
 
     // Audit admin-on-other mutations. Two events because the AdminAuditLog
     // enum splits role and profile actions, and an admin doing both in one
@@ -376,6 +469,23 @@ export const deleteUser = async (req: Request, res: Response) => {
 
     const user = await User.findByIdAndDelete(targetUserId);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Refresh tokens live in Redis keyed by userId. The User document is now
+    // gone, but the refresh tokens would still rotate into fresh access
+    // tokens until their TTL expires — revoke them explicitly. Once PR7
+    // converts this to soft delete, the tokenVersion bump will cover access
+    // tokens too; for now (hard delete), there's no DB row left to bump
+    // against, but we still want refresh tokens dead.
+    try {
+      await revokeAllRefreshTokens(targetUserId);
+    } catch (revokeErr) {
+      const requestLogger = createRequestLogger(req.id || 'unknown', authUserId, req.path);
+      requestLogger.warn({
+        msg: '[TokenVersion] Failed to revoke refresh tokens after delete',
+        targetUserId,
+        err: revokeErr instanceof Error ? { message: revokeErr.message, name: revokeErr.name } : { message: String(revokeErr) },
+      });
+    }
 
     if (isAdminOnOther) {
       await auditAdminAction(req, {

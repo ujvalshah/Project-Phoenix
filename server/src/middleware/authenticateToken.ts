@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { isTokenBlacklisted } from '../services/tokenService.js';
+import { User } from '../models/User.js';
+import { getEnv } from '../config/envValidation.js';
 
 /**
  * Express middleware to authenticate JWT tokens
@@ -65,6 +67,53 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     }
 
     const decoded = verifyToken(token);
+
+    // tokenVersion check (PR5): a bumped tokenVersion immediately invalidates
+    // every live access token for the user. The check costs one read per
+    // authenticated request — acceptable for an observe-only rollout, can
+    // be Redis-cached later. Behind ENFORCE_TOKEN_VERSION (default false)
+    // so a bug in the comparison can't lock everyone out at deploy time.
+    try {
+      const userDoc = await User.findById(decoded.userId).select('tokenVersion');
+      if (userDoc) {
+        const tokenTv = decoded.tokenVersion ?? 0;
+        const userTv = userDoc.tokenVersion ?? 0;
+        if (tokenTv !== userTv) {
+          const enforce = getEnv().ENFORCE_TOKEN_VERSION;
+          if (enforce) {
+            requestLogger.warn({
+              msg: '[TokenVersion] Rejecting request: tokenVersion mismatch',
+              userId: decoded.userId,
+              tokenTv,
+              userTv,
+            });
+            return res.status(401).json({
+              error: true,
+              message: 'Session has been revoked. Please sign in again.',
+              code: 'SESSION_REVOKED',
+            });
+          }
+          // Observe-only: log and continue. Treat as a tripwire while we
+          // confirm freshly-minted tokens carry the right value.
+          requestLogger.warn({
+            msg: '[TokenVersion] (observe-only) tokenVersion mismatch — would reject if ENFORCE_TOKEN_VERSION=true',
+            userId: decoded.userId,
+            tokenTv,
+            userTv,
+          });
+        }
+      }
+    } catch (lookupErr) {
+      // A failed lookup must not prevent auth in observe-only mode and
+      // must not become a covert lockout in enforced mode. Log and let the
+      // request through — the underlying issue (DB outage) is louder.
+      requestLogger.warn({
+        msg: '[TokenVersion] Failed to load user for version check; allowing request',
+        userId: decoded.userId,
+        err: lookupErr instanceof Error ? { name: lookupErr.name, message: lookupErr.message } : { message: String(lookupErr) },
+      });
+    }
+
     (req as any).user = decoded;
     (req as any).token = token; // Store token for logout blacklisting
     next();

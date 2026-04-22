@@ -23,6 +23,14 @@ export interface JWTPayload {
   userId: string;
   role: string;
   email?: string;
+  /**
+   * User's tokenVersion at the moment this token was minted. Compared
+   * against `User.tokenVersion` in `authenticateToken`; mismatches are
+   * rejected as `SESSION_REVOKED` when ENFORCE_TOKEN_VERSION=true. Older
+   * tokens issued before this field existed will have it as undefined and
+   * are coerced to 0 during comparison.
+   */
+  tokenVersion?: number;
   type?: 'access' | 'refresh'; // Token type for validation
   iat?: number; // Issued at
   exp?: number; // Expiration
@@ -61,7 +69,8 @@ function getJwtSecret(): string {
 export function generateAccessToken(
   userId: string,
   role: string,
-  email?: string
+  email?: string,
+  tokenVersion?: number
 ): string {
   const payload: JWTPayload = {
     userId,
@@ -71,6 +80,9 @@ export function generateAccessToken(
 
   if (email) {
     payload.email = email;
+  }
+  if (tokenVersion !== undefined) {
+    payload.tokenVersion = tokenVersion;
   }
 
   const secret = deriveKey('access');
@@ -96,7 +108,8 @@ export function generateToken(
   userId: string,
   role: string,
   email?: string,
-  expiresIn: string = TOKEN_CONFIG.ACCESS_TOKEN_EXPIRY
+  expiresIn: string = TOKEN_CONFIG.ACCESS_TOKEN_EXPIRY,
+  tokenVersion?: number
 ): string {
   const payload: JWTPayload = {
     userId,
@@ -107,6 +120,9 @@ export function generateToken(
   // Include email if provided (for backward compatibility)
   if (email) {
     payload.email = email;
+  }
+  if (tokenVersion !== undefined) {
+    payload.tokenVersion = tokenVersion;
   }
 
   const secret = deriveKey('access');

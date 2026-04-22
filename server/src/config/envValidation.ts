@@ -62,6 +62,17 @@ const envSchema = z.object({
   // false (fail-open) so dev and single-node deploys stay available.
   STRICT_TOKEN_REVOCATION: z.string().transform((val) => val === 'true').optional().default('false'),
 
+  // When true, a JWT is rejected (401 SESSION_REVOKED) if its embedded
+  // `tokenVersion` does not match the user's current `tokenVersion` in the
+  // database. Bumping `tokenVersion` (on role/email/password change, on
+  // suspend/ban/delete, or on explicit admin revoke-sessions) immediately
+  // invalidates every live access token for that user.
+  //
+  // Defaults to false (observe-only): mismatches are logged but the request
+  // proceeds. After one access-token TTL window has elapsed since rollout
+  // (so all in-flight tokens encode the new field) flip this to true.
+  ENFORCE_TOKEN_VERSION: z.string().transform((val) => val === 'true').optional().default('false'),
+
   // Web Push / VAPID (optional – notifications disabled if not set)
   VAPID_PUBLIC_KEY: z.string().min(1).optional(),
   VAPID_PRIVATE_KEY: z.string().min(1).optional(),

@@ -73,6 +73,41 @@ export async function sendAccountExistsEmail(to: string, loginUrl: string): Prom
   });
 }
 
+/**
+ * Notify the *old* email address that the account email was changed. Gives
+ * the rightful owner a chance to react if the change was unauthorized
+ * (the new address gets the verification email; the old address gets this).
+ * No-op if RESEND_API_KEY is not set.
+ */
+export async function sendEmailChangedNoticeEmail(to: string, params: {
+  newEmail: string;
+  supportUrl?: string;
+}): Promise<void> {
+  if (!resendClient) {
+    if (process.env.NODE_ENV === 'development' && !RESEND_API_KEY) {
+      // eslint-disable-next-line no-console
+      console.warn('[emailService] RESEND_API_KEY not set; skipping email-changed notice.');
+    }
+    return;
+  }
+
+  const supportLine = params.supportUrl
+    ? `<p>If you didn't make this change, please <a href="${params.supportUrl}" style="color:#0ea5e9;text-decoration:underline;">contact support</a> immediately.</p>`
+    : `<p>If you didn't make this change, please contact support immediately.</p>`;
+
+  await resendClient.emails.send({
+    from: EMAIL_FROM,
+    to: [to],
+    subject: 'Your Nuggets account email was changed',
+    html: `
+      <p>The email address on your Nuggets account was just changed to <strong>${params.newEmail}</strong>.</p>
+      <p>If this was you, no further action is needed.</p>
+      ${supportLine}
+      <p>— The Nuggets team</p>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
   if (!resendClient) {
     if (process.env.NODE_ENV === 'development' && !RESEND_API_KEY) {

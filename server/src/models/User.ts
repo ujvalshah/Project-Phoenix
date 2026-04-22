@@ -67,6 +67,16 @@ export interface IUserAppState {
 export interface IUser extends Document {
   role: 'admin' | 'user';
   password?: string; // Hashed password (not selected by default)
+  /**
+   * Monotonically increasing counter bumped whenever every live access token
+   * for this user must be invalidated immediately (role change, email change,
+   * password reset, suspend/ban, soft delete, admin revoke-sessions). The
+   * value is embedded in newly-minted access tokens; `authenticateToken`
+   * compares the embedded value against the current DB value and rejects
+   * mismatches with `SESSION_REVOKED` when ENFORCE_TOKEN_VERSION is true.
+   * Defaults to 0; missing/undefined is treated as 0 to keep migration safe.
+   */
+  tokenVersion?: number;
   auth: IUserAuth;
   profile: IUserProfile;
   security: IUserSecurity;
@@ -144,10 +154,13 @@ const UserAppStateSchema = new Schema<IUserAppState>({
 // Main User schema
 const UserSchema = new Schema<IUser>({
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
-  password: { 
-    type: String, 
+  password: {
+    type: String,
     select: false // Don't include password in queries by default
   },
+  // See IUser.tokenVersion. Default 0; absent fields are coerced to 0 in the
+  // middleware comparison so existing pre-migration tokens still validate.
+  tokenVersion: { type: Number, default: 0 },
   auth: { type: UserAuthSchema, required: true },
   profile: { type: UserProfileSchema, required: true },
   security: { type: UserSecuritySchema, required: true },

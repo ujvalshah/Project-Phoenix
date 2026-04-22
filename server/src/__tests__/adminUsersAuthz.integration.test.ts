@@ -205,4 +205,66 @@ describe('Admin/Users authorization (PR2 + PR3)', () => {
     expect(logs[0].adminId).toBe(adminId);
     expect((logs[0].previousValue as { email?: string })?.email).toBe(targetEmailBefore);
   });
+
+  // ── PR6: email change re-verification + tokenVersion bump ──────────────
+
+  it('PUT /api/users/:id email change clears emailVerified and bumps tokenVersion', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const userId = await createUserDoc('user');
+    const userToken = generateAccessToken(userId, 'user');
+    const before = await User.findById(userId);
+    expect(before?.auth?.emailVerified).toBe(true);
+    expect(before?.tokenVersion ?? 0).toBe(0);
+
+    const newEmail = `tv-changed-${Date.now()}@route-test.local`;
+    const res = await request(app)
+      .put(`/api/users/${userId}`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ email: newEmail });
+
+    expect(res.status).toBe(200);
+
+    const after = await User.findById(userId);
+    expect(after?.auth?.email).toBe(newEmail);
+    expect(after?.auth?.emailVerified).toBe(false);
+    expect(after?.tokenVersion).toBe(1);
+  });
+
+  it('PUT /api/users/:id with same email is a no-op for verification + tokenVersion', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const userId = await createUserDoc('user');
+    const userToken = generateAccessToken(userId, 'user');
+    const before = await User.findById(userId);
+    const sameEmail = before?.auth?.email;
+
+    const res = await request(app)
+      .put(`/api/users/${userId}`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ email: sameEmail });
+
+    expect(res.status).toBe(200);
+
+    const after = await User.findById(userId);
+    expect(after?.auth?.emailVerified).toBe(true);
+    expect(after?.tokenVersion ?? 0).toBe(0);
+  });
+
+  it('PUT /api/users/:id email change is case-insensitive (Foo@x vs foo@x is no-op)', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const userId = await createUserDoc('user');
+    const userToken = generateAccessToken(userId, 'user');
+    const before = await User.findById(userId);
+    const upperEmail = (before?.auth?.email || '').toUpperCase();
+
+    const res = await request(app)
+      .put(`/api/users/${userId}`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ email: upperEmail });
+
+    expect(res.status).toBe(200);
+
+    const after = await User.findById(userId);
+    expect(after?.auth?.emailVerified).toBe(true);
+    expect(after?.tokenVersion ?? 0).toBe(0);
+  });
 });
