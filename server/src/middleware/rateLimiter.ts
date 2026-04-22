@@ -1,4 +1,5 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import type { Request } from 'express';
 import { RedisStore } from 'rate-limit-redis';
 import { getRedisClientOrFallback, isRedisAvailable } from '../utils/redisClient.js';
 
@@ -32,6 +33,7 @@ const passwordResetRedisStore = createRedisStore('rl:password-reset');
 const resendVerificationRedisStore = createRedisStore('rl:resend-verification');
 const unfurlRedisStore = createRedisStore('rl:unfurl');
 const aiRedisStore = createRedisStore('rl:ai');
+const adminMutationRedisStore = createRedisStore('rl:admin-mut');
 
 /**
  * Rate limiter for login endpoint
@@ -166,6 +168,49 @@ export const aiLimiter = rateLimit({
       retryAfter: Math.max(1, retryAfter),
     });
   }
+});
+
+/**
+ * Per-admin rate limiter for admin mutation endpoints (PR9 / P1.6).
+ *
+ * The risk being throttled here is "one admin (or one compromised admin
+ * account, or one buggy script) bursting through admin mutations." Keying
+ * by IP would lump all admins behind a corporate proxy or VPN into the
+ * same bucket, so we key by `req.user.userId` (set by authenticateToken).
+ *
+ * The limit — 30 mutations / minute / admin — is loose enough that real
+ * incident-response work (a wave of suspends after a spam outbreak) does
+ * not trip it, but tight enough that a runaway client cannot sweep the
+ * user base. Read-only admin endpoints (GET stats, GET settings) are NOT
+ * gated by this — they are not the abuse vector.
+ *
+ * MUST be chained AFTER authenticateToken + requireAdminRole so that
+ * `req.user.userId` is populated. The keyGenerator falls back to IPv6-safe
+ * IP keying if `req.user` is missing — that's a defense-in-depth path,
+ * not the expected one.
+ */
+export const adminMutationLimiter = rateLimit({
+  store: adminMutationRedisStore,
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request): string => {
+    const userId = (req as Request & { user?: { userId?: string } }).user?.userId;
+    if (userId) return `admin:${userId}`;
+    return ipKeyGenerator(req.ip ?? '');
+  },
+  handler: (req, res) => {
+    const resetTime = (req as Request & { rateLimit?: { resetTime?: Date | number } }).rateLimit?.resetTime;
+    const resetMs = resetTime instanceof Date ? resetTime.getTime() : (resetTime ?? Date.now() + 60000);
+    const retryAfter = Math.max(1, Math.ceil((resetMs - Date.now()) / 1000));
+    res.status(429).json({
+      error: true,
+      message: 'Too many admin actions. Please slow down and try again shortly.',
+      code: 'ADMIN_MUTATION_RATE_LIMITED',
+      retryAfter,
+    });
+  },
 });
 
 /**
