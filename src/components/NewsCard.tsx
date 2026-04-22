@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { buildLightboxSourceLinksForImageUrls } from '@/utils/masonryMediaHelper';
+import { getAllImageUrls } from '@/utils/mediaClassifier';
 
 interface NewsCardProps {
   article: Article;
@@ -73,7 +74,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
     const { logic, modals, refs, article: originalArticle, isOwner, isAdmin } = hookResult;
 
     const { lightboxImageUrls, lightboxSourceLinksPerImage } = useMemo(() => {
-      const urls = originalArticle.images ?? [];
+      const urls = getAllImageUrls(originalArticle);
       return {
         lightboxImageUrls: urls,
         lightboxSourceLinksPerImage: buildLightboxSourceLinksForImageUrls(originalArticle, urls),

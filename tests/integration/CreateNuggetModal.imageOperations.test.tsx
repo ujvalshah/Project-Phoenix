@@ -72,6 +72,30 @@ describe('Image Operations - Utility Integration', () => {
       // Should be deduplicated (normalized URLs match)
       expect(allImages.length).toBe(1);
     });
+
+    it('honors persisted supportingMedia order for card/lightbox consistency', () => {
+      const article: Article = {
+        ...mockArticle,
+        images: [],
+        primaryMedia: {
+          type: 'image',
+          url: 'https://example.com/primary.jpg',
+          order: 0,
+          position: 0,
+        },
+        supportingMedia: [
+          { type: 'image', url: 'https://example.com/third.jpg', order: 2, position: 2 },
+          { type: 'image', url: 'https://example.com/second.jpg', order: 1, position: 1 },
+        ],
+      };
+
+      const allImages = getAllImageUrls(article);
+      expect(allImages).toEqual([
+        'https://example.com/primary.jpg',
+        'https://example.com/second.jpg',
+        'https://example.com/third.jpg',
+      ]);
+    });
   });
 
   describe('collectMasonryMediaItems behavior', () => {

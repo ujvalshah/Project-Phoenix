@@ -544,7 +544,7 @@ export const useNewsCard = ({
     
     // IMAGES: Always open in-app viewer (never new tab)
     // This follows progressive-disclosure UX: images stay in context
-    if (article.media?.type === 'image' || (article.images && article.images.length > 0)) {
+    if (allImageUrls.length > 0 || article.media?.type === 'image') {
       // Store image index for initial display if provided
       if (imageIndex !== undefined) {
         setLightboxInitialIndex(imageIndex);

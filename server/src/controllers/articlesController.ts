@@ -785,6 +785,21 @@ export const updateArticle = async (req: Request, res: Response) => {
       return sendValidationError(res, 'Validation failed', errors);
     }
 
+    // DATA LOSS GUARD: Restrict the validated payload to keys the client
+    // actually sent. Zod's .partial() does NOT strip .default() values — so
+    // fields like `content: ''` and `contentStream: 'standard'` get synthesized
+    // for any field the client omits, and a downstream `$set` would clobber
+    // the stored value. A lightweight PATCH (e.g., visibility toggle) must
+    // never erase content or flip the content stream.
+    const clientSentKeys = new Set(
+      req.body && typeof req.body === 'object' ? Object.keys(req.body) : []
+    );
+    for (const key of Object.keys(validationResult.data)) {
+      if (!clientSentKeys.has(key)) {
+        delete (validationResult.data as Record<string, unknown>)[key];
+      }
+    }
+
     // NOTE: Dimension-tag guardrail moved AFTER tag name → tagId resolution
     // (see below) so that free-form tag names are included in the check.
 

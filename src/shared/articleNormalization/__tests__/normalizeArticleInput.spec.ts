@@ -354,7 +354,15 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const diff = deepEqualWithDiff(normalized, legacy);
+      // Order metadata was added as a non-breaking extension.
+      const stripOrderMeta = (obj: any) => ({
+        ...obj,
+        supportingMedia: obj.supportingMedia?.map((item: any) => {
+          const { order, position, ...rest } = item;
+          return rest;
+        }),
+      });
+      const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
   });
@@ -397,7 +405,14 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const diff = deepEqualWithDiff(normalized, legacy);
+      const stripOrderMeta = (obj: any) => ({
+        ...obj,
+        supportingMedia: obj.supportingMedia?.map((item: any) => {
+          const { order, position, ...rest } = item;
+          return rest;
+        }),
+      });
+      const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
   });
@@ -442,7 +457,14 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const diff = deepEqualWithDiff(normalized, legacy);
+      const stripOrderMeta = (obj: any) => ({
+        ...obj,
+        supportingMedia: obj.supportingMedia?.map((item: any) => {
+          const { order, position, ...rest } = item;
+          return rest;
+        }),
+      });
+      const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
   });
@@ -483,7 +505,14 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const diff = deepEqualWithDiff(normalized, legacy);
+      const stripOrderMeta = (obj: any) => ({
+        ...obj,
+        supportingMedia: obj.supportingMedia?.map((item: any) => {
+          const { order, position, ...rest } = item;
+          return rest;
+        }),
+      });
+      const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
   });
@@ -535,7 +564,14 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const diff = deepEqualWithDiff(normalized, legacy);
+      const stripOrderMeta = (obj: any) => ({
+        ...obj,
+        supportingMedia: obj.supportingMedia?.map((item: any) => {
+          const { order, position, ...rest } = item;
+          return rest;
+        }),
+      });
+      const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
   });
@@ -876,8 +912,11 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         mode: 'create',
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
-
-      const diff = deepEqualWithDiff(normalized.supportingMedia, legacy.supportingMedia, 'supportingMedia');
+      const normalizedSupporting = (normalized.supportingMedia || []).map((item: any) => {
+        const { order, position, ...rest } = item;
+        return rest;
+      });
+      const diff = deepEqualWithDiff(normalizedSupporting, legacy.supportingMedia, 'supportingMedia');
       expect(diff.equal, diff.diff).toBe(true);
     });
 
@@ -1822,6 +1861,79 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
       // URLs must remain the same
       expect(image1?.url).toBe('https://example.com/image1.jpg');
       expect(image2?.url).toBe('https://example.com/image2.jpg');
+    });
+  });
+
+  describe('Canonical image ordering regression tests', () => {
+    it('keeps primary image at index 0 when reordering edit media', async () => {
+      const input: ArticleInputData = {
+        title: 'Ordered',
+        content: 'ordered content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        existingImages: [
+          'https://example.com/first.jpg',
+          'https://example.com/second.jpg',
+          'https://example.com/third.jpg',
+        ],
+        masonryMediaItems: [
+          { id: 'primary', type: 'image', url: 'https://example.com/first.jpg', source: 'primary', showInMasonry: true },
+          { id: 'support-1', type: 'image', url: 'https://example.com/second.jpg', source: 'supporting', showInMasonry: true },
+          { id: 'support-2', type: 'image', url: 'https://example.com/third.jpg', source: 'supporting', showInMasonry: true },
+        ],
+        existingSupportingMedia: [
+          { type: 'image', url: 'https://example.com/second.jpg', showInMasonry: true },
+          { type: 'image', url: 'https://example.com/third.jpg', showInMasonry: true },
+        ],
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      expect(normalized.images).toEqual([
+        'https://example.com/first.jpg',
+        'https://example.com/second.jpg',
+        'https://example.com/third.jpg',
+      ]);
+    });
+
+    it('uses masonry order for create images even with upload completion disorder', async () => {
+      const input: ArticleInputData = {
+        title: 'Create ordered',
+        content: 'create ordered content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [
+          'https://example.com/upload-b.jpg',
+          'https://example.com/upload-a.jpg',
+          'https://example.com/upload-c.jpg',
+        ],
+        mediaIds: [],
+        masonryMediaItems: [
+          { id: 'primary', type: 'image', url: 'https://example.com/upload-a.jpg', source: 'primary', showInMasonry: true },
+          { id: 'support-b', type: 'image', url: 'https://example.com/upload-b.jpg', source: 'supporting', showInMasonry: true },
+          { id: 'support-c', type: 'image', url: 'https://example.com/upload-c.jpg', source: 'supporting', showInMasonry: true },
+        ],
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'create',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      expect(normalized.images).toEqual([
+        'https://example.com/upload-a.jpg',
+        'https://example.com/upload-b.jpg',
+        'https://example.com/upload-c.jpg',
+      ]);
     });
   });
 

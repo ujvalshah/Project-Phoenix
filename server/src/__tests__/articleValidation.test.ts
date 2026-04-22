@@ -119,6 +119,32 @@ describe('Article Validation Schema - Null Array Handling', () => {
       }
     });
 
+    it('should accept supportingMedia position/order fields', () => {
+      const result = createArticleSchema.safeParse({
+        ...baseValidPayload,
+        supportingMedia: [
+          {
+            type: 'image',
+            url: 'https://example.com/one.jpg',
+            position: 0,
+            order: 0,
+          },
+          {
+            type: 'image',
+            url: 'https://example.com/two.jpg',
+            position: 1,
+            order: 1,
+          },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.supportingMedia?.[0].position).toBe(0);
+        expect(result.data.supportingMedia?.[1].order).toBe(1);
+      }
+    });
+
     it('should coerce null documents to empty array', () => {
       const result = createArticleSchema.safeParse({
         ...baseValidPayload,
@@ -195,8 +221,25 @@ describe('Article Validation Schema - Null Array Handling', () => {
       const result = updateArticleSchema.safeParse({
         title: 'Updated title',
       });
-      
+
       expect(result.success).toBe(true);
+    });
+
+    // Regression for content/contentStream clobber bug: Zod's .partial() does
+    // NOT strip .default() values. If a caller trusts parsed.data directly in
+    // an Mongo $set, lightweight PATCHes (e.g. visibility toggle) will silently
+    // wipe content and reset contentStream. articlesController.updateArticle
+    // MUST filter parsed.data to keys present in req.body before $set.
+    it('injects defaults for omitted fields — callers must filter by req.body keys', () => {
+      const result = updateArticleSchema.safeParse({ visibility: 'private' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        // This is the HAZARD: content and contentStream come back populated
+        // even though the client never sent them.
+        expect(result.data.content).toBe('');
+        expect(result.data.contentStream).toBe('standard');
+        expect(result.data.visibility).toBe('private');
+      }
     });
   });
 });

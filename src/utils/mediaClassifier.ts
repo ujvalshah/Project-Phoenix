@@ -513,6 +513,10 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
       classifiedImageCandidates.push({
         url: article.primaryMedia.url,
         source: 'primaryMedia',
+        order:
+          typeof article.primaryMedia.position === 'number'
+            ? article.primaryMedia.position
+            : article.primaryMedia.order,
         sequence: 0,
       });
     }

@@ -35,6 +35,8 @@ const mediaSchema = z.object({
   showInGrid: z.boolean().optional(),
   // Masonry tile title (optional, max 80 characters, single-line)
   masonryTitle: z.string().max(80, 'Masonry title must be 80 characters or less').optional(),
+  position: z.number().int().min(0).optional(),
+  order: z.number().int().min(0).optional(),
   // Metadata override flag: true when user explicitly edits caption/title
   // This allows intentional overrides of YouTube titles and other metadata
   allowMetadataOverride: z.boolean().optional(),
@@ -58,6 +60,8 @@ const supportingMediaItemSchema = z.object({
   showInGrid: z.boolean().optional(),
   // Masonry tile title (optional, max 80 characters, single-line)
   masonryTitle: z.string().max(80, 'Masonry title must be 80 characters or less').optional(),
+  position: z.number().int().min(0).optional(),
+  order: z.number().int().min(0).optional(),
 });
 
 // Coerce null/undefined to empty array for supportingMedia

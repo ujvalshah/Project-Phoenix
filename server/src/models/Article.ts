@@ -37,6 +37,8 @@ export interface INuggetMedia {
   // Max 80 characters, single-line, no markdown
   // Backward compatibility: if missing, no caption is shown
   masonryTitle?: string;
+  position?: number;
+  order?: number;
 }
 
 export interface IEngagement {
@@ -184,7 +186,9 @@ const NuggetMediaSchema = new Schema<INuggetMedia>({
   showInMasonry: { type: Boolean, required: false },
   showInGrid: { type: Boolean, required: false },
   // Masonry tile title (optional)
-  masonryTitle: { type: String, required: false, maxlength: 80 }
+  masonryTitle: { type: String, required: false, maxlength: 80 },
+  position: { type: Number, required: false },
+  order: { type: Number, required: false }
 }, { _id: false });
 
 const EngagementSchema = new Schema<IEngagement>({

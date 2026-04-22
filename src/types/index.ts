@@ -48,6 +48,10 @@ export interface NuggetMedia {
   // Max 80 characters, single-line, no markdown
   // Backward compatibility: if missing, no caption is shown
   masonryTitle?: string;
+  // Canonical media ordering (0-based). Use for all visual ordering.
+  position?: number;
+  // Backward-compat alias for position.
+  order?: number;
   // Flag to allow metadata override (e.g., YouTube title override)
   // Set to true when user explicitly edits caption/title in edit mode
   allowMetadataOverride?: boolean;
@@ -154,6 +158,8 @@ export interface SupportingMediaItem {
   // Max 80 characters, single-line, no markdown
   // Backward compatibility: if missing, no caption is shown
   masonryTitle?: string;
+  // Canonical media ordering (0-based). Use for all visual ordering.
+  position?: number;
   // V2: Explicit order for carousel display
   // If missing, use array index as order
   // Backward compatibility: if missing, treat as array index

@@ -75,6 +75,11 @@ import {
   dedupeImagesForEdit,
   normalizeImageUrl,
 } from './imageDedup';
+import {
+  normalizeMediaOrder,
+  reindexMediaPositions,
+  reorderImageUrlsByCanonicalMediaOrder,
+} from '@/utils/mediaOrder';
 // CATEGORY PHASE-OUT: Removed normalizeCategories import - using normalizeTags directly
 
 /**
@@ -614,13 +619,15 @@ async function buildSupportingMediaCreate(
   // Convert each selected item to supportingMedia format with enrichment
   if (!enrichMediaItemIfNeeded) {
     // If enrichment function not provided, create items without enrichment
-    return nonPrimaryItems.map(item => ({
+    return nonPrimaryItems.map((item, index) => ({
       type: item.type,
       url: item.url,
       thumbnail: item.thumbnail || (item.type === 'image' ? item.url : undefined),
       showInMasonry: item.showInMasonry,
       showInGrid: item.showInGrid ?? true,
       masonryTitle: item.masonryTitle || undefined,
+      position: index,
+      order: index,
     }));
   }
 
@@ -655,7 +662,17 @@ async function buildSupportingMediaCreate(
     })
   );
 
-  return enrichedItems.length > 0 ? enrichedItems : undefined;
+  const ordered = reindexMediaPositions(
+    normalizeMediaOrder(
+      enrichedItems.map((item, index) => ({
+        ...item,
+        order: typeof item.order === 'number' ? item.order : index,
+        position: typeof item.position === 'number' ? item.position : undefined,
+      }))
+    )
+  );
+
+  return ordered.length > 0 ? ordered : undefined;
 }
 
 /**
@@ -887,8 +904,19 @@ async function buildSupportingMediaEdit(
     console.log('[REORDER DEBUG] Skipping reorder - conditions not met');
   }
 
+  // Assign deterministic persisted order metadata after all reorder operations.
+  const persistedOrderedSupporting = reindexMediaPositions(
+    normalizeMediaOrder(
+      normalizedSupportingMedia.map((media, index) => ({
+        ...media,
+        order: typeof media.order === 'number' ? media.order : index,
+        position: typeof media.position === 'number' ? media.position : undefined,
+      }))
+    )
+  );
+
   return {
-    supportingMedia: normalizedSupportingMedia.length > 0 ? normalizedSupportingMedia : undefined,
+    supportingMedia: persistedOrderedSupporting.length > 0 ? persistedOrderedSupporting : undefined,
   };
 }
 
@@ -1007,49 +1035,19 @@ export async function normalizeArticleInput(
     );
     allImages = dedupResult.deduplicated;
 
-    // REORDER FIX: Also reorder images[] array based on masonryMediaItems order
-    // This ensures getAllImageUrls returns images in the correct order even if
-    // supportingMedia items have wrong type (e.g., 'link' instead of 'image')
-    if (input.masonryMediaItems.length > 0 && allImages.length > 1) {
-      const masonryOrder = input.masonryMediaItems
-        .filter(item => item.source !== 'primary' && item.type === 'image')
-        .map(item => normalizeImageUrl(item.url));
+  }
 
-      // Create a map of normalized URL -> original URL
-      const imagesByNormalizedUrl = new Map<string, string>();
-      for (const img of allImages) {
-        imagesByNormalizedUrl.set(normalizeImageUrl(img), img);
-      }
-
-      // Reorder based on masonryOrder
-      const reorderedImages: string[] = [];
-      const addedNormalized = new Set<string>();
-
-      // First, add images in masonryMediaItems order
-      for (const normalizedMasonryUrl of masonryOrder) {
-        const originalUrl = imagesByNormalizedUrl.get(normalizedMasonryUrl);
-        if (originalUrl && !addedNormalized.has(normalizedMasonryUrl)) {
-          reorderedImages.push(originalUrl);
-          addedNormalized.add(normalizedMasonryUrl);
-        }
-      }
-
-      // Then, add any remaining images not in masonryMediaItems
-      for (const img of allImages) {
-        const normalized = normalizeImageUrl(img);
-        if (!addedNormalized.has(normalized)) {
-          reorderedImages.push(img);
-          addedNormalized.add(normalized);
-        }
-      }
-
-      if (reorderedImages.length > 0) {
-        console.log('[IMAGES_REORDER] Applied reorder to images[] array:', {
-          beforeOrder: allImages.map(u => u.slice(-30)),
-          afterOrder: reorderedImages.map(u => u.slice(-30)),
-        });
-        allImages = reorderedImages;
-      }
+  // Canonical ordering fix: reorder images[] from the full media sequence,
+  // including primary image items. Excluding primary caused "image #1 moves last".
+  if (input.masonryMediaItems.length > 0 && allImages.length > 1) {
+    const orderedWithPositions = input.masonryMediaItems.map((item, index) => ({
+      ...item,
+      position: index,
+      order: typeof item.order === 'number' ? item.order : index,
+    }));
+    const reorderedImages = reorderImageUrlsByCanonicalMediaOrder(allImages, orderedWithPositions);
+    if (reorderedImages.length > 0) {
+      allImages = reorderedImages;
     }
   }
 
