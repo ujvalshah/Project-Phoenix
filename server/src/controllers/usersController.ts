@@ -9,6 +9,7 @@ import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import { accessUserMutation } from '../utils/userAccess.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
+import { toPublicUserView } from '../utils/userPublicView.js';
 import { revokeAllRefreshTokens } from '../services/tokenService.js';
 import { sendVerificationEmail, sendEmailChangedNoticeEmail } from '../services/emailService.js';
 import { generateEmailVerificationToken } from '../utils/jwt.js';
@@ -72,13 +73,16 @@ export const getUsers = async (req: Request, res: Response) => {
  */
 export const getPublicUserProfile = async (req: Request, res: Response) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    // Project only the fields the public view exposes — anything not selected
+    // here can't accidentally leak even if `toPublicUserView` is bypassed in
+    // the future. Defense in depth, not a substitute for the allowlist.
+    const user = await User.findById(req.params.id).select(
+      'role profile.displayName profile.username profile.bio profile.avatarUrl profile.avatarColor profile.title profile.company profile.location profile.website profile.twitter profile.linkedin profile.youtube profile.instagram profile.facebook'
+    );
     if (!user) return res.status(404).json({ message: 'User not found' });
-    const doc = normalizeDoc(user) as Record<string, unknown>;
-    if (doc?.auth && typeof doc.auth === 'object') {
-      (doc.auth as Record<string, unknown>).email = '';
-    }
-    res.json(doc);
+    const view = toPublicUserView(user);
+    if (!view) return res.status(404).json({ message: 'User not found' });
+    res.json(view);
   } catch (error: unknown) {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as { user?: { userId?: string } }).user?.userId, req.path);
     requestLogger.error({
@@ -138,9 +142,16 @@ export const updateUser = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'You can only update your own profile' });
     }
 
-    // Non-admins cannot change role (prevents privilege escalation)
-    if (authRole !== 'admin') {
-      delete (updateData as { role?: unknown }).role;
+    // Field-tier authz (PR8 / P1.4): `role` is admin-only. Previously we
+    // silently dropped role changes from non-admins, which hid a misbehaving
+    // (or compromised) client and made debugging impossible. Reject loudly
+    // instead — the frontend never sends `role` for a self-edit, so any such
+    // request is either a bug or an attack.
+    if (updateData.role !== undefined && authRole !== 'admin') {
+      return res.status(403).json({
+        message: 'Only admins can change a user role',
+        code: 'FORBIDDEN_ROLE_CHANGE',
+      });
     }
 
     const userId = targetUserId;
