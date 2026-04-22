@@ -848,17 +848,9 @@ async function buildSupportingMediaEdit(
     normalizedSupportingMedia.push(...validNewItems);
   }
 
-  // REORDER FIX: Apply user's drag-and-drop reordering from masonryMediaItems
-  // This ensures the saved supportingMedia order matches what the user sees in the carousel
-  console.log('[REORDER DEBUG] Starting reorder check:', {
-    masonryMediaItemsCount: masonryMediaItems.length,
-    normalizedSupportingMediaCount: normalizedSupportingMedia.length,
-    masonryOrder: masonryMediaItems.map(m => m.url?.slice(-30)),
-    supportingOrder: normalizedSupportingMedia.map(m => m.url?.slice(-30)),
-  });
-
+  // Apply user's drag-and-drop reordering from masonryMediaItems so the saved
+  // supportingMedia array matches what the user sees in the carousel.
   if (masonryMediaItems.length > 0 && normalizedSupportingMedia.length > 0) {
-    // Create a map of URL -> media item (normalizeImageUrl so Twitter/URL query params match)
     const mediaByUrl = new Map<string, any>();
     for (const media of normalizedSupportingMedia) {
       if (media.url) {
@@ -866,13 +858,11 @@ async function buildSupportingMediaEdit(
       }
     }
 
-    // Reorder based on masonryMediaItems order (which reflects user's drag-and-drop)
     const reorderedMedia: any[] = [];
     const addedToReordered = new Set<string>();
 
-    // First, add items in the order they appear in masonryMediaItems
     for (const item of masonryMediaItems) {
-      if (item.source === 'primary') continue; // Skip primary media
+      if (item.source === 'primary') continue;
       const itemUrlNormalized = normalizeImageUrl(item.url);
       const existingMedia = mediaByUrl.get(itemUrlNormalized);
       if (existingMedia && !addedToReordered.has(itemUrlNormalized)) {
@@ -881,7 +871,6 @@ async function buildSupportingMediaEdit(
       }
     }
 
-    // Then, add any remaining items that weren't in masonryMediaItems (shouldn't happen, but safe fallback)
     for (const media of normalizedSupportingMedia) {
       if (media.url) {
         const urlNormalized = normalizeImageUrl(media.url);
@@ -891,29 +880,16 @@ async function buildSupportingMediaEdit(
       }
     }
 
-    // Use reordered array if it has items
     if (reorderedMedia.length > 0) {
-      console.log('[REORDER DEBUG] Reordering applied:', {
-        beforeOrder: normalizedSupportingMedia.map(m => m.url?.slice(-30)),
-        afterOrder: reorderedMedia.map(m => m.url?.slice(-30)),
-      });
       normalizedSupportingMedia.length = 0;
       normalizedSupportingMedia.push(...reorderedMedia);
     }
-  } else {
-    console.log('[REORDER DEBUG] Skipping reorder - conditions not met');
   }
 
-  // Assign deterministic persisted order metadata after all reorder operations.
-  const persistedOrderedSupporting = reindexMediaPositions(
-    normalizeMediaOrder(
-      normalizedSupportingMedia.map((media, index) => ({
-        ...media,
-        order: typeof media.order === 'number' ? media.order : index,
-        position: typeof media.position === 'number' ? media.position : undefined,
-      }))
-    )
-  );
+  // Lock the final array order in as the canonical position. Re-sorting by the
+  // stale DB `position` here would undo the user's drag on a second edit, so we
+  // strip prior order metadata and reindex strictly from the resolved array.
+  const persistedOrderedSupporting = reindexMediaPositions(normalizedSupportingMedia);
 
   return {
     supportingMedia: persistedOrderedSupporting.length > 0 ? persistedOrderedSupporting : undefined,

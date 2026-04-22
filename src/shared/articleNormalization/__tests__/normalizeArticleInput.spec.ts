@@ -1903,6 +1903,53 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
       ]);
     });
 
+    it('persists user reorder on second edit when supportingMedia carries stale positions', async () => {
+      // Regression: previously, buildSupportingMediaEdit re-sorted by stale DB
+      // positions after honoring the user's drag, silently undoing the reorder
+      // on every save after the first one.
+      const primaryUrl = 'https://example.com/A.jpg';
+      const urlB = 'https://example.com/B.jpg';
+      const urlC = 'https://example.com/C.jpg';
+
+      const input: ArticleInputData = {
+        title: 'Second edit reorder',
+        content: 'second edit content',
+        tags: ['Tech'],
+        visibility: 'public',
+        urls: [],
+        imageUrls: [],
+        uploadedImageUrls: [],
+        mediaIds: [],
+        existingImages: [primaryUrl, urlB, urlC],
+        // User has dragged the carousel to [primary=A, C, B].
+        masonryMediaItems: [
+          { id: 'primary', type: 'image', url: primaryUrl, source: 'primary', showInMasonry: true },
+          { id: 'support-c', type: 'image', url: urlC, source: 'supporting', showInMasonry: true },
+          { id: 'support-b', type: 'image', url: urlB, source: 'supporting', showInMasonry: true },
+        ],
+        // Persisted from a previous save: B at position 0, C at position 1.
+        existingSupportingMedia: [
+          { type: 'image', url: urlB, showInMasonry: true, position: 0, order: 0 },
+          { type: 'image', url: urlC, showInMasonry: true, position: 1, order: 1 },
+        ],
+      };
+
+      const normalized = await normalizeArticleInput(input, {
+        mode: 'edit',
+        enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
+      });
+
+      // images[] should reflect the user's drag order: A, C, B.
+      expect(normalized.images).toEqual([primaryUrl, urlC, urlB]);
+
+      // supportingMedia should reflect the new order with reindexed positions.
+      const supportingUrls = (normalized.supportingMedia || []).map((m: any) => m.url);
+      expect(supportingUrls).toEqual([urlC, urlB]);
+
+      const positions = (normalized.supportingMedia || []).map((m: any) => m.position);
+      expect(positions).toEqual([0, 1]);
+    });
+
     it('uses masonry order for create images even with upload completion disorder', async () => {
       const input: ArticleInputData = {
         title: 'Create ordered',

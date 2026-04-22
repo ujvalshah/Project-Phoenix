@@ -23,9 +23,10 @@
  * ============================================================================
  */
 
-import type { Article, PrimaryMedia, SupportingMediaItem, NuggetMedia, MediaType } from '@/types';
+import type { Article, MediaType } from '@/types';
 import { classifyArticleMedia, getAllImageUrls } from './mediaClassifier';
 import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
+import { normalizeMediaOrder } from './mediaOrder';
 
 /**
  * Represents a media item that can be shown in Masonry layout
@@ -118,9 +119,12 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
   }
 
   // 2. Supporting media (can be toggled)
+  // Sort by canonical position before iterating so readers don't depend on
+  // upstream array order — matches the contract enforced by getAllImageUrls.
   // DEDUPLICATION FIX: Check against primary media and other supporting items
   if (classified.supportingMedia && classified.supportingMedia.length > 0) {
-    classified.supportingMedia.forEach((media, index) => {
+    const orderedSupporting = normalizeMediaOrder(classified.supportingMedia);
+    orderedSupporting.forEach((media, index) => {
       const normalizedUrl = normalizeImageUrl(media.url);
 
       // Skip if already included (duplicate of primary or earlier supporting item)

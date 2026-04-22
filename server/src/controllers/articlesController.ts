@@ -1143,7 +1143,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
     
     let supportingMediaUpdated = false;
     let updatedSupportingMedia = article.supportingMedia ? [...article.supportingMedia] : [];
-    
+
     if (updatedSupportingMedia.length > 0) {
       const beforeCount = updatedSupportingMedia.length;
       updatedSupportingMedia = updatedSupportingMedia.filter((media: any) => {
@@ -1153,9 +1153,15 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
         }
         return true; // Keep non-image media or media without URL
       });
-      
+
       if (updatedSupportingMedia.length < beforeCount) {
         supportingMediaUpdated = true;
+        // Reindex positions so the canonical order stays contiguous after delete.
+        updatedSupportingMedia = updatedSupportingMedia.map((media: any, index: number) => ({
+          ...(typeof media?.toObject === 'function' ? media.toObject() : media),
+          position: index,
+          order: index,
+        }));
         console.log(`[Articles] Delete image: Removed ${beforeCount - updatedSupportingMedia.length} image(s) from supportingMedia`);
       }
     }

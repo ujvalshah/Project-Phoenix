@@ -510,13 +510,19 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
       article.primaryMedia.url &&
       (!gridOnly || isVisibleInGrid(article.primaryMedia))
     ) {
+      // Primary is conceptually media role 0. If neither position nor order is
+      // persisted on the primary item, anchor it to 0 so it doesn't sink to
+      // the end when supporting items carry explicit positions.
+      const primaryOrder =
+        typeof article.primaryMedia.position === 'number'
+          ? article.primaryMedia.position
+          : typeof article.primaryMedia.order === 'number'
+            ? article.primaryMedia.order
+            : 0;
       classifiedImageCandidates.push({
         url: article.primaryMedia.url,
         source: 'primaryMedia',
-        order:
-          typeof article.primaryMedia.position === 'number'
-            ? article.primaryMedia.position
-            : article.primaryMedia.order,
+        order: primaryOrder,
         sequence: 0,
       });
     }

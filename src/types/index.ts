@@ -137,6 +137,10 @@ export interface PrimaryMedia {
   // Max 80 characters, single-line, no markdown
   // Backward compatibility: if missing, no caption is shown
   masonryTitle?: string;
+  // Canonical media ordering (0-based). Primary defaults to 0 in the canonical pipeline.
+  position?: number;
+  // Backward-compat alias for position.
+  order?: number;
 }
 
 export interface SupportingMediaItem {

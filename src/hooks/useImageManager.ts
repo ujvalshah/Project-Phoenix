@@ -23,6 +23,7 @@ import type { Article, MediaType } from '@/types';
 import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 import { getAllImageUrls } from '@/utils/mediaClassifier';
 import type { MasonryMediaItem } from '@/utils/masonryMediaHelper';
+import { normalizeMediaOrder } from '@/utils/mediaOrder';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 
 /**
@@ -256,9 +257,12 @@ function articleToImageItems(article: Article): ImageItem[] {
   }
 
   // 2. Supporting media (ALL types, not just images - needed for deduplication)
+  // Sort by canonical position so edit hydration matches the order users see in
+  // the lightbox/cards (which sort the same way). Without this, a persisted
+  // array that drifted from position-sorted order would silently disagree.
   // DEDUPLICATION FIX: Process all media types to prevent duplicates across different sources
   if (article.supportingMedia) {
-    article.supportingMedia.forEach((media) => {
+    normalizeMediaOrder(article.supportingMedia).forEach((media) => {
       if (media.url) {
         addItem(media.url, 'supporting', 'supportingMedia', {
           showInMasonry: media.showInMasonry ?? false,
