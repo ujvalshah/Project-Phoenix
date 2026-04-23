@@ -3,6 +3,13 @@ export type UserRole = 'admin' | 'user';
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type Visibility = 'public' | 'private';
 export type AvatarColor = 'blue' | 'green' | 'purple' | 'amber' | 'rose' | 'teal' | 'indigo' | 'slate';
+/**
+ * Account lifecycle, mirrored from the backend's User.status enum (PR7b).
+ * `active` is the default for legacy docs that predate the migration; the
+ * admin lifecycle endpoints (suspend/ban/activate) are the only sanctioned
+ * write path.
+ */
+export type UserStatus = 'active' | 'suspended' | 'banned';
 
 export interface UserAuth {
   readonly email: string;
@@ -69,7 +76,12 @@ export interface UserAppState {
 export interface User {
   readonly id: string;
   readonly role: UserRole; // Critical for routing
-  
+  /**
+   * Lifecycle state. Optional because legacy docs predate PR7b's migration
+   * and read back without the field; treat undefined as 'active'.
+   */
+  status?: UserStatus;
+
   auth: UserAuth;
   profile: UserProfile;
   security: UserSecurity;

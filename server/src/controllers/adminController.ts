@@ -63,11 +63,17 @@ export async function getAdminStats(req: Request, res: Response) {
     moderationStats,
     feedbackAgg
   ] = await Promise.all([
-    // User stats
+    // User stats. PR10 / P1.7 — `active`, `suspended`, and `banned` come from
+    // the real User.status field (added in PR7b), not the placeholder
+    // "everyone is active" we used before the field existed. Legacy docs
+    // written before the migration have status=undefined; we treat those as
+    // active so the totals stay consistent with the lifecycle endpoints,
+    // which all default missing status to 'active'.
     User.aggregate([
       {
         $project: {
           role: 1,
+          status: 1,
           createdAtDate: {
             $dateFromString: {
               dateString: '$auth.createdAt',
@@ -83,6 +89,22 @@ export async function getAdminStats(req: Request, res: Response) {
           total: { $sum: 1 },
           admins: {
             $sum: { $cond: [{ $eq: ['$role', 'admin'] }, 1, 0] }
+          },
+          suspended: {
+            $sum: { $cond: [{ $eq: ['$status', 'suspended'] }, 1, 0] }
+          },
+          banned: {
+            $sum: { $cond: [{ $eq: ['$status', 'banned'] }, 1, 0] }
+          },
+          // Active = explicit 'active' OR missing status (legacy pre-PR7b docs).
+          active: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['active', null, undefined]] },
+                1,
+                0
+              ]
+            }
           },
           newToday: {
             $sum: {
@@ -167,7 +189,7 @@ export async function getAdminStats(req: Request, res: Response) {
     ])
   ]);
 
-  const userStatsRaw = userAgg[0] || { total: 0, admins: 0, newToday: 0 };
+  const userStatsRaw = userAgg[0] || { total: 0, admins: 0, newToday: 0, active: 0, suspended: 0, banned: 0 };
   const articleStatsRaw = articleAgg[0] || { total: 0, public: 0, private: 0, createdToday: 0 };
   const flaggedNuggets = flaggedNuggetsAgg[0]?.flagged || 0;
 
@@ -187,8 +209,13 @@ export async function getAdminStats(req: Request, res: Response) {
       total: userStatsRaw.total || 0,
       newToday: userStatsRaw.newToday || 0,
       admins: userStatsRaw.admins || 0,
-      active: userStatsRaw.total || 0, // No status field; treat all as active
-      inactive: 0
+      // PR10 / P1.7 — real status counts (was hardcoded "active=total" before
+      // PR7b added the status field). `inactive` is preserved for the older
+      // dashboard widgets and is the union of suspended + banned.
+      active: userStatsRaw.active || 0,
+      suspended: userStatsRaw.suspended || 0,
+      banned: userStatsRaw.banned || 0,
+      inactive: (userStatsRaw.suspended || 0) + (userStatsRaw.banned || 0)
     },
     nuggets: {
       total: articleStatsRaw.total || 0,

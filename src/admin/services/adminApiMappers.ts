@@ -27,7 +27,10 @@ export function mapUserToAdminUser(user: User, stats?: {
     emailVerified: user.auth.emailVerified ?? false,
     authProvider: user.auth.provider ?? 'email',
     role: user.role === 'admin' ? 'admin' : 'user',
-    status: 'active', // Backend doesn't have status field, default to active
+    // PR10 / PR7b — User.status is now real. Legacy docs without the field
+    // (written before the migration) read back as undefined; treat those as
+    // active so the table doesn't render an empty badge.
+    status: user.status ?? 'active',
     avatarUrl: user.profile.avatarUrl,
     joinedAt: user.auth.createdAt,
     lastLoginAt: user.appState.lastLoginAt,

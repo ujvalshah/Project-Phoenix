@@ -3,15 +3,33 @@ import { apiClient } from '@/services/apiClient';
 import { mapUserToAdminUser } from './adminApiMappers';
 import { User } from '@/types/user';
 
+/**
+ * Subset of profile fields editable from the admin drawer (PR10 / P1.8).
+ * Intentionally narrow: PII (phoneNumber, dateOfBirth, gender, pincode, city,
+ * country) is excluded — admins see the public-allowlist projection, not
+ * the raw user record. Anything that needs to flow through here must pass
+ * the same validation as a self-edit (`updateUserSchema` on the backend).
+ */
+export interface AdminProfileEdits {
+  displayName?: string;
+  bio?: string;
+  title?: string;
+  company?: string;
+  location?: string;
+  website?: string;
+  twitter?: string;
+  linkedin?: string;
+}
+
 class AdminUsersService {
   async listUsers(query?: string): Promise<AdminUser[]> {
     // Use query param for backend filtering if available, otherwise client-side filter
     const endpoint = query ? `/users?q=${encodeURIComponent(query)}` : '/users';
     const response = await apiClient.get<{ data: User[] } | User[]>(endpoint, undefined, 'adminUsersService.listUsers');
-    
+
     // Handle paginated response format { data: [...], total, ... } or direct array
     const users = Array.isArray(response) ? response : (response.data || []);
-    
+
     // Map to AdminUser format
     return users.map(user => mapUserToAdminUser(user));
   }
@@ -22,49 +40,109 @@ class AdminUsersService {
     return mapUserToAdminUser(user);
   }
 
-  async getStats(): Promise<{ total: number; active: number; newToday: number; admins: number }> {
-    const response = await apiClient.get<{ data: User[]; total?: number } | User[]>('/users', undefined, 'adminUsersService.getStats');
-    
-    // Handle paginated response format { data: [...], total, ... } or direct array
-    const users = Array.isArray(response) ? response : (response.data || []);
-    
-    // Ensure users is an array
-    if (!Array.isArray(users)) {
-      console.error('Expected users array but got:', typeof users, users);
-      return { total: 0, active: 0, newToday: 0, admins: 0 };
-    }
-    
-    const now = new Date();
-    const todayStr = now.toDateString();
-    
-    // Compute stats from users
-    const total = users.length;
-    const active = users.length; // Backend doesn't track status, assume all active
-    const newToday = users.filter(u => {
-      const createdAt = u.auth?.createdAt;
-      if (!createdAt) return false;
-      const joinedDate = new Date(createdAt).toDateString();
-      return joinedDate === todayStr;
-    }).length;
-    const admins = users.filter(u => u.role === 'admin').length;
-    
-    return { total, active, newToday, admins };
-  }
+  async getStats(): Promise<{ total: number; active: number; suspended: number; banned: number; newToday: number; admins: number }> {
+    // PR10 / P1.7 — read the canonical stats from the dedicated admin endpoint
+    // instead of reconstructing them from the user list. Reconstruction lied
+    // about active vs suspended (the field didn't exist), and any pagination
+    // capped the totals to whatever fit in the first page.
+    type StatsResponse = {
+      users?: {
+        total?: number;
+        active?: number;
+        suspended?: number;
+        banned?: number;
+        newToday?: number;
+        admins?: number;
+      };
+    };
 
-  async updateUserStatus(id: string, status: AdminUserStatus): Promise<void> {
-    // Backend doesn't have status field, this would need backend support
-    // For now, we can't update status via API
-    throw new Error('User status update not supported by backend');
+    try {
+      const response = await apiClient.get<StatsResponse>('/admin/stats', undefined, 'adminUsersService.getStats');
+      const u = response.users ?? {};
+      return {
+        total: u.total ?? 0,
+        active: u.active ?? 0,
+        suspended: u.suspended ?? 0,
+        banned: u.banned ?? 0,
+        newToday: u.newToday ?? 0,
+        admins: u.admins ?? 0,
+      };
+    } catch (err) {
+      // Surface a zero shape rather than crashing the dashboard — the
+      // /admin/stats endpoint is gated by requireAdminRole, so any failure
+      // here is either auth or transport. The page already shows an
+      // errorMessage from the parallel users fetch.
+      console.error('adminUsersService.getStats failed', err);
+      return { total: 0, active: 0, suspended: 0, banned: 0, newToday: 0, admins: 0 };
+    }
   }
 
   async updateUserRole(id: string, role: AdminRole): Promise<void> {
     await apiClient.put(`/users/${id}`, { role });
   }
 
+  /**
+   * PR10 / P1.8 — persisted profile edit from the admin drawer. PUT /api/users/:id
+   * already runs the updateUserSchema and the field-tier check that rejects
+   * non-admin role changes (PR8); we pass through only the documented edit
+   * subset. The backend resolves nested writes via `profile.*`.
+   */
+  async updateUserProfile(id: string, edits: AdminProfileEdits): Promise<User> {
+    // The PUT endpoint accepts a flat `name` (mapped to profile.displayName
+    // for legacy callers) and a nested `profile` object. We use the nested
+    // form for everything except displayName so the schema validates
+    // cleanly and the audit log captures field-level diffs.
+    const body: Record<string, unknown> = {};
+    if (edits.displayName !== undefined) {
+      body.name = edits.displayName;
+    }
+    const profile: Record<string, unknown> = {};
+    if (edits.bio !== undefined) profile.bio = edits.bio;
+    if (edits.title !== undefined) profile.title = edits.title;
+    if (edits.company !== undefined) profile.company = edits.company;
+    if (edits.location !== undefined) profile.location = edits.location;
+    if (edits.website !== undefined) profile.website = edits.website;
+    if (edits.twitter !== undefined) profile.twitter = edits.twitter;
+    if (edits.linkedin !== undefined) profile.linkedin = edits.linkedin;
+    if (Object.keys(profile).length > 0) body.profile = profile;
+
+    return apiClient.put<User>(`/users/${id}`, body);
+  }
+
+  // ── Lifecycle (PR7b backend, re-enabled in the UI by PR10) ────────────────
+  // Each call is idempotent on the backend (a no-op transition still returns
+  // 200 + writes an audit row with wasAlreadyInState: true).
+  async suspendUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean }> {
+    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean }>(
+      `/admin/users/${id}/suspend`,
+      reason ? { reason } : {},
+    );
+  }
+
+  async banUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean }> {
+    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean }>(
+      `/admin/users/${id}/ban`,
+      reason ? { reason } : {},
+    );
+  }
+
+  async activateUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean }> {
+    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean }>(
+      `/admin/users/${id}/activate`,
+      reason ? { reason } : {},
+    );
+  }
+
+  async revokeUserSessions(id: string, reason?: string): Promise<{ tokenVersion: number; refreshTokensRevoked: boolean }> {
+    return apiClient.post<{ tokenVersion: number; refreshTokensRevoked: boolean }>(
+      `/admin/users/${id}/revoke-sessions`,
+      reason ? { reason } : {},
+    );
+  }
+
   async deleteUser(id: string): Promise<void> {
     await apiClient.delete(`/users/${id}`);
   }
-
 }
 
 export const adminUsersService = new AdminUsersService();

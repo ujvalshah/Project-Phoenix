@@ -4,9 +4,9 @@ import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
-import { AdminUser, AdminRole } from '../types/admin';
-import { adminUsersService } from '../services/adminUsersService';
-import { Shield, Edit, Users, UserPlus, BarChart3, ChevronDown, Layout, MailCheck } from 'lucide-react';
+import { AdminUser, AdminUserStatus, AdminRole } from '../types/admin';
+import { adminUsersService, AdminProfileEdits } from '../services/adminUsersService';
+import { Shield, Edit, Users, UserPlus, BarChart3, ChevronDown, Layout, MailCheck, Ban, UserCheck, UserX, Save, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { Avatar } from '@/components/shared/Avatar';
@@ -15,10 +15,38 @@ import { AdminDrawer } from '../components/AdminDrawer';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { getSafeUsernameHandle } from '@/utils/userIdentity';
 
+interface ProfileFieldProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  multiline?: boolean;
+}
+
+const ProfileField: React.FC<ProfileFieldProps> = ({ label, value, onChange, multiline }) => (
+  <label className="block">
+    <span className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">{label}</span>
+    {multiline ? (
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-400 resize-y"
+      />
+    ) : (
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-400"
+      />
+    )}
+  </label>
+);
+
 export const AdminUsersPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [stats, setStats] = useState({ total: 0, active: 0, newToday: 0, admins: 0 });
+  const [stats, setStats] = useState({ total: 0, active: 0, suspended: 0, banned: 0, newToday: 0, admins: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
@@ -40,6 +68,20 @@ export const AdminUsersPage: React.FC = () => {
   // Actions State
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [roleChangeCandidate, setRoleChangeCandidate] = useState<{ user: AdminUser, newRole: AdminRole } | null>(null);
+
+  // Drawer edit-mode state (PR10 / P1.8). When `isEditingProfile` is true the
+  // drawer renders the edit form in place of the read-only profile view and
+  // the footer swaps to Save/Cancel. `editForm` is initialized from the
+  // selectedUser when entering edit mode.
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editForm, setEditForm] = useState<AdminProfileEdits & { fullDetails?: { bio?: string; title?: string; company?: string; location?: string; website?: string; twitter?: string; linkedin?: string } }>({});
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Lifecycle action confirmation. The verb drives the modal copy and the
+  // service method called on confirm. Status is read-only on the table — all
+  // status changes flow through the drawer + this confirm modal so we get
+  // a deliberate two-step interaction and the audit row records intent.
+  const [lifecycleCandidate, setLifecycleCandidate] = useState<{ user: AdminUser, verb: 'suspend' | 'ban' | 'activate' } | null>(null);
 
   const toast = useToast();
   const navigate = useNavigate();
@@ -160,6 +202,115 @@ export const AdminUsersPage: React.FC = () => {
 
   const handleOpenUser = (u: AdminUser) => {
       setSelectedUser(u);
+      // Always open in read-only mode — entering edit is an explicit click.
+      setIsEditingProfile(false);
+  };
+
+  const handleCloseDrawer = () => {
+      setSelectedUser(null);
+      setIsEditingProfile(false);
+      setEditForm({});
+  };
+
+  const handleEnterEditMode = () => {
+      if (!selectedUser) return;
+      // Hydrate the form from whatever the table already knows about the user.
+      // Fields not exposed on the AdminUser shape (bio, title, etc.) start
+      // empty — admins fill them in. The PUT endpoint accepts a partial body,
+      // so anything left blank is sent as an empty string and overwrites only
+      // what the admin actually touched. (Untouched fields are simply not
+      // included in the request.)
+      setEditForm({
+          displayName: selectedUser.name,
+      });
+      setIsEditingProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+      if (!selectedUser) return;
+      setIsSavingProfile(true);
+      // Build a partial edit body — only include keys the admin explicitly
+      // changed via the form. Empty strings ARE sent (the admin clearing a
+      // bio is a real edit), but undefined keys are dropped by the spread.
+      const edits: AdminProfileEdits = {};
+      if (editForm.displayName !== undefined && editForm.displayName !== selectedUser.name) {
+          edits.displayName = editForm.displayName;
+      }
+      if (editForm.bio !== undefined) edits.bio = editForm.bio;
+      if (editForm.title !== undefined) edits.title = editForm.title;
+      if (editForm.company !== undefined) edits.company = editForm.company;
+      if (editForm.location !== undefined) edits.location = editForm.location;
+      if (editForm.website !== undefined) edits.website = editForm.website;
+      if (editForm.twitter !== undefined) edits.twitter = editForm.twitter;
+      if (editForm.linkedin !== undefined) edits.linkedin = editForm.linkedin;
+
+      if (Object.keys(edits).length === 0) {
+          toast.success('No changes to save');
+          setIsEditingProfile(false);
+          setIsSavingProfile(false);
+          return;
+      }
+
+      try {
+          await adminUsersService.updateUserProfile(selectedUser.id, edits);
+          // Reflect the edit in the table immediately. We only patch fields
+          // the AdminUser shape carries; the other profile fields exist on
+          // the backend but aren't part of the table row.
+          setUsers(prev => prev.map(u =>
+              u.id === selectedUser.id && edits.displayName !== undefined
+                  ? { ...u, name: edits.displayName }
+                  : u
+          ));
+          if (edits.displayName !== undefined) {
+              setSelectedUser(prev => prev ? { ...prev, name: edits.displayName! } : prev);
+          }
+          toast.success('Profile updated');
+          setIsEditingProfile(false);
+          setEditForm({});
+      } catch (err) {
+          // The PUT endpoint surfaces FORBIDDEN_ROLE_CHANGE/EMAIL_ALREADY_EXISTS
+          // etc. as the response body; we'd need to read it for fine-grained
+          // toasts. For now, a single failure toast is enough — the admin
+          // will see the unchanged row and can retry.
+          console.error('updateUserProfile failed', err);
+          toast.error('Could not save changes. Please retry.');
+      } finally {
+          setIsSavingProfile(false);
+      }
+  };
+
+  const handleConfirmLifecycle = async () => {
+      if (!lifecycleCandidate) return;
+      const { user, verb } = lifecycleCandidate;
+      const previousUsers = users;
+      const targetStatus: AdminUserStatus =
+          verb === 'suspend' ? 'suspended' : verb === 'ban' ? 'banned' : 'active';
+
+      // Optimistic — keep the modal closing snappy. We roll back below on error.
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: targetStatus } : u));
+      if (selectedUser?.id === user.id) {
+          setSelectedUser(prev => prev ? { ...prev, status: targetStatus } : prev);
+      }
+      try {
+          if (verb === 'suspend') await adminUsersService.suspendUser(user.id);
+          else if (verb === 'ban') await adminUsersService.banUser(user.id);
+          else await adminUsersService.activateUser(user.id);
+          toast.success(
+              verb === 'suspend' ? 'User suspended'
+              : verb === 'ban' ? 'User banned'
+              : 'User activated'
+          );
+          setLifecycleCandidate(null);
+      } catch (err) {
+          console.error(`${verb} user failed`, err);
+          // Rollback the optimistic update.
+          setUsers(previousUsers);
+          if (selectedUser?.id === user.id) {
+              setSelectedUser(prev => prev ? { ...prev, status: user.status } : prev);
+          }
+          toast.error('Action failed. Please retry.');
+          // Leave the modal open so the admin can retry without re-clicking.
+      }
   };
 
   const handleRoleChange = async () => {
@@ -194,10 +345,10 @@ export const AdminUsersPage: React.FC = () => {
             className="flex items-center gap-3 cursor-pointer group/user"
             onClick={(e) => { e.stopPropagation(); handleOpenUser(u); }}
         >
-          <Avatar name={u.name || u.email || 'User'} size="sm" src={u.avatarUrl} className={u.status === 'suspended' ? 'opacity-50 grayscale' : ''} />
+          <Avatar name={u.name || u.email || 'User'} size="sm" src={u.avatarUrl} className={u.status !== 'active' ? 'opacity-50 grayscale' : ''} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-                <span className={`font-bold text-sm truncate group-hover/user:text-primary-600 group-hover/user:underline transition-colors ${u.status === 'suspended' ? 'text-slate-500 line-through' : 'text-slate-900 dark:text-white'}`}>
+                <span className={`font-bold text-sm truncate group-hover/user:text-primary-600 group-hover/user:underline transition-colors ${u.status !== 'active' ? 'text-slate-500 line-through' : 'text-slate-900 dark:text-white'}`}>
                   {u.name || u.email || 'Unknown User'}
                 </span>
                 {u.role === 'admin' && <Shield size={12} className="text-purple-500 fill-purple-100 dark:fill-purple-900/30" />}
@@ -244,25 +395,29 @@ export const AdminUsersPage: React.FC = () => {
       )
     },
     {
-      // Read-only until backend lifecycle (P1.1/P1.2) lands. The interactive
-      // select used to call updateUserStatus, which the backend doesn't
-      // implement — operators saw "Action failed" toasts after every change.
+      // Read-only badge by design (PR10). The lifecycle actions (suspend /
+      // ban / activate) live in the drawer behind a confirm modal so every
+      // state change is a deliberate two-step interaction with an audit row.
+      // A clickable in-table dropdown was rejected because misclicks on a
+      // status mutation would silently revoke a user's sessions.
       key: 'status',
       header: 'Status',
       width: 'w-32',
       minWidth: '130px',
       sortable: true,
-      render: (u) => (
-        <span
-          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold capitalize border ${
-            u.status === 'active'
-              ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800'
-              : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800'
-          }`}
-        >
-          {u.status}
-        </span>
-      )
+      render: (u) => {
+        const cls =
+          u.status === 'active'
+            ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800'
+            : u.status === 'suspended'
+            ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800'
+            : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800';
+        return (
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold capitalize border ${cls}`}>
+            {u.status}
+          </span>
+        );
+      }
     },
     {
       key: 'email',
@@ -490,37 +645,106 @@ export const AdminUsersPage: React.FC = () => {
         onRowClick={handleOpenUser}
       />
 
-      {/* Drawer */}
-      <AdminDrawer 
-        isOpen={!!selectedUser} 
-        onClose={() => setSelectedUser(null)} 
-        title="User Details"
+      {/* Drawer (PR10 / P1.8 — Edit Profile + lifecycle actions are wired). */}
+      <AdminDrawer
+        isOpen={!!selectedUser}
+        onClose={handleCloseDrawer}
+        title={isEditingProfile ? 'Edit User' : 'User Details'}
         width="lg"
         footer={
-            <div className="flex justify-end w-full">
-                {/* Suspend/Activate buttons removed — backend lifecycle support
-                    lands in PR7 (P1.1/P1.2). Edit Profile is disabled until
-                    PR10 (P1.8) wires it to PUT /api/users/:id. */}
-                <div className="flex gap-2">
+            isEditingProfile ? (
+                <div className="flex justify-end w-full gap-2">
                     <button
                         type="button"
-                        disabled
-                        title="Editing profile via the admin panel is coming soon."
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-400 rounded-lg text-sm font-bold shadow-sm cursor-not-allowed"
+                        onClick={() => { setIsEditingProfile(false); setEditForm({}); }}
+                        disabled={isSavingProfile}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-50 disabled:opacity-50"
                     >
-                        <Edit size={14} /> Edit Profile
+                        <XCircle size={14} /> Cancel
                     </button>
                     <button
-                        onClick={() => { navigate(`/profile/${selectedUser?.id}`); }}
-                        className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold shadow-sm hover:opacity-90"
+                        type="button"
+                        onClick={handleSaveProfile}
+                        disabled={isSavingProfile}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-primary-700 disabled:opacity-50"
                     >
-                        Public Profile
+                        <Save size={14} /> {isSavingProfile ? 'Saving…' : 'Save Changes'}
                     </button>
                 </div>
-            </div>
+            ) : (
+                <div className="flex justify-between w-full items-center gap-2">
+                    {/* Lifecycle group — PR7b backend, exposed in PR10. Only the
+                        transitions that make sense for the current status are
+                        shown. Self-mutation is blocked server-side regardless. */}
+                    <div className="flex gap-2">
+                        {selectedUser && selectedUser.status === 'active' && can('admin.users.suspend') && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setLifecycleCandidate({ user: selectedUser, verb: 'suspend' })}
+                                    className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm font-bold shadow-sm hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
+                                >
+                                    <UserX size={14} /> Suspend
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setLifecycleCandidate({ user: selectedUser, verb: 'ban' })}
+                                    className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm font-bold shadow-sm hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800"
+                                >
+                                    <Ban size={14} /> Ban
+                                </button>
+                            </>
+                        )}
+                        {selectedUser && selectedUser.status === 'suspended' && can('admin.users.suspend') && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setLifecycleCandidate({ user: selectedUser, verb: 'activate' })}
+                                    className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm font-bold shadow-sm hover:bg-green-100 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+                                >
+                                    <UserCheck size={14} /> Activate
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setLifecycleCandidate({ user: selectedUser, verb: 'ban' })}
+                                    className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm font-bold shadow-sm hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800"
+                                >
+                                    <Ban size={14} /> Ban
+                                </button>
+                            </>
+                        )}
+                        {selectedUser && selectedUser.status === 'banned' && can('admin.users.suspend') && (
+                            <button
+                                type="button"
+                                onClick={() => setLifecycleCandidate({ user: selectedUser, verb: 'activate' })}
+                                className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm font-bold shadow-sm hover:bg-green-100 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+                            >
+                                <UserCheck size={14} /> Activate
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex gap-2">
+                        {can('admin.users.edit') && (
+                            <button
+                                type="button"
+                                onClick={handleEnterEditMode}
+                                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-50"
+                            >
+                                <Edit size={14} /> Edit Profile
+                            </button>
+                        )}
+                        <button
+                            onClick={() => { navigate(`/profile/${selectedUser?.id}`); }}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold shadow-sm hover:opacity-90"
+                        >
+                            Public Profile
+                        </button>
+                    </div>
+                </div>
+            )
         }
       >
-        {selectedUser && (
+        {selectedUser && !isEditingProfile && (
             <div className="space-y-8">
                 {/* Header Profile */}
                 <div className="flex items-start gap-4">
@@ -539,7 +763,13 @@ export const AdminUsersPage: React.FC = () => {
                                 {selectedUser.role === 'admin' && <Shield size={12} className="mr-1" />}
                                 {selectedUser.role}
                             </span>
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold capitalize ${selectedUser.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold capitalize ${
+                                selectedUser.status === 'active'
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                    : selectedUser.status === 'suspended'
+                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                            }`}>
                                 {selectedUser.status}
                             </span>
                             {selectedUser.emailVerified ? (
@@ -575,7 +805,91 @@ export const AdminUsersPage: React.FC = () => {
                 </div>
             </div>
         )}
+        {selectedUser && isEditingProfile && (
+            <div className="space-y-5">
+                <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg dark:bg-amber-900/20 dark:border-amber-800">
+                    <Edit size={16} className="text-amber-700 dark:text-amber-300" />
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                        Edits go through <span className="font-mono">PUT /api/users/:id</span> and are
+                        logged in the admin audit trail. PII fields (phone, DOB, address) are managed
+                        by users themselves and not exposed here.
+                    </p>
+                </div>
+                <ProfileField
+                    label="Display Name"
+                    value={editForm.displayName ?? selectedUser.name}
+                    onChange={(v) => setEditForm(f => ({ ...f, displayName: v }))}
+                />
+                <ProfileField
+                    label="Bio"
+                    value={editForm.bio ?? ''}
+                    onChange={(v) => setEditForm(f => ({ ...f, bio: v }))}
+                    multiline
+                />
+                <div className="grid grid-cols-2 gap-4">
+                    <ProfileField
+                        label="Title"
+                        value={editForm.title ?? ''}
+                        onChange={(v) => setEditForm(f => ({ ...f, title: v }))}
+                    />
+                    <ProfileField
+                        label="Company"
+                        value={editForm.company ?? ''}
+                        onChange={(v) => setEditForm(f => ({ ...f, company: v }))}
+                    />
+                </div>
+                <ProfileField
+                    label="Location"
+                    value={editForm.location ?? ''}
+                    onChange={(v) => setEditForm(f => ({ ...f, location: v }))}
+                />
+                <ProfileField
+                    label="Website"
+                    value={editForm.website ?? ''}
+                    onChange={(v) => setEditForm(f => ({ ...f, website: v }))}
+                />
+                <div className="grid grid-cols-2 gap-4">
+                    <ProfileField
+                        label="Twitter"
+                        value={editForm.twitter ?? ''}
+                        onChange={(v) => setEditForm(f => ({ ...f, twitter: v }))}
+                    />
+                    <ProfileField
+                        label="LinkedIn"
+                        value={editForm.linkedin ?? ''}
+                        onChange={(v) => setEditForm(f => ({ ...f, linkedin: v }))}
+                    />
+                </div>
+            </div>
+        )}
       </AdminDrawer>
+
+      {/* Lifecycle confirmation (PR10). Each verb gets its own copy so
+          banning vs suspending is unambiguous. The confirm modal closes
+          itself on success; on failure we keep it open and toast. */}
+      <ConfirmActionModal
+        isOpen={!!lifecycleCandidate}
+        onClose={() => setLifecycleCandidate(null)}
+        onConfirm={handleConfirmLifecycle}
+        title={
+            lifecycleCandidate?.verb === 'suspend' ? 'Suspend User?'
+            : lifecycleCandidate?.verb === 'ban' ? 'Ban User?'
+            : 'Activate User?'
+        }
+        description={
+            lifecycleCandidate?.verb === 'suspend'
+                ? `${lifecycleCandidate.user.name} will be unable to sign in and all of their active sessions will be revoked. You can reverse this with Activate.`
+            : lifecycleCandidate?.verb === 'ban'
+                ? `${lifecycleCandidate.user.name} will be permanently restricted from this platform and all of their sessions will be revoked. Use Suspend instead if this may be temporary.`
+            : `Restores access for ${lifecycleCandidate?.user.name}. They will be able to sign in again.`
+        }
+        actionLabel={
+            lifecycleCandidate?.verb === 'suspend' ? 'Suspend'
+            : lifecycleCandidate?.verb === 'ban' ? 'Ban'
+            : 'Activate'
+        }
+        isDestructive={lifecycleCandidate?.verb !== 'activate'}
+      />
 
       <ConfirmActionModal
         isOpen={!!roleChangeCandidate}

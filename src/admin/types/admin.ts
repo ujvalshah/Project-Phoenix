@@ -64,7 +64,11 @@ export interface SignupConfig {
 
 // --- Entity Types ---
 
-export type AdminUserStatus = 'active' | 'suspended' | 'pending';
+// Mirrors backend `UserStatus` (PR7b). The third state is `banned` (a stronger
+// suspension that is the canonical TOS-violation outcome), not `pending`. The
+// older `pending` value never had a backend write path and is removed here so
+// the table/badge code can switch on a closed set of three values.
+export type AdminUserStatus = 'active' | 'suspended' | 'banned';
 
 export interface AdminUser {
   id: string;
