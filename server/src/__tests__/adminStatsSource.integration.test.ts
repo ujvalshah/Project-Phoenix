@@ -141,4 +141,22 @@ describe('Admin stats source-of-truth (PR10 / P1.7)', () => {
     expect(statsRes.body.users.suspended).toBe(1);
     expect(statsRes.body.users.banned).toBe(0);
   });
+
+  it('marks repeated reads as cached so clients can surface freshness', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const adminId = await createUserDoc({ role: 'admin', status: 'active' });
+    const adminToken = generateAccessToken(adminId, 'admin');
+
+    const first = await request(app)
+      .get('/api/admin/stats')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(first.status).toBe(200);
+    expect(first.body.cached).toBe(false);
+
+    const second = await request(app)
+      .get('/api/admin/stats')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(second.status).toBe(200);
+    expect(second.body.cached).toBe(true);
+  });
 });

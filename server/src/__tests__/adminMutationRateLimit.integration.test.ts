@@ -145,4 +145,51 @@ describe('Admin mutation rate limiter (PR9 / P1.6)', () => {
       expect(res.status).toBe(200);
     }
   }, 20000);
+
+  it('throttles admin PUT /api/users/:id mutations through users router', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const targetId = await createUserDoc('user');
+    const adminId = await createUserDoc('admin');
+    const adminToken = generateAccessToken(adminId, 'admin');
+
+    for (let i = 0; i < 30; i++) {
+      const ok = await request(app)
+        .put(`/api/users/${targetId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: `Name ${i}` });
+      expect(ok.status).toBe(200);
+    }
+
+    const res = await request(app)
+      .put(`/api/users/${targetId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'throttled' });
+
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe('ADMIN_MUTATION_RATE_LIMITED');
+  }, 20000);
+
+  it('throttles admin DELETE /api/users/:id mutations through users router', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const adminId = await createUserDoc('admin');
+    const adminToken = generateAccessToken(adminId, 'admin');
+
+    const targets: string[] = [];
+    for (let i = 0; i < 31; i++) {
+      targets.push(await createUserDoc('user'));
+    }
+
+    for (let i = 0; i < 30; i++) {
+      const ok = await request(app)
+        .delete(`/api/users/${targets[i]}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(ok.status).toBe(204);
+    }
+
+    const blocked = await request(app)
+      .delete(`/api/users/${targets[30]}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.code).toBe('ADMIN_MUTATION_RATE_LIMITED');
+  }, 30000);
 });

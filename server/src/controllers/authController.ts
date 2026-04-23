@@ -24,7 +24,7 @@ import {
   validateRefreshToken,
   rotateRefreshToken,
   revokeRefreshToken,
-  revokeAllRefreshTokens,
+  revokeAllRefreshTokensDetailed,
   blacklistToken,
   recordFailedLogin,
   clearFailedLogins,
@@ -798,7 +798,14 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
         msg: 'SECURITY: Refresh token reuse detected — revoking all sessions',
         userId: reusedUserId,
       });
-      await revokeAllRefreshTokens(reusedUserId);
+      const revokeResult = await revokeAllRefreshTokensDetailed(reusedUserId);
+      if (!revokeResult.ok) {
+        requestLogger.error({
+          msg: 'SECURITY: failed to revoke refresh-token family after reuse detection',
+          userId: reusedUserId,
+          reason: revokeResult.reason,
+        });
+      }
       clearAuthCookies(res);
       return sendUnauthorizedError(res, 'Session revoked due to suspicious activity. Please sign in again.');
     }
@@ -898,7 +905,14 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
         storedDevice: tokenData.deviceInfo,
         storedIp: tokenData.ipAddress,
       });
-      await revokeAllRefreshTokens(userId);
+      const revokeResult = await revokeAllRefreshTokensDetailed(userId);
+      if (!revokeResult.ok) {
+        requestLogger.error({
+          msg: 'SECURITY: failed to revoke refresh-token family after fingerprint mismatch',
+          userId,
+          reason: revokeResult.reason,
+        });
+      }
       clearAuthCookies(res);
       return sendUnauthorizedError(res, 'Session revoked due to suspicious activity. Please sign in again.');
     }
@@ -1056,7 +1070,21 @@ export const logoutAll = async (req: Request, res: Response) => {
     }
 
     // Revoke all refresh tokens for this user
-    await revokeAllRefreshTokens(userId);
+    const revokeResult = await revokeAllRefreshTokensDetailed(userId);
+    if (!revokeResult.ok) {
+      requestLogger.error({
+        msg: 'Logout-all: failed to revoke refresh tokens',
+        userId,
+        reason: revokeResult.reason,
+      });
+      clearAuthCookies(res);
+      return sendErrorResponse(
+        res,
+        503,
+        'Could not revoke all sessions right now. Please retry in a moment.',
+        'SESSION_REVOCATION_UNAVAILABLE'
+      );
+    }
 
     requestLogger.info({ msg: 'User logged out from all devices', userId });
 
@@ -1258,7 +1286,20 @@ export const resetPassword = async (req: Request, res: Response) => {
     await user.save();
 
     // Revoke all refresh tokens (force re-login on all devices)
-    await revokeAllRefreshTokens(user._id.toString());
+    const revokeResult = await revokeAllRefreshTokensDetailed(user._id.toString());
+    if (!revokeResult.ok) {
+      requestLogger.error({
+        msg: 'Reset-password: failed to revoke refresh tokens after password change',
+        userId: user._id.toString(),
+        reason: revokeResult.reason,
+      });
+      return sendErrorResponse(
+        res,
+        503,
+        'Password updated, but session revocation is temporarily unavailable. Please retry shortly.',
+        'SESSION_REVOCATION_UNAVAILABLE'
+      );
+    }
 
     requestLogger.info({ msg: 'Password reset successful', userId: user._id.toString() });
 

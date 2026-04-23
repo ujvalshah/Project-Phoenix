@@ -1,4 +1,5 @@
 import { Article, User, Collection, CollectionEntry } from '@/types';
+import type { PublicUserView } from '@/types/user';
 import { ARTICLES as INITIAL_DATA } from '@/data/articles';
 import { IAdapter } from './IAdapter';
 
@@ -215,7 +216,7 @@ export class LocalAdapter implements IAdapter {
     }
   }
 
-  async getUserById(id: string): Promise<User | undefined> {
+  async getUserById(id: string): Promise<PublicUserView | undefined> {
     const users = await this.getUsers();
     let user = users.find(u => u.id === id);
     if (!user) {
@@ -228,7 +229,19 @@ export class LocalAdapter implements IAdapter {
         joinedAt: new Date().toISOString()
       };
     }
-    return user;
+    const displayName = (user as any).profile?.displayName ?? (user as any).name ?? 'Unknown User';
+    const username = (user as any).profile?.username ?? `user_${id}`;
+    return {
+      id: user.id,
+      role: user.role === 'admin' ? 'admin' : 'user',
+      profile: {
+        displayName,
+        username,
+        bio: (user as any).profile?.bio,
+        avatarUrl: (user as any).profile?.avatarUrl,
+        avatarColor: (user as any).profile?.avatarColor,
+      },
+    };
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | null> {

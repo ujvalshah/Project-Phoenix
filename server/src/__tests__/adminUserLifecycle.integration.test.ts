@@ -3,13 +3,14 @@ import { validateEnv } from '../config/envValidation.js';
 
 validateEnv();
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { createAdminUsersApiApp } from './helpers/adminUsersApiApp.js';
 import { tryConnectIntegrationMongo, disconnectIntegrationMongo } from './helpers/integrationMongo.js';
 import { User } from '../models/User.js';
 import { AdminAuditLog } from '../models/AdminAuditLog.js';
 import { generateAccessToken } from '../utils/jwt.js';
+import * as tokenService from '../services/tokenService.js';
 
 let mongoOk = false;
 let app: ReturnType<typeof createAdminUsersApiApp>;
@@ -256,6 +257,47 @@ describe('Admin user lifecycle (PR7b) — suspend / ban / activate / revoke-sess
     expect(logs.length).toBe(1);
     expect(logs[0].adminId).toBe(adminId);
     expect((logs[0].metadata as { reason?: string })?.reason).toBe('suspected token theft');
+  });
+
+  it('lifecycle response is truthful when refresh-token revocation is unavailable', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const targetId = await createUserDoc('user');
+    const adminId = await createUserDoc('admin');
+    const adminToken = generateAccessToken(adminId, 'admin');
+    const revokeSpy = vi
+      .spyOn(tokenService, 'revokeAllRefreshTokensDetailed')
+      .mockResolvedValueOnce({ ok: false, reason: 'redis_unavailable' });
+
+    const res = await request(app)
+      .post(`/api/admin/users/${targetId}/suspend`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('suspended');
+    expect(res.body.sessionsRevoked).toBe(false);
+    expect(res.body.revocationFailureReason).toBe('redis_unavailable');
+    revokeSpy.mockRestore();
+  });
+
+  it('lifecycle response surfaces audit persistence failure', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const targetId = await createUserDoc('user');
+    const adminId = await createUserDoc('admin');
+    const adminToken = generateAccessToken(adminId, 'admin');
+    const auditSpy = vi
+      .spyOn(AdminAuditLog, 'create')
+      .mockRejectedValueOnce(new Error('audit store down'));
+
+    const res = await request(app)
+      .post(`/api/admin/users/${targetId}/activate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('active');
+    expect(res.body.auditPersisted).toBe(false);
+    auditSpy.mockRestore();
   });
 
   it('admin cannot revoke their own sessions through this endpoint', async (ctx) => {

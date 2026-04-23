@@ -292,14 +292,23 @@ export const AdminUsersPage: React.FC = () => {
           setSelectedUser(prev => prev ? { ...prev, status: targetStatus } : prev);
       }
       try {
-          if (verb === 'suspend') await adminUsersService.suspendUser(user.id);
-          else if (verb === 'ban') await adminUsersService.banUser(user.id);
-          else await adminUsersService.activateUser(user.id);
+          const result =
+              verb === 'suspend'
+                  ? await adminUsersService.suspendUser(user.id)
+                  : verb === 'ban'
+                  ? await adminUsersService.banUser(user.id)
+                  : await adminUsersService.activateUser(user.id);
           toast.success(
               verb === 'suspend' ? 'User suspended'
               : verb === 'ban' ? 'User banned'
               : 'User activated'
           );
+          if (result.sessionsRevoked === false && (verb === 'suspend' || verb === 'ban')) {
+              toast.error('Status updated, but session revocation failed. Retry revoke sessions.');
+          }
+          if (result.auditPersisted === false) {
+              toast.error('Action applied but audit logging failed. Check backend alerts.');
+          }
           setLifecycleCandidate(null);
       } catch (err) {
           console.error(`${verb} user failed`, err);

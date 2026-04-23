@@ -10,7 +10,7 @@ import { captureException } from '../utils/sentry.js';
 import { accessUserMutation } from '../utils/userAccess.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
 import { toPublicUserView } from '../utils/userPublicView.js';
-import { revokeAllRefreshTokens } from '../services/tokenService.js';
+import { revokeAllRefreshTokensDetailed } from '../services/tokenService.js';
 import { sendVerificationEmail, sendEmailChangedNoticeEmail } from '../services/emailService.js';
 import { generateEmailVerificationToken } from '../utils/jwt.js';
 import { getEnv } from '../config/envValidation.js';
@@ -317,10 +317,11 @@ export const updateUser = async (req: Request, res: Response) => {
     // user. Refresh tokens live in Redis and don't carry tokenVersion, so
     // revoke them too — otherwise the very next /auth/refresh would mint a
     // fresh access token for the now-stale role/email.
+    let refreshRevocationStatus: { ok: boolean; reason?: string } | undefined;
     if (bumpTokenVersion) {
-      try {
-        await revokeAllRefreshTokens(targetUserId);
-      } catch (revokeErr) {
+      const revokeResult = await revokeAllRefreshTokensDetailed(targetUserId);
+      refreshRevocationStatus = { ok: revokeResult.ok, reason: revokeResult.reason };
+      if (!revokeResult.ok) {
         // Non-fatal: tokenVersion enforcement still revokes access tokens.
         // Log so we can see Redis-related coverage gaps.
         const requestLogger = createRequestLogger(req.id || 'unknown', authUserId, req.path);
@@ -329,7 +330,7 @@ export const updateUser = async (req: Request, res: Response) => {
           targetUserId,
           roleChanged,
           emailChanged,
-          err: revokeErr instanceof Error ? { message: revokeErr.message, name: revokeErr.name } : { message: String(revokeErr) },
+          reason: revokeResult.reason,
         });
       }
     }
@@ -371,6 +372,7 @@ export const updateUser = async (req: Request, res: Response) => {
     // enum splits role and profile actions, and an admin doing both in one
     // request should leave both rows for the security timeline.
     if (isAdminOnOther && priorUser) {
+      let auditPersisted = true;
       const roleChanged =
         updateData.role !== undefined && priorUser.role !== user.role;
 
@@ -401,7 +403,7 @@ export const updateUser = async (req: Request, res: Response) => {
       }
 
       if (roleChanged) {
-        await auditAdminAction(req, {
+        const result = await auditAdminAction(req, {
           action: 'UPDATE_USER_ROLE',
           targetType: 'user',
           targetId: userId,
@@ -409,9 +411,10 @@ export const updateUser = async (req: Request, res: Response) => {
           newValue: { role: user.role },
           metadata: { targetEmail: user.auth?.email },
         });
+        auditPersisted = auditPersisted && result.persisted;
       }
       if (Object.keys(profileFieldDiff).length > 0) {
-        await auditAdminAction(req, {
+        const result = await auditAdminAction(req, {
           action: 'UPDATE_USER_PROFILE',
           targetType: 'user',
           targetId: userId,
@@ -423,6 +426,23 @@ export const updateUser = async (req: Request, res: Response) => {
           ),
           metadata: { changedFields: Object.keys(profileFieldDiff) },
         });
+        auditPersisted = auditPersisted && result.persisted;
+      }
+      if (bumpTokenVersion && refreshRevocationStatus && !refreshRevocationStatus.ok) {
+        const result = await auditAdminAction(req, {
+          action: 'REVOKE_SESSIONS',
+          targetType: 'user',
+          targetId: userId,
+          metadata: {
+            trigger: 'security_relevant_profile_or_role_update',
+            refreshTokensRevoked: false,
+            revocationFailureReason: refreshRevocationStatus.reason ?? 'unknown_error',
+          },
+        });
+        auditPersisted = auditPersisted && result.persisted;
+      }
+      if (!auditPersisted) {
+        res.setHeader('X-Audit-Warning', 'Admin action completed but audit persistence failed');
       }
     }
 
@@ -487,19 +507,18 @@ export const deleteUser = async (req: Request, res: Response) => {
     // converts this to soft delete, the tokenVersion bump will cover access
     // tokens too; for now (hard delete), there's no DB row left to bump
     // against, but we still want refresh tokens dead.
-    try {
-      await revokeAllRefreshTokens(targetUserId);
-    } catch (revokeErr) {
+    const revokeResult = await revokeAllRefreshTokensDetailed(targetUserId);
+    if (!revokeResult.ok) {
       const requestLogger = createRequestLogger(req.id || 'unknown', authUserId, req.path);
       requestLogger.warn({
         msg: '[TokenVersion] Failed to revoke refresh tokens after delete',
         targetUserId,
-        err: revokeErr instanceof Error ? { message: revokeErr.message, name: revokeErr.name } : { message: String(revokeErr) },
+        reason: revokeResult.reason,
       });
     }
 
     if (isAdminOnOther) {
-      await auditAdminAction(req, {
+      const auditResult = await auditAdminAction(req, {
         action: 'DELETE_USER',
         targetType: 'user',
         targetId: targetUserId,
@@ -509,7 +528,15 @@ export const deleteUser = async (req: Request, res: Response) => {
           displayName: user.profile?.displayName,
           role: user.role,
         },
+        metadata: {
+          deleteMode: 'hard',
+          refreshTokensRevoked: revokeResult.ok,
+          ...(revokeResult.reason ? { revocationFailureReason: revokeResult.reason } : {}),
+        },
       });
+      if (!auditResult.persisted) {
+        res.setHeader('X-Audit-Warning', 'Delete completed but audit persistence failed');
+      }
     }
 
     res.status(204).send();

@@ -1,5 +1,6 @@
 import { IAdapter, PaginatedArticlesResponse, ArticleCountsResponse } from './IAdapter';
 import { Article, User, Collection } from '@/types';
+import type { PublicUserView } from '@/types/user';
 import { apiClient } from '@/services/apiClient';
 
 /**
@@ -285,8 +286,8 @@ export class RestAdapter implements IAdapter {
       .then(response => Array.isArray(response) ? response : (response.data || []));
   }
 
-  getUserById(id: string): Promise<User | undefined> {
-    return apiClient.get<User>(`/users/public/${id}`).catch(() => undefined);
+  getUserById(id: string): Promise<PublicUserView | undefined> {
+    return apiClient.get<PublicUserView>(`/users/public/${id}`).catch(() => undefined);
   }
 
   updateUser(id: string, updates: Partial<User>): Promise<User | null> {

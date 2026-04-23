@@ -12,6 +12,21 @@ export interface AuditAdminActionParams {
   metadata?: Record<string, unknown>;
 }
 
+export interface AuditAdminActionOptions {
+  /**
+   * When true, throws if audit persistence fails. Use for sensitive admin
+   * actions that must not silently disappear from the forensic timeline.
+   */
+  failOnError?: boolean;
+}
+
+export class AuditPersistenceError extends Error {
+  constructor(message = 'Failed to persist admin audit action') {
+    super(message);
+    this.name = 'AuditPersistenceError';
+  }
+}
+
 /**
  * Records a sensitive admin action to the AdminAuditLog collection.
  *
@@ -25,10 +40,11 @@ export interface AuditAdminActionParams {
  */
 export async function auditAdminAction(
   req: Request,
-  params: AuditAdminActionParams
-): Promise<void> {
+  params: AuditAdminActionParams,
+  options?: AuditAdminActionOptions
+): Promise<{ persisted: boolean }> {
   const adminId = (req as { user?: { userId?: string } }).user?.userId;
-  if (!adminId) return;
+  if (!adminId) return { persisted: false };
 
   try {
     await AdminAuditLog.create({
@@ -56,5 +72,10 @@ export async function auditAdminAction(
       },
       'Failed to write AdminAuditLog entry'
     );
+    if (options?.failOnError) {
+      throw new AuditPersistenceError();
+    }
+    return { persisted: false };
   }
+  return { persisted: true };
 }

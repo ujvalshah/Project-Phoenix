@@ -30,6 +30,11 @@ export class RedisUnavailableError extends Error {
   }
 }
 
+export interface RevocationResult {
+  ok: boolean;
+  reason?: 'redis_unavailable' | 'unknown_error';
+}
+
 // Redis key prefixes
 const PREFIX = {
   BLACKLIST: 'bl:',           // Blacklisted access tokens
@@ -661,8 +666,17 @@ export async function revokeRefreshToken(userId: string, refreshToken: string): 
  * Revoke all refresh tokens for a user (logout from all devices)
  */
 export async function revokeAllRefreshTokens(userId: string): Promise<boolean> {
+  const result = await revokeAllRefreshTokensDetailed(userId);
+  return result.ok;
+}
+
+/**
+ * Revoke all refresh tokens and return an explicit outcome.
+ * Callers that report revocation status to users/audit logs should use this.
+ */
+export async function revokeAllRefreshTokensDetailed(userId: string): Promise<RevocationResult> {
   if (!isRedisAvailable()) {
-    return false;
+    return { ok: false, reason: 'redis_unavailable' };
   }
 
   try {
@@ -687,11 +701,11 @@ export async function revokeAllRefreshTokens(userId: string): Promise<boolean> {
       await client.del(sessionKey);
     }
 
-    return true;
+    return { ok: true };
   } catch (error: any) {
     const logger = getLogger();
     logger.error({ msg: '[TokenService] Failed to revoke all tokens', err: { message: error.message } });
-    return false;
+    return { ok: false, reason: 'unknown_error' };
   }
 }
 

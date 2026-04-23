@@ -68,10 +68,10 @@ const envSchema = z.object({
   // suspend/ban/delete, or on explicit admin revoke-sessions) immediately
   // invalidates every live access token for that user.
   //
-  // Defaults to false (observe-only): mismatches are logged but the request
-  // proceeds. After one access-token TTL window has elapsed since rollout
-  // (so all in-flight tokens encode the new field) flip this to true.
-  ENFORCE_TOKEN_VERSION: z.string().transform((val) => val === 'true').optional().default('false'),
+  // Production default is enforced in validateEnv(): true when NODE_ENV is
+  // production and ENFORCE_TOKEN_VERSION is unset. Non-production defaults to
+  // observe-only (false) so local/dev rollout remains safer.
+  ENFORCE_TOKEN_VERSION: z.string().transform((val) => val === 'true').optional(),
 
   // Web Push / VAPID (optional – notifications disabled if not set)
   VAPID_PUBLIC_KEY: z.string().min(1).optional(),
@@ -146,7 +146,16 @@ export function validateEnv(): ValidatedEnv {
     console.warn('To use cloud Redis, set USE_LOCAL_REDIS=false or remove it.\n');
   }
 
-  validatedEnv = result.data;
+  // Security default: enforce token-version revocation in production unless
+  // explicitly overridden.
+  const enforceTokenVersion =
+    result.data.ENFORCE_TOKEN_VERSION ??
+    (result.data.NODE_ENV === 'production');
+
+  validatedEnv = {
+    ...result.data,
+    ENFORCE_TOKEN_VERSION: enforceTokenVersion,
+  };
   return validatedEnv;
 }
 
@@ -159,6 +168,15 @@ export function getEnv(): ValidatedEnv {
     throw new Error('Environment validation not yet executed. Call validateEnv() first.');
   }
   return validatedEnv;
+}
+
+/**
+ * Test-only helper to force re-validation after mutating process.env.
+ */
+export function resetValidatedEnvForTests(): void {
+  if (process.env.NODE_ENV === 'test') {
+    validatedEnv = null;
+  }
 }
 
 /**

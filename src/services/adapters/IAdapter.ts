@@ -1,4 +1,5 @@
 import { Article, User, Collection, TagTaxonomy } from '@/types';
+import type { PublicUserView } from '@/types/user';
 
 export interface PaginatedArticlesResponse {
   data: Article[];
@@ -47,7 +48,7 @@ export interface IAdapter {
 
   // Users
   getUsers(): Promise<User[]>;
-  getUserById(id: string): Promise<User | undefined>;
+  getUserById(id: string): Promise<PublicUserView | undefined>;
   updateUser(id: string, updates: Partial<User>): Promise<User | null>;
   deleteUser(id: string): Promise<void>;
 

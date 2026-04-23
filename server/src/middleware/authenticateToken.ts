@@ -78,8 +78,8 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       if (userDoc) {
         const tokenTv = decoded.tokenVersion ?? 0;
         const userTv = userDoc.tokenVersion ?? 0;
+        const enforce = getEnv().ENFORCE_TOKEN_VERSION;
         if (tokenTv !== userTv) {
-          const enforce = getEnv().ENFORCE_TOKEN_VERSION;
           if (enforce) {
             requestLogger.warn({
               msg: '[TokenVersion] Rejecting request: tokenVersion mismatch',
@@ -104,11 +104,21 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
         }
       }
     } catch (lookupErr) {
-      // A failed lookup must not prevent auth in observe-only mode and
-      // must not become a covert lockout in enforced mode. Log and let the
-      // request through — the underlying issue (DB outage) is louder.
+      const enforce = getEnv().ENFORCE_TOKEN_VERSION;
+      if (enforce) {
+        requestLogger.error({
+          msg: '[TokenVersion] Enforced mode: failed to load user for version check; rejecting request',
+          userId: decoded.userId,
+          err: lookupErr instanceof Error ? { name: lookupErr.name, message: lookupErr.message } : { message: String(lookupErr) },
+        });
+        return res.status(503).json({
+          error: true,
+          message: 'Session validation temporarily unavailable. Please try again.',
+          code: 'SESSION_VALIDATION_UNAVAILABLE',
+        });
+      }
       requestLogger.warn({
-        msg: '[TokenVersion] Failed to load user for version check; allowing request',
+        msg: '[TokenVersion] Failed to load user for version check; allowing request (observe-only mode)',
         userId: decoded.userId,
         err: lookupErr instanceof Error ? { name: lookupErr.name, message: lookupErr.message } : { message: String(lookupErr) },
       });

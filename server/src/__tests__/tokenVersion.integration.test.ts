@@ -1,5 +1,5 @@
 import '../loadEnv.js';
-import { validateEnv } from '../config/envValidation.js';
+import { validateEnv, resetValidatedEnvForTests } from '../config/envValidation.js';
 
 validateEnv();
 
@@ -64,6 +64,9 @@ describe('tokenVersion (PR5) — observe-only by default', () => {
       return;
     }
     await User.deleteMany({ 'auth.email': { $regex: /@route-test\.local$/ } });
+    delete process.env.ENFORCE_TOKEN_VERSION;
+    resetValidatedEnvForTests();
+    validateEnv();
   });
 
   it('admin role-change bumps target tokenVersion and revokes refresh tokens (best-effort)', async (ctx) => {
@@ -135,5 +138,22 @@ describe('tokenVersion (PR5) — observe-only by default', () => {
       .set('Authorization', `Bearer ${oldToken}`);
 
     expect(res.status).toBe(200);
+  });
+
+  it('enforced mode: mismatched tokenVersion is rejected with SESSION_REVOKED', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    process.env.ENFORCE_TOKEN_VERSION = 'true';
+    resetValidatedEnvForTests();
+    validateEnv();
+
+    const userId = await createUserDoc('user', 3);
+    const staleToken = generateAccessToken(userId, 'user', undefined, 0);
+
+    const res = await request(app)
+      .get(`/api/users/${userId}/feed`)
+      .set('Authorization', `Bearer ${staleToken}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('SESSION_REVOKED');
   });
 });

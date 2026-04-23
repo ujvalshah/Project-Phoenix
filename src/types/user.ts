@@ -88,3 +88,29 @@ export interface User {
   preferences: UserPreferences;
   appState: UserAppState;
 }
+
+/**
+ * Public allowlisted user projection returned by GET /api/users/public/:id.
+ * This shape intentionally excludes auth/security/preferences/appState/PII.
+ */
+export interface PublicUserView {
+  readonly id: string;
+  readonly role: UserRole;
+  profile: Pick<
+    UserProfile,
+    | 'displayName'
+    | 'username'
+    | 'bio'
+    | 'avatarUrl'
+    | 'avatarColor'
+    | 'title'
+    | 'company'
+    | 'location'
+    | 'website'
+    | 'twitter'
+    | 'linkedin'
+    | 'youtube'
+    | 'instagram'
+    | 'facebook'
+  >;
+}

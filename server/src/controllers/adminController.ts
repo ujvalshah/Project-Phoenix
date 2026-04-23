@@ -20,7 +20,7 @@ import {
 import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { getLogger } from '../utils/logger.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
-import { revokeAllRefreshTokens } from '../services/tokenService.js';
+import { revokeAllRefreshTokensDetailed } from '../services/tokenService.js';
 import type { AdminAction } from '../models/AdminAuditLog.js';
 import type { UserStatus } from '../models/User.js';
 
@@ -601,22 +601,24 @@ async function applyLifecycle(
 
     await User.findByIdAndUpdate(targetUserId, updateOp, { runValidators: true });
 
+    let sessionsRevoked = !shouldRevokeSessions;
+    let revocationFailureReason: string | undefined;
     if (shouldRevokeSessions) {
-      try {
-        await revokeAllRefreshTokens(targetUserId);
-      } catch (revokeErr) {
-        // Non-fatal: tokenVersion enforcement still kills access tokens.
-        // Log so a Redis outage during a security event is visible.
+      const revokeResult = await revokeAllRefreshTokensDetailed(targetUserId);
+      sessionsRevoked = revokeResult.ok;
+      if (!revokeResult.ok) {
+        revocationFailureReason = revokeResult.reason;
+        // Non-fatal for the status transition, but response/audit must be truthful.
         getLogger().warn({
           msg: '[Lifecycle] Failed to revoke refresh tokens after status change',
           targetUserId,
           verb,
-          err: revokeErr instanceof Error ? { message: revokeErr.message, name: revokeErr.name } : { message: String(revokeErr) }
+          reason: revokeResult.reason,
         });
       }
     }
 
-    await auditAdminAction(req, {
+    const auditResult = await auditAdminAction(req, {
       action: LIFECYCLE_AUDIT_ACTION[verb],
       targetType: 'user',
       targetId: targetUserId,
@@ -627,7 +629,8 @@ async function applyLifecycle(
         targetEmail: user.auth?.email,
         targetUsername: user.profile?.username,
         wasAlreadyInState,
-        sessionsRevoked: shouldRevokeSessions
+        sessionsRevoked,
+        ...(revocationFailureReason ? { revocationFailureReason } : {})
       }
     });
 
@@ -636,7 +639,9 @@ async function applyLifecycle(
         ? `User was already ${targetStatus}`
         : `User ${targetStatus}`,
       status: targetStatus,
-      sessionsRevoked: shouldRevokeSessions
+      sessionsRevoked,
+      ...(revocationFailureReason ? { revocationFailureReason } : {}),
+      auditPersisted: auditResult.persisted
     });
   } catch (error) {
     getLogger().error({ err: error, adminId, targetUserId, verb }, 'Failed to change user status');
@@ -701,19 +706,17 @@ export async function revokeUserSessions(req: AdminRequest, res: Response) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    let sessionsRevoked = true;
-    try {
-      await revokeAllRefreshTokens(targetUserId);
-    } catch (revokeErr) {
-      sessionsRevoked = false;
+    const revokeResult = await revokeAllRefreshTokensDetailed(targetUserId);
+    const sessionsRevoked = revokeResult.ok;
+    if (!sessionsRevoked) {
       getLogger().warn({
         msg: '[Lifecycle] Failed to revoke refresh tokens during explicit revoke-sessions',
         targetUserId,
-        err: revokeErr instanceof Error ? { message: revokeErr.message, name: revokeErr.name } : { message: String(revokeErr) }
+        reason: revokeResult.reason,
       });
     }
 
-    await auditAdminAction(req, {
+    const auditResult = await auditAdminAction(req, {
       action: 'REVOKE_SESSIONS',
       targetType: 'user',
       targetId: targetUserId,
@@ -722,14 +725,17 @@ export async function revokeUserSessions(req: AdminRequest, res: Response) {
       metadata: {
         targetEmail: user.auth?.email,
         targetUsername: user.profile?.username,
-        refreshTokensRevoked: sessionsRevoked
+        refreshTokensRevoked: sessionsRevoked,
+        ...(revokeResult.reason ? { revocationFailureReason: revokeResult.reason } : {})
       }
     });
 
     return res.json({
       message: 'Sessions revoked',
       tokenVersion: user.tokenVersion,
-      refreshTokensRevoked: sessionsRevoked
+      refreshTokensRevoked: sessionsRevoked,
+      ...(revokeResult.reason ? { revocationFailureReason: revokeResult.reason } : {}),
+      auditPersisted: auditResult.persisted
     });
   } catch (error) {
     getLogger().error({ err: error, adminId, targetUserId }, 'Failed to revoke user sessions');

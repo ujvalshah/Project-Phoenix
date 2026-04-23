@@ -68,12 +68,7 @@ class AdminUsersService {
         admins: u.admins ?? 0,
       };
     } catch (err) {
-      // Surface a zero shape rather than crashing the dashboard — the
-      // /admin/stats endpoint is gated by requireAdminRole, so any failure
-      // here is either auth or transport. The page already shows an
-      // errorMessage from the parallel users fetch.
-      console.error('adminUsersService.getStats failed', err);
-      return { total: 0, active: 0, suspended: 0, banned: 0, newToday: 0, admins: 0 };
+      throw new Error('Failed to load canonical admin stats', { cause: err });
     }
   }
 
@@ -112,29 +107,29 @@ class AdminUsersService {
   // ── Lifecycle (PR7b backend, re-enabled in the UI by PR10) ────────────────
   // Each call is idempotent on the backend (a no-op transition still returns
   // 200 + writes an audit row with wasAlreadyInState: true).
-  async suspendUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean }> {
-    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean }>(
+  async suspendUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
+    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }>(
       `/admin/users/${id}/suspend`,
       reason ? { reason } : {},
     );
   }
 
-  async banUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean }> {
-    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean }>(
+  async banUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
+    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }>(
       `/admin/users/${id}/ban`,
       reason ? { reason } : {},
     );
   }
 
-  async activateUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean }> {
-    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean }>(
+  async activateUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
+    return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }>(
       `/admin/users/${id}/activate`,
       reason ? { reason } : {},
     );
   }
 
-  async revokeUserSessions(id: string, reason?: string): Promise<{ tokenVersion: number; refreshTokensRevoked: boolean }> {
-    return apiClient.post<{ tokenVersion: number; refreshTokensRevoked: boolean }>(
+  async revokeUserSessions(id: string, reason?: string): Promise<{ tokenVersion: number; refreshTokensRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
+    return apiClient.post<{ tokenVersion: number; refreshTokensRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }>(
       `/admin/users/${id}/revoke-sessions`,
       reason ? { reason } : {},
     );
