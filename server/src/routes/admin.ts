@@ -13,6 +13,8 @@ import {
   updateDisclaimerSettings,
   getValuePropStripSettings,
   updateValuePropStripSettings,
+  getMarketPulseIntroSettings,
+  updateMarketPulseIntroSettings,
   suspendUser,
   banUser,
   activateUser,
@@ -56,6 +58,12 @@ router.get('/settings/value-prop-strip', authenticateToken, requireAdminRole, ge
 
 // PATCH /api/admin/settings/value-prop-strip - Update first-time value-prop strip copy (admin only)
 router.patch('/settings/value-prop-strip', authenticateToken, requireAdminRole, adminMutationLimiter, updateValuePropStripSettings);
+
+// GET /api/admin/settings/market-pulse-intro - Get Market Pulse first-visit intro copy (admin only)
+router.get('/settings/market-pulse-intro', authenticateToken, requireAdminRole, getMarketPulseIntroSettings);
+
+// PATCH /api/admin/settings/market-pulse-intro - Update Market Pulse first-visit intro copy (admin only)
+router.patch('/settings/market-pulse-intro', authenticateToken, requireAdminRole, adminMutationLimiter, updateMarketPulseIntroSettings);
 
 // ── Bulk tag export/import (two-axis taxonomy) ─────────────────────────────
 // GET  /api/admin/tagging/export  - Download XLSX with current + suggested tags

@@ -57,5 +57,15 @@ export const adminSettingsService = {
     body: UpdateValuePropStripBody
   ): Promise<{ message: string; config: ValuePropStripConfig }> {
     return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/value-prop-strip', body);
+  },
+
+  async getMarketPulseIntroConfig(): Promise<ValuePropStripConfig> {
+    return apiClient.get<ValuePropStripConfig>('/admin/settings/market-pulse-intro');
+  },
+
+  async updateMarketPulseIntroConfig(
+    body: UpdateValuePropStripBody
+  ): Promise<{ message: string; config: ValuePropStripConfig }> {
+    return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/market-pulse-intro', body);
   }
 };

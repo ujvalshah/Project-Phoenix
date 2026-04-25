@@ -20,7 +20,8 @@ export type AdminAction =
   | 'RESET_USER_PASSWORD'
   | 'UPDATE_MEDIA_QUOTA'
   | 'UPDATE_DISCLAIMER_CONFIG'
-  | 'UPDATE_VALUE_PROP_STRIP_CONFIG';
+  | 'UPDATE_VALUE_PROP_STRIP_CONFIG'
+  | 'UPDATE_MARKET_PULSE_INTRO_CONFIG';
 
 export interface IAdminAuditLog extends Document {
   adminId: string;
@@ -56,7 +57,8 @@ const AdminAuditLogSchema = new Schema<IAdminAuditLog>({
       'RESET_USER_PASSWORD',
       'UPDATE_MEDIA_QUOTA',
       'UPDATE_DISCLAIMER_CONFIG',
-      'UPDATE_VALUE_PROP_STRIP_CONFIG'
+      'UPDATE_VALUE_PROP_STRIP_CONFIG',
+      'UPDATE_MARKET_PULSE_INTRO_CONFIG'
     ],
     required: true,
     index: true

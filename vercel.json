@@ -23,11 +23,42 @@
           "value": "(?i)whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|slack-imgproxy|discordbot|telegrambot|googlebot|bingbot|yandexbot|rogerbot|embedly|quora link preview|showyoubot|outbrain|pinterest|applebot"
         }
       ],
-      "destination": "/api/og-proxy"
+      "destination": "/api/public-seo?kind=collection&slug=:id"
     },
+    { "source": "/topics/:slug", "destination": "/api/public-seo?kind=topic&slug=:slug" },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+      "source": "/collections/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i)whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|slack-imgproxy|discordbot|telegrambot|googlebot|bingbot|yandexbot|rogerbot|embedly|quora link preview|showyoubot|outbrain|pinterest|applebot"
+        }
+      ],
+      "destination": "/api/public-seo?kind=collection&slug=:slug"
+    },
+    { "source": "/nuggets/:slug", "destination": "/api/public-seo?kind=nugget&slug=:slug" },
+    { "source": "/compare/:slug", "destination": "/api/public-seo?kind=comparison&slug=:slug" },
+    { "source": "/use-cases/:slug", "destination": "/api/public-seo?kind=use-case&slug=:slug" },
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/feed", "destination": "/index.html" },
+    { "source": "/feed/:articleId", "destination": "/index.html" },
+    { "source": "/collections", "destination": "/index.html" },
+    { "source": "/collections/:id", "destination": "/index.html" },
+    { "source": "/bookmarks", "destination": "/index.html" },
+    { "source": "/myspace", "destination": "/index.html" },
+    { "source": "/profile/:userId", "destination": "/index.html" },
+    { "source": "/account", "destination": "/index.html" },
+    { "source": "/admin", "destination": "/index.html" },
+    { "source": "/admin/:path*", "destination": "/index.html" },
+    { "source": "/bulk-create", "destination": "/index.html" },
+    { "source": "/youtube-analysis", "destination": "/index.html" },
+    { "source": "/verify-email", "destination": "/index.html" },
+    { "source": "/forgot-password", "destination": "/index.html" },
+    { "source": "/reset-password", "destination": "/index.html" },
+    { "source": "/notifications", "destination": "/index.html" },
+    { "source": "/article/:id", "destination": "/index.html" },
+    { "source": "/legal/:slug", "destination": "/index.html" },
+    { "source": "/contact", "destination": "/index.html" }
   ]
 }

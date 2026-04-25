@@ -104,12 +104,30 @@ const ValuePropStrip: React.FC = () => {
 
 /** One-time intro banner for Market Pulse, shown on first visit to the pulse feed */
 const MarketPulseIntroBanner: React.FC = () => {
+  const [copy, setCopy] = useState(MARKET_PULSE_INTRO_COPY);
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem(PULSE_INTRO_DISMISSED_KEY) === '1';
     }
     return false;
   });
+
+  useEffect(() => {
+    if (dismissed) return;
+    let isCancelled = false;
+    onboardingCopyService.getMarketPulseIntroCopy()
+      .then((remoteCopy) => {
+        if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
+          setCopy(remoteCopy);
+        }
+      })
+      .catch(() => {
+        // Keep local constants as fallback when API/config is unavailable.
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [dismissed]);
 
   if (dismissed) return null;
 
@@ -128,12 +146,26 @@ const MarketPulseIntroBanner: React.FC = () => {
         <X size={14} />
       </button>
       <p className="text-sm font-semibold text-gray-900 pr-6 flex items-center gap-1.5">
-        <Zap size={14} className="text-amber-500" /> {MARKET_PULSE_INTRO_COPY.title}
+        <Zap size={14} className="text-amber-500" /> {copy.title}
       </p>
-      <p className="text-xs text-gray-600 mt-0.5">{MARKET_PULSE_INTRO_COPY.body}</p>
+      <p className="text-xs text-gray-600 mt-0.5">{copy.body}</p>
     </div>
   );
 };
+
+const PublicHomeIntro: React.FC<{ isPulseStream: boolean }> = ({ isPulseStream }) => (
+  <section className="mx-4 mb-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:mx-6">
+    <h1 className="text-base font-semibold tracking-tight text-slate-950 dark:text-white sm:text-lg">
+      {isPulseStream
+        ? 'Market Pulse: high-signal updates for investors and operators'
+        : 'Nuggets: curated high-signal insights across markets, geopolitics, AI, and technology'}
+    </h1>
+    <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+      Save time with a focused knowledge feed built to surface useful sources, context, and collections without
+      adding more noise to your day.
+    </p>
+  </section>
+);
 
 interface HomePageProps {
   viewMode: 'grid' | 'masonry';
@@ -689,6 +721,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const feedMain = (
     <div className="max-w-[1800px] mx-auto pb-4">
+      {!isAuthenticated && <PublicHomeIntro isPulseStream={isPulseStream} />}
       {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
       <div className="px-4 lg:px-6">
         <div

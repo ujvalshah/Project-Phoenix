@@ -8,6 +8,7 @@ import { AdminAuditLog } from '../models/AdminAuditLog.js';
 import { MediaQuotaConfig } from '../models/MediaQuotaConfig.js';
 import { DisclaimerConfig } from '../models/DisclaimerConfig.js';
 import { ValuePropStripConfig } from '../models/ValuePropStripConfig.js';
+import { MarketPulseIntroConfig } from '../models/MarketPulseIntroConfig.js';
 import { LRUCache } from '../utils/lruCache.js';
 import { buildModerationQuery, getModerationStats } from '../services/moderationService.js';
 import {
@@ -22,6 +23,10 @@ import {
   getValuePropStripConfig,
   invalidateValuePropStripCache
 } from '../services/valuePropStripConfigService.js';
+import {
+  getMarketPulseIntroConfig,
+  invalidateMarketPulseIntroCache
+} from '../services/marketPulseIntroConfigService.js';
 import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { getLogger } from '../utils/logger.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
@@ -40,7 +45,8 @@ const updateDisclaimerSchema = z.object({
   enableByDefault: z.boolean().optional()
 });
 
-const updateValuePropStripSchema = z.object({
+/** Shared for value-prop strip + Market Pulse intro (title + body). */
+const updateOnboardingTitleBodySchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(120, 'Title too long').optional(),
   body: z.string().trim().min(1, 'Body is required').max(500, 'Body too long').optional()
 });
@@ -643,7 +649,7 @@ export async function updateValuePropStripSettings(req: AdminRequest, res: Respo
     return res.status(401).json({ message: 'Admin authentication required' });
   }
 
-  const parseResult = updateValuePropStripSchema.safeParse(req.body);
+  const parseResult = updateOnboardingTitleBodySchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
   }
@@ -700,6 +706,92 @@ export async function updateValuePropStripSettings(req: AdminRequest, res: Respo
   } catch (error) {
     getLogger().error({ error, adminId }, 'Failed to update value-prop strip config');
     return res.status(500).json({ message: 'Failed to update value-prop strip config' });
+  }
+}
+
+/**
+ * Get current Market Pulse intro copy.
+ * GET /api/admin/settings/market-pulse-intro
+ * Returns effective config (from DB or defaults).
+ */
+export async function getMarketPulseIntroSettings(_req: AdminRequest, res: Response) {
+  try {
+    const config = await getMarketPulseIntroConfig();
+    return res.json(config);
+  } catch (error) {
+    getLogger().error({ error }, 'Failed to get Market Pulse intro config');
+    return res.status(500).json({ message: 'Failed to get Market Pulse intro config' });
+  }
+}
+
+/**
+ * Update Market Pulse intro copy (admin only).
+ * PATCH /api/admin/settings/market-pulse-intro
+ * Body: { title?, body? }
+ */
+export async function updateMarketPulseIntroSettings(req: AdminRequest, res: Response) {
+  const adminId = req.userId;
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+
+  const parseResult = updateOnboardingTitleBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
+  }
+
+  const updates = parseResult.data;
+  if (updates.title === undefined && updates.body === undefined) {
+    return res.status(400).json({ message: 'At least one field must be provided' });
+  }
+
+  try {
+    const current = await getMarketPulseIntroConfig();
+    const previousValue = { ...current };
+
+    const newDoc = {
+      id: 'default' as const,
+      title: updates.title ?? current.title,
+      body: updates.body ?? current.body,
+      updatedAt: new Date()
+    };
+
+    await MarketPulseIntroConfig.findOneAndUpdate(
+      { id: 'default' },
+      { $set: newDoc },
+      { upsert: true, new: true }
+    );
+
+    invalidateMarketPulseIntroCache();
+
+    const newValue = {
+      title: newDoc.title,
+      body: newDoc.body
+    };
+
+    await AdminAuditLog.create({
+      adminId,
+      action: 'UPDATE_MARKET_PULSE_INTRO_CONFIG',
+      targetType: 'system',
+      targetId: 'market_pulse_intro_config',
+      previousValue: previousValue as Record<string, unknown>,
+      newValue: newValue as Record<string, unknown>,
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.get('User-Agent')
+    });
+
+    getLogger().info(
+      { action: 'UPDATE_MARKET_PULSE_INTRO_CONFIG', adminId, previousValue, newValue, target: 'market_pulse_intro_config' },
+      'Admin updated Market Pulse intro config'
+    );
+
+    return res.json({
+      message: 'Market Pulse intro config updated',
+      config: newValue
+    });
+  } catch (error) {
+    getLogger().error({ error, adminId }, 'Failed to update Market Pulse intro config');
+    return res.status(500).json({ message: 'Failed to update Market Pulse intro config' });
   }
 }
 

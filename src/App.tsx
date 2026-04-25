@@ -24,6 +24,7 @@ import { AppChromeScrollProvider } from '@/context/AppChromeScrollContext';
 import { FilterResultsProvider } from '@/context/FilterResultsContext';
 import { DesktopFilterSidebarProvider } from '@/context/DesktopFilterSidebarContext';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
+import { PlausibleRouteTracker, PublicRouteSeo } from '@/seo/RouteSeo';
 
 // Legacy hash URL redirect handler
 // Redirects old /#/path URLs to clean /path URLs for backwards compatibility
@@ -171,6 +172,8 @@ const AppContent: React.FC = () => {
     <>
       {/* Handle legacy hash URLs (e.g., /#/collections → /collections) */}
       <HashRedirect />
+      <PublicRouteSeo />
+      <PlausibleRouteTracker />
       <RouteTransitionProfiler />
       
       {/* 

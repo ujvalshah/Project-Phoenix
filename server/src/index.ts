@@ -315,6 +315,7 @@ app.use('/api/notifications', notificationsRouter);
 // Public disclaimer config endpoint (no auth required — used by card rendering)
 import { getDisclaimerConfig } from './services/disclaimerConfigService.js';
 import { getValuePropStripConfig } from './services/valuePropStripConfigService.js';
+import { getMarketPulseIntroConfig } from './services/marketPulseIntroConfigService.js';
 app.get('/api/config/disclaimer', async (_req, res) => {
   try {
     const config = await getDisclaimerConfig();
@@ -331,6 +332,16 @@ app.get('/api/config/value-prop-strip', async (_req, res) => {
     return res.json(config);
   } catch {
     return res.status(500).json({ message: 'Failed to get value-prop strip config' });
+  }
+});
+
+// Public Market Pulse first-visit intro copy (no auth required).
+app.get('/api/config/market-pulse-intro', async (_req, res) => {
+  try {
+    const config = await getMarketPulseIntroConfig();
+    return res.json(config);
+  } catch {
+    return res.status(500).json({ message: 'Failed to get Market Pulse intro config' });
   }
 });
 

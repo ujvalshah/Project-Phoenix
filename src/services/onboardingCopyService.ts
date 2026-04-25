@@ -8,5 +8,9 @@ export interface ValuePropStripCopy {
 export const onboardingCopyService = {
   async getValuePropStripCopy(): Promise<ValuePropStripCopy> {
     return apiClient.get<ValuePropStripCopy>('/config/value-prop-strip');
+  },
+
+  async getMarketPulseIntroCopy(): Promise<ValuePropStripCopy> {
+    return apiClient.get<ValuePropStripCopy>('/config/market-pulse-intro');
   }
 };

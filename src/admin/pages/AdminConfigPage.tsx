@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, ClipboardType, Eye, EyeOff, HardDrive, Bell, FileText } from 'lucide-react';
+import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, ClipboardType, Eye, EyeOff, HardDrive, Bell, FileText, Zap } from 'lucide-react';
 import { getNotificationSystemStatus, toggleNotificationSystem } from '@/services/notificationService';
 import { useToast } from '@/hooks/useToast';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
-import { VALUE_PROP_STRIP_COPY } from '@/constants/onboardingCopy';
+import { VALUE_PROP_STRIP_COPY, MARKET_PULSE_INTRO_COPY } from '@/constants/onboardingCopy';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { adminConfigService, AVAILABLE_SERVICES } from '../services/adminConfigService';
 import { adminSettingsService, MediaLimits, DisclaimerConfig, ValuePropStripConfig } from '../services/adminSettingsService';
@@ -52,6 +52,11 @@ export const AdminConfigPage: React.FC = () => {
   const [isSavingValuePropStrip, setIsSavingValuePropStrip] = useState(false);
   const [valuePropStripLoadError, setValuePropStripLoadError] = useState<string | null>(null);
   const [isReloadingValuePropStrip, setIsReloadingValuePropStrip] = useState(false);
+  const [_marketPulseIntroConfig, setMarketPulseIntroConfig] = useState<ValuePropStripConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
+  const [marketPulseIntroDraft, setMarketPulseIntroDraft] = useState<ValuePropStripConfig | null>(null);
+  const [isSavingMarketPulseIntro, setIsSavingMarketPulseIntro] = useState(false);
+  const [marketPulseIntroLoadError, setMarketPulseIntroLoadError] = useState<string | null>(null);
+  const [isReloadingMarketPulseIntro, setIsReloadingMarketPulseIntro] = useState(false);
 
   useEffect(() => {
     setPageHeader("System Configuration", "Manage global settings, feature toggles, and system alerts.");
@@ -60,7 +65,7 @@ export const AdminConfigPage: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const [permData, flagsData, signupData, limitsData, notifStatus, disclaimerData, valuePropStripData] = await Promise.all([
+      const [permData, flagsData, signupData, limitsData, notifStatus, disclaimerData, valuePropStripData, marketPulseIntroData] = await Promise.all([
         adminConfigService.getRolePermissions(),
         adminConfigService.getFeatureFlags(),
         adminConfigService.getSignupConfig(),
@@ -68,6 +73,7 @@ export const AdminConfigPage: React.FC = () => {
         getNotificationSystemStatus().catch(() => true),
         adminSettingsService.getDisclaimerConfig().catch(() => null),
         adminSettingsService.getValuePropStripConfig().catch(() => null),
+        adminSettingsService.getMarketPulseIntroConfig().catch(() => null),
       ]);
       setPermissions(permData);
       setFlags(flagsData);
@@ -94,8 +100,37 @@ export const AdminConfigPage: React.FC = () => {
         setValuePropStripDraft(fallbackCopy);
         setValuePropStripLoadError('Could not load saved copy. Showing fallback text; save to persist changes.');
       }
+      if (marketPulseIntroData) {
+        setMarketPulseIntroConfig(marketPulseIntroData);
+        setMarketPulseIntroDraft(marketPulseIntroData);
+        setMarketPulseIntroLoadError(null);
+      } else {
+        const pulseFallback = {
+          title: MARKET_PULSE_INTRO_COPY.title,
+          body: MARKET_PULSE_INTRO_COPY.body
+        };
+        setMarketPulseIntroConfig(pulseFallback);
+        setMarketPulseIntroDraft(pulseFallback);
+        setMarketPulseIntroLoadError('Could not load saved Market Pulse copy. Showing fallback text; save to persist changes.');
+      }
     } catch (e) {
       toast.error("Failed to load configuration");
+    }
+  };
+
+  const handleReloadMarketPulseIntro = async () => {
+    setIsReloadingMarketPulseIntro(true);
+    try {
+      const config = await adminSettingsService.getMarketPulseIntroConfig();
+      setMarketPulseIntroConfig(config);
+      setMarketPulseIntroDraft(config);
+      setMarketPulseIntroLoadError(null);
+      toast.success('Loaded latest Market Pulse intro copy');
+    } catch {
+      setMarketPulseIntroLoadError('Could not load saved Market Pulse copy. Showing fallback text; save to persist changes.');
+      toast.error('Failed to reload Market Pulse intro copy');
+    } finally {
+      setIsReloadingMarketPulseIntro(false);
     }
   };
 
@@ -208,6 +243,25 @@ export const AdminConfigPage: React.FC = () => {
       toast.error("Failed to update disclaimer config");
     } finally {
       setIsSavingDisclaimer(false);
+    }
+  };
+
+  const handleSaveMarketPulseIntro = async () => {
+    if (!marketPulseIntroDraft) return;
+    setIsSavingMarketPulseIntro(true);
+    try {
+      const result = await adminSettingsService.updateMarketPulseIntroConfig({
+        title: marketPulseIntroDraft.title,
+        body: marketPulseIntroDraft.body
+      });
+      setMarketPulseIntroConfig(result.config);
+      setMarketPulseIntroDraft(result.config);
+      setMarketPulseIntroLoadError(null);
+      toast.success(result.message || 'Market Pulse intro copy updated');
+    } catch (e) {
+      toast.error('Failed to update Market Pulse intro copy');
+    } finally {
+      setIsSavingMarketPulseIntro(false);
     }
   };
 
@@ -743,7 +797,73 @@ export const AdminConfigPage: React.FC = () => {
           )}
         </section>
 
-        {/* 8. SYSTEM ANNOUNCEMENT */}
+        {/* 8. MARKET PULSE INTRO STRIP */}
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded-lg">
+                <Zap size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Market Pulse intro strip</h3>
+                <p className="text-xs text-slate-500">First-visit copy shown above the feed when users are on Market Pulse.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleSaveMarketPulseIntro}
+              disabled={!marketPulseIntroDraft || isSavingMarketPulseIntro}
+              className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {isSavingMarketPulseIntro ? 'Saving...' : <><Save size={14} /> Save Market Pulse intro</>}
+            </button>
+          </div>
+
+          {marketPulseIntroDraft ? (
+            <div className="space-y-4">
+              {marketPulseIntroLoadError && (
+                <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <span>{marketPulseIntroLoadError}</span>
+                  <button
+                    onClick={handleReloadMarketPulseIntro}
+                    disabled={isReloadingMarketPulseIntro}
+                    className="ml-3 px-3 py-1 rounded-md bg-amber-100 text-amber-900 font-semibold hover:bg-amber-200 transition-colors disabled:opacity-50"
+                  >
+                    {isReloadingMarketPulseIntro ? 'Retrying...' : 'Retry'}
+                  </button>
+                </div>
+              )}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Strip title</label>
+                <input
+                  type="text"
+                  value={marketPulseIntroDraft.title}
+                  onChange={(e) => setMarketPulseIntroDraft(p => p ? { ...p, title: e.target.value } : p)}
+                  maxLength={120}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  placeholder="Enter title..."
+                />
+                <p className="text-[10px] text-slate-400 mt-1">{marketPulseIntroDraft.title.length}/120 characters.</p>
+              </div>
+
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Strip body</label>
+                <textarea
+                  value={marketPulseIntroDraft.body}
+                  onChange={(e) => setMarketPulseIntroDraft(p => p ? { ...p, body: e.target.value } : p)}
+                  maxLength={500}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                  placeholder="Enter body..."
+                />
+                <p className="text-[10px] text-slate-400 mt-1">{marketPulseIntroDraft.body.length}/500 characters.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4 text-slate-400">Loading Market Pulse intro config...</div>
+          )}
+        </section>
+
+        {/* 9. SYSTEM ANNOUNCEMENT */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
