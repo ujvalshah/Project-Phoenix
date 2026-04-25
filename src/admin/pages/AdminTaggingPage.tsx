@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Tags, ArrowRight, Lightbulb, Pencil, Trash2, Plus, X } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Tags, Lightbulb, Pencil, Trash2, Plus, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
 import { useAdminHeader } from '../layout/AdminLayout';
@@ -457,15 +457,11 @@ export const AdminTaggingPage: React.FC = () => {
       {/* Workflow Guide */}
       <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
         <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Workflow Guide</h3>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2.5 text-sm text-slate-600 dark:text-slate-400">
           <Step num={1} text="Download the Excel file" />
-          <ArrowRight size={14} className="hidden sm:block text-slate-300 shrink-0" />
           <Step num={2} text="Open the 'Instructions' sheet for guidance" />
-          <ArrowRight size={14} className="hidden sm:block text-slate-300 shrink-0" />
           <Step num={3} text="Use the 'AI Prompt' sheet for bulk AI classification" />
-          <ArrowRight size={14} className="hidden sm:block text-slate-300 shrink-0" />
           <Step num={4} text="Review & edit the 'Tag Mapping' sheet" />
-          <ArrowRight size={14} className="hidden sm:block text-slate-300 shrink-0" />
           <Step num={5} text="Upload the reviewed file" />
         </div>
       </div>
@@ -694,8 +690,8 @@ const StatCard: React.FC<{ label: string; value: string; sublabel: string; color
 };
 
 const Step: React.FC<{ num: number; text: string }> = ({ num, text }) => (
-  <div className="flex items-center gap-2 shrink-0">
-    <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold flex items-center justify-center">{num}</span>
-    <span className="text-xs">{text}</span>
+  <div className="flex items-start gap-2 rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white/70 dark:bg-slate-900/50 p-2.5 min-w-0">
+    <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold flex items-center justify-center shrink-0">{num}</span>
+    <span className="text-xs leading-relaxed min-w-0 break-words">{text}</span>
   </div>
 );

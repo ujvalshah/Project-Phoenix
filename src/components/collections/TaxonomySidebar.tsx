@@ -33,6 +33,7 @@ const TaxonomySidebarContent: React.FC<
   Omit<TaxonomySidebarProps, 'isMobileOpen' | 'onCloseMobile'> & {
     showCollapseButton?: boolean;
     isMobileSheet?: boolean;
+    onSelectScope?: () => void;
   }
 > = ({
   groups,
@@ -43,6 +44,7 @@ const TaxonomySidebarContent: React.FC<
   onCollapseDesktop,
   showCollapseButton = false,
   isMobileSheet = false,
+  onSelectScope,
 }) => {
   const [expanded, setExpanded] = useState<Set<string>>(() =>
     selectedParentId ? new Set([selectedParentId]) : new Set<string>(),
@@ -108,6 +110,7 @@ const TaxonomySidebarContent: React.FC<
           onClick={() => {
             onSelectParent(null);
             onSelectChild(null);
+            onSelectScope?.();
           }}
           className={`inline-flex min-h-9 items-center gap-1.5 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
             isAllSelected
@@ -168,6 +171,7 @@ const TaxonomySidebarContent: React.FC<
                       onSelectParent(group.id);
                       onSelectChild(null);
                     }
+                    onSelectScope?.();
                   }}
                   className={`flex ${parentRowClass} min-w-0 flex-1 items-center justify-between gap-2 rounded-r-md pr-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                     isParentSelected
@@ -206,6 +210,7 @@ const TaxonomySidebarContent: React.FC<
                           onClick={() => {
                             onSelectParent(group.id);
                             onSelectChild(child.id);
+                            onSelectScope?.();
                           }}
                           className={`flex ${childRowClass} w-full items-center justify-between gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                             isChildSelected
@@ -271,17 +276,17 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
     }
   }, [isMobileOpen, animState]);
 
-  // Lock body scroll while the sheet is mounted. Capture "previous" once per open cycle
-  // so we can't stash "hidden" as the restore target and leave the page frozen on close.
+  // Lock body scroll only while the sheet is logically open. The sheet stays mounted
+  // during its exit animation, but the page must regain native scroll immediately.
   const sheetMounted = animState !== 'closed';
   useEffect(() => {
-    if (!sheetMounted) return;
+    if (!isMobileOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [sheetMounted]);
+  }, [isMobileOpen]);
 
   useEffect(() => {
     if (!isMobileOpen) return;
@@ -386,7 +391,7 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-                <TaxonomySidebarContent {...props} isMobileSheet />
+                <TaxonomySidebarContent {...props} isMobileSheet onSelectScope={onCloseMobile} />
               </div>
 
               <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-900">

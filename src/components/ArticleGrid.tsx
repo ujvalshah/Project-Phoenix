@@ -465,7 +465,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     <div className="relative">
       {/* Feed refetch overlay (filters, search commit, stream, manual refresh, …) */}
       {isFeedRefetching && (
-        <div className="absolute inset-0 bg-white/60 dark:bg-slate-950/60 z-10 flex items-start justify-center pt-24 backdrop-blur-[1px] transition-opacity duration-200">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-white/60 pt-24 backdrop-blur-[1px] transition-opacity duration-200 dark:bg-slate-950/60">
           <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-full shadow-lg border border-slate-200 dark:border-slate-700">
             <Loader2 size={16} className="animate-spin text-primary-500" />
             <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Refreshing feed…</span>
