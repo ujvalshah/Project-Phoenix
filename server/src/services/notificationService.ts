@@ -13,6 +13,10 @@ import { getEnv } from '../config/envValidation.js';
 const REDIS_KEY_NOTIFICATIONS_ENABLED = 'notifications:enabled';
 const BATCH_SIZE = 100;
 
+/** Same-origin paths; must match public/ assets and sw.js fallbacks. */
+const DEFAULT_WEB_PUSH_ICON = '/icons/icon-192.png';
+const DEFAULT_WEB_PUSH_BADGE = '/icons/badge-72.png';
+
 /**
  * Insert many with ordered:false and recover insertedDocs on bulk errors.
  * Mongoose's default .catch swallows the array of successes that the bulk
@@ -142,6 +146,8 @@ function buildPayload(article: IArticle): NotificationPayload {
   return {
     title,
     body: body.length > 120 ? body.substring(0, 117) + '...' : body,
+    icon: DEFAULT_WEB_PUSH_ICON,
+    badge: DEFAULT_WEB_PUSH_BADGE,
     url: `/?openArticle=${articleId}`,
     data: {
       articleId,
@@ -156,6 +162,8 @@ function buildDigestPayload(articles: IArticle[]): NotificationPayload {
     title: `${count} new nugget${count === 1 ? '' : 's'} today`,
     body: articles.slice(0, 3).map(a => a.title || 'Untitled').join(', ') +
           (count > 3 ? ` and ${count - 3} more` : ''),
+    icon: DEFAULT_WEB_PUSH_ICON,
+    badge: DEFAULT_WEB_PUSH_BADGE,
     url: '/',
     data: {
       batchIds: articles.map(a => a._id.toString()),

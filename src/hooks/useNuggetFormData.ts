@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { storageService } from '@/services/storageService';
 import type { Collection } from '@/types';
+import { fetchAllCollectionsPaged } from '@/utils/collectionPicker';
 
 /**
  * React Query hooks for tags and collections used in the CreateNuggetModal.
@@ -20,53 +21,13 @@ export const nuggetFormKeys = {
     [...nuggetFormKeys.all, 'collections', type || 'all'] as const,
 };
 
-const COLLECTIONS_PAGE_LIMIT = 100;
-
-async function fetchCollectionsPage(params: {
-  type?: 'public' | 'private';
-  page: number;
-  limit: number;
-}): Promise<{ data: Collection[]; count: number }> {
-  const result = await storageService.getCollections({
-    ...(params.type ? { type: params.type } : {}),
-    page: params.page,
-    limit: params.limit,
-    includeCount: true,
+async function fetchAllCollectionsByType(type?: 'public' | 'private'): Promise<Collection[]> {
+  return fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
+    type,
+    limit: 100,
     includeEntries: false,
     summary: true,
   });
-
-  if (Array.isArray(result)) {
-    return { data: result, count: result.length };
-  }
-
-  return {
-    data: result?.data ?? [],
-    count: result?.count ?? 0,
-  };
-}
-
-async function fetchAllCollectionsByType(type?: 'public' | 'private'): Promise<Collection[]> {
-  const collected: Collection[] = [];
-  let page = 1;
-  let total = Number.POSITIVE_INFINITY;
-
-  while (collected.length < total) {
-    const response = await fetchCollectionsPage({
-      type,
-      page,
-      limit: COLLECTIONS_PAGE_LIMIT,
-    });
-    total = response.count;
-    collected.push(...response.data);
-
-    if (response.data.length === 0 || collected.length >= total) {
-      break;
-    }
-    page += 1;
-  }
-
-  return collected;
 }
 
 /**

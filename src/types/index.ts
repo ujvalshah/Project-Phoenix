@@ -389,7 +389,7 @@ export type ContentStream = 'standard' | 'pulse';
 
 export interface FilterState {
   query: string;
-  searchMode?: 'relevance' | 'latest';
+  searchMode?: 'relevance' | 'latest' | 'hybrid';
   categories: string[];
   tag: string | null;
   sort: SortOrder;

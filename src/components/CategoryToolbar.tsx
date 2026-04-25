@@ -95,7 +95,7 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
           ref={scrollRef}
           role="toolbar"
           aria-label="Content categories"
-          className="no-scrollbar-visual flex min-w-0 items-center gap-1.5 overflow-x-auto scroll-smooth w-full pl-1 pr-8 [scroll-padding-inline:1rem] [scrollbar-gutter:stable] md:px-9"
+          className="no-scrollbar-visual flex min-w-0 items-center gap-1.5 overflow-x-auto scroll-smooth w-full pl-1 pr-1 [scroll-padding-inline:1rem] [scrollbar-gutter:stable] md:px-9"
         >
           {/* "All" button — always first */}
           <CategoryPill
@@ -156,10 +156,6 @@ export const CategoryToolbar: React.FC<CategoryToolbarProps> = ({
             </>
           )}
         </div>
-
-        {/* Edge fades hint intentional horizontal scrolling */}
-        <div className="pointer-events-none absolute inset-y-0 left-4 z-10 w-5 bg-gradient-to-r from-white/95 to-transparent dark:from-slate-900/95 md:left-12" aria-hidden />
-        <div className="pointer-events-none absolute inset-y-0 right-4 z-10 w-5 bg-gradient-to-l from-white/95 to-transparent dark:from-slate-900/95 md:right-12" aria-hidden />
 
         {/* Right scroll arrow (desktop only) */}
         <button

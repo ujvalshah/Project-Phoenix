@@ -118,6 +118,43 @@ function appendAndQueryCondition(query: Record<string, any>, condition: Record<s
   query.$and = [currentQuery, condition];
 }
 
+function cloneQueryForSearch(baseQuery: Record<string, any>): Record<string, any> {
+  const nextQuery: Record<string, any> = { ...baseQuery };
+  if (Array.isArray(baseQuery.$and)) {
+    nextQuery.$and = [...baseQuery.$and];
+  }
+  if (Array.isArray(baseQuery.$or)) {
+    nextQuery.$or = [...baseQuery.$or];
+  }
+  return nextQuery;
+}
+
+function mergeSearchConditions(
+  baseQuery: Record<string, any>,
+  searchConditions: Record<string, unknown>[],
+): Record<string, any> {
+  const nextQuery = cloneQueryForSearch(baseQuery);
+  if (searchConditions.length === 0) return nextQuery;
+
+  const existingOr =
+    Array.isArray(nextQuery.$or) && nextQuery.$or.length > 0 ? [...nextQuery.$or] : null;
+  if (existingOr) {
+    delete nextQuery.$or;
+    const existingAnd =
+      Array.isArray(nextQuery.$and) && nextQuery.$and.length > 0 ? [...nextQuery.$and] : [];
+    nextQuery.$and = [...existingAnd, { $or: existingOr }, { $or: searchConditions }];
+    return nextQuery;
+  }
+
+  if (searchConditions.length === 1) {
+    Object.assign(nextQuery, searchConditions[0]);
+    return nextQuery;
+  }
+
+  nextQuery.$or = searchConditions;
+  return nextQuery;
+}
+
 /**
  * Phase 2: Resolve tag IDs from category names
  * Maps category names to Tag ObjectIds for stable references
@@ -184,7 +221,8 @@ export const getArticles = async (req: Request, res: Response) => {
     const currentUserId = getOptionalUserId(req);
 
     // Build MongoDB query object
-    const query: any = {};
+    let query: any = {};
+    let hybridSearchContext: { trimmedQ: string; regex: RegExp; matchingTagIds: unknown[] } | null = null;
 
     // Collection filter: restrict to articles in a specific community collection.
     // Supports current ID-based filters and legacy name-based values from older URLs.
@@ -297,6 +335,7 @@ export const getArticles = async (req: Request, res: Response) => {
     // Search query — use MongoDB $text index for word-level search (queries >= 3 chars),
     // fall back to regex for short/partial queries. Both paths are ReDoS-safe.
     const useRelevanceMode = searchMode === 'relevance';
+    const useHybridMode = searchMode === 'hybrid';
     if (q && typeof q === 'string' && q.trim().length > 0) {
       const trimmedQ = q.trim();
 
@@ -306,6 +345,7 @@ export const getArticles = async (req: Request, res: Response) => {
         rawName: regex,
         status: 'active',
       }).select('_id').lean();
+      const matchingTagIds = matchingTags.map((t) => t._id);
 
       if (trimmedQ.length >= 3) {
         // Use $text index for efficient full-text search (word-level matching)
@@ -317,22 +357,15 @@ export const getArticles = async (req: Request, res: Response) => {
         // whose body never mentions "ai" disappeared from results).
         // Tag-only hits have textScore 0 and naturally sort below text hits,
         // then fall to the publishedAt tiebreaker — which matches user intent.
-        if (matchingTags.length > 0) {
-          searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
+        if (matchingTagIds.length > 0) {
+          searchConditions.push({ tagIds: { $in: matchingTagIds } });
         }
-
-        if (query.$or) {
-          query.$and = [
-            { $or: query.$or },
-            { $or: searchConditions }
-          ];
-          delete query.$or;
+        if (useHybridMode) {
+          // Hybrid mode runs this relevance branch as phase 1 at execution time,
+          // then supplements with a regex fallback phase to safely add partial matching.
+          hybridSearchContext = { trimmedQ, regex, matchingTagIds };
         } else {
-          if (searchConditions.length === 1) {
-            Object.assign(query, textCondition);
-          } else {
-            query.$or = searchConditions;
-          }
+          query = mergeSearchConditions(query, searchConditions);
         }
       } else {
         // Short queries: fall back to regex for substring matching
@@ -341,19 +374,10 @@ export const getArticles = async (req: Request, res: Response) => {
           { excerpt: regex },
         ];
 
-        if (matchingTags.length > 0) {
-          searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
+        if (matchingTagIds.length > 0) {
+          searchConditions.push({ tagIds: { $in: matchingTagIds } });
         }
-
-        if (query.$or) {
-          query.$and = [
-            { $or: query.$or },
-            { $or: searchConditions }
-          ];
-          delete query.$or;
-        } else {
-          query.$or = searchConditions;
-        }
+        query = mergeSearchConditions(query, searchConditions);
       }
     }
     
@@ -532,7 +556,17 @@ export const getArticles = async (req: Request, res: Response) => {
         : (sortMap[sort as string] || { publishedAt: -1, _id: -1 }); // Default: latest first
     
     // Build a stable cache key from the fully-constructed query + sort + pagination
-    const cacheKey = JSON.stringify({ query, sort: sortOrder, skip, limit });
+    const cacheKey = JSON.stringify({
+      query,
+      sort: sortOrder,
+      skip,
+      limit,
+      searchMode: typeof searchMode === 'string' ? searchMode : 'latest',
+      q: typeof q === 'string' ? q.trim() : '',
+      hybrid: hybridSearchContext
+        ? { trimmedQ: hybridSearchContext.trimmedQ, tagCount: hybridSearchContext.matchingTagIds.length }
+        : null,
+    });
     const cached = getCachedResult(cacheKey);
     if (cached) {
       return res.json({
@@ -541,6 +575,68 @@ export const getArticles = async (req: Request, res: Response) => {
         page,
         limit,
         hasMore: page * limit < cached.total,
+      });
+    }
+
+    if (hybridSearchContext) {
+      const relevanceConditions: Record<string, unknown>[] = [
+        { $text: { $search: hybridSearchContext.trimmedQ } },
+      ];
+      if (hybridSearchContext.matchingTagIds.length > 0) {
+        relevanceConditions.push({ tagIds: { $in: hybridSearchContext.matchingTagIds } });
+      }
+      const fallbackConditions: Record<string, unknown>[] = [
+        { title: hybridSearchContext.regex },
+        { excerpt: hybridSearchContext.regex },
+      ];
+      if (hybridSearchContext.matchingTagIds.length > 0) {
+        fallbackConditions.push({ tagIds: { $in: hybridSearchContext.matchingTagIds } });
+      }
+
+      const relevanceQuery = mergeSearchConditions(query, relevanceConditions);
+      const fallbackQuery = mergeSearchConditions(query, fallbackConditions);
+      const relevanceSort = { score: { $meta: 'textScore' }, publishedAt: -1, _id: -1 };
+      const fallbackSort = sortMap[sort as string] || { publishedAt: -1, _id: -1 };
+      const fetchWindow = skip + limit;
+
+      const [relevanceIds, fallbackIds, relevanceDocs, fallbackDocs] = await Promise.all([
+        Article.find(relevanceQuery).distinct('_id'),
+        Article.find(fallbackQuery).distinct('_id'),
+        Article.find(relevanceQuery, { score: { $meta: 'textScore' } })
+          .sort(relevanceSort)
+          .limit(fetchWindow)
+          .lean(),
+        Article.find(fallbackQuery)
+          .sort(fallbackSort)
+          .limit(fetchWindow)
+          .lean(),
+      ]);
+
+      const merged: any[] = [];
+      const seenIds = new Set<string>();
+      const pushUnique = (doc: any) => {
+        const id = String(doc?._id ?? '');
+        if (!id || seenIds.has(id)) return;
+        seenIds.add(id);
+        merged.push(doc);
+      };
+      relevanceDocs.forEach(pushUnique);
+      fallbackDocs.forEach(pushUnique);
+
+      const pageSlice = merged.slice(skip, skip + limit);
+      const normalizedData = await normalizeArticleDocs(pageSlice);
+      const total = new Set<string>([
+        ...relevanceIds.map((id) => String(id)),
+        ...fallbackIds.map((id) => String(id)),
+      ]).size;
+
+      setCachedResult(cacheKey, normalizedData, total);
+      return res.json({
+        data: normalizedData,
+        total,
+        page,
+        limit,
+        hasMore: page * limit < total,
       });
     }
 

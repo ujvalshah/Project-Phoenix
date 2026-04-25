@@ -10,6 +10,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export type AdminAction =
   | 'VERIFY_USER_EMAIL'
   | 'UPDATE_USER_ROLE'
+  | 'UPDATE_USER_SEARCH_COHORT'
   | 'SUSPEND_USER'
   | 'BAN_USER'
   | 'ACTIVATE_USER'
@@ -18,7 +19,8 @@ export type AdminAction =
   | 'UPDATE_USER_PROFILE'
   | 'RESET_USER_PASSWORD'
   | 'UPDATE_MEDIA_QUOTA'
-  | 'UPDATE_DISCLAIMER_CONFIG';
+  | 'UPDATE_DISCLAIMER_CONFIG'
+  | 'UPDATE_VALUE_PROP_STRIP_CONFIG';
 
 export interface IAdminAuditLog extends Document {
   adminId: string;
@@ -44,6 +46,7 @@ const AdminAuditLogSchema = new Schema<IAdminAuditLog>({
     enum: [
       'VERIFY_USER_EMAIL',
       'UPDATE_USER_ROLE',
+      'UPDATE_USER_SEARCH_COHORT',
       'SUSPEND_USER',
       'BAN_USER',
       'ACTIVATE_USER',
@@ -52,7 +55,8 @@ const AdminAuditLogSchema = new Schema<IAdminAuditLog>({
       'UPDATE_USER_PROFILE',
       'RESET_USER_PASSWORD',
       'UPDATE_MEDIA_QUOTA',
-      'UPDATE_DISCLAIMER_CONFIG'
+      'UPDATE_DISCLAIMER_CONFIG',
+      'UPDATE_VALUE_PROP_STRIP_CONFIG'
     ],
     required: true,
     index: true

@@ -6,10 +6,13 @@ import { adminMutationLimiter } from '../middleware/rateLimiter.js';
 import {
   getAdminStats,
   verifyUserEmail,
+  updateUserSearchCohort,
   getMediaLimits,
   updateMediaLimits,
   getDisclaimerSettings,
   updateDisclaimerSettings,
+  getValuePropStripSettings,
+  updateValuePropStripSettings,
   suspendUser,
   banUser,
   activateUser,
@@ -25,6 +28,7 @@ router.get('/stats', authenticateToken, requireAdminRole, getAdminStats);
 
 // PATCH /api/admin/users/:userId/verify-email - Manually verify a user's email
 router.patch('/users/:userId/verify-email', authenticateToken, requireAdminRole, adminMutationLimiter, verifyUserEmail);
+router.patch('/users/:userId/search-cohort', authenticateToken, requireAdminRole, adminMutationLimiter, updateUserSearchCohort);
 
 // Account lifecycle (PR7b). All admin-only; mutate User.status and the
 // AdminAuditLog. Suspend/ban additionally bump tokenVersion + revoke refresh
@@ -46,6 +50,12 @@ router.get('/settings/disclaimer', authenticateToken, requireAdminRole, getDiscl
 
 // PATCH /api/admin/settings/disclaimer - Update disclaimer config (admin only)
 router.patch('/settings/disclaimer', authenticateToken, requireAdminRole, adminMutationLimiter, updateDisclaimerSettings);
+
+// GET /api/admin/settings/value-prop-strip - Get first-time value-prop strip copy (admin only)
+router.get('/settings/value-prop-strip', authenticateToken, requireAdminRole, getValuePropStripSettings);
+
+// PATCH /api/admin/settings/value-prop-strip - Update first-time value-prop strip copy (admin only)
+router.patch('/settings/value-prop-strip', authenticateToken, requireAdminRole, adminMutationLimiter, updateValuePropStripSettings);
 
 // ── Bulk tag export/import (two-axis taxonomy) ─────────────────────────────
 // GET  /api/admin/tagging/export  - Download XLSX with current + suggested tags

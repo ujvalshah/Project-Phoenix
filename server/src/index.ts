@@ -314,12 +314,23 @@ app.use('/api/notifications', notificationsRouter);
 
 // Public disclaimer config endpoint (no auth required — used by card rendering)
 import { getDisclaimerConfig } from './services/disclaimerConfigService.js';
+import { getValuePropStripConfig } from './services/valuePropStripConfigService.js';
 app.get('/api/config/disclaimer', async (_req, res) => {
   try {
     const config = await getDisclaimerConfig();
     return res.json(config);
   } catch {
     return res.status(500).json({ message: 'Failed to get disclaimer config' });
+  }
+});
+
+// Public first-time value-prop strip copy endpoint (no auth required).
+app.get('/api/config/value-prop-strip', async (_req, res) => {
+  try {
+    const config = await getValuePropStripConfig();
+    return res.json(config);
+  } catch {
+    return res.status(500).json({ message: 'Failed to get value-prop strip config' });
   }
 });
 

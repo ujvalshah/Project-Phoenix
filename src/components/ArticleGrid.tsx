@@ -415,13 +415,24 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     );
   }
 
-  if (articles.length === 0) {
+  if (articles.length === 0 && !isFeedRefetching) {
     return (
       <EmptyState
         icon={<SearchX />}
         title={emptyTitle}
         description={emptyMessage}
       />
+    );
+  }
+
+  if (articles.length === 0 && isFeedRefetching) {
+    return (
+      <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-slate-200 bg-white/70 text-slate-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Loader2 size={16} className="animate-spin text-primary-500" />
+          Refreshing feed...
+        </div>
+      </div>
     );
   }
 

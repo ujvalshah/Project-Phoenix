@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SortOrder, TimeRange, ContentStream, SerializableFilterState } from '@/types';
+import { normalizeSearchQuery } from '@/utils/searchQuery';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -265,7 +266,7 @@ export function useFilterState(): UseFilterStateReturn {
 
   const commitSearch = useCallback((value?: string) => {
     const next = typeof value === 'string' ? value : searchInputValue;
-    const trimmed = next.trim();
+    const trimmed = normalizeSearchQuery(next);
     setSearchInputValueRaw(next.trimStart());
     setCommittedQuery(trimmed);
   }, [searchInputValue]);

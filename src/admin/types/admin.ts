@@ -75,6 +75,8 @@ export interface AdminUser {
   name: string; // Display Name
   fullName: string; // Real Name
   username: string;
+  /** Server-assigned rollout cohort for search experiments. */
+  searchCohort?: string;
   email: string;
   emailVerified: boolean;
   authProvider: 'email' | 'google' | 'linkedin';

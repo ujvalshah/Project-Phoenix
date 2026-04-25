@@ -24,6 +24,7 @@ import { WorkspaceTopSection } from '@/components/workspace/WorkspaceTopSection'
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { ArticleModal } from '@/components/ArticleModal';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 type ViewMode = 'grid' | 'table';
 type SortField = 'created' | 'updated' | 'followers' | 'nuggets' | 'name';
@@ -450,6 +451,7 @@ export const CollectionsPage: React.FC = () => {
   const taxonomyPageLimit = 100;
   const toast = useToast();
   const { isAdmin } = useAuth();
+  const isNarrowViewport = useMediaQuery('(max-width: 1023px)');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchInput = useCallback((value: string) => {
@@ -634,7 +636,8 @@ export const CollectionsPage: React.FC = () => {
   }, [selectedChildId, selectedParentId]);
 
   const isScopedMode = scopedCollectionIds.length > 0;
-  const isBrowseLanding = !isScopedMode && landingMode === 'browse';
+  const isMobileCollectionLanding = isNarrowViewport && !isScopedMode && landingMode === 'browse';
+  const isBrowseLanding = !isScopedMode && landingMode === 'browse' && !isMobileCollectionLanding;
 
   const breadcrumb = useMemo(() => {
     if (selectedChildCollection && selectedParentCollection) {
@@ -647,7 +650,7 @@ export const CollectionsPage: React.FC = () => {
   }, [selectedChildCollection, selectedParentCollection]);
 
   useEffect(() => {
-    if (isScopedMode || landingMode === 'browse') {
+    if (isScopedMode || (landingMode === 'browse' && !isMobileCollectionLanding)) {
       setCollections([]);
       setTotalCount(0);
       setHasMore(false);
@@ -657,7 +660,7 @@ export const CollectionsPage: React.FC = () => {
     }
     setCurrentPage(1);
     void loadCollections(1, false);
-  }, [isScopedMode, landingMode, loadCollections]);
+  }, [isMobileCollectionLanding, isScopedMode, landingMode, loadCollections]);
 
   useEffect(() => {
     if (!isScopedMode) setScopedNuggetTotal(0);
@@ -795,10 +798,11 @@ export const CollectionsPage: React.FC = () => {
     : isBrowseLanding
       ? browseNuggetTotal
       : processedCollections.length;
-  const headerTitle = isBrowseLanding && !isScopedMode ? 'Latest Nuggets' : 'Community Collections';
+  const headerTitle = isBrowseLanding ? 'Latest Nuggets' : isMobileCollectionLanding ? 'Collections' : 'Community Collections';
   const scopedSummaryTitle = selectedChildCollection?.name || selectedParentCollection?.name || 'Collections';
   const scopedSummaryDescription = selectedChildCollection?.description || selectedParentCollection?.description;
   const layoutGridClass = isTaxonomyCollapsed ? 'lg:grid-cols-[40px_1fr]' : 'lg:grid-cols-[260px_1fr]';
+  const searchPlaceholder = isScopedMode ? 'Search nuggets in this collection' : 'Search collections';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -818,9 +822,9 @@ export const CollectionsPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 pb-32 dark:bg-slate-950">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
         <HeaderSpacer />
-        <div className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1280px] px-3 py-4 sm:px-6 lg:px-8 lg:py-8">
           <CollectionsSkeletonState />
         </div>
       </div>
@@ -828,13 +832,13 @@ export const CollectionsPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 dark:bg-slate-950">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <HeaderSpacer />
       <div
-        className={`sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER} ${LAYOUT_CLASSES.PAGE_TOOLBAR} border-b border-slate-200/80 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/75 transition-colors dark:border-slate-800 dark:bg-slate-950/85`}
+        className={`lg:sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER} ${LAYOUT_CLASSES.PAGE_TOOLBAR} border-b border-slate-200/80 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/75 transition-colors dark:border-slate-800 dark:bg-slate-950/85`}
         style={{ zIndex: Z_INDEX.CATEGORY_BAR }}
       >
-        <div className="mx-auto max-w-[1280px] px-4 py-3 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1280px] px-3 py-2.5 sm:px-6 lg:px-8 lg:py-3">
           <WorkspaceTopSection
             header={
               <CollectionsHeader
@@ -938,6 +942,8 @@ export const CollectionsPage: React.FC = () => {
                 mobileFilterCount={(selectedParentId ? 1 : 0) + (selectedChildId ? 1 : 0)}
                 appliedFilters={appliedFilters}
                 showSortField={!isScopedMode && !isBrowseLanding}
+                showMobileSort={isScopedMode}
+                searchPlaceholder={searchPlaceholder}
                 onClearFilters={() => {
                   setSearchInputValue('');
                   setSearchQuery('');
@@ -950,7 +956,7 @@ export const CollectionsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1280px] px-4 pb-8 pt-5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1280px] px-3 pb-6 pt-3 sm:px-6 lg:px-8 lg:pb-8 lg:pt-5">
         <div className={`grid gap-4 ${layoutGridClass}`}>
           <TaxonomySidebar
             groups={taxonomyGroups}

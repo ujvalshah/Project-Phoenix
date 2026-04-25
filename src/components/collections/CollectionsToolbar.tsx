@@ -47,6 +47,8 @@ interface CollectionsToolbarProps {
   appliedFilters: AppliedFilterChip[];
   onClearFilters: () => void;
   showSortField?: boolean;
+  showMobileSort?: boolean;
+  searchPlaceholder?: string;
 }
 
 export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
@@ -72,26 +74,30 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
   appliedFilters,
   onClearFilters,
   showSortField = true,
+  showMobileSort = true,
+  searchPlaceholder = 'Search collections and sub-collections...',
 }) => {
   const actionsAnchorRef = useRef<HTMLButtonElement>(null);
+  const mobileSortVisibility = showMobileSort ? 'flex' : 'hidden lg:flex';
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5 overflow-x-auto">
-        <div className="relative min-w-[220px] flex-1 md:max-w-[420px]">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-1.5 lg:overflow-x-auto">
+        <div className="relative w-full flex-1 lg:min-w-[220px] lg:max-w-[420px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
           <input
             type="text"
-            placeholder="Search collections and sub-collections..."
+            placeholder={searchPlaceholder}
             value={searchInputValue}
             onChange={(event) => onSearchInput(event.target.value)}
-            className={`${TOOLBAR_INPUT} h-9 w-full pl-9 pr-3 text-[13px] focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:bg-slate-900`}
+            className={`${TOOLBAR_INPUT} min-h-11 w-full pl-9 pr-3 text-[14px] focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:bg-slate-900 lg:h-9 lg:min-h-0 lg:text-[13px]`}
           />
         </div>
 
+        <div className="flex items-center gap-1.5 overflow-x-auto">
         <button
           onClick={onOpenFiltersMobile}
-          className={`relative inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 lg:hidden ${
+          className={`relative inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 lg:hidden ${
             mobileFilterCount > 0
               ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
               : `${TOOLBAR_BUTTON} border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800`
@@ -108,7 +114,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
         </button>
 
         {showSortField ? (
-          <div className="flex h-9 items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+          <div className={`${mobileSortVisibility} min-h-11 items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 lg:h-9 lg:min-h-0`}>
             <label className="sr-only" htmlFor="collections-sort">
               Sort
             </label>
@@ -126,7 +132,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
             </select>
             <button
               onClick={toggleSortDirection}
-              className="inline-flex h-full w-8 items-center justify-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+              className="inline-flex h-full min-w-11 items-center justify-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white lg:min-w-8"
               aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
               title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
             >
@@ -136,7 +142,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
         ) : (
           <button
             onClick={toggleSortDirection}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            className={`${mobileSortVisibility} min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 lg:h-9 lg:min-h-0`}
             aria-label={`Sort ${sortDirection === 'asc' ? 'oldest first' : 'latest first'}`}
             title={sortDirection === 'asc' ? 'Oldest first' : 'Latest first'}
           >
@@ -175,7 +181,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
         {canSelect && canCreate && (
           <button
             onClick={onToggleSelection}
-            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+            className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 lg:h-9 lg:min-h-0 ${
               selectionMode
                 ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/20 dark:text-primary-300'
                 : `${TOOLBAR_BUTTON} border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800`
@@ -193,7 +199,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
               type="button"
               onClick={onOpenActions}
               disabled={selectedCount === 0}
-              className={`${TOOLBAR_BUTTON} h-9 gap-1 px-2.5 text-[13px]`}
+              className={`${TOOLBAR_BUTTON} min-h-11 gap-1 px-2.5 text-[13px] lg:h-9 lg:min-h-0`}
               aria-expanded={isActionMenuOpen}
               aria-haspopup="menu"
             >
@@ -217,12 +223,13 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
         {selectionMode && (
           <button
             onClick={onToggleSelection}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white lg:h-9 lg:min-h-0 lg:w-9 lg:min-w-0"
             aria-label="Exit selection mode"
           >
             <X size={14} />
           </button>
         )}
+        </div>
       </div>
 
       {appliedFilters.length > 0 && (
@@ -234,7 +241,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
             <button
               key={filter.id}
               onClick={filter.onRemove}
-              className="inline-flex h-7 max-w-[220px] shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="inline-flex min-h-9 max-w-[220px] shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 lg:h-7 lg:min-h-0"
             >
               <span className="truncate">{filter.label}</span>
               <X size={11} className="text-slate-400" />
@@ -242,7 +249,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           ))}
           <button
             onClick={onClearFilters}
-            className="h-7 shrink-0 rounded-full px-2 text-[11px] font-semibold text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-400 dark:hover:text-white"
+            className="min-h-9 shrink-0 rounded-full px-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-400 dark:hover:text-white lg:h-7 lg:min-h-0"
           >
             Clear all
           </button>

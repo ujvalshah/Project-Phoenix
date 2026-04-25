@@ -5,10 +5,16 @@ import { BookmarkButton } from '../bookmarks';
 import { Avatar } from './Avatar';
 import { ShareMenu } from './ShareMenu';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
+import type { AnchoredOverlayHost } from '@/components/UI/DropdownPortal';
 
 interface DetailTopBarProps {
   authorName: string;
   article: Article;
+  /**
+   * When the top bar is inside `ModalShell` / `ArticleModal`, use `modal` so the menu
+   * portals to `#modal-root` and stacks above the modal; `dropdown` would render under it.
+   */
+  menuHost?: Extract<AnchoredOverlayHost, 'dropdown' | 'modal'>;
   onClose?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -24,6 +30,7 @@ interface DetailTopBarProps {
 export const DetailTopBar: React.FC<DetailTopBarProps> = ({
   authorName,
   article,
+  menuHost = 'dropdown',
   onClose,
   onEdit,
   onDelete,
@@ -89,7 +96,7 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
             isOpen={showMenu}
             anchorRef={menuAnchorRef}
             align="right"
-            host="dropdown"
+            host={menuHost}
             offsetY={4}
             onClickOutside={() => setShowMenu(false)}
             className="w-40 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl py-1 overflow-hidden"

@@ -44,10 +44,12 @@ describe('useInfiniteArticles Hook', () => {
     );
 
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   afterEach(() => {
     queryClient.clear();
+    localStorage.clear();
   });
 
   describe('Test 1: Initial Load Renders First 25 Items', () => {
@@ -419,6 +421,92 @@ describe('useInfiniteArticles Hook', () => {
           query: 'test query',
         }),
         1
+      );
+    });
+  });
+
+  describe('Search query normalization and submit parity safeguards', () => {
+    it('trims committed search query before final API request', async () => {
+      const page1Search = createMockPageResponse(1, 25, 10);
+      vi.mocked(articleService.articleService.getArticles).mockResolvedValueOnce(page1Search);
+
+      const { result } = renderHook(
+        () =>
+          useInfiniteArticles({
+            searchQuery: '   Iconiq   ',
+            activeCategory: 'All',
+            sortOrder: 'latest',
+            limit: 25,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(articleService.articleService.getArticles).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: 'Iconiq',
+          searchMode: 'relevance',
+        }),
+        1,
+      );
+    });
+
+    it('keeps case-insensitive variants as valid committed queries', async () => {
+      const response = createMockPageResponse(1, 25, 5);
+      vi.mocked(articleService.articleService.getArticles).mockResolvedValue(response);
+
+      const { rerender } = renderHook(
+        ({ query }: { query: string }) =>
+          useInfiniteArticles({
+            searchQuery: query,
+            activeCategory: 'All',
+            sortOrder: 'latest',
+            limit: 25,
+          }),
+        { wrapper, initialProps: { query: 'iconiq' } },
+      );
+
+      await waitFor(() => {
+        expect(articleService.articleService.getArticles).toHaveBeenCalledWith(
+          expect.objectContaining({ query: 'iconiq' }),
+          1,
+        );
+      });
+
+      rerender({ query: 'ICONIQ' });
+      await waitFor(() => {
+        expect(articleService.articleService.getArticles).toHaveBeenLastCalledWith(
+          expect.objectContaining({ query: 'ICONIQ' }),
+          1,
+        );
+      });
+    });
+
+    it('uses hybrid committed mode when runtime override is set', async () => {
+      localStorage.setItem('nuggets.search.mode.override', 'hybrid');
+      const response = createMockPageResponse(1, 25, 5);
+      vi.mocked(articleService.articleService.getArticles).mockResolvedValueOnce(response);
+
+      const { result } = renderHook(
+        () =>
+          useInfiniteArticles({
+            searchQuery: 'Iconiq',
+            activeCategory: 'All',
+            sortOrder: 'latest',
+            limit: 25,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(articleService.articleService.getArticles).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: 'Iconiq',
+          searchMode: 'hybrid',
+        }),
+        1,
       );
     });
   });

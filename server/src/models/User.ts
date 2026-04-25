@@ -62,6 +62,8 @@ export interface IUserAppState {
   lastLoginAt?: string;
   onboardingCompleted: boolean;
   featureFlags?: Record<string, boolean>;
+  /** Server-assigned search rollout cohort (e.g. "hybrid-beta"). */
+  searchCohort?: string;
 }
 
 export type UserStatus = 'active' | 'suspended' | 'banned';
@@ -159,7 +161,8 @@ const UserPreferencesSchema = new Schema<IUserPreferences>({
 const UserAppStateSchema = new Schema<IUserAppState>({
   lastLoginAt: { type: String },
   onboardingCompleted: { type: Boolean, default: false },
-  featureFlags: { type: Schema.Types.Mixed, default: {} }
+  featureFlags: { type: Schema.Types.Mixed, default: {} },
+  searchCohort: { type: String, trim: true },
 }, { _id: false });
 
 // Main User schema

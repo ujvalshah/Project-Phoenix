@@ -5,9 +5,10 @@ import { getNotificationSystemStatus, toggleNotificationSystem } from '@/service
 import { useToast } from '@/hooks/useToast';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { VALUE_PROP_STRIP_COPY } from '@/constants/onboardingCopy';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { adminConfigService, AVAILABLE_SERVICES } from '../services/adminConfigService';
-import { adminSettingsService, MediaLimits, DisclaimerConfig } from '../services/adminSettingsService';
+import { adminSettingsService, MediaLimits, DisclaimerConfig, ValuePropStripConfig } from '../services/adminSettingsService';
 import { RolePermissions, ServiceId, AdminRole, FeatureFlags, SignupConfig } from '../types/admin';
 
 interface SystemAnnouncement {
@@ -46,6 +47,11 @@ export const AdminConfigPage: React.FC = () => {
   const [_disclaimerConfig, setDisclaimerConfig] = useState<DisclaimerConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
   const [disclaimerDraft, setDisclaimerDraft] = useState<DisclaimerConfig | null>(null);
   const [isSavingDisclaimer, setIsSavingDisclaimer] = useState(false);
+  const [_valuePropStripConfig, setValuePropStripConfig] = useState<ValuePropStripConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
+  const [valuePropStripDraft, setValuePropStripDraft] = useState<ValuePropStripConfig | null>(null);
+  const [isSavingValuePropStrip, setIsSavingValuePropStrip] = useState(false);
+  const [valuePropStripLoadError, setValuePropStripLoadError] = useState<string | null>(null);
+  const [isReloadingValuePropStrip, setIsReloadingValuePropStrip] = useState(false);
 
   useEffect(() => {
     setPageHeader("System Configuration", "Manage global settings, feature toggles, and system alerts.");
@@ -54,13 +60,14 @@ export const AdminConfigPage: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const [permData, flagsData, signupData, limitsData, notifStatus, disclaimerData] = await Promise.all([
+      const [permData, flagsData, signupData, limitsData, notifStatus, disclaimerData, valuePropStripData] = await Promise.all([
         adminConfigService.getRolePermissions(),
         adminConfigService.getFeatureFlags(),
         adminConfigService.getSignupConfig(),
         adminSettingsService.getMediaLimits().catch(() => null),
         getNotificationSystemStatus().catch(() => true),
         adminSettingsService.getDisclaimerConfig().catch(() => null),
+        adminSettingsService.getValuePropStripConfig().catch(() => null),
       ]);
       setPermissions(permData);
       setFlags(flagsData);
@@ -74,8 +81,37 @@ export const AdminConfigPage: React.FC = () => {
         setDisclaimerConfig(disclaimerData);
         setDisclaimerDraft(disclaimerData);
       }
+      if (valuePropStripData) {
+        setValuePropStripConfig(valuePropStripData);
+        setValuePropStripDraft(valuePropStripData);
+        setValuePropStripLoadError(null);
+      } else {
+        const fallbackCopy = {
+          title: VALUE_PROP_STRIP_COPY.title,
+          body: VALUE_PROP_STRIP_COPY.body
+        };
+        setValuePropStripConfig(fallbackCopy);
+        setValuePropStripDraft(fallbackCopy);
+        setValuePropStripLoadError('Could not load saved copy. Showing fallback text; save to persist changes.');
+      }
     } catch (e) {
       toast.error("Failed to load configuration");
+    }
+  };
+
+  const handleReloadValuePropStrip = async () => {
+    setIsReloadingValuePropStrip(true);
+    try {
+      const config = await adminSettingsService.getValuePropStripConfig();
+      setValuePropStripConfig(config);
+      setValuePropStripDraft(config);
+      setValuePropStripLoadError(null);
+      toast.success('Loaded latest value-prop strip copy');
+    } catch {
+      setValuePropStripLoadError('Could not load saved copy. Showing fallback text; save to persist changes.');
+      toast.error('Failed to reload value-prop strip copy');
+    } finally {
+      setIsReloadingValuePropStrip(false);
     }
   };
 
@@ -172,6 +208,24 @@ export const AdminConfigPage: React.FC = () => {
       toast.error("Failed to update disclaimer config");
     } finally {
       setIsSavingDisclaimer(false);
+    }
+  };
+
+  const handleSaveValuePropStrip = async () => {
+    if (!valuePropStripDraft) return;
+    setIsSavingValuePropStrip(true);
+    try {
+      const result = await adminSettingsService.updateValuePropStripConfig({
+        title: valuePropStripDraft.title,
+        body: valuePropStripDraft.body
+      });
+      setValuePropStripConfig(result.config);
+      setValuePropStripDraft(result.config);
+      toast.success(result.message || "Value-prop strip copy updated");
+    } catch (e) {
+      toast.error("Failed to update value-prop strip copy");
+    } finally {
+      setIsSavingValuePropStrip(false);
     }
   };
 
@@ -623,7 +677,73 @@ export const AdminConfigPage: React.FC = () => {
           )}
         </section>
 
-        {/* 7. SYSTEM ANNOUNCEMENT */}
+        {/* 7. HOMEPAGE VALUE-PROP STRIP */}
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 rounded-lg">
+                <Megaphone size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Homepage Value-Prop Strip</h3>
+                <p className="text-xs text-slate-500">First-time visitor copy shown above the feed on Home.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleSaveValuePropStrip}
+              disabled={!valuePropStripDraft || isSavingValuePropStrip}
+              className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {isSavingValuePropStrip ? 'Saving...' : <><Save size={14} /> Save Value Prop</>}
+            </button>
+          </div>
+
+          {valuePropStripDraft ? (
+            <div className="space-y-4">
+              {valuePropStripLoadError && (
+                <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <span>{valuePropStripLoadError}</span>
+                  <button
+                    onClick={handleReloadValuePropStrip}
+                    disabled={isReloadingValuePropStrip}
+                    className="ml-3 px-3 py-1 rounded-md bg-amber-100 text-amber-900 font-semibold hover:bg-amber-200 transition-colors disabled:opacity-50"
+                  >
+                    {isReloadingValuePropStrip ? 'Retrying...' : 'Retry'}
+                  </button>
+                </div>
+              )}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Strip Title</label>
+                <input
+                  type="text"
+                  value={valuePropStripDraft.title}
+                  onChange={(e) => setValuePropStripDraft(p => p ? { ...p, title: e.target.value } : p)}
+                  maxLength={120}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  placeholder="Enter strip title..."
+                />
+                <p className="text-[10px] text-slate-400 mt-1">{valuePropStripDraft.title.length}/120 characters.</p>
+              </div>
+
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Strip Body</label>
+                <textarea
+                  value={valuePropStripDraft.body}
+                  onChange={(e) => setValuePropStripDraft(p => p ? { ...p, body: e.target.value } : p)}
+                  maxLength={500}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
+                  placeholder="Enter strip body..."
+                />
+                <p className="text-[10px] text-slate-400 mt-1">{valuePropStripDraft.body.length}/500 characters.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4 text-slate-400">Loading value-prop strip config...</div>
+          )}
+        </section>
+
+        {/* 8. SYSTEM ANNOUNCEMENT */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">

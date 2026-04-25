@@ -135,6 +135,16 @@ class AdminUsersService {
     );
   }
 
+  async updateUserSearchCohort(
+    id: string,
+    searchCohort: string | null,
+  ): Promise<{ message: string; searchCohort: string | null; auditPersisted?: boolean }> {
+    return apiClient.patch<{ message: string; searchCohort: string | null; auditPersisted?: boolean }>(
+      `/admin/users/${id}/search-cohort`,
+      { searchCohort },
+    );
+  }
+
   async deleteUser(id: string): Promise<void> {
     await apiClient.delete(`/users/${id}`);
   }

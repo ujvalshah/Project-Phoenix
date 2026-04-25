@@ -110,7 +110,7 @@ export const FilterScrollRow: React.FC<FilterScrollRowProps> = ({ categories, se
         aria-label="Category filters"
         onKeyDown={handleKeyDown}
         onFocus={handleFocus}
-        className="flex items-center gap-2 overflow-x-auto px-1 py-1 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] w-full mask-linear-fade"
+        className="flex items-center gap-2 overflow-x-auto px-1 py-1 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] w-full"
       >
         <button
           onClick={onClear}

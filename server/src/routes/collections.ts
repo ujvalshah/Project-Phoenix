@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as collectionsController from '../controllers/collectionsController.js';
 import { authenticateToken } from '../middleware/authenticateToken.js';
+import { optionalAuthenticateToken } from '../middleware/optionalAuthenticateToken.js';
 
 const router = Router();
 
@@ -11,7 +12,7 @@ router.get(
   authenticateToken,
   collectionsController.getCollectionsContainingArticle
 );
-router.get('/', collectionsController.getCollections);
+router.get('/', optionalAuthenticateToken, collectionsController.getCollections);
 router.get('/:id', collectionsController.getCollectionById);
 router.get('/:id/articles', collectionsController.getCollectionArticles);
 

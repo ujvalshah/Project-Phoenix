@@ -51,15 +51,34 @@ import {
   VALUE_PROP_STRIP_COPY,
   VALUEPROP_DISMISSED_KEY,
 } from '@/constants/onboardingCopy';
+import { onboardingCopyService } from '@/services/onboardingCopyService';
 
 /** Compact value proposition strip shown to first-time visitors */
 const ValuePropStrip: React.FC = () => {
+  const [copy, setCopy] = useState(VALUE_PROP_STRIP_COPY);
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem(VALUEPROP_DISMISSED_KEY) === '1';
     }
     return false;
   });
+
+  useEffect(() => {
+    if (dismissed) return;
+    let isCancelled = false;
+    onboardingCopyService.getValuePropStripCopy()
+      .then((remoteCopy) => {
+        if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
+          setCopy(remoteCopy);
+        }
+      })
+      .catch(() => {
+        // Keep local constants as fallback when API/config is unavailable.
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [dismissed]);
 
   if (dismissed) return null;
 
@@ -77,8 +96,8 @@ const ValuePropStrip: React.FC = () => {
       >
         <X size={14} />
       </button>
-      <p className="text-sm font-semibold text-gray-900 pr-6">{VALUE_PROP_STRIP_COPY.title}</p>
-      <p className="text-xs text-gray-600 mt-0.5">{VALUE_PROP_STRIP_COPY.body}</p>
+      <p className="text-sm font-semibold text-gray-900 pr-6">{copy.title}</p>
+      <p className="text-xs text-gray-600 mt-0.5">{copy.body}</p>
     </div>
   );
 };

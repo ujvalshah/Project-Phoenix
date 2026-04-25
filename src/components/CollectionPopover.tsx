@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { getOverlayHost } from '@/utils/overlayHosts';
+import { fetchAllCollectionsPaged } from '@/utils/collectionPicker';
 
 /** Top inset the popover should avoid (fixed header region). Keep in sync with header height. */
 const HEADER_SAFE_INSET = 72;
@@ -129,7 +130,12 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
     try {
       if (mode === 'public') {
         const [publicResult, featuredResult] = await Promise.all([
-          storageService.getCollections({ type: 'public', includeCount: true, sortField: 'name', sortDirection: 'asc', limit: 100 }),
+          fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
+            type: 'public',
+            sortField: 'name',
+            sortDirection: 'asc',
+            limit: 100,
+          }),
           storageService.getFeaturedCollections().catch(() => []),
         ]);
 
@@ -147,7 +153,12 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
             .sort((a, b) => getName(a).localeCompare(getName(b)))
         );
       } else {
-        const result = await storageService.getCollections({ type: 'private', includeCount: true, sortField: 'name', sortDirection: 'asc', limit: 100 });
+        const result = await fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
+          type: 'private',
+          sortField: 'name',
+          sortDirection: 'asc',
+          limit: 100,
+        });
         const cols = normalizeResult(result);
         setCollections(cols.filter((c) => c.creatorId === currentUserId && c.type === mode));
       }

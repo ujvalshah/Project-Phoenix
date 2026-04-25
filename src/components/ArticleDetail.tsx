@@ -371,6 +371,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
            <DetailTopBar
                authorName={authorName}
                article={article}
+               menuHost={isModal ? 'modal' : 'dropdown'}
                onClose={onClose}
                onEdit={handleEdit}
                onDelete={handleDelete}

@@ -47,7 +47,7 @@ export class RestAdapter implements IAdapter {
   // Paginated articles method - returns full pagination metadata
   getArticlesPaginated(params: {
     q?: string;
-    searchMode?: 'relevance' | 'latest';
+    searchMode?: 'relevance' | 'latest' | 'hybrid';
     page: number;
     limit: number;
     category?: string;

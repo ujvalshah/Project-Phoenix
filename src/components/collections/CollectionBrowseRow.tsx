@@ -210,9 +210,9 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
       ? 'pr-14'
       : 'pr-3'
     : !isPrivate && currentUserId
-      ? 'pr-[7.5rem] sm:pr-36'
+      ? 'pr-16 sm:pr-36'
       : !isPrivate
-        ? 'pr-14'
+        ? 'pr-12 sm:pr-14'
         : 'pr-3';
 
   return (
@@ -225,7 +225,7 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
       <div
         className={[
           'relative flex items-stretch',
-          subtitle ? 'min-h-[4.25rem]' : 'min-h-[3.5rem]',
+          subtitle ? 'min-h-[4.75rem]' : 'min-h-[4.25rem]',
         ].join(' ')}
       >
         <button
@@ -234,7 +234,7 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
           onKeyDown={handleKeyDown}
           aria-pressed={selectionMode ? isSelected : undefined}
           className={[
-            'flex w-full min-w-0 flex-1 items-center gap-3 py-2.5 text-left transition-colors',
+            'flex w-full min-w-0 flex-1 items-center gap-3 py-3 text-left transition-colors',
             'cursor-pointer hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-slate-800/60 dark:focus-visible:ring-primary-400',
             'pl-3',
             reserveRightPad,
@@ -330,7 +330,7 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
                 onClick={handleFollow}
                 disabled={isLoading}
                 className={[
-                  'inline-flex h-10 items-center justify-center gap-1 rounded-lg border px-2.5 text-xs font-semibold transition-colors sm:min-w-[5.5rem]',
+                  'inline-flex h-11 w-11 items-center justify-center gap-1 rounded-full border px-0 text-xs font-semibold transition-colors sm:h-10 sm:w-auto sm:min-w-[5.5rem] sm:rounded-lg sm:px-2.5',
                   isFollowing
                     ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-900/25 dark:text-green-300'
                     : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700',
@@ -347,23 +347,25 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
               </button>
             ) : null}
             {!isPrivate && (
-              <ShareMenu
-                data={{
-                  type: 'collection',
-                  id: collection.id,
-                  title: collection.name,
-                  shareUrl: `${window.location.origin}/collections/${collection.id}`,
-                }}
-                meta={{ text: collection.description }}
-                className="rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-                iconSize={16}
-              />
+              <div className="hidden sm:block">
+                <ShareMenu
+                  data={{
+                    type: 'collection',
+                    id: collection.id,
+                    title: collection.name,
+                    shareUrl: `${window.location.origin}/collections/${collection.id}`,
+                  }}
+                  meta={{ text: collection.description }}
+                  className="rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                  iconSize={16}
+                />
+              </div>
             )}
           </div>
         )}
 
         {selectionMode && !isPrivate && (
-          <div className="pointer-events-auto absolute right-2 top-1/2 flex -translate-y-1/2 items-center opacity-70">
+          <div className="pointer-events-auto absolute right-2 top-1/2 hidden -translate-y-1/2 items-center opacity-70 sm:flex">
             <ShareMenu
               data={{
                 type: 'collection',

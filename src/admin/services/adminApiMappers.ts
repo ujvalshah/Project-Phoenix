@@ -23,6 +23,7 @@ export function mapUserToAdminUser(user: User, stats?: {
     name: user.profile.displayName,
     fullName: user.profile.displayName, // Backend doesn't have separate fullName
     username: user.profile.username,
+    searchCohort: user.appState.searchCohort,
     email: user.auth.email,
     emailVerified: user.auth.emailVerified ?? false,
     authProvider: user.auth.provider ?? 'email',

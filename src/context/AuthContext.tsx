@@ -12,6 +12,7 @@ import { getSafeUsernameHandle } from '@/utils/userIdentity';
 import { captureException } from '@/utils/sentry';
 import { shallowEqual } from '@/utils/shallowEqual';
 import { clearCsrfToken } from '@/utils/csrf';
+import { SEARCH_COHORT_STORAGE_KEY } from '@/utils/searchMode';
 
 export const shallowEqualAuth = shallowEqual;
 
@@ -64,7 +65,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     apiClient.onSessionExpired(() => {
       setModularUser(null);
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.removeItem(SEARCH_COHORT_STORAGE_KEY);
+        }
+      } catch {
+        // Ignore storage errors
+      }
     });
+  }, []);
+
+  const syncSearchCohortStorage = useCallback((user: ModularUser | null) => {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return;
+      const cohort = user?.appState?.searchCohort?.trim();
+      if (cohort) {
+        window.localStorage.setItem(SEARCH_COHORT_STORAGE_KEY, cohort);
+      } else {
+        window.localStorage.removeItem(SEARCH_COHORT_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage errors
+    }
   }, []);
 
   // Hydrate session from HttpOnly cookies via GET /auth/me
@@ -76,12 +98,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const freshUser = await authService.getCurrentUser();
           setModularUser(freshUser);
+          syncSearchCohortStorage(freshUser);
         } catch (bootstrapErr: unknown) {
           if (isTransientAuthMeError(bootstrapErr)) {
             // Network/server error — don't clear session, user may still be authenticated
           } else {
             // 401 or other auth error — user is not authenticated
             setModularUser(null);
+            syncSearchCohortStorage(null);
           }
         }
       } catch (e) {
@@ -108,7 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
     init();
-  }, []);
+  }, [syncSearchCohortStorage]);
 
   // --- ADAPTER: Modular -> Legacy ---
   const legacyUser: LegacyUser | null = useMemo(() => {
@@ -149,8 +173,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const response = await authService.loginWithEmail(payload);
     // Backend sets HttpOnly cookies; we just store user state in memory
     setModularUser(response.user);
+    syncSearchCohortStorage(response.user);
     closeAuthModal();
-  }, [closeAuthModal]);
+  }, [closeAuthModal, syncSearchCohortStorage]);
 
   const signup = useCallback(async (payload: SignupPayload): Promise<{ needsVerification: boolean }> => {
     const response = await authService.signupWithEmail(payload);
@@ -161,6 +186,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (response.user) {
       setModularUser(response.user);
+      syncSearchCohortStorage(response.user);
     }
     closeAuthModal();
     // If email verification is enabled and the user is an email-provider
@@ -171,13 +197,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       response.user.auth?.provider === 'email' &&
       response.user.auth?.emailVerified === false;
     return { needsVerification };
-  }, [closeAuthModal]);
+  }, [closeAuthModal, syncSearchCohortStorage]);
 
   const socialLogin = useCallback(async (provider: AuthProviderType) => {
     const response = await authService.loginWithProvider(provider);
     setModularUser(response.user);
+    syncSearchCohortStorage(response.user);
     closeAuthModal();
-  }, [closeAuthModal]);
+  }, [closeAuthModal, syncSearchCohortStorage]);
 
   const logout = useCallback(async () => {
     // Call backend to invalidate tokens and clear HttpOnly cookies. We must
@@ -203,7 +230,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // with a clean slate and doesn't replay a stale token against a new session.
     clearCsrfToken();
     setModularUser(null);
-  }, []);
+    syncSearchCohortStorage(null);
+  }, [syncSearchCohortStorage]);
 
   const contextValue = useMemo<AuthContextType>(() => ({
       user: legacyUser, // Expose adapted legacy user

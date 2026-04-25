@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { ModalShell } from '@/components/UI/ModalShell';
+import { fetchAllCollectionsPaged } from '@/utils/collectionPicker';
 
 interface AddToCollectionModalProps {
   isOpen: boolean;
@@ -59,11 +60,10 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
   const fetchCollections = async () => {
     setIsLoading(true);
     try {
-      // Fetch public collections (limit=100 covers typical admin scale) + featured in parallel
+      // Fetch full public collection set + featured in parallel.
       const [publicResult, featuredResult] = await Promise.all([
-        storageService.getCollections({
+        fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
           type: 'public',
-          includeCount: true,
           sortField: 'name',
           sortDirection: 'asc',
           limit: 100,

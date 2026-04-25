@@ -32,6 +32,7 @@ interface TaxonomySidebarProps {
 const TaxonomySidebarContent: React.FC<
   Omit<TaxonomySidebarProps, 'isMobileOpen' | 'onCloseMobile'> & {
     showCollapseButton?: boolean;
+    isMobileSheet?: boolean;
   }
 > = ({
   groups,
@@ -41,6 +42,7 @@ const TaxonomySidebarContent: React.FC<
   onSelectChild,
   onCollapseDesktop,
   showCollapseButton = false,
+  isMobileSheet = false,
 }) => {
   const [expanded, setExpanded] = useState<Set<string>>(() =>
     selectedParentId ? new Set([selectedParentId]) : new Set<string>(),
@@ -49,12 +51,15 @@ const TaxonomySidebarContent: React.FC<
   // Auto-expand when a parent is selected externally (e.g., chip strip click)
   useEffect(() => {
     if (!selectedParentId) return;
-    setExpanded((prev) => {
-      if (prev.has(selectedParentId)) return prev;
-      const next = new Set(prev);
-      next.add(selectedParentId);
-      return next;
+    const frame = requestAnimationFrame(() => {
+      setExpanded((prev) => {
+        if (prev.has(selectedParentId)) return prev;
+        const next = new Set(prev);
+        next.add(selectedParentId);
+        return next;
+      });
     });
+    return () => cancelAnimationFrame(frame);
   }, [selectedParentId]);
 
   const toggleExpanded = (id: string) => {
@@ -70,6 +75,9 @@ const TaxonomySidebarContent: React.FC<
   };
 
   const isAllSelected = !selectedParentId && !selectedChildId;
+  const parentRowClass = isMobileSheet ? 'h-11' : 'h-9';
+  const parentToggleClass = isMobileSheet ? 'h-11 w-10' : 'h-9 w-7';
+  const childRowClass = isMobileSheet ? 'h-11' : 'h-8';
 
   return (
     <div className="flex h-full flex-col">
@@ -101,7 +109,7 @@ const TaxonomySidebarContent: React.FC<
             onSelectParent(null);
             onSelectChild(null);
           }}
-          className={`inline-flex items-center gap-1.5 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+          className={`inline-flex min-h-9 items-center gap-1.5 text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
             isAllSelected
               ? 'text-primary-700 dark:text-primary-300'
               : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
@@ -135,7 +143,7 @@ const TaxonomySidebarContent: React.FC<
                 )}
                 <button
                   onClick={() => toggleExpanded(group.id)}
-                  className="inline-flex h-9 w-7 shrink-0 items-center justify-center rounded-l-md text-slate-400 transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
+                  className={`inline-flex ${parentToggleClass} shrink-0 items-center justify-center rounded-l-md text-slate-400 transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200`}
                   aria-label={isExpanded ? 'Collapse group' : 'Expand group'}
                   aria-expanded={isExpanded}
                 >
@@ -161,7 +169,7 @@ const TaxonomySidebarContent: React.FC<
                       onSelectChild(null);
                     }
                   }}
-                  className={`flex h-9 min-w-0 flex-1 items-center justify-between gap-2 rounded-r-md pr-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+                  className={`flex ${parentRowClass} min-w-0 flex-1 items-center justify-between gap-2 rounded-r-md pr-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                     isParentSelected
                       ? 'font-semibold text-primary-700 dark:text-primary-300'
                       : 'text-slate-700 dark:text-slate-200'
@@ -199,7 +207,7 @@ const TaxonomySidebarContent: React.FC<
                             onSelectParent(group.id);
                             onSelectChild(child.id);
                           }}
-                          className={`flex h-8 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+                          className={`flex ${childRowClass} w-full items-center justify-between gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                             isChildSelected
                               ? 'bg-primary-100 font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
                               : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -247,16 +255,19 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
   useEffect(() => {
     if (isMobileOpen) {
       if (animState === 'closed' || animState === 'exiting') {
-        setAnimState('entering');
         const raf1 = requestAnimationFrame(() => {
+          setAnimState('entering');
           requestAnimationFrame(() => setAnimState('open'));
         });
         return () => cancelAnimationFrame(raf1);
       }
     } else if (animState === 'open' || animState === 'entering') {
-      setAnimState('exiting');
+      const raf = requestAnimationFrame(() => setAnimState('exiting'));
       const timer = setTimeout(() => setAnimState('closed'), 250);
-      return () => clearTimeout(timer);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(timer);
+      };
     }
   }, [isMobileOpen, animState]);
 
@@ -284,7 +295,8 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isMobileOpen, onCloseMobile]);
 
-  const hasActiveFilter = props.selectedParentId !== null || props.selectedChildId !== null;
+  const activeFilterCount = (props.selectedParentId ? 1 : 0) + (props.selectedChildId ? 1 : 0);
+  const hasActiveFilter = activeFilterCount > 0;
   const shouldRenderSheet = animState !== 'closed';
   const isVisible = animState === 'open';
 
@@ -345,7 +357,9 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
                   <div>
                     <h2 className="text-[17px] font-semibold leading-tight">Filter by taxonomy</h2>
                     <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400">
-                      {hasActiveFilter ? '1 filter applied' : 'No filters applied'}
+                      {hasActiveFilter
+                        ? `${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''} applied`
+                        : 'No filters applied'}
                     </p>
                   </div>
                   <button
@@ -360,7 +374,7 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-                <TaxonomySidebarContent {...props} />
+                <TaxonomySidebarContent {...props} isMobileSheet />
               </div>
 
               <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-900">

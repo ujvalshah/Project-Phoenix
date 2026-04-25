@@ -70,6 +70,8 @@ export interface UserAppState {
   lastLoginAt?: string;
   onboardingCompleted: boolean;
   featureFlags?: Record<string, boolean>;
+  /** Server-assigned search rollout cohort (e.g. "hybrid-beta"). */
+  searchCohort?: string;
 }
 
 // The Modular User Aggregate

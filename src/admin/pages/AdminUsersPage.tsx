@@ -76,6 +76,8 @@ export const AdminUsersPage: React.FC = () => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editForm, setEditForm] = useState<AdminProfileEdits & { fullDetails?: { bio?: string; title?: string; company?: string; location?: string; website?: string; twitter?: string; linkedin?: string } }>({});
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [searchCohortDraft, setSearchCohortDraft] = useState('');
+  const [isSavingSearchCohort, setIsSavingSearchCohort] = useState(false);
 
   // Lifecycle action confirmation. The verb drives the modal copy and the
   // service method called on confirm. Status is read-only on the table — all
@@ -202,6 +204,7 @@ export const AdminUsersPage: React.FC = () => {
 
   const handleOpenUser = (u: AdminUser) => {
       setSelectedUser(u);
+      setSearchCohortDraft(u.searchCohort ?? '');
       // Always open in read-only mode — entering edit is an explicit click.
       setIsEditingProfile(false);
   };
@@ -210,6 +213,7 @@ export const AdminUsersPage: React.FC = () => {
       setSelectedUser(null);
       setIsEditingProfile(false);
       setEditForm({});
+      setSearchCohortDraft('');
   };
 
   const handleEnterEditMode = () => {
@@ -335,6 +339,45 @@ export const AdminUsersPage: React.FC = () => {
       // rollback
       setUsers(prevUsers);
       toast.error("Role update failed. Changes reverted.");
+    }
+  };
+
+  const handleSaveSearchCohort = async () => {
+    if (!selectedUser) return;
+    const nextCohort = searchCohortDraft.trim();
+    const currentCohort = selectedUser.searchCohort?.trim() || '';
+    if (nextCohort === currentCohort) {
+      toast.success('No cohort changes to save');
+      return;
+    }
+
+    setIsSavingSearchCohort(true);
+    try {
+      const result = await adminUsersService.updateUserSearchCohort(
+        selectedUser.id,
+        nextCohort || null,
+      );
+      const applied = result.searchCohort ?? undefined;
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === selectedUser.id
+            ? { ...u, searchCohort: applied }
+            : u
+        ),
+      );
+      setSelectedUser((prev) =>
+        prev ? { ...prev, searchCohort: applied } : prev,
+      );
+      setSearchCohortDraft(applied ?? '');
+      toast.success(applied ? 'Search cohort updated' : 'Search cohort cleared');
+      if (result.auditPersisted === false) {
+        toast.error('Cohort updated, but audit logging failed. Check backend alerts.');
+      }
+    } catch (e) {
+      console.error('updateUserSearchCohort failed', e);
+      toast.error('Could not update search cohort. Please retry.');
+    } finally {
+      setIsSavingSearchCohort(false);
     }
   };
 
@@ -792,6 +835,46 @@ export const AdminUsersPage: React.FC = () => {
                             )}
                         </div>
                     </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                            Search Rollout Cohort
+                        </h3>
+                        <span className="text-[11px] text-slate-500">
+                            Backend-driven cohort for hybrid search rollout.
+                        </span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                            type="text"
+                            value={searchCohortDraft}
+                            onChange={(e) => setSearchCohortDraft(e.target.value)}
+                            placeholder="e.g. hybrid-beta (empty clears)"
+                            disabled={!can('admin.users.edit') || isSavingSearchCohort}
+                            className="flex-1 px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-400 disabled:opacity-60"
+                        />
+                        <button
+                            type="button"
+                            onClick={handleSaveSearchCohort}
+                            disabled={!can('admin.users.edit') || isSavingSearchCohort}
+                            className="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700 disabled:opacity-50"
+                        >
+                            {isSavingSearchCohort ? 'Saving…' : 'Save Cohort'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSearchCohortDraft('')}
+                            disabled={!can('admin.users.edit') || isSavingSearchCohort}
+                            className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50 disabled:opacity-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
+                        >
+                            Clear
+                        </button>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                        Current: <span className="font-mono">{selectedUser.searchCohort || '(none)'}</span>
+                    </p>
                 </div>
 
                 {/* Stats Breakdown */}

@@ -42,6 +42,7 @@ import {
   formatSourceTypeLabel,
   formatSuggestionPublishedLabel,
 } from '@/utils/suggestionDisplay';
+import { normalizeSearchQuery } from '@/utils/searchQuery';
 
 /** Yellow “N” tile — matches NavigationDrawer / app favicon treatment */
 const NuggetsLogoMark: React.FC<{ showName?: boolean }> = ({ showName }) => (
@@ -113,6 +114,16 @@ export const Header: React.FC<HeaderProps> = ({
       setSortOrder: s.setSortOrder,
       hasActiveFilters: s.hasActiveFilters,
       activeFilterCount: s.activeFilterCount,
+      selectedCategories: s.selectedCategories,
+      selectedTag: s.selectedTag,
+      collectionId: s.collectionId,
+      favorites: s.favorites,
+      unread: s.unread,
+      formats: s.formats,
+      timeRange: s.timeRange,
+      formatTagIds: s.formatTagIds,
+      domainTagIds: s.domainTagIds,
+      subtopicTagIds: s.subtopicTagIds,
       contentStream: s.contentStream,
       setContentStream: s.setContentStream,
       revertSearchDraftToCommitted: s.revertSearchDraftToCommitted,
@@ -128,6 +139,17 @@ export const Header: React.FC<HeaderProps> = ({
     revertSearchDraftToCommitted,
     sortOrder,
     setSortOrder,
+    selectedCategories,
+    selectedTag,
+    collectionId,
+    favorites,
+    unread,
+    formats,
+    timeRange,
+    formatTagIds,
+    domainTagIds,
+    subtopicTagIds,
+    contentStream,
   } = filters;
   const { data: pulseUnseenCount } = usePulseUnseenCount();
   const { data: standardUnseenCount } = useStandardUnseenCount();
@@ -227,7 +249,35 @@ export const Header: React.FC<HeaderProps> = ({
   const { withAuth } = useRequireAuth();
   /** Match mobile overlay suggestion cadence (~180ms) — avoids firing `/search/suggest` on every keystroke. */
   const debouncedSearchInputForSuggestions = useDebouncedValue(searchInputValue, 180);
-  const desktopSuggestions = useSearchSuggestions(debouncedSearchInputForSuggestions, 6);
+  const suggestionFilters = useMemo(
+    () => ({
+      categories: selectedCategories,
+      tag: selectedTag,
+      collectionId,
+      favorites,
+      unread,
+      formats,
+      timeRange,
+      formatTagIds,
+      domainTagIds,
+      subtopicTagIds,
+      contentStream,
+    }),
+    [
+      selectedCategories,
+      selectedTag,
+      collectionId,
+      favorites,
+      unread,
+      formats,
+      timeRange,
+      formatTagIds,
+      domainTagIds,
+      subtopicTagIds,
+      contentStream,
+    ],
+  );
+  const desktopSuggestions = useSearchSuggestions(debouncedSearchInputForSuggestions, 6, suggestionFilters);
   const desktopSuggestionItems = useMemo(
     () => desktopSuggestions.data?.suggestions ?? [],
     [desktopSuggestions.data?.suggestions],
@@ -276,8 +326,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   // Save search to recent searches (localStorage only — the MobileSearchOverlay reads it)
   const saveRecentSearch = useCallback((query: string) => {
-    if (!query.trim() || typeof window === 'undefined') return;
-    const trimmed = query.trim();
+    if (typeof window === 'undefined') return;
+    const trimmed = normalizeSearchQuery(query);
+    if (!trimmed) return;
     try {
       const stored = localStorage.getItem('recent_searches');
       const prev: string[] = stored ? JSON.parse(stored) : [];
@@ -308,7 +359,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   // Handle search submit (Enter key or recent-search click)
   const handleSearchSubmit = useCallback((query: string, closeMobileOverlay = true) => {
-    const trimmed = query.trim();
+    const trimmed = normalizeSearchQuery(query);
     const suggestionArticleId = takePendingSuggestionArticleId();
     if (trimmed) saveRecentSearch(trimmed);
     commitSearch(trimmed);
@@ -346,6 +397,7 @@ export const Header: React.FC<HeaderProps> = ({
   const handleDesktopSuggestionSelect = useCallback((index: number, source: 'mouse' | 'keyboard') => {
     const item = desktopSuggestionItems[index];
     if (!item) return;
+    const commitQuery = normalizeSearchQuery(searchInputValue) || normalizeSearchQuery(item.title);
     recordSearchEvent({
       name: 'search_suggestion_selected',
       payload: {
@@ -354,12 +406,12 @@ export const Header: React.FC<HeaderProps> = ({
         suggestionTitle: item.title,
         rank: index + 1,
         source,
-        commitQuery: item.title,
-        selectionIntent: 'commit_search_by_article_title',
+        commitQuery,
+        selectionIntent: 'commit_search_by_typed_query',
       },
     });
     setPendingSuggestionArticleId(item.id);
-    handleSearchSubmit(item.title, false);
+    handleSearchSubmit(commitQuery, false);
     setActiveSuggestionIndex(-1);
     setIsDesktopSearchFocused(false);
   }, [desktopSuggestionItems, handleSearchSubmit, searchInputValue]);
@@ -1354,6 +1406,7 @@ export const Header: React.FC<HeaderProps> = ({
         resetSignal={searchInputResetSignal}
         onDraftChange={handleDebouncedSearch}
         onCommitSearch={(q) => handleSearchSubmit(q, true)}
+        suggestionFilters={suggestionFilters}
       />
 
       <NavigationDrawer

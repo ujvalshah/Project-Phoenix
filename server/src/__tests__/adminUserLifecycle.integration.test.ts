@@ -106,6 +106,40 @@ describe('Admin user lifecycle (PR7b) — suspend / ban / activate / revoke-sess
     expect(after?.status ?? 'active').toBe('active');
   });
 
+  it('admin updates and clears user search cohort with audit trail', async (ctx) => {
+    if (!mongoOk) ctx.skip();
+    const targetId = await createUserDoc('user');
+    const adminId = await createUserDoc('admin');
+    const adminToken = generateAccessToken(adminId, 'admin');
+
+    const setRes = await request(app)
+      .patch(`/api/admin/users/${targetId}/search-cohort`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ searchCohort: 'hybrid-beta' });
+
+    expect(setRes.status).toBe(200);
+    expect(setRes.body.searchCohort).toBe('hybrid-beta');
+
+    const afterSet = await User.findById(targetId).select('appState.searchCohort');
+    expect(afterSet?.appState?.searchCohort).toBe('hybrid-beta');
+
+    const clearRes = await request(app)
+      .patch(`/api/admin/users/${targetId}/search-cohort`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ searchCohort: null });
+
+    expect(clearRes.status).toBe(200);
+    expect(clearRes.body.searchCohort).toBeNull();
+
+    const afterClear = await User.findById(targetId).select('appState.searchCohort');
+    expect(afterClear?.appState?.searchCohort).toBeFalsy();
+
+    const logs = await AdminAuditLog.find({ targetId, action: 'UPDATE_USER_SEARCH_COHORT' }).sort({ timestamp: 1 });
+    expect(logs.length).toBe(2);
+    expect(logs[0].newValue).toEqual({ searchCohort: 'hybrid-beta' });
+    expect(logs[1].newValue).toEqual({ searchCohort: null });
+  });
+
   // ── Suspend ────────────────────────────────────────────────────────────────
 
   it('admin suspends a user: status set, tokenVersion bumped, audit row written', async (ctx) => {

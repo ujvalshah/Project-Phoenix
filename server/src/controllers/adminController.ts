@@ -7,6 +7,7 @@ import { Feedback } from '../models/Feedback.js';
 import { AdminAuditLog } from '../models/AdminAuditLog.js';
 import { MediaQuotaConfig } from '../models/MediaQuotaConfig.js';
 import { DisclaimerConfig } from '../models/DisclaimerConfig.js';
+import { ValuePropStripConfig } from '../models/ValuePropStripConfig.js';
 import { LRUCache } from '../utils/lruCache.js';
 import { buildModerationQuery, getModerationStats } from '../services/moderationService.js';
 import {
@@ -17,6 +18,10 @@ import {
   getDisclaimerConfig,
   invalidateDisclaimerCache
 } from '../services/disclaimerConfigService.js';
+import {
+  getValuePropStripConfig,
+  invalidateValuePropStripCache
+} from '../services/valuePropStripConfigService.js';
 import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { getLogger } from '../utils/logger.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
@@ -35,11 +40,27 @@ const updateDisclaimerSchema = z.object({
   enableByDefault: z.boolean().optional()
 });
 
+const updateValuePropStripSchema = z.object({
+  title: z.string().trim().min(1, 'Title is required').max(120, 'Title too long').optional(),
+  body: z.string().trim().min(1, 'Body is required').max(500, 'Body too long').optional()
+});
+
 // Optional `reason` body for lifecycle endpoints. Free-text is captured in the
 // audit metadata; we cap length so a typo can't bloat the audit collection.
 const lifecycleBodySchema = z.object({
   reason: z.string().max(500).optional()
 }).strict().optional();
+
+const updateSearchCohortSchema = z.object({
+  searchCohort: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[a-zA-Z0-9._-]+$/, 'searchCohort can include letters, numbers, dot, underscore, and hyphen')
+    .nullable()
+    .optional(),
+}).strict();
 
 // Short-lived cache to avoid hammering the database
 // Cache up to 10 entries for 2 minutes each
@@ -330,6 +351,88 @@ export async function verifyUserEmail(req: AdminRequest, res: Response) {
 }
 
 /**
+ * PATCH /api/admin/users/:userId/search-cohort
+ * Body: { searchCohort: string | null }
+ *
+ * Sets (or clears with null) the server-assigned search rollout cohort.
+ */
+export async function updateUserSearchCohort(req: AdminRequest, res: Response) {
+  const adminId = req.userId;
+  const targetUserId = req.params.userId;
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+  if (!targetUserId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+  if (adminId === targetUserId) {
+    return res.status(400).json({
+      message: 'Admins cannot mutate their own rollout cohort through this endpoint',
+      code: 'CANNOT_MUTATE_SELF',
+    });
+  }
+
+  const parsed = updateSearchCohortSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: 'Invalid request',
+      errors: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const nextSearchCohort =
+    parsed.data.searchCohort === undefined ? undefined : parsed.data.searchCohort;
+  if (nextSearchCohort === undefined) {
+    return res.status(400).json({ message: 'searchCohort is required (string or null)' });
+  }
+
+  try {
+    const user = await User.findById(targetUserId).select('auth.email profile.username appState.searchCohort');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const previousSearchCohort =
+      typeof user.appState?.searchCohort === 'string' && user.appState.searchCohort.trim().length > 0
+        ? user.appState.searchCohort.trim()
+        : null;
+    const normalizedNext = nextSearchCohort ? nextSearchCohort.trim() : null;
+    const changed = previousSearchCohort !== normalizedNext;
+
+    user.appState = {
+      ...user.appState,
+      searchCohort: normalizedNext || undefined,
+    };
+    await user.save();
+
+    const auditResult = await auditAdminAction(req, {
+      action: 'UPDATE_USER_SEARCH_COHORT',
+      targetType: 'user',
+      targetId: targetUserId,
+      previousValue: { searchCohort: previousSearchCohort },
+      newValue: { searchCohort: normalizedNext },
+      metadata: {
+        targetEmail: user.auth?.email,
+        targetUsername: user.profile?.username,
+        changed,
+      },
+    });
+
+    return res.json({
+      message: changed ? 'Search cohort updated' : 'Search cohort unchanged',
+      searchCohort: normalizedNext,
+      auditPersisted: auditResult.persisted,
+    });
+  } catch (error) {
+    getLogger().error(
+      { err: error, adminId, targetUserId },
+      'Failed to update user search cohort'
+    );
+    return res.status(500).json({ message: 'Failed to update user search cohort' });
+  }
+}
+
+/**
  * Get current media quota limits (admin only).
  * GET /api/admin/settings/media-limits
  * Returns effective limits (from DB or defaults).
@@ -511,6 +614,92 @@ export async function updateDisclaimerSettings(req: AdminRequest, res: Response)
   } catch (error) {
     getLogger().error({ error, adminId }, 'Failed to update disclaimer config');
     return res.status(500).json({ message: 'Failed to update disclaimer config' });
+  }
+}
+
+/**
+ * Get current value-prop strip config.
+ * GET /api/admin/settings/value-prop-strip
+ * Returns effective config (from DB or defaults).
+ */
+export async function getValuePropStripSettings(_req: AdminRequest, res: Response) {
+  try {
+    const config = await getValuePropStripConfig();
+    return res.json(config);
+  } catch (error) {
+    getLogger().error({ error }, 'Failed to get value-prop strip config');
+    return res.status(500).json({ message: 'Failed to get value-prop strip config' });
+  }
+}
+
+/**
+ * Update value-prop strip config (admin only).
+ * PATCH /api/admin/settings/value-prop-strip
+ * Body: { title?, body? }
+ */
+export async function updateValuePropStripSettings(req: AdminRequest, res: Response) {
+  const adminId = req.userId;
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+
+  const parseResult = updateValuePropStripSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
+  }
+
+  const updates = parseResult.data;
+  if (updates.title === undefined && updates.body === undefined) {
+    return res.status(400).json({ message: 'At least one field must be provided' });
+  }
+
+  try {
+    const current = await getValuePropStripConfig();
+    const previousValue = { ...current };
+
+    const newDoc = {
+      id: 'default' as const,
+      title: updates.title ?? current.title,
+      body: updates.body ?? current.body,
+      updatedAt: new Date()
+    };
+
+    await ValuePropStripConfig.findOneAndUpdate(
+      { id: 'default' },
+      { $set: newDoc },
+      { upsert: true, new: true }
+    );
+
+    invalidateValuePropStripCache();
+
+    const newValue = {
+      title: newDoc.title,
+      body: newDoc.body
+    };
+
+    await AdminAuditLog.create({
+      adminId,
+      action: 'UPDATE_VALUE_PROP_STRIP_CONFIG',
+      targetType: 'system',
+      targetId: 'value_prop_strip_config',
+      previousValue: previousValue as Record<string, unknown>,
+      newValue: newValue as Record<string, unknown>,
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.get('User-Agent')
+    });
+
+    getLogger().info(
+      { action: 'UPDATE_VALUE_PROP_STRIP_CONFIG', adminId, previousValue, newValue, target: 'value_prop_strip_config' },
+      'Admin updated value-prop strip config'
+    );
+
+    return res.json({
+      message: 'Value-prop strip config updated',
+      config: newValue
+    });
+  } catch (error) {
+    getLogger().error({ error, adminId }, 'Failed to update value-prop strip config');
+    return res.status(500).json({ message: 'Failed to update value-prop strip config' });
   }
 }
 

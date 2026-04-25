@@ -3,6 +3,8 @@ import { useMemo } from 'react';
 import { articleService, PaginatedArticlesResponse } from '@/services/articleService';
 import { FilterState, SortOrder, ContentStream, Article } from '@/types';
 import { articleKeys } from '@/services/queryKeys/articleKeys';
+import { MIN_RELEVANCE_SEARCH_LENGTH, normalizeSearchQuery } from '@/utils/searchQuery';
+import { resolveCommittedSearchMode } from '@/utils/searchMode';
 
 interface UseInfiniteArticlesOptions {
   searchQuery: string;
@@ -71,14 +73,14 @@ export type InfiniteArticlesOptions = Required<
     | 'selectedCategories'
   >
 > &
-  Pick<UseInfiniteArticlesOptions, 'contentStream'>;
-
-/** Minimum length to send `searchMode: 'relevance'` (server uses $text); shorter queries still hit the API with regex/tag paths. */
-const MIN_RELEVANCE_SEARCH_LENGTH = 3;
+  Pick<UseInfiniteArticlesOptions, 'contentStream'> & {
+    resolvedSearchMode?: FilterState['searchMode'];
+  };
 
 export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptions) => ({
   queryKey: articleKeys.infiniteList({
-    q: options.searchQuery.trim(),
+    q: normalizeSearchQuery(options.searchQuery),
+    searchMode: options.resolvedSearchMode ?? '',
     activeCategory: options.activeCategory,
     selectedCategories: options.selectedCategories,
     sortOrder: options.sortOrder,
@@ -95,7 +97,9 @@ export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptio
     contentStream: options.contentStream ?? '',
   }),
   queryFn: async ({ pageParam = 1 }: { pageParam?: unknown }) => {
-    const trimmedQuery = options.searchQuery.trim();
+    const trimmedQuery = normalizeSearchQuery(options.searchQuery);
+    const resolvedSearchMode =
+      options.resolvedSearchMode ?? resolveCommittedSearchMode(trimmedQuery);
 
     const categoryParam =
       options.selectedCategories && options.selectedCategories.length > 0
@@ -106,7 +110,8 @@ export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptio
 
     const filters: FilterState = {
       query: trimmedQuery,
-      searchMode: trimmedQuery.length >= MIN_RELEVANCE_SEARCH_LENGTH ? 'relevance' : undefined,
+      searchMode:
+        trimmedQuery.length >= MIN_RELEVANCE_SEARCH_LENGTH ? resolvedSearchMode : undefined,
       categories: categoryParam,
       tag: options.tag || null,
       sort: options.sortOrder,
@@ -153,6 +158,9 @@ export const useInfiniteArticles = ({
   subtopicTagIds = [],
   contentStream,
 }: UseInfiniteArticlesOptions): UseInfiniteArticlesResult => {
+  const normalizedSearchQuery = normalizeSearchQuery(searchQuery);
+  const resolvedSearchMode = resolveCommittedSearchMode(normalizedSearchQuery);
+
   // useInfiniteQuery automatically handles:
   // - Page accumulation
   // - Reset on query key change (category/search/sort/tag/collection changes)
@@ -161,6 +169,7 @@ export const useInfiniteArticles = ({
   const query = useInfiniteQuery<PaginatedArticlesResponse>(
     buildInfiniteArticlesQueryOptions({
       searchQuery,
+      resolvedSearchMode,
       activeCategory,
       selectedCategories: selectedCategories ?? [],
       sortOrder,

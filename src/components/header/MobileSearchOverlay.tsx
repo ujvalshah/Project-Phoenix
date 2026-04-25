@@ -4,6 +4,7 @@ import { Search, X, Clock } from 'lucide-react';
 import { SearchInput, SearchInputHandle } from './SearchInput';
 import { getOverlayHost } from '@/utils/overlayHosts';
 import { useSearchSuggestions } from '@/hooks/useSearchSuggestions';
+import { SearchSuggestionFilters } from '@/services/searchService';
 import { setPendingSuggestionArticleId } from '@/observability/searchTelemetryIds';
 import { recordSearchEvent } from '@/observability/telemetry';
 import {
@@ -11,6 +12,7 @@ import {
   formatSourceTypeLabel,
   formatSuggestionPublishedLabel,
 } from '@/utils/suggestionDisplay';
+import { normalizeSearchQuery } from '@/utils/searchQuery';
 
 interface MobileSearchOverlayProps {
   isOpen: boolean;
@@ -20,6 +22,7 @@ interface MobileSearchOverlayProps {
   resetSignal?: number;
   onDraftChange: (value: string) => void;
   onCommitSearch: (value: string) => void;
+  suggestionFilters?: SearchSuggestionFilters;
 }
 
 /**
@@ -35,6 +38,7 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   resetSignal,
   onDraftChange,
   onCommitSearch,
+  suggestionFilters,
 }) => {
   const searchRef = useRef<SearchInputHandle>(null);
   const scrollBodyRef = useRef<HTMLDivElement>(null);
@@ -43,7 +47,7 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   const [draftQuery, setDraftQuery] = useState(initialValue);
   const [debouncedDraftQuery, setDebouncedDraftQuery] = useState(initialValue);
   const [viewportBottomPadPx, setViewportBottomPadPx] = useState(0);
-  const suggestionsQuery = useSearchSuggestions(debouncedDraftQuery, 6);
+  const suggestionsQuery = useSearchSuggestions(debouncedDraftQuery, 6, suggestionFilters);
 
   useLayoutEffect(() => {
     debouncedDraftRef.current = debouncedDraftQuery;
@@ -112,8 +116,8 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   });
 
   const saveRecentSearch = useCallback((query: string) => {
-    if (!query.trim()) return;
-    const trimmed = query.trim();
+    const trimmed = normalizeSearchQuery(query);
+    if (!trimmed) return;
     setRecentSearches(prev => {
       const updated = [trimmed, ...prev.filter(s => s !== trimmed)].slice(0, 5);
       if (typeof window !== 'undefined') {
@@ -124,30 +128,32 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   }, []);
 
   const handleSubmit = useCallback((query: string) => {
-    if (query.trim()) {
-      saveRecentSearch(query);
+    const normalized = normalizeSearchQuery(query);
+    if (normalized) {
+      saveRecentSearch(normalized);
     }
-    onCommitSearch(query.trim());
+    onCommitSearch(normalized);
     onClose('commit');
   }, [saveRecentSearch, onCommitSearch, onClose]);
 
   const handleSuggestionPick = useCallback(
     (item: { id: string; title: string }, rankIndex: number) => {
+      const commitQuery = normalizeSearchQuery(draftQuery) || normalizeSearchQuery(item.title);
       recordSearchEvent({
         name: 'search_suggestion_selected',
         payload: {
           query: draftQuery.trim(),
           suggestionId: item.id,
           suggestionTitle: item.title,
-          commitQuery: item.title,
-          selectionIntent: 'commit_search_by_article_title',
+          commitQuery,
+          selectionIntent: 'commit_search_by_typed_query',
           source: 'touch',
           surface: 'mobile-overlay',
           rank: rankIndex + 1,
         },
       });
       setPendingSuggestionArticleId(item.id);
-      handleSubmit(item.title);
+      handleSubmit(commitQuery);
     },
     [draftQuery, handleSubmit],
   );
