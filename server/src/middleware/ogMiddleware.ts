@@ -39,6 +39,22 @@ function truncate(text: string, max: number): string {
   return (lastSpace > max * 0.6 ? trimmed.slice(0, lastSpace) : trimmed) + '…';
 }
 
+function normalizeOrigin(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function resolveCanonicalSiteOrigin(req: Request): string {
+  const envOrigin =
+    process.env.PUBLIC_SITE_URL ||
+    process.env.FRONTEND_URL;
+
+  if (envOrigin && envOrigin.trim()) {
+    return normalizeOrigin(envOrigin.trim());
+  }
+
+  return normalizeOrigin(`${req.protocol}://${req.get('host') || 'localhost'}`);
+}
+
 interface OgMeta {
   title: string;
   description: string;
@@ -123,7 +139,7 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
   }
 
   const logger = getLogger();
-  const baseUrl = `${req.protocol}://${req.get('host') || 'localhost'}`;
+  const baseUrl = resolveCanonicalSiteOrigin(req);
   const defaultImage = `${baseUrl}/og-default.png`;
 
   // --- /article/:id ---
@@ -140,11 +156,20 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
           return;
         }
 
-        const title = truncate(article.title || 'Untitled', 70);
-        const description = truncate(
-          article.excerpt || article.content || '',
-          155,
-        );
+        const metadataTitle = (article as any)?.media?.previewMetadata?.title;
+        const rawTitle =
+          (typeof article.title === 'string' && article.title.trim()) ||
+          (typeof metadataTitle === 'string' && metadataTitle.trim()) ||
+          'Nugget from Nuggets';
+        const title = truncate(rawTitle, 70);
+
+        const metadataDescription = (article as any)?.media?.previewMetadata?.description;
+        const rawDescription =
+          (typeof article.excerpt === 'string' && article.excerpt.trim()) ||
+          (typeof article.content === 'string' && article.content.trim()) ||
+          (typeof metadataDescription === 'string' && metadataDescription.trim()) ||
+          'Read this nugget on Nuggets.';
+        const description = truncate(rawDescription, 155);
 
         // Pick best available image, ensuring absolute URL
         let image =
@@ -215,7 +240,7 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
           'Collection';
         const title = truncate(name, 50);
         const description = truncate(
-          (collection as any).description || `A curated collection on Nuggets`,
+          (collection as any).description?.trim() || `A curated collection on Nuggets.`,
           155,
         );
 

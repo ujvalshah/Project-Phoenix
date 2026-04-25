@@ -83,7 +83,7 @@ const TaxonomySidebarContent: React.FC<
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 px-1 pb-2.5">
         <p className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
-          Taxonomy
+          Browse topics
         </p>
         <div className="flex items-center gap-1.5">
           <span className="text-[10.5px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
@@ -93,7 +93,7 @@ const TaxonomySidebarContent: React.FC<
             <button
               type="button"
               onClick={onCollapseDesktop}
-              aria-label="Collapse taxonomy sidebar"
+              aria-label="Collapse topic browser"
               title="Collapse"
               className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             >
@@ -122,7 +122,7 @@ const TaxonomySidebarContent: React.FC<
 
       <div className="mt-2 flex-1 space-y-0.5 overflow-y-auto pr-1">
         <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
-          Parent collections
+          Topics
         </p>
         {groups.map((group) => {
           const isExpanded = expanded.has(group.id);
@@ -295,8 +295,20 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isMobileOpen, onCloseMobile]);
 
-  const activeFilterCount = (props.selectedParentId ? 1 : 0) + (props.selectedChildId ? 1 : 0);
-  const hasActiveFilter = activeFilterCount > 0;
+  const selectedParentGroup = props.selectedParentId
+    ? props.groups.find((group) => group.id === props.selectedParentId)
+    : undefined;
+  const selectedChildNode = props.selectedChildId
+    ? selectedParentGroup?.children.find((child) => child.id === props.selectedChildId) ??
+      props.groups.flatMap((group) => group.children).find((child) => child.id === props.selectedChildId)
+    : undefined;
+  const selectedScopeLabel = selectedChildNode && selectedParentGroup
+    ? `${selectedParentGroup.name} / ${selectedChildNode.name}`
+    : selectedParentGroup?.name;
+  const hasActiveScope = Boolean(selectedScopeLabel);
+  const resultSummary = typeof resultCount === 'number'
+    ? `${resultCount} result${resultCount !== 1 ? 's' : ''}`
+    : null;
   const shouldRenderSheet = animState !== 'closed';
   const isVisible = animState === 'open';
 
@@ -318,9 +330,9 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
             type="button"
             onClick={onExpandDesktop}
             className="flex h-[calc(100vh-170px)] min-h-[420px] w-10 flex-col items-center justify-start gap-2 rounded-2xl border border-slate-200 bg-white px-2 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
-            aria-label="Expand taxonomy sidebar"
+            aria-label="Expand topic browser"
           >
-            <span className="[writing-mode:vertical-rl]">Taxonomy</span>
+            <span className="[writing-mode:vertical-rl]">Topics</span>
           </button>
         </aside>
       )}
@@ -336,7 +348,7 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
               ref={panelRef}
               role="dialog"
               aria-modal="true"
-              aria-label="Filter collections"
+              aria-label="Browse topics"
               onClick={(event) => event.stopPropagation()}
               className={`absolute bottom-0 left-0 right-0 mx-auto flex h-[85dvh] w-full max-w-[640px] flex-col rounded-t-3xl bg-white text-slate-900 shadow-2xl transition-transform duration-250 ease-out motion-reduce:transition-none dark:bg-slate-900 dark:text-slate-100 ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}
             >
@@ -355,18 +367,18 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
                 <div className="mx-auto mb-2.5 h-1 w-12 rounded-full bg-slate-300 dark:bg-slate-700" aria-hidden />
                 <div className="flex min-h-11 items-center justify-between">
                   <div>
-                    <h2 className="text-[17px] font-semibold leading-tight">Filter by taxonomy</h2>
+                    <h2 className="text-[17px] font-semibold leading-tight">Browse topics</h2>
                     <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400">
-                      {hasActiveFilter
-                        ? `${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''} applied`
-                        : 'No filters applied'}
+                      {selectedScopeLabel
+                        ? `Scope: ${selectedScopeLabel}${resultSummary ? ` · ${resultSummary}` : ''}`
+                        : `All collections${resultSummary ? ` · ${resultSummary}` : ''}`}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={onCloseMobile}
                     className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    aria-label="Close filters"
+                    aria-label="Close topic browser"
                   >
                     <X size={18} />
                   </button>
@@ -379,23 +391,22 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
 
               <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-3">
-                  {hasActiveFilter && onClearAll && (
+                  {hasActiveScope && onClearAll && (
                     <button
                       type="button"
                       onClick={onClearAll}
                       className="min-h-11 shrink-0 rounded-full px-3 text-[13px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
-                      Clear all
+                      Clear scope
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={onCloseMobile}
+                    aria-label="Close topic browser"
                     className="min-h-11 flex-1 rounded-full bg-slate-900 px-4 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
                   >
-                    {typeof resultCount === 'number'
-                      ? `Show ${resultCount} result${resultCount !== 1 ? 's' : ''}`
-                      : 'View results'}
+                    Done
                   </button>
                 </div>
               </div>

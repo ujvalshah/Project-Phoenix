@@ -53,11 +53,24 @@ export interface SearchEvent {
   payload: Record<string, unknown>;
 }
 
+export interface ShareEvent {
+  name:
+    | 'share_opened'
+    | 'share_attempted'
+    | 'share_native_success'
+    | 'share_native_cancelled'
+    | 'share_copy_success'
+    | 'share_copy_failed'
+    | 'share_platform_click';
+  payload: Record<string, unknown>;
+}
+
 type Handlers = {
   onError?: (ctx: ErrorContext) => void;
   onApiTiming?: (timing: ApiTiming) => void;
   onPageMark?: (mark: PageMark) => void;
   onSearchEvent?: (event: SearchEvent) => void;
+  onShareEvent?: (event: ShareEvent) => void;
   slowThresholdMs?: number;
 };
 
@@ -187,6 +200,26 @@ export function recordSearchEvent(event: SearchEvent) {
     try {
       recordError({ error: err as Error, source: 'telemetry.recordSearchEvent' });
     } catch { /* noop */ }
+  }
+}
+
+export function recordShareEvent(event: ShareEvent) {
+  try {
+    handlers.onShareEvent?.(event);
+  } catch (err) {
+    try {
+      recordError({ error: err as Error, source: 'telemetry.onShareEvent' });
+    } catch {
+      // no-op
+    }
+  }
+
+  if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('nuggets:share-event', { detail: event }));
+    } catch {
+      // no-op
+    }
   }
 }
 

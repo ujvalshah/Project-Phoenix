@@ -6,6 +6,7 @@ import { Avatar } from './Avatar';
 import { ShareMenu } from './ShareMenu';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import type { AnchoredOverlayHost } from '@/components/UI/DropdownPortal';
+import { buildArticleShareUrl } from '@/sharing/urlBuilder';
 
 interface DetailTopBarProps {
   authorName: string;
@@ -62,18 +63,21 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <ShareMenu
-          data={{
-            type: 'nugget',
-            id: article?.id ?? '',
-            title: article?.title ?? 'Untitled',
-            shareUrl: `${window.location.origin}/article/${article?.id ?? ''}`,
-          }}
-          meta={{
-            text: [authorName, article?.excerpt ?? ''].filter(Boolean).join('\n'),
-          }}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
-        />
+        {(article?.visibility ?? 'public') !== 'private' && (
+          <ShareMenu
+            data={{
+              type: 'nugget',
+              id: article?.id ?? '',
+              title: article?.title ?? 'Untitled',
+              shareUrl: buildArticleShareUrl(article?.id ?? ''),
+            }}
+            surface="detail_top_bar"
+            meta={{
+              text: [authorName, article?.excerpt ?? ''].filter(Boolean).join('\n'),
+            }}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
+          />
+        )}
         <BookmarkButton
           itemId={article?.id ?? ''}
           itemType="nugget"

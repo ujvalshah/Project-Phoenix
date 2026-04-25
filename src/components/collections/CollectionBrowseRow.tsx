@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { storageService } from '@/services/storageService';
 import { useToast } from '@/hooks/useToast';
 import { formatDate } from '@/utils/formatters';
+import { buildCollectionShareUrl } from '@/sharing/urlBuilder';
 
 export interface CollectionBrowseRowProps {
   collection: Collection;
@@ -210,7 +211,7 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
       ? 'pr-14'
       : 'pr-3'
     : !isPrivate && currentUserId
-      ? 'pr-16 sm:pr-36'
+      ? 'pr-12 sm:pr-36'
       : !isPrivate
         ? 'pr-12 sm:pr-14'
         : 'pr-3';
@@ -323,7 +324,7 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
         </button>
 
         {!selectionMode && (
-          <div className="pointer-events-auto absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+          <div className="pointer-events-auto absolute right-2 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 sm:flex">
             {!isPrivate && currentUserId ? (
               <button
                 type="button"
@@ -347,14 +348,15 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
               </button>
             ) : null}
             {!isPrivate && (
-              <div className="hidden sm:block">
+              <div>
                 <ShareMenu
                   data={{
                     type: 'collection',
                     id: collection.id,
                     title: collection.name,
-                    shareUrl: `${window.location.origin}/collections/${collection.id}`,
+                    shareUrl: buildCollectionShareUrl(collection.id),
                   }}
+                  surface="collection_browse_row"
                   meta={{ text: collection.description }}
                   className="rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                   iconSize={16}
@@ -371,8 +373,9 @@ export const CollectionBrowseRow: React.FC<CollectionBrowseRowProps> = ({
                 type: 'collection',
                 id: collection.id,
                 title: collection.name,
-                shareUrl: `${window.location.origin}/collections/${collection.id}`,
+                shareUrl: buildCollectionShareUrl(collection.id),
               }}
+              surface="collection_browse_row_selection"
               meta={{ text: collection.description }}
               className="rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
               iconSize={16}

@@ -49,6 +49,7 @@ interface CollectionsToolbarProps {
   showSortField?: boolean;
   showMobileSort?: boolean;
   searchPlaceholder?: string;
+  searchAriaLabel?: string;
 }
 
 export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
@@ -76,6 +77,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
   showSortField = true,
   showMobileSort = true,
   searchPlaceholder = 'Search collections and sub-collections...',
+  searchAriaLabel = searchPlaceholder,
 }) => {
   const actionsAnchorRef = useRef<HTMLButtonElement>(null);
   const mobileSortVisibility = showMobileSort ? 'flex' : 'hidden lg:flex';
@@ -88,6 +90,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           <input
             type="text"
             placeholder={searchPlaceholder}
+            aria-label={searchAriaLabel}
             value={searchInputValue}
             onChange={(event) => onSearchInput(event.target.value)}
             className={`${TOOLBAR_INPUT} min-h-11 w-full pl-9 pr-3 text-[14px] focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:bg-slate-900 lg:h-9 lg:min-h-0 lg:text-[13px]`}
@@ -102,10 +105,10 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
               ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
               : `${TOOLBAR_BUTTON} border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800`
           }`}
-          aria-label={mobileFilterCount > 0 ? `Filters (${mobileFilterCount} active)` : 'Filters'}
+          aria-label={mobileFilterCount > 0 ? `Topics (${mobileFilterCount} active scope)` : 'Browse topics'}
         >
           <SlidersHorizontal size={14} />
-          Filters
+          Topics
           {mobileFilterCount > 0 && (
             <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-semibold tabular-nums leading-none text-white dark:bg-primary-500">
               {mobileFilterCount}
@@ -235,13 +238,13 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
       {appliedFilters.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto">
           <span className="shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
-            Filters
+            Active
           </span>
           {appliedFilters.map((filter) => (
             <button
               key={filter.id}
               onClick={filter.onRemove}
-              className="inline-flex min-h-9 max-w-[220px] shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 lg:h-7 lg:min-h-0"
+              className="inline-flex min-h-11 max-w-[240px] shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-[12px] font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 lg:h-7 lg:min-h-0 lg:px-2.5 lg:text-[11px]"
             >
               <span className="truncate">{filter.label}</span>
               <X size={11} className="text-slate-400" />
@@ -249,7 +252,7 @@ export const CollectionsToolbar: React.FC<CollectionsToolbarProps> = ({
           ))}
           <button
             onClick={onClearFilters}
-            className="min-h-9 shrink-0 rounded-full px-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-400 dark:hover:text-white lg:h-7 lg:min-h-0"
+            className="min-h-11 shrink-0 rounded-full px-3 text-[12px] font-semibold text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-400 dark:hover:text-white lg:h-7 lg:min-h-0 lg:px-2.5 lg:text-[11px]"
           >
             Clear all
           </button>

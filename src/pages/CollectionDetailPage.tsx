@@ -15,6 +15,7 @@ import { Z_INDEX } from '@/constants/zIndex';
 import { BulkActionBar } from '@/components/shared/BulkActionBar';
 import { AddToCollectionModal } from '@/components/AddToCollectionModal';
 import { ModalShell } from '@/components/UI/ModalShell';
+import { buildCollectionShareUrl } from '@/sharing/urlBuilder';
 
 export const CollectionDetailPage: React.FC = () => {
   // URL params are the single source of truth for selected collection
@@ -298,19 +299,22 @@ export const CollectionDetailPage: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex gap-3 shrink-0 items-center">
-                    <ShareMenu
-                        data={{
-                            type: 'collection',
-                            id: collection.id,
-                            title: collection.name,
-                            shareUrl: `${window.location.origin}/collections/${collection.id}`
-                        }}
-                        meta={{
-                            text: collection.description
-                        }}
-                        className="hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-white w-10 h-10"
-                        iconSize={20}
-                    />
+                    {collection.type !== 'private' && (
+                      <ShareMenu
+                          data={{
+                              type: 'collection',
+                              id: collection.id,
+                              title: collection.name,
+                              shareUrl: buildCollectionShareUrl(collection.id)
+                          }}
+                          surface="collection_detail_page"
+                          meta={{
+                              text: collection.description
+                          }}
+                          className="hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-white w-10 h-10"
+                          iconSize={20}
+                      />
+                    )}
                     {canCurateCollection && nuggets.length > 0 && selectionMode && (
                       <button
                         onClick={selectedIds.length === nuggets.length ? handleDeselectAll : handleSelectAll}

@@ -376,11 +376,11 @@ const ScopedNuggetFeed: React.FC<ScopedNuggetFeedProps> = ({
       onLoadMore={fetchNextPage}
       error={error || null}
       onRetry={refetch}
-      emptyTitle="No nuggets in this collection yet"
+      emptyTitle={trimmedQuery ? 'No matching nuggets' : 'No nuggets in this topic yet'}
       emptyMessage={
         trimmedQuery
-          ? 'Try removing your search or choose a different collection.'
-          : 'This collection scope has no nuggets yet.'
+          ? 'Try a different nugget search or clear it to view all nuggets in this scope.'
+          : 'This topic scope has no nuggets yet.'
       }
     />
   );
@@ -419,8 +419,10 @@ export const CollectionsPage: React.FC = () => {
   const [isTaxonomyLoading, setIsTaxonomyLoading] = useState(true);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchInputValue, setSearchInputValue] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [collectionSearchInputValue, setCollectionSearchInputValue] = useState('');
+  const [collectionSearchQuery, setCollectionSearchQuery] = useState('');
+  const [nuggetSearchInputValue, setNuggetSearchInputValue] = useState('');
+  const [nuggetSearchQuery, setNuggetSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [sortField, setSortField] = useState<SortField>('created');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -453,13 +455,25 @@ export const CollectionsPage: React.FC = () => {
   const { isAdmin } = useAuth();
   const isNarrowViewport = useMediaQuery('(max-width: 1023px)');
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const handleSearchInput = useCallback((value: string) => {
-    setSearchInputValue(value);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setSearchQuery(value.trim()), 300);
+  const collectionSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const nuggetSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleCollectionSearchInput = useCallback((value: string) => {
+    setCollectionSearchInputValue(value);
+    clearTimeout(collectionSearchDebounceRef.current);
+    collectionSearchDebounceRef.current = setTimeout(() => setCollectionSearchQuery(value.trim()), 300);
   }, []);
-  useEffect(() => () => clearTimeout(debounceRef.current), []);
+  const handleNuggetSearchInput = useCallback((value: string) => {
+    setNuggetSearchInputValue(value);
+    clearTimeout(nuggetSearchDebounceRef.current);
+    nuggetSearchDebounceRef.current = setTimeout(() => setNuggetSearchQuery(value.trim()), 300);
+  }, []);
+  useEffect(
+    () => () => {
+      clearTimeout(collectionSearchDebounceRef.current);
+      clearTimeout(nuggetSearchDebounceRef.current);
+    },
+    [],
+  );
 
   const loadTaxonomyCollections = useCallback(async () => {
     setIsTaxonomyLoading(true);
@@ -502,7 +516,7 @@ export const CollectionsPage: React.FC = () => {
       const response = await storageService.getCollections({
         type: 'public',
         includeCount: true,
-        searchQuery: searchQuery || undefined,
+        searchQuery: collectionSearchQuery || undefined,
         sortField,
         sortDirection,
         page,
@@ -531,7 +545,7 @@ export const CollectionsPage: React.FC = () => {
       if (append) setIsLoadingMore(false);
       else setIsLoading(false);
     }
-  }, [pageLimit, searchQuery, sortDirection, sortField]);
+  }, [collectionSearchQuery, pageLimit, sortDirection, sortField]);
 
   useEffect(() => {
     void loadTaxonomyCollections();
@@ -677,37 +691,47 @@ export const CollectionsPage: React.FC = () => {
     }
   }, [isScopedMode, selectionMode]);
 
+  const selectedScopeLabel = useMemo(() => {
+    if (selectedChildCollection && selectedParentCollection) {
+      return `${selectedParentCollection.name} / ${selectedChildCollection.name}`;
+    }
+    return selectedParentCollection?.name ?? null;
+  }, [selectedChildCollection, selectedParentCollection]);
+  const hasSelectedScope = Boolean(selectedScopeLabel);
+
+  const searchInputValue = isScopedMode || isBrowseLanding ? nuggetSearchInputValue : collectionSearchInputValue;
+  const activeSearchQuery = isScopedMode || isBrowseLanding ? nuggetSearchQuery : collectionSearchQuery;
+  const handleSearchInput = isScopedMode || isBrowseLanding ? handleNuggetSearchInput : handleCollectionSearchInput;
+
   const appliedFilters = useMemo<AppliedFilterChip[]>(() => {
     const chips: AppliedFilterChip[] = [];
-    if (searchQuery) {
+    if (activeSearchQuery) {
       chips.push({
         id: 'search',
-        label: `Search: "${searchQuery}"`,
+        label: `Search: "${activeSearchQuery}"`,
         onRemove: () => {
-          setSearchInputValue('');
-          setSearchQuery('');
+          if (isScopedMode || isBrowseLanding) {
+            setNuggetSearchInputValue('');
+            setNuggetSearchQuery('');
+          } else {
+            setCollectionSearchInputValue('');
+            setCollectionSearchQuery('');
+          }
         },
       });
     }
-    if (selectedParentCollection) {
+    if (selectedScopeLabel) {
       chips.push({
-        id: `parent-${selectedParentCollection.id}`,
-        label: `Parent: ${selectedParentCollection.name}`,
+        id: 'scope',
+        label: `Scope: ${selectedScopeLabel}`,
         onRemove: () => {
           setSelectedParentId(null);
           setSelectedChildId(null);
         },
       });
     }
-    if (selectedChildCollection) {
-      chips.push({
-        id: `child-${selectedChildCollection.id}`,
-        label: `Sub-collection: ${selectedChildCollection.name}`,
-        onRemove: () => setSelectedChildId(null),
-      });
-    }
     return chips;
-  }, [searchQuery, selectedChildCollection, selectedParentCollection]);
+  }, [activeSearchQuery, isBrowseLanding, isScopedMode, selectedScopeLabel]);
 
   const toggleSelectionMode = () => {
     const newMode = !selectionMode;
@@ -802,7 +826,25 @@ export const CollectionsPage: React.FC = () => {
   const scopedSummaryTitle = selectedChildCollection?.name || selectedParentCollection?.name || 'Collections';
   const scopedSummaryDescription = selectedChildCollection?.description || selectedParentCollection?.description;
   const layoutGridClass = isTaxonomyCollapsed ? 'lg:grid-cols-[40px_1fr]' : 'lg:grid-cols-[260px_1fr]';
-  const searchPlaceholder = isScopedMode ? 'Search nuggets in this collection' : 'Search collections';
+  const searchPlaceholder = isScopedMode
+    ? 'Search nuggets in this collection'
+    : isBrowseLanding
+      ? 'Search latest nuggets'
+      : 'Search collections';
+  const searchAriaLabel = isScopedMode
+    ? 'Search nuggets in the selected collection scope'
+    : isBrowseLanding
+      ? 'Search latest nuggets'
+      : 'Search collections';
+  const collectionsEmptyCopy = collectionSearchQuery
+    ? {
+        title: 'No matching collections',
+        description: 'Try a different collection search or clear it to browse all collections.',
+      }
+    : {
+        title: 'No collections available',
+        description: 'No collections available yet. Create the first collection to get started.',
+      };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -939,14 +981,20 @@ export const CollectionsPage: React.FC = () => {
                   </>
                 }
                 onOpenFiltersMobile={() => setIsMobileFiltersOpen(true)}
-                mobileFilterCount={(selectedParentId ? 1 : 0) + (selectedChildId ? 1 : 0)}
+                mobileFilterCount={hasSelectedScope ? 1 : 0}
                 appliedFilters={appliedFilters}
                 showSortField={!isScopedMode && !isBrowseLanding}
                 showMobileSort={isScopedMode}
                 searchPlaceholder={searchPlaceholder}
+                searchAriaLabel={searchAriaLabel}
                 onClearFilters={() => {
-                  setSearchInputValue('');
-                  setSearchQuery('');
+                  if (isScopedMode || isBrowseLanding) {
+                    setNuggetSearchInputValue('');
+                    setNuggetSearchQuery('');
+                  } else {
+                    setCollectionSearchInputValue('');
+                    setCollectionSearchQuery('');
+                  }
                   setSelectedParentId(null);
                   setSelectedChildId(null);
                 }}
@@ -1001,7 +1049,7 @@ export const CollectionsPage: React.FC = () => {
 
                 <ScopedNuggetFeed
                   collectionId={selectedChildId || selectedParentId || ''}
-                  searchQuery={searchQuery}
+                  searchQuery={nuggetSearchQuery}
                   sortOrder={sortDirection === 'asc' ? 'oldest' : 'latest'}
                   onTotalCountChange={setScopedNuggetTotal}
                   onArticleClick={setSelectedArticle}
@@ -1011,7 +1059,7 @@ export const CollectionsPage: React.FC = () => {
               <BrowseLanding
                 topicGroups={topicChipGroups}
                 topicsLoading={isTaxonomyLoading}
-                searchQuery={searchQuery}
+                searchQuery={nuggetSearchQuery}
                 onSelectTopic={handleSelectCollection}
                 onArticleClick={setSelectedArticle}
                 onTotalCountChange={setBrowseNuggetTotal}
@@ -1019,12 +1067,8 @@ export const CollectionsPage: React.FC = () => {
             ) : processedCollections.length === 0 ? (
               <EmptyState
                 icon={<Folder />}
-                title="No matching collections"
-                description={
-                  appliedFilters.length > 0
-                    ? 'Try removing one or more filters, or broaden your search.'
-                    : 'No collections available yet. Create the first collection to get started.'
-                }
+                title={collectionsEmptyCopy.title}
+                description={collectionsEmptyCopy.description}
               />
             ) : (
               <>

@@ -6,6 +6,7 @@ import { ShareMenu } from '@/components/shared/ShareMenu';
 import { useAuth } from '@/hooks/useAuth';
 import { storageService } from '@/services/storageService';
 import { useToast } from '@/hooks/useToast';
+import { buildCollectionShareUrl } from '@/sharing/urlBuilder';
 
 interface CollectionWorkspaceCardProps {
   collection: Collection;
@@ -191,8 +192,9 @@ export const CollectionWorkspaceCard: React.FC<CollectionWorkspaceCardProps> = (
                   type: 'collection',
                   id: collection.id,
                   title: collection.name,
-                  shareUrl: `${window.location.origin}/collections/${collection.id}`,
+                  shareUrl: buildCollectionShareUrl(collection.id),
                 }}
+                surface="collection_workspace_card"
                 meta={{ text: collection.description }}
                 className="rounded p-1 text-slate-400 hover:bg-slate-200/50 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 iconSize={15}

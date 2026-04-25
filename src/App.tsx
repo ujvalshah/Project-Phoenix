@@ -232,11 +232,9 @@ const AppContent: React.FC = () => {
             </ErrorBoundary>
           } />
           <Route path="/collections/:collectionId" element={
-            <AdminRoute>
-              <ErrorBoundary>
-                <CollectionDetailPage />
-              </ErrorBoundary>
-            </AdminRoute>
+            <ErrorBoundary>
+              <CollectionDetailPage />
+            </ErrorBoundary>
           } />
 
           {/* Bookmarks - Protected */}

@@ -5,6 +5,7 @@ import { FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'luci
 import { ShareMenu } from '@/components/shared/ShareMenu';
 import { BookmarkButton } from '@/components/bookmarks';
 import { twMerge } from 'tailwind-merge';
+import { buildArticleShareUrl } from '@/sharing/urlBuilder';
 
 interface CardActionsProps {
   articleId: string;
@@ -60,14 +61,15 @@ export const CardActions: React.FC<CardActionsProps> = ({
     // PHASE 2: 8-pt gap between action buttons
     <div className={twMerge('flex items-center gap-0.5', className)}>
       {/* Hide ShareMenu in preview mode (preview IDs are invalid) */}
-      {!isPreview && (
+      {!isPreview && visibility !== 'private' && (
         <ShareMenu
           data={{
             type: 'nugget',
             id: articleId,
             title: articleTitle,
-            shareUrl: `${window.location.origin}/article/${articleId}`,
+            shareUrl: buildArticleShareUrl(articleId),
           }}
+          surface="card_actions"
           meta={{
             text: [authorName, articleExcerpt].filter(Boolean).join('\n'),
           }}

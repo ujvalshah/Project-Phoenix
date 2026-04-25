@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { storageService } from '@/services/storageService';
 import { useToast } from '@/hooks/useToast';
 import { formatDate } from '@/utils/formatters';
+import { buildCollectionShareUrl } from '@/sharing/urlBuilder';
 
 // PHASE 5: Import getCollectionById for refetch after optimistic update
 
@@ -216,8 +217,9 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
                                 type: 'collection',
                                 id: collection.id,
                                 title: collection.name,
-                                shareUrl: `${window.location.origin}/collections/${collection.id}`
+                                shareUrl: buildCollectionShareUrl(collection.id)
                             }}
+                            surface="collection_card"
                             meta={{
                                 text: collection.description
                             }}

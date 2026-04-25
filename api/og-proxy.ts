@@ -2,10 +2,34 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
-const RENDER_ORIGIN = 'https://nuggets-zhih.onrender.com';
 const SITE_NAME = 'Nuggets';
-const SITE_URL = 'https://www.nuggetnews.app';
-const DEFAULT_IMAGE = `${SITE_URL}/og-default.png`;
+const DEFAULT_SITE_URL = 'https://nuggets.one';
+
+function normalizeOrigin(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function resolveCanonicalSiteUrl(): string {
+  const fromEnv = process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL;
+  if (fromEnv && fromEnv.trim()) {
+    return normalizeOrigin(fromEnv.trim());
+  }
+  return DEFAULT_SITE_URL;
+}
+
+function resolveApiOrigin(): string {
+  const fromEnv =
+    process.env.OG_DATA_ORIGIN ||
+    process.env.API_ORIGIN ||
+    process.env.VITE_API_URL;
+  if (fromEnv && fromEnv.trim()) {
+    const normalized = normalizeOrigin(fromEnv.trim());
+    return normalized.endsWith('/api')
+      ? normalized.slice(0, -4)
+      : normalized;
+  }
+  return 'https://nuggets-zhih.onrender.com';
+}
 
 /** User-agent fragments emitted by social-media crawlers. */
 const CRAWLER_RE =
@@ -102,29 +126,40 @@ function buildOgHtml(og: OgData): string {
 
 /** Build OG data from an article API response. */
 function articleToOg(article: Record<string, unknown>): OgData {
-  const title = truncate((article.title as string) || 'Untitled', 70);
-  const description = truncate(
-    (article.excerpt as string) || (article.content as string) || '',
-    155,
-  );
-
+  const siteUrl = resolveCanonicalSiteUrl();
+  const defaultImage = `${siteUrl}/og-default.png`;
   const media = article.media as Record<string, unknown> | undefined;
   const previewMeta = media?.previewMetadata as Record<string, unknown> | undefined;
+
+  const title = truncate(
+    ((article.title as string) || '').trim() ||
+      ((previewMeta?.title as string) || '').trim() ||
+      'Nugget from Nuggets',
+    70
+  );
+  const description = truncate(
+    ((article.excerpt as string) || '').trim() ||
+      ((article.content as string) || '').trim() ||
+      ((previewMeta?.description as string) || '').trim() ||
+      'Read this nugget on Nuggets.',
+    155
+  );
+
   let image =
     (previewMeta?.imageUrl as string) ||
     (media?.thumbnail_url as string) ||
     ((article.images as string[])?.length ? (article.images as string[])[0] : null) ||
-    DEFAULT_IMAGE;
+    defaultImage;
 
   if (image && !image.startsWith('http')) {
-    image = `${SITE_URL}${image.startsWith('/') ? '' : '/'}${image}`;
+    image = `${siteUrl}${image.startsWith('/') ? '' : '/'}${image}`;
   }
 
   return {
     title,
     description,
     image,
-    url: `${SITE_URL}/article/${article.id}`,
+    url: `${siteUrl}/article/${article.id}`,
     type: 'article',
     publishedTime:
       (article.publishedAt as string) ||
@@ -136,15 +171,17 @@ function articleToOg(article: Record<string, unknown>): OgData {
 
 /** Build OG data from a collection API response. */
 function collectionToOg(collection: Record<string, unknown>): OgData {
+  const siteUrl = resolveCanonicalSiteUrl();
+  const defaultImage = `${siteUrl}/og-default.png`;
   const name = (collection.rawName as string) || (collection.name as string) || 'Collection';
   return {
     title: truncate(name, 70),
     description: truncate(
-      (collection.description as string) || `A curated collection on ${SITE_NAME}`,
+      ((collection.description as string) || '').trim() || `A curated collection on ${SITE_NAME}.`,
       155,
     ),
-    image: DEFAULT_IMAGE,
-    url: `${SITE_URL}/collections/${collection.id || collection._id}`,
+    image: defaultImage,
+    url: `${siteUrl}/collections/${collection.id || collection._id}`,
     type: 'website',
   };
 }
@@ -202,7 +239,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? `/api/articles/${route.id}`
       : `/api/collections/${route.id}`;
 
-    const response = await fetch(`${RENDER_ORIGIN}${apiPath}`, {
+    const response = await fetch(`${resolveApiOrigin()}${apiPath}`, {
       headers: { 'Accept': 'application/json' },
     });
 

@@ -24,6 +24,7 @@ const envSchema = z.object({
   
   // Optional variables with validation
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL').optional(),
+  PUBLIC_SITE_URL: z.string().url('PUBLIC_SITE_URL must be a valid URL').optional(),
 
   /** Comma-separated extra browser origins allowed by CORS (e.g. preview deploy URL). FRONTEND_URL is always included when set. */
   CORS_ALLOWED_ORIGINS: z.string().optional().refine((val) => {
