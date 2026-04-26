@@ -9,6 +9,7 @@ import { MediaQuotaConfig } from '../models/MediaQuotaConfig.js';
 import { DisclaimerConfig } from '../models/DisclaimerConfig.js';
 import { ValuePropStripConfig } from '../models/ValuePropStripConfig.js';
 import { MarketPulseIntroConfig } from '../models/MarketPulseIntroConfig.js';
+import { HomeMicroHeaderConfig } from '../models/HomeMicroHeaderConfig.js';
 import { LRUCache } from '../utils/lruCache.js';
 import { buildModerationQuery, getModerationStats } from '../services/moderationService.js';
 import {
@@ -27,6 +28,10 @@ import {
   getMarketPulseIntroConfig,
   invalidateMarketPulseIntroCache
 } from '../services/marketPulseIntroConfigService.js';
+import {
+  getHomeMicroHeaderConfig,
+  invalidateHomeMicroHeaderCache
+} from '../services/homeMicroHeaderConfigService.js';
 import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { getLogger } from '../utils/logger.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
@@ -45,7 +50,7 @@ const updateDisclaimerSchema = z.object({
   enableByDefault: z.boolean().optional()
 });
 
-/** Shared for value-prop strip + Market Pulse intro (title + body). */
+/** Shared for editable home copy surfaces (title + body). */
 const updateOnboardingTitleBodySchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(120, 'Title too long').optional(),
   body: z.string().trim().min(1, 'Body is required').max(500, 'Body too long').optional()
@@ -156,6 +161,7 @@ export async function getAdminStats(req: Request, res: Response) {
       {
         $project: {
           visibility: 1,
+          status: 1,
           publishedAtDate: {
             $cond: [
               { $ne: ['$publishedAt', null] },
@@ -174,6 +180,18 @@ export async function getAdminStats(req: Request, res: Response) {
           },
           private: {
             $sum: { $cond: [{ $eq: ['$visibility', 'private'] }, 1, 0] }
+          },
+          draft: {
+            $sum: { $cond: [{ $eq: ['$status', 'draft'] }, 1, 0] }
+          },
+          published: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['published', null, undefined]] },
+                1,
+                0
+              ]
+            }
           },
           createdToday: {
             $sum: {
@@ -217,7 +235,14 @@ export async function getAdminStats(req: Request, res: Response) {
   ]);
 
   const userStatsRaw = userAgg[0] || { total: 0, admins: 0, newToday: 0, active: 0, suspended: 0, banned: 0 };
-  const articleStatsRaw = articleAgg[0] || { total: 0, public: 0, private: 0, createdToday: 0 };
+  const articleStatsRaw = articleAgg[0] || {
+    total: 0,
+    public: 0,
+    private: 0,
+    draft: 0,
+    published: 0,
+    createdToday: 0,
+  };
   const flaggedNuggets = flaggedNuggetsAgg[0]?.flagged || 0;
 
   // Moderation stats already in correct format from getModerationStats()
@@ -248,6 +273,8 @@ export async function getAdminStats(req: Request, res: Response) {
       total: articleStatsRaw.total || 0,
       public: articleStatsRaw.public || 0,
       private: articleStatsRaw.private || 0,
+      draft: articleStatsRaw.draft || 0,
+      published: articleStatsRaw.published || 0,
       createdToday: articleStatsRaw.createdToday || 0,
       flagged: flaggedNuggets,
       pendingModeration: moderationStats.open || 0
@@ -792,6 +819,92 @@ export async function updateMarketPulseIntroSettings(req: AdminRequest, res: Res
   } catch (error) {
     getLogger().error({ error, adminId }, 'Failed to update Market Pulse intro config');
     return res.status(500).json({ message: 'Failed to update Market Pulse intro config' });
+  }
+}
+
+/**
+ * Get current Home micro-header copy.
+ * GET /api/admin/settings/home-micro-header
+ * Returns effective config (from DB or defaults).
+ */
+export async function getHomeMicroHeaderSettings(_req: AdminRequest, res: Response) {
+  try {
+    const config = await getHomeMicroHeaderConfig();
+    return res.json(config);
+  } catch (error) {
+    getLogger().error({ error }, 'Failed to get Home micro-header config');
+    return res.status(500).json({ message: 'Failed to get Home micro-header config' });
+  }
+}
+
+/**
+ * Update Home micro-header copy (admin only).
+ * PATCH /api/admin/settings/home-micro-header
+ * Body: { title?, body? }
+ */
+export async function updateHomeMicroHeaderSettings(req: AdminRequest, res: Response) {
+  const adminId = req.userId;
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+
+  const parseResult = updateOnboardingTitleBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
+  }
+
+  const updates = parseResult.data;
+  if (updates.title === undefined && updates.body === undefined) {
+    return res.status(400).json({ message: 'At least one field must be provided' });
+  }
+
+  try {
+    const current = await getHomeMicroHeaderConfig();
+    const previousValue = { ...current };
+
+    const newDoc = {
+      id: 'default' as const,
+      title: updates.title ?? current.title,
+      body: updates.body ?? current.body,
+      updatedAt: new Date()
+    };
+
+    await HomeMicroHeaderConfig.findOneAndUpdate(
+      { id: 'default' },
+      { $set: newDoc },
+      { upsert: true, new: true }
+    );
+
+    invalidateHomeMicroHeaderCache();
+
+    const newValue = {
+      title: newDoc.title,
+      body: newDoc.body
+    };
+
+    await AdminAuditLog.create({
+      adminId,
+      action: 'UPDATE_HOME_MICRO_HEADER_CONFIG',
+      targetType: 'system',
+      targetId: 'home_micro_header_config',
+      previousValue: previousValue as Record<string, unknown>,
+      newValue: newValue as Record<string, unknown>,
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.get('User-Agent')
+    });
+
+    getLogger().info(
+      { action: 'UPDATE_HOME_MICRO_HEADER_CONFIG', adminId, previousValue, newValue, target: 'home_micro_header_config' },
+      'Admin updated Home micro-header config'
+    );
+
+    return res.json({
+      message: 'Home micro-header config updated',
+      config: newValue
+    });
+  } catch (error) {
+    getLogger().error({ error, adminId }, 'Failed to update Home micro-header config');
+    return res.status(500).json({ message: 'Failed to update Home micro-header config' });
   }
 }
 

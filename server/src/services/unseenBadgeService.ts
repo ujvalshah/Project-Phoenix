@@ -9,12 +9,23 @@ export interface UnseenFeedCounts {
 
 type StreamValue = 'standard' | 'pulse' | 'both';
 
-function buildVisibilityQuery() {
+function buildPublicPublishedQuery() {
   return {
-    $or: [
-      { visibility: 'public' },
-      { visibility: { $exists: false } },
-      { visibility: null },
+    $and: [
+      {
+        $or: [
+          { visibility: 'public' },
+          { visibility: { $exists: false } },
+          { visibility: null },
+        ],
+      },
+      {
+        $or: [
+          { status: 'published' },
+          { status: { $exists: false } },
+          { status: null },
+        ],
+      },
     ],
   };
 }
@@ -36,7 +47,7 @@ function buildStreamQuery(feed: FeedBadgeKey) {
 export function buildUnseenFeedQuery(userId: string, feed: FeedBadgeKey) {
   return {
     $and: [
-      buildVisibilityQuery(),
+      buildPublicPublishedQuery(),
       buildStreamQuery(feed),
       { [`readBy.${userId}`]: { $ne: true } },
     ],
@@ -57,7 +68,7 @@ export async function getUnseenFeedCountsForUser(userId: string): Promise<Unseen
 
 export function buildMarkSeenQuery(feed: FeedBadgeKey) {
   return {
-    $and: [buildVisibilityQuery(), buildStreamQuery(feed)],
+    $and: [buildPublicPublishedQuery(), buildStreamQuery(feed)],
   };
 }
 

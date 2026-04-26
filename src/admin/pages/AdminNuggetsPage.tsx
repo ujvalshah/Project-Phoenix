@@ -453,10 +453,19 @@ export const AdminNuggetsPage: React.FC = () => {
       minWidth: '100px',
       sortable: true,
       render: (n) => (
-        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-500">
+        <div className="flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-500">
             {n.visibility === 'public' ? <Globe size={12} /> : <Lock size={12} />}
             {n.visibility}
-        </span>
+          </span>
+          <span className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+            n.lifecycleStatus === 'draft'
+              ? 'bg-amber-50 text-amber-700'
+              : 'bg-emerald-50 text-emerald-700'
+          }`}>
+            {n.lifecycleStatus === 'draft' ? 'Draft' : 'Published'}
+          </span>
+        </div>
       )
     },
     {

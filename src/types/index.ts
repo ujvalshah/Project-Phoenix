@@ -223,7 +223,8 @@ export interface Article {
   // New field for masking the real author
   displayAuthor?: DisplayAuthor;
   
-  publishedAt: string; // ISO date string
+  publishedAt?: string | null; // ISO date string; null for drafts
+  status?: 'draft' | 'published';
   // CATEGORY PHASE-OUT: Removed categories and categoryIds fields - tags are now the only classification field
   tags: string[];
   readTime: number; 

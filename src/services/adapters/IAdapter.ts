@@ -13,6 +13,8 @@ export interface ArticleCountsResponse {
   total: number;
   public: number;
   private: number;
+  draft?: number;
+  published?: number;
 }
 
 export interface IAdapter {
@@ -38,6 +40,8 @@ export interface IAdapter {
     domainTagIds?: string[];
     subtopicTagIds?: string[];
     contentStream?: string;
+    visibility?: 'public' | 'private';
+    status?: 'draft' | 'published';
   }): Promise<PaginatedArticlesResponse>;
   getArticleById(id: string): Promise<Article | undefined>;
   getArticlesByAuthor(authorId: string): Promise<Article[]>;

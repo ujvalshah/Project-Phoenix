@@ -1414,7 +1414,7 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
     const skip = (page - 1) * limit;
 
-    // Build query: articles in this collection + public visibility
+    // Build query: articles in this collection + public published visibility
     const articleQuery: Record<string, unknown> = {
       _id: { $in: articleIds },
     };
@@ -1422,10 +1422,21 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     // Privacy: non-admins only see public articles
     const isAdmin = typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
     if (!userId || !isAdmin) {
-      articleQuery.$or = [
-        { visibility: 'public' },
-        { visibility: { $exists: false } },
-        { visibility: null },
+      articleQuery.$and = [
+        {
+          $or: [
+            { visibility: 'public' },
+            { visibility: { $exists: false } },
+            { visibility: null },
+          ],
+        },
+        {
+          $or: [
+            { status: 'published' },
+            { status: { $exists: false } },
+            { status: null },
+          ],
+        },
       ];
     }
 
@@ -1445,9 +1456,10 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
       if (matchingTags.length > 0) {
         searchConditions.push({ tagIds: { $in: matchingTags.map(t => t._id) } });
       }
-      if (articleQuery.$or) {
+      if (articleQuery.$or || articleQuery.$and) {
         articleQuery.$and = [
-          { $or: articleQuery.$or as Record<string, unknown>[] },
+          ...(articleQuery.$and as Record<string, unknown>[] || []),
+          ...(articleQuery.$or ? [{ $or: articleQuery.$or as Record<string, unknown>[] }] : []),
           { $or: searchConditions },
         ];
         delete articleQuery.$or;

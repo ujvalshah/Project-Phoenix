@@ -46,6 +46,7 @@ import { useFilterResults } from '@/context/FilterResultsContext';
 import { useMarkFeedSeen } from '@/hooks/usePulseUnseen';
 import { endActiveSearchDraft, recordSearchEvent } from '@/observability/telemetry';
 import {
+  HOME_MICRO_HEADER_COPY,
   MARKET_PULSE_INTRO_COPY,
   PULSE_INTRO_DISMISSED_KEY,
   VALUE_PROP_STRIP_COPY,
@@ -153,19 +154,39 @@ const MarketPulseIntroBanner: React.FC = () => {
   );
 };
 
-const PublicHomeIntro: React.FC<{ isPulseStream: boolean }> = ({ isPulseStream }) => (
-  <section className="mx-4 mb-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:mx-6">
-    <h1 className="text-base font-semibold tracking-tight text-slate-950 dark:text-white sm:text-lg">
-      {isPulseStream
-        ? 'Market Pulse: high-signal updates for investors and operators'
-        : 'Nuggets: curated high-signal insights across markets, geopolitics, AI, and technology'}
-    </h1>
-    <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-      Save time with a focused knowledge feed built to surface useful sources, context, and collections without
-      adding more noise to your day.
-    </p>
-  </section>
-);
+const PublicHomeIntro: React.FC<{ isPulseStream: boolean }> = ({ isPulseStream }) => {
+  const [copy, setCopy] = useState(HOME_MICRO_HEADER_COPY);
+
+  useEffect(() => {
+    if (isPulseStream) return;
+    let isCancelled = false;
+    onboardingCopyService.getHomeMicroHeaderCopy()
+      .then((remoteCopy) => {
+        if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
+          setCopy(remoteCopy);
+        }
+      })
+      .catch(() => {
+        // Keep local constants as fallback when API/config is unavailable.
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [isPulseStream]);
+
+  return (
+    <section className="mx-4 mb-0.5 px-0 pt-0.5 pb-0 lg:mx-6" aria-label="Nuggets homepage intro">
+      <h1 className="max-w-[62ch] text-[15px] font-medium leading-5 tracking-tight text-slate-950 dark:text-white sm:text-base lg:max-w-none">
+        {isPulseStream
+          ? 'Market Pulse: high-signal updates for investors and operators'
+          : copy.title}
+      </h1>
+      <p className="mt-0.5 max-w-[62ch] text-[11.5px] leading-4 text-slate-500 dark:text-slate-400 sm:text-xs">
+        {isPulseStream ? 'High-signal updates, organized without the noise.' : copy.body}
+      </p>
+    </section>
+  );
+};
 
 interface HomePageProps {
   viewMode: 'grid' | 'masonry';
@@ -499,7 +520,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         if (isSmallViewport) {
           return `${formattedLoaded} of ${formattedTotal} ${summaryNoun} for "${committedQuery}"`;
         }
-        return `Showing ${formattedLoaded} of ${formattedTotal} ${summaryNoun} for "${committedQuery}"${filterContext}`;
+        return `${formattedLoaded} of ${formattedTotal} ${summaryNoun} for "${committedQuery}"${filterContext}`;
       }
       if (isSmallViewport) {
         return `${formattedTotal} ${summaryNoun} for "${committedQuery}"${compactFilterContext}`;
@@ -509,7 +530,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     if (loadedCount < safeTotalCount) {
       if (isSmallViewport) return `${formattedLoaded} of ${formattedTotal} ${summaryNoun}${compactFilterContext}`;
-      return `Showing ${formattedLoaded} of ${formattedTotal} ${summaryNoun}${filterContext}`;
+      return `${formattedLoaded} of ${formattedTotal} ${summaryNoun}${filterContext}`;
     }
 
     if (isSmallViewport) {
@@ -725,7 +746,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
       <div className="px-4 lg:px-6">
         <div
-          className="mt-0.5 mb-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400 sm:mt-1 sm:mb-2 sm:text-xs sm:leading-5"
+          className="mt-0.5 mb-2 text-[10.5px] leading-4 tabular-nums text-slate-500/90 dark:text-slate-400 sm:text-[11px]"
           role="status"
           aria-live="polite"
         >

@@ -4,9 +4,11 @@ import { Paperclip, Check, Loader2 } from 'lucide-react';
 interface FormFooterProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onSubmit: () => void;
+  onSubmit: (intent: 'draft' | 'publish') => void;
   isSubmitting: boolean;
   canSubmit: boolean;
+  primaryLabel: string;
+  secondaryLabel?: string;
 }
 
 export const FormFooter = React.memo(function FormFooter({
@@ -15,6 +17,8 @@ export const FormFooter = React.memo(function FormFooter({
   onSubmit,
   isSubmitting,
   canSubmit,
+  primaryLabel,
+  secondaryLabel,
 }: FormFooterProps) {
   const handleAttachClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -45,8 +49,21 @@ export const FormFooter = React.memo(function FormFooter({
       </div>
 
       <div className="flex items-center gap-3">
+        {secondaryLabel && (
+          <button
+            onClick={() => onSubmit('draft')}
+            disabled={isSubmitting || !canSubmit}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
+              isSubmitting || !canSubmit
+                ? 'border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'
+                : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            {secondaryLabel}
+          </button>
+        )}
         <button
-          onClick={onSubmit}
+          onClick={() => onSubmit('publish')}
           disabled={isSubmitting || !canSubmit}
           className={`px-6 py-2 rounded-lg text-xs font-bold text-slate-900 transition-all shadow-sm flex items-center gap-2 ${
             isSubmitting || !canSubmit
@@ -55,7 +72,7 @@ export const FormFooter = React.memo(function FormFooter({
           }`}
         >
           {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
-          Post Nugget
+          {primaryLabel}
         </button>
       </div>
     </div>

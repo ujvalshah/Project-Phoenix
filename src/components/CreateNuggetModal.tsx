@@ -81,6 +81,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     shallowEqualAuth,
   );
   const authorName = currentUser?.name || 'User';
+  const currentLifecycleStatus: 'draft' | 'published' =
+    initialData?.status === 'draft' ? 'draft' : 'published';
   const toast = useToast();
 
   // Unified image management hook (Phase 9: Legacy code removed)
@@ -1457,7 +1459,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   // AI summarize handler removed - AI creation system has been fully removed
 
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (intent: 'draft' | 'publish') => {
     // Mark all fields as touched to show validation errors
     setContentTouched(true);
 
@@ -1665,6 +1667,11 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                 excerpt: normalizedInput.excerpt,
                 tagIds: dimensionTagIds, // Classification tags (sole source of truth)
             };
+            if (currentLifecycleStatus === 'draft') {
+              updatePayload.status = intent === 'publish' ? 'published' : 'draft';
+            } else {
+              updatePayload.status = 'published';
+            }
             
             // Add optional fields only if they exist (preserve EDIT mode partial update semantics)
             if (normalizedInput.images !== undefined) {
@@ -1995,6 +2002,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             images: normalized.images,
             documents: normalized.documents,
             visibility: normalized.visibility,
+            status: intent === 'publish' ? 'published' : 'draft',
             ...(normalized.customCreatedAt ? { customCreatedAt: normalized.customCreatedAt } : {}),
             media: normalized.media,
             supportingMedia: normalized.supportingMedia,
@@ -2679,6 +2687,16 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
             onFileSelect={handleFileUpload}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
+            primaryLabel={
+              mode === 'edit'
+                ? (currentLifecycleStatus === 'draft' ? 'Publish Nugget' : 'Save Changes')
+                : 'Publish Nugget'
+            }
+            secondaryLabel={
+              mode === 'edit'
+                ? (currentLifecycleStatus === 'draft' ? 'Update Draft' : undefined)
+                : 'Save Draft'
+            }
             canSubmit={
                 // Require at least one classification tag to submit
                 dimensionTagIds.length > 0 &&

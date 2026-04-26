@@ -153,15 +153,15 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
 
   const targetUserId = userId || currentUserId;
   const isOwner = currentUserId === targetUserId;
-  const nuggetListVisibility: 'public' | 'private' = activeTab === 'drafts' ? 'private' : 'public';
+  const nuggetListStatus: 'draft' | 'published' = activeTab === 'drafts' ? 'draft' : 'published';
   const showNuggets = activeTab === 'library' || activeTab === 'drafts';
   const myspaceArticlesBaseKey = useMemo(
     () => ['articles', 'myspace', targetUserId] as const,
     [targetUserId]
   );
   const myspaceArticlesKey = useMemo(
-    () => [...myspaceArticlesBaseKey, nuggetListVisibility] as const,
-    [myspaceArticlesBaseKey, nuggetListVisibility]
+    () => [...myspaceArticlesBaseKey, nuggetListStatus] as const,
+    [myspaceArticlesBaseKey, nuggetListStatus]
   );
   const myspaceCollectionsKey = useMemo(
     () =>
@@ -184,6 +184,9 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
 
   const getVisibility = (article: Article): 'public' | 'private' => {
     return article.visibility ?? 'public';
+  };
+  const getStatus = (article: Article): 'draft' | 'published' => {
+    return article.status === 'draft' ? 'draft' : 'published';
   };
 
   useEffect(() => {
@@ -260,14 +263,14 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
         requestCountersRef.current.articles += 1;
         console.debug('[MySpace] articles page query', {
           userId: targetUserId,
-          visibility: nuggetListVisibility,
+          status: nuggetListStatus,
           page: pageParam,
           count: requestCountersRef.current.articles,
         });
       }
       const queryParams = new URLSearchParams();
       queryParams.set('authorId', targetUserId);
-      queryParams.set('visibility', nuggetListVisibility);
+      queryParams.set('status', nuggetListStatus);
       queryParams.set('page', (pageParam as number).toString());
       queryParams.set('limit', '25');
 
@@ -300,7 +303,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     setSelectionMode(false);
     setSelectedIds([]);
     setIsActionMenuOpen(false);
-  }, [activeTab, nuggetListVisibility]);
+  }, [activeTab, nuggetListStatus]);
 
   // Ensure list reflects edits after closing edit modal.
   useEffect(() => {
@@ -366,17 +369,22 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       list = list.filter((a) => (a.tags ?? []).some((t) => t === tagFilter));
     }
     if (datePreset !== 'all') {
-      list = list.filter((a) => withinDatePreset(a.publishedAt, datePreset));
+      list = list.filter((a) =>
+        withinDatePreset(
+          (getStatus(a) === 'draft' ? (a.updated_at || a.created_at || a.publishedAt) : a.publishedAt) || '',
+          datePreset
+        )
+      );
     }
     const dir = sort.endsWith('desc') ? -1 : 1;
     const usePublished = sort.startsWith('published');
     list.sort((a, b) => {
       const ta = usePublished
-        ? new Date(a.publishedAt).getTime()
-        : new Date(a.updated_at || a.created_at || a.publishedAt).getTime();
+        ? new Date(a.publishedAt || a.created_at || a.updated_at || 0).getTime()
+        : new Date(a.updated_at || a.created_at || a.publishedAt || 0).getTime();
       const tb = usePublished
-        ? new Date(b.publishedAt).getTime()
-        : new Date(b.updated_at || b.created_at || b.publishedAt).getTime();
+        ? new Date(b.publishedAt || b.created_at || b.updated_at || 0).getTime()
+        : new Date(b.updated_at || b.created_at || b.publishedAt || 0).getTime();
       if (ta !== tb) return (ta - tb) * dir;
       return a.id.localeCompare(b.id);
     });
@@ -404,22 +412,22 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   }, [publicCollections, searchQuery, collectionSort]);
 
   const contentTabs: ContentTabItem[] = useMemo(() => {
-    const loadedPublic = infiniteArticles.filter((a) => getVisibility(a) === 'public').length;
-    const loadedPrivate = infiniteArticles.filter((a) => getVisibility(a) === 'private').length;
-    const ownerPublic = ownerCounts?.public ?? loadedPublic;
-    const ownerPrivate = ownerCounts?.private ?? loadedPrivate;
+    const loadedPublished = infiniteArticles.filter((a) => getStatus(a) === 'published').length;
+    const loadedDrafts = infiniteArticles.filter((a) => getStatus(a) === 'draft').length;
+    const ownerPublished = ownerCounts?.published ?? loadedPublished;
+    const ownerDrafts = ownerCounts?.draft ?? loadedDrafts;
     const tabs: ContentTabItem[] = [
       {
         id: 'library',
         label: 'Published',
-        count: isOwner ? ownerPublic : visitorPublicCount,
+        count: isOwner ? ownerPublished : visitorPublicCount,
       },
     ];
     if (isOwner) {
       tabs.push({
         id: 'drafts',
         label: 'Drafts',
-        count: ownerPrivate,
+        count: ownerDrafts,
       });
     }
     tabs.push({
@@ -428,13 +436,13 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       count: publicCollections.length,
     });
     return tabs;
-  }, [isOwner, ownerCounts?.public, ownerCounts?.private, visitorPublicCount, publicCollections.length, infiniteArticles]);
+  }, [isOwner, ownerCounts?.published, ownerCounts?.draft, visitorPublicCount, publicCollections.length, infiniteArticles]);
 
   const publishedCount = isOwner
-    ? (ownerCounts?.public ?? infiniteArticles.filter((a) => getVisibility(a) === 'public').length)
+    ? (ownerCounts?.published ?? infiniteArticles.filter((a) => getStatus(a) === 'published').length)
     : visitorPublicCount;
   const draftsCount = isOwner
-    ? (ownerCounts?.private ?? infiniteArticles.filter((a) => getVisibility(a) === 'private').length)
+    ? (ownerCounts?.draft ?? infiniteArticles.filter((a) => getStatus(a) === 'draft').length)
     : 0;
   // "Total" mirrors the connected set shown in the header row:
   // Published + Drafts (+ Collections for this workspace).
@@ -779,7 +787,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                                       disabled={isUpdatingVisibility}
                                       className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
                                     >
-                                      <Lock size={14} /> Make draft
+                                      <Lock size={14} /> Make private
                                     </button>
                                     {isAdmin && (
                                       <button

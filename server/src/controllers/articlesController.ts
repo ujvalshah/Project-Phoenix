@@ -68,14 +68,25 @@ export function invalidateSearchCache(): void {
  * Returns userId if token is present and valid, otherwise undefined
  * Does not throw errors - silently fails if token is missing/invalid
  */
-function getOptionalUserId(req: Request): string | undefined {
+interface OptionalUserContext {
+  userId?: string;
+  role?: string;
+}
+
+function getOptionalUserContext(req: Request): OptionalUserContext {
   // First check if middleware already set req.user
   const requestUser = (req as any).user;
   if (requestUser?.userId) {
-    return requestUser.userId;
+    return {
+      userId: requestUser.userId,
+      role: typeof requestUser.role === 'string' ? requestUser.role : undefined,
+    };
   }
   if (requestUser?.id) {
-    return requestUser.id;
+    return {
+      userId: requestUser.id,
+      role: typeof requestUser.role === 'string' ? requestUser.role : undefined,
+    };
   }
   
   // Cookie-based auth is the canonical browser path in this app.
@@ -87,16 +98,29 @@ function getOptionalUserId(req: Request): string | undefined {
   const token = cookieToken || headerToken;
   
   if (!token) {
-    return undefined;
+    return {};
   }
   
   try {
     const decoded = verifyToken(token);
-    return decoded.userId;
+    return { userId: decoded.userId, role: decoded.role };
   } catch (error) {
     // Token invalid/expired - silently ignore (this is optional auth)
-    return undefined;
+    return {};
   }
+}
+
+function getOptionalUserId(req: Request): string | undefined {
+  return getOptionalUserContext(req).userId;
+}
+
+function normalizeStatus(raw: unknown): 'draft' | 'published' | undefined {
+  return raw === 'draft' || raw === 'published' ? raw : undefined;
+}
+
+function isPublishedStatus(status: unknown): boolean {
+  // Backward compatibility: records created before status existed are published.
+  return status === 'published' || status === undefined || status === null;
 }
 
 function appendAndQueryCondition(query: Record<string, any>, condition: Record<string, any>): void {
@@ -211,6 +235,7 @@ export const getArticles = async (req: Request, res: Response) => {
       contentStream,
       searchMode,
       visibility,
+      status,
     } = req.query;
     const page = Math.max(parseInt(req.query.page as string) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 25, 1), 100);
@@ -289,23 +314,55 @@ export const getArticles = async (req: Request, res: Response) => {
     // Rule 2: Otherwise, only show public articles (or articles without visibility set, defaulting to public)
     const isViewingOwnArticles = currentUserId && authorId === currentUserId;
     
-    const publicVisibilityFilter = [
-      { visibility: 'public' },
-      { visibility: { $exists: false } }, // Default to public if field doesn't exist
-      { visibility: null } // Handle null as public
-    ];
+    const publicPublishedFilter = {
+      $and: [
+        {
+          $or: [
+            { visibility: 'public' },
+            { visibility: { $exists: false } }, // Default to public if field doesn't exist
+            { visibility: null } // Handle null as public
+          ],
+        },
+        {
+          $or: [
+            { status: 'published' },
+            { status: { $exists: false } }, // Legacy rows are treated as published
+            { status: null },
+          ],
+        },
+      ],
+    };
     const requestedVisibility =
       visibility === 'public' || visibility === 'private' ? visibility : undefined;
+    const requestedStatus = normalizeStatus(status);
     
     if (!isViewingOwnArticles) {
-      // Public feed or viewing another user's articles: only show public
-      query.$or = publicVisibilityFilter;
-    } else if (requestedVisibility === 'private') {
-      // Owner requesting drafts
-      query.visibility = 'private';
-    } else if (requestedVisibility === 'public') {
-      // Owner explicitly requesting published items (includes legacy missing visibility)
-      query.$or = publicVisibilityFilter;
+      // Public feed or viewing another user's articles: only public + published.
+      appendAndQueryCondition(query, publicPublishedFilter);
+    } else {
+      if (requestedStatus === 'draft') {
+        appendAndQueryCondition(query, { status: 'draft' });
+      } else if (requestedStatus === 'published') {
+        appendAndQueryCondition(query, {
+          $or: [
+            { status: 'published' },
+            { status: { $exists: false } },
+            { status: null },
+          ],
+        });
+      }
+
+      if (requestedVisibility === 'private') {
+        appendAndQueryCondition(query, { visibility: 'private' });
+      } else if (requestedVisibility === 'public') {
+        appendAndQueryCondition(query, {
+          $or: [
+            { visibility: 'public' },
+            { visibility: { $exists: false } },
+            { visibility: null },
+          ],
+        });
+      }
     }
     // If isViewingOwnArticles is true, no privacy filter needed - user can see all their articles
 
@@ -542,9 +599,11 @@ export const getArticles = async (req: Request, res: Response) => {
     }
 
     // Sort parameter (map frontend values to MongoDB sort)
+    const isDraftListing = requestedStatus === 'draft';
+    const defaultDateField = isDraftListing ? 'updated_at' : 'publishedAt';
     const sortMap: Record<string, any> = {
-      'latest': { publishedAt: -1 },
-      'oldest': { publishedAt: 1 },
+      'latest': { [defaultDateField]: -1, _id: -1 },
+      'oldest': { [defaultDateField]: 1, _id: 1 },
       'title': { title: 1 },
       'title-desc': { title: -1 }
     };
@@ -552,8 +611,8 @@ export const getArticles = async (req: Request, res: Response) => {
     const hasSearchQuery = typeof q === 'string' && q.trim().length >= 3;
     const sortOrder =
       hasSearchQuery && useRelevanceMode
-        ? { score: { $meta: 'textScore' }, publishedAt: -1, _id: -1 }
-        : (sortMap[sort as string] || { publishedAt: -1, _id: -1 }); // Default: latest first
+        ? { score: { $meta: 'textScore' }, [defaultDateField]: -1, _id: -1 }
+        : (sortMap[sort as string] || { [defaultDateField]: -1, _id: -1 }); // Default: latest first
     
     // Build a stable cache key from the fully-constructed query + sort + pagination
     const cacheKey = JSON.stringify({
@@ -595,8 +654,8 @@ export const getArticles = async (req: Request, res: Response) => {
 
       const relevanceQuery = mergeSearchConditions(query, relevanceConditions);
       const fallbackQuery = mergeSearchConditions(query, fallbackConditions);
-      const relevanceSort = { score: { $meta: 'textScore' }, publishedAt: -1, _id: -1 };
-      const fallbackSort = sortMap[sort as string] || { publishedAt: -1, _id: -1 };
+      const relevanceSort = { score: { $meta: 'textScore' }, [defaultDateField]: -1, _id: -1 };
+      const fallbackSort = sortMap[sort as string] || { [defaultDateField]: -1, _id: -1 };
       const fetchWindow = skip + limit;
 
       const [relevanceIds, fallbackIds, relevanceDocs, fallbackDocs] = await Promise.all([
@@ -674,12 +733,19 @@ export const getArticleById = async (req: Request, res: Response) => {
     if (!article) return sendNotFoundError(res, 'Article not found');
     
     // PRIVACY CHECK: Verify user has access to this article
-    const currentUserId = getOptionalUserId(req);
+    const { userId: currentUserId, role: currentUserRole } = getOptionalUserContext(req);
     const isPrivate = article.visibility === 'private';
+    const isDraft = article.status === 'draft';
     const isOwner = article.authorId === currentUserId;
+    const isAdmin = typeof currentUserRole === 'string' && currentUserRole.toLowerCase() === 'admin';
+    
+    // Drafts are internal-only (owner/admin), regardless of intended visibility.
+    if (isDraft && !isOwner && !isAdmin) {
+      return sendForbiddenError(res, 'This nugget is still in draft');
+    }
     
     // If article is private and user is not the owner, deny access
-    if (isPrivate && !isOwner) {
+    if (isPrivate && !isOwner && !isAdmin) {
       return sendForbiddenError(res, 'This article is private');
     }
     
@@ -772,11 +838,13 @@ export const createArticle = async (req: Request, res: Response) => {
     const userRole = (req as any).user?.role;
     const isAdmin = userRole === 'admin';
     
-    let publishedAt = data.publishedAt || new Date().toISOString();
+    const requestedStatus = normalizeStatus(data.status) || 'published';
+    let status: 'draft' | 'published' = requestedStatus;
+    let publishedAt: string | null = status === 'draft' ? null : (data.publishedAt || new Date().toISOString());
     let isCustomCreatedAt = false;
     
     // Only allow customCreatedAt if user is admin and field is provided
-    if (isAdmin && data.customCreatedAt) {
+    if (status === 'published' && isAdmin && data.customCreatedAt) {
       try {
         const customDate = new Date(data.customCreatedAt);
         // Validate: reject invalid dates
@@ -807,7 +875,7 @@ export const createArticle = async (req: Request, res: Response) => {
           code: 'custom'
         }]);
       }
-    } else if (data.customCreatedAt && !isAdmin) {
+    } else if (status === 'published' && data.customCreatedAt && !isAdmin) {
       // Non-admin trying to set custom date - silently ignore (security: don't reveal this feature exists)
       // Just use default timestamp
     }
@@ -815,6 +883,7 @@ export const createArticle = async (req: Request, res: Response) => {
     const newArticle = await Article.create({
       ...data,
       categoryIds, // Add resolved Tag ObjectIds
+      status,
       publishedAt,
       isCustomCreatedAt
     });
@@ -962,13 +1031,31 @@ export const updateArticle = async (req: Request, res: Response) => {
       }
     }
 
+    // Never trust client-written publishedAt directly. Lifecycle logic below
+    // controls when publishedAt can be changed.
+    delete updates.publishedAt;
+
     // CRITICAL FIX: Convert nested media.previewMetadata updates to dot notation
     // This prevents Mongoose from replacing the entire media object (which fails validation)
     // when we only want to update previewMetadata fields
     let mongoUpdate: any = { ...updates };
-    
-    // Admin-only: Handle custom creation date
-    if (isAdmin && updates.customCreatedAt !== undefined) {
+
+    const existingStatus: 'draft' | 'published' = existingArticle.status === 'draft' ? 'draft' : 'published';
+    const requestedStatus = normalizeStatus(updates.status);
+    if (requestedStatus === 'draft' && existingStatus === 'published') {
+      return sendValidationError(res, 'Published nuggets cannot be reverted to draft', [{
+        path: ['status'],
+        message: 'Unpublish workflow is not supported',
+        code: 'custom'
+      }]);
+    }
+    const targetStatus: 'draft' | 'published' = requestedStatus || existingStatus;
+    if (requestedStatus) {
+      mongoUpdate.status = requestedStatus;
+    }
+
+    // Admin-only: Handle custom publish date for published nuggets.
+    if (targetStatus === 'published' && isAdmin && updates.customCreatedAt !== undefined) {
       if (updates.customCreatedAt) {
         try {
           const customDate = new Date(updates.customCreatedAt);
@@ -1010,6 +1097,19 @@ export const updateArticle = async (req: Request, res: Response) => {
     } else if (updates.customCreatedAt !== undefined && !isAdmin) {
       // Non-admin trying to set custom date - silently ignore (security: don't reveal this feature exists)
       delete mongoUpdate.customCreatedAt;
+    } else if (targetStatus === 'draft') {
+      // Drafts must always have publishedAt=null.
+      mongoUpdate.publishedAt = null;
+      mongoUpdate.isCustomCreatedAt = false;
+      delete mongoUpdate.customCreatedAt;
+    } else {
+      delete mongoUpdate.customCreatedAt;
+    }
+
+    // Draft -> published transition: set publishedAt exactly once when publishing.
+    if (existingStatus === 'draft' && targetStatus === 'published' && mongoUpdate.publishedAt === undefined) {
+      mongoUpdate.publishedAt = new Date().toISOString();
+      mongoUpdate.isCustomCreatedAt = false;
     }
     
     // Resolve tag names → tagIds and merge with dimension picker IDs.
@@ -1429,16 +1529,23 @@ export const getMyArticleCounts = async (req: Request, res: Response) => {
     const userQuery = { authorId: currentUserId };
 
     // Execute count queries in parallel for efficiency
-    const [total, publicCount, privateCount] = await Promise.all([
+    const [total, publicCount, privateCount, draftCount, publishedCount] = await Promise.all([
       Article.countDocuments(userQuery),
       Article.countDocuments({ ...userQuery, visibility: 'public' }),
-      Article.countDocuments({ ...userQuery, visibility: 'private' })
+      Article.countDocuments({ ...userQuery, visibility: 'private' }),
+      Article.countDocuments({ ...userQuery, status: 'draft' }),
+      Article.countDocuments({
+        ...userQuery,
+        $or: [{ status: 'published' }, { status: { $exists: false } }, { status: null }],
+      })
     ]);
 
     res.json({
       total,
       public: publicCount,
-      private: privateCount
+      private: privateCount,
+      draft: draftCount,
+      published: publishedCount,
     });
   } catch (error: any) {
     console.error('[Articles] Get my article counts error:', error);

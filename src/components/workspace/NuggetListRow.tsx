@@ -35,6 +35,7 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
   const source = getNuggetSourceLabel(article);
   const href = getNuggetPrimaryHref(article);
   const vis = article.visibility ?? 'private';
+  const lifecycleStatus = article.status === 'draft' ? 'draft' : 'published';
   const tags = Array.from(
     new Set(
       (article.tags ?? [])
@@ -47,7 +48,7 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
   const displayTags = showAllTags ? tags : tags.slice(0, cap);
 
   const published = article.publishedAt ? formatDate(article.publishedAt, false) : '—';
-  const updatedRaw = article.updated_at ?? article.created_at;
+  const updatedRaw = article.updated_at ?? article.created_at ?? article.publishedAt ?? undefined;
   const updated = updatedRaw ? formatDate(updatedRaw, false) : null;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -88,10 +89,10 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-slate-500 dark:text-slate-400">
             <span className="font-medium text-slate-600 dark:text-slate-300">{source}</span>
             <span aria-hidden>·</span>
-            {vis === 'public' ? (
+            {lifecycleStatus === 'published' ? (
               <span className="inline-flex items-center gap-0.5">
                 <Globe className="h-3 w-3" aria-hidden />
-                Public
+                Published
               </span>
             ) : (
               <span className="inline-flex items-center gap-0.5">
@@ -100,7 +101,13 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
               </span>
             )}
             <span aria-hidden>·</span>
-            <span>{published}</span>
+            <span>{lifecycleStatus === 'published' ? published : (updated || '—')}</span>
+            {lifecycleStatus === 'published' && (
+              <>
+                <span aria-hidden>·</span>
+                <span>{vis === 'public' ? 'Public' : 'Private'}</span>
+              </>
+            )}
             {updated && !compact && (
               <>
                 <span aria-hidden>·</span>

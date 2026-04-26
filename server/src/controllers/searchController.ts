@@ -90,10 +90,21 @@ export const getSuggestions = async (req: Request, res: Response) => {
     const query: Record<string, any> = {
       $and: [
         {
-          $or: [
-            { visibility: 'public' },
-            { visibility: { $exists: false } },
-            { visibility: null },
+          $and: [
+            {
+              $or: [
+                { visibility: 'public' },
+                { visibility: { $exists: false } },
+                { visibility: null },
+              ],
+            },
+            {
+              $or: [
+                { status: 'published' },
+                { status: { $exists: false } },
+                { status: null },
+              ],
+            },
           ],
         },
         {

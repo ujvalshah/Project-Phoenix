@@ -132,7 +132,8 @@ const baseArticleSchema = z.object({
   authorName: z.string().min(1, 'Author name is required'),
   // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds validation
   // Tags are now the only classification field
-  publishedAt: z.string().optional(),
+  publishedAt: z.string().nullable().optional(),
+  status: z.enum(['draft', 'published']).default('published'),
   // Coerce null/undefined to empty array for tags (defensive coding)
   // Use preprocess to handle null/undefined before validation, then default to []
   tags: z.preprocess(

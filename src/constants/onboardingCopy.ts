@@ -22,6 +22,11 @@ export const MARKET_PULSE_INTRO_COPY = {
   body: 'Daily stream of high-signal market updates and macro intelligence. Refreshed every day.',
 } as const;
 
+export const HOME_MICRO_HEADER_COPY = {
+  title: 'Nuggets is a curated knowledge feed for markets, AI, technology, and geopolitics.',
+  body: 'High-signal updates, organized without the noise.',
+} as const;
+
 export const NOTIFICATION_PROMPT_COPY = {
   title: 'Stay in the loop',
   body: 'Get notified when new nuggets drop. You can customize frequency anytime in settings.',

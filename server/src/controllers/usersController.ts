@@ -594,6 +594,7 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
     // PRIVACY FIX: Only show public articles in personalized feed
     const articleQuery: any = {
       visibility: 'public',
+      $or: [{ status: 'published' }, { status: { $exists: false } }, { status: null }],
     };
     if (resolvedTagIds.length > 0) {
       articleQuery.tagIds = { $in: resolvedTagIds };

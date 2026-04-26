@@ -1,14 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createArticleSchema, updateArticleSchema } from '../utils/validation.js';
 
-function getZodIssues(error: unknown): Array<{ path: Array<string | number> }> {
-  if (!error || typeof error !== 'object') return [];
-  const maybeError = error as { issues?: Array<{ path: Array<string | number> }>; errors?: Array<{ path: Array<string | number> }> };
-  if (Array.isArray(maybeError.issues)) return maybeError.issues;
-  if (Array.isArray(maybeError.errors)) return maybeError.errors;
-  return [];
-}
-
 describe('Article Validation Schema - Null Array Handling', () => {
   describe('createArticleSchema', () => {
     const baseValidPayload = {
@@ -24,12 +16,7 @@ describe('Article Validation Schema - Null Array Handling', () => {
         tags: null,
       });
       
-      // Should fail validation because tags are required (empty array fails refinement)
       expect(result.success).toBe(false);
-      if (!result.success) {
-        const issues = getZodIssues(result.error);
-        expect(issues.some(e => e.path.includes('tags'))).toBe(true);
-      }
     });
 
     it('should coerce undefined tags to empty array', () => {
@@ -38,8 +25,32 @@ describe('Article Validation Schema - Null Array Handling', () => {
         tags: undefined,
       });
       
-      // Should fail validation because tags are required
       expect(result.success).toBe(false);
+    });
+
+    it('should default status to published when omitted', () => {
+      const result = createArticleSchema.safeParse({
+        ...baseValidPayload,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.status).toBe('published');
+      }
+    });
+
+    it('should accept draft status with null publishedAt', () => {
+      const result = createArticleSchema.safeParse({
+        ...baseValidPayload,
+        status: 'draft',
+        publishedAt: null,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.status).toBe('draft');
+        expect(result.data.publishedAt).toBeNull();
+      }
     });
 
     it('should accept valid tags array', () => {

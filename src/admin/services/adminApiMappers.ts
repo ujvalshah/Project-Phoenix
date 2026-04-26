@@ -112,6 +112,11 @@ export function mapArticleToAdminNugget(article: Article, reportsCount: number =
     article.images?.[0] ||
     article.supportingMedia?.[0]?.thumbnail ||
     article.supportingMedia?.[0]?.url;
+  const lifecycleStatus: 'draft' | 'published' = article.status === 'draft' ? 'draft' : 'published';
+  const displayDate =
+    lifecycleStatus === 'draft'
+      ? article.updated_at || article.created_at || article.publishedAt || new Date().toISOString()
+      : article.publishedAt || article.created_at || article.updated_at || new Date().toISOString();
 
   return {
     id: article.id,
@@ -126,8 +131,9 @@ export function mapArticleToAdminNugget(article: Article, reportsCount: number =
     type,
     url: sourceUrl,
     visibility: article.visibility || 'public',
+    lifecycleStatus,
     status: reportsCount > 0 ? 'flagged' : 'active', // Simplified: flagged if has reports
-    createdAt: article.publishedAt || new Date().toISOString(),
+    createdAt: displayDate,
     reports: reportsCount,
     tags: article.tags || [],
     sourceType: article.source_type,

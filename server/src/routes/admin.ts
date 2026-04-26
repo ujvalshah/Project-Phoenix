@@ -15,6 +15,8 @@ import {
   updateValuePropStripSettings,
   getMarketPulseIntroSettings,
   updateMarketPulseIntroSettings,
+  getHomeMicroHeaderSettings,
+  updateHomeMicroHeaderSettings,
   suspendUser,
   banUser,
   activateUser,
@@ -64,6 +66,12 @@ router.get('/settings/market-pulse-intro', authenticateToken, requireAdminRole, 
 
 // PATCH /api/admin/settings/market-pulse-intro - Update Market Pulse first-visit intro copy (admin only)
 router.patch('/settings/market-pulse-intro', authenticateToken, requireAdminRole, adminMutationLimiter, updateMarketPulseIntroSettings);
+
+// GET /api/admin/settings/home-micro-header - Get homepage micro-header copy (admin only)
+router.get('/settings/home-micro-header', authenticateToken, requireAdminRole, getHomeMicroHeaderSettings);
+
+// PATCH /api/admin/settings/home-micro-header - Update homepage micro-header copy (admin only)
+router.patch('/settings/home-micro-header', authenticateToken, requireAdminRole, adminMutationLimiter, updateHomeMicroHeaderSettings);
 
 // ── Bulk tag export/import (two-axis taxonomy) ─────────────────────────────
 // GET  /api/admin/tagging/export  - Download XLSX with current + suggested tags

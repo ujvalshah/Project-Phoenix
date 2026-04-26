@@ -65,6 +65,8 @@ export class RestAdapter implements IAdapter {
     domainTagIds?: string[];
     subtopicTagIds?: string[];
     contentStream?: string;
+    visibility?: 'public' | 'private';
+    status?: 'draft' | 'published';
   }): Promise<PaginatedArticlesResponse> {
     const queryParams = new URLSearchParams();
     if (params.q) queryParams.set('q', params.q);
@@ -95,6 +97,8 @@ export class RestAdapter implements IAdapter {
       params.subtopicTagIds.forEach(id => queryParams.append('subtopicTagIds', id));
     }
     if (params.contentStream) queryParams.set('contentStream', params.contentStream);
+    if (params.visibility) queryParams.set('visibility', params.visibility);
+    if (params.status) queryParams.set('status', params.status);
     queryParams.set('page', params.page.toString());
     queryParams.set('limit', params.limit.toString());
 
@@ -166,7 +170,7 @@ export class RestAdapter implements IAdapter {
       // tagIds is the sole classification field — free-form tags removed
       readTime: article.readTime,
       visibility: article.visibility || 'public',
-      publishedAt: new Date().toISOString(), // Generate timestamp for new articles
+      ...(article.status && { status: article.status }),
       // Include additional fields that might be in the Article type
       ...(article.images && article.images.length > 0 && { images: article.images }),
       ...(article.documents && article.documents.length > 0 && { documents: article.documents }),
@@ -230,6 +234,7 @@ export class RestAdapter implements IAdapter {
     // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
     // Tags are now the only classification field
     if (updatesWithoutCategoryIds.visibility !== undefined) payload.visibility = updatesWithoutCategoryIds.visibility;
+    if (updatesWithoutCategoryIds.status !== undefined) payload.status = updatesWithoutCategoryIds.status;
     // CRITICAL: Preserve masonryTitle when updating media field
     // masonryTitle must flow through all layers to persist correctly
     if (updatesWithoutCategoryIds.media !== undefined) {

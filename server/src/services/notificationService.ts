@@ -255,7 +255,8 @@ async function processFanOut(job: Job): Promise<void> {
   }
 
   const article = await Article.findById(articleId).lean() as IArticle | null;
-  if (!article || article.visibility !== 'public') {
+  const isPublished = article?.status === 'published' || article?.status === undefined || article?.status === null;
+  if (!article || article.visibility !== 'public' || !isPublished) {
     logger.info({ msg: '[Notifications] Article not found or private — skipping', articleId });
     return;
   }
@@ -463,6 +464,7 @@ async function processDailyDigest(job: Job): Promise<void> {
   const recentArticles = await Article.find({
     publishedAt: { $gte: oneDayAgo },
     visibility: 'public',
+    $or: [{ status: 'published' }, { status: { $exists: false } }, { status: null }],
   }).sort({ publishedAt: -1 }).lean() as IArticle[];
 
   if (recentArticles.length === 0) {
@@ -749,7 +751,8 @@ export async function onArticlePublished(
   if (!notificationQueue) {
     logger.warn({ msg: '[Notifications] Queue not initialized — creating in-app fallback only', articleId });
     const article = (await Article.findById(articleId).lean()) as IArticle | null;
-    if (!article || article.visibility !== 'public') return;
+    const isPublished = article?.status === 'published' || article?.status === undefined || article?.status === null;
+    if (!article || article.visibility !== 'public' || !isPublished) return;
     const payload = buildPayload(article);
 
     const instantUsers = await User.find({

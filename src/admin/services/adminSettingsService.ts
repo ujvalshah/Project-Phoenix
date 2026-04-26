@@ -67,5 +67,15 @@ export const adminSettingsService = {
     body: UpdateValuePropStripBody
   ): Promise<{ message: string; config: ValuePropStripConfig }> {
     return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/market-pulse-intro', body);
+  },
+
+  async getHomeMicroHeaderConfig(): Promise<ValuePropStripConfig> {
+    return apiClient.get<ValuePropStripConfig>('/admin/settings/home-micro-header');
+  },
+
+  async updateHomeMicroHeaderConfig(
+    body: UpdateValuePropStripBody
+  ): Promise<{ message: string; config: ValuePropStripConfig }> {
+    return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/home-micro-header', body);
   }
 };

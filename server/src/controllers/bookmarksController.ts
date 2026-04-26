@@ -246,7 +246,31 @@ export const getBookmarks = async (req: Request, res: Response) => {
           meta: { total: 0, page, limit, hasMore: false }
         });
       }
-      const articlesForSearch = await Article.find({ _id: { $in: uniqueItemIds } })
+      const bookmarkArticleAccessQuery = {
+        _id: { $in: uniqueItemIds },
+        $or: [
+          { authorId: userId },
+          {
+            $and: [
+              {
+                $or: [
+                  { visibility: 'public' },
+                  { visibility: { $exists: false } },
+                  { visibility: null },
+                ],
+              },
+              {
+                $or: [
+                  { status: 'published' },
+                  { status: { $exists: false } },
+                  { status: null },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      const articlesForSearch = await Article.find(bookmarkArticleAccessQuery)
         .select('title content excerpt')
         .lean();
       const matchingItemIds = buildItemIdsMatchingBookmarkQuery(
@@ -275,7 +299,30 @@ export const getBookmarks = async (req: Request, res: Response) => {
 
     // Full article documents + tag resolution for the current page only
     const itemIds = pageBookmarks.map((b) => b.itemId);
-    const articles = await Article.find({ _id: { $in: itemIds } }).lean();
+    const articles = await Article.find({
+      _id: { $in: itemIds },
+      $or: [
+        { authorId: userId },
+        {
+          $and: [
+            {
+              $or: [
+                { visibility: 'public' },
+                { visibility: { $exists: false } },
+                { visibility: null },
+              ],
+            },
+            {
+              $or: [
+                { status: 'published' },
+                { status: { $exists: false } },
+                { status: null },
+              ],
+            },
+          ],
+        },
+      ],
+    }).lean();
     const tagNameMap = await getTagNameMap();
     const articleMap = new Map(
       articles.map((a) => {

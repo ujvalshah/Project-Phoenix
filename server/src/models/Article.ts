@@ -89,7 +89,8 @@ export interface IArticle extends Document {
   authorName: string;
   // CATEGORY PHASE-OUT: Removed category, categories, and categoryIds fields
   // Tags are now the only classification field
-  publishedAt: string;
+  publishedAt?: string | null;
+  status?: 'draft' | 'published';
   tagIds?: mongoose.Types.ObjectId[]; // ObjectId references to Tag collection
   readTime?: number; // Estimated read time in minutes
   visibility?: 'public' | 'private'; // Default: public
@@ -240,7 +241,8 @@ const ArticleSchema = new Schema<IArticle>({
   // DEPRECATED: categoryIds may exist in DB for backward compatibility (read-only)
   // This field is NOT validated, NOT saved on create/update, and NOT exposed in API responses
   // categoryIds: { type: [String] }, // Deprecated - kept in DB schema only for backward compatibility
-  publishedAt: { type: String, required: true },
+  publishedAt: { type: String, required: false, default: null },
+  status: { type: String, enum: ['draft', 'published'], default: 'published' },
   tagIds: [{ type: Schema.Types.ObjectId, ref: 'Tag', index: true }],
   readTime: { type: Number }, // Optional read time
   visibility: { type: String, enum: ['public', 'private'], default: 'public' },
@@ -293,13 +295,15 @@ const ArticleSchema = new Schema<IArticle>({
 // Explicit indexes for performance
 ArticleSchema.index({ authorId: 1 }); // Ownership queries
 ArticleSchema.index({ publishedAt: -1 }); // List sorting (latest first)
+ArticleSchema.index({ status: 1, publishedAt: -1 }); // Published feed and draft listing
 ArticleSchema.index({ createdAt: -1 }); // List sorting (if using created_at)
-ArticleSchema.index({ visibility: 1, publishedAt: -1 }); // Visibility filters with sorting
+ArticleSchema.index({ visibility: 1, status: 1, publishedAt: -1 }); // Visibility/status filters with sorting
 // CATEGORY PHASE-OUT: Removed category and categoryIds indexes
 ArticleSchema.index({ tagIds: 1 });
 ArticleSchema.index({ tagIds: 1, publishedAt: -1 }); // Compound index for tag-filtered feed queries
 // Audit Phase-2 Fix: Add compound index for authorId + visibility (common privacy filtering pattern)
 ArticleSchema.index({ authorId: 1, visibility: 1 }); // User's articles by visibility
+ArticleSchema.index({ authorId: 1, status: 1 }); // User's drafts vs published
 // Audit Phase-2 Fix: Add index for media.url field (for YouTube cache lookup in AI controller)
 ArticleSchema.index({ 'media.url': 1 });
 // Content stream + date compound index for feed routing queries
@@ -508,19 +512,22 @@ ArticleSchema.pre('findOneAndUpdate', async function() {
   }
 });
 
-// Track pre-save visibility to detect public transition exactly once.
+// Track pre-save lifecycle fields to detect publish transition exactly once.
 ArticleSchema.pre('save', async function () {
   (this as unknown as { $locals: Record<string, unknown> }).$locals ||= {};
   (this as unknown as { $locals: Record<string, unknown> }).$locals.wasNew = this.isNew;
   if (this.isNew) {
     (this as unknown as { $locals: Record<string, unknown> }).$locals.previousVisibility = undefined;
+    (this as unknown as { $locals: Record<string, unknown> }).$locals.previousStatus = undefined;
     return;
   }
   try {
-    const oldDoc = await this.constructor.findById(this._id).select('visibility').lean();
+    const oldDoc = await this.constructor.findById(this._id).select('visibility status').lean();
     (this as unknown as { $locals: Record<string, unknown> }).$locals.previousVisibility = oldDoc?.visibility;
+    (this as unknown as { $locals: Record<string, unknown> }).$locals.previousStatus = oldDoc?.status;
   } catch {
     (this as unknown as { $locals: Record<string, unknown> }).$locals.previousVisibility = undefined;
+    (this as unknown as { $locals: Record<string, unknown> }).$locals.previousStatus = undefined;
   }
 });
 
@@ -539,16 +546,25 @@ function dispatchArticlePublished(articleId: string, publishEventId: number) {
     });
 }
 
-// Post-save hook: trigger notifications only for create-as-public or private->public transition.
+function isPublishedStatus(status: string | undefined): boolean {
+  // Backward compatibility: missing status in legacy rows behaves as published.
+  return status === 'published' || status === undefined || status === null;
+}
+
+// Post-save hook: trigger notifications only when a nugget becomes public + published.
 ArticleSchema.post('save', function (doc) {
   const locals = (doc as unknown as { $locals?: Record<string, unknown> }).$locals || {};
   const wasNew = locals.wasNew === true;
   const previousVisibility = locals.previousVisibility as string | undefined;
+  const previousStatus = locals.previousStatus as string | undefined;
   const isPublicNow = doc.visibility === 'public';
+  const isPublishedNow = isPublishedStatus(doc.status);
   const becamePublic = previousVisibility === 'private' && isPublicNow;
-  const createdPublic = wasNew && isPublicNow;
+  const becamePublished = previousStatus === 'draft' && isPublishedNow;
+  const createdPublic = wasNew && isPublicNow && isPublishedNow;
+  const visibilityAndStatusTransition = !wasNew && isPublicNow && isPublishedNow && (becamePublic || becamePublished);
 
-  if (!createdPublic && !becamePublic) {
+  if (!createdPublic && !visibilityAndStatusTransition) {
     return;
   }
 
@@ -556,8 +572,9 @@ ArticleSchema.post('save', function (doc) {
 });
 
 // findOneAndUpdate / findByIdAndUpdate path — the admin & author edit flows
-// use this, NOT .save(), so without a hook here a private→public toggle would
-// silently ship the article without notifying anyone. Snapshot visibility in
+// use this, NOT .save(), so without a hook here visibility/status publish
+// transitions would silently ship the article without notifying anyone. Snapshot
+// current lifecycle fields in
 // the query options so the post hook can compare without a second round-trip.
 ArticleSchema.pre('findOneAndUpdate', async function () {
   const update = this.getUpdate() as Record<string, unknown> | null;
@@ -568,8 +585,11 @@ ArticleSchema.pre('findOneAndUpdate', async function () {
   const hasVisibilityField =
     Object.prototype.hasOwnProperty.call(setPart, 'visibility') ||
     Object.prototype.hasOwnProperty.call(update, 'visibility');
-  if (!hasVisibilityField) {
-    // No visibility change in this update — nothing to notify about.
+  const hasStatusField =
+    Object.prototype.hasOwnProperty.call(setPart, 'status') ||
+    Object.prototype.hasOwnProperty.call(update, 'status');
+  if (!hasVisibilityField && !hasStatusField) {
+    // No lifecycle change in this update — nothing to notify about.
     (this as unknown as { _notifyVisibilityState?: unknown })._notifyVisibilityState = null;
     return;
   }
@@ -578,9 +598,9 @@ ArticleSchema.pre('findOneAndUpdate', async function () {
     const query = this.getQuery();
     const Model = (this as unknown as { model?: mongoose.Model<IArticle> }).model
       || mongoose.model<IArticle>('Article');
-    const oldDoc = await Model.findOne(query).select('_id visibility').lean();
+    const oldDoc = await Model.findOne(query).select('_id visibility status').lean();
     (this as unknown as { _notifyVisibilityState?: unknown })._notifyVisibilityState = oldDoc
-      ? { id: String(oldDoc._id), previousVisibility: oldDoc.visibility }
+      ? { id: String(oldDoc._id), previousVisibility: oldDoc.visibility, previousStatus: oldDoc.status }
       : null;
   } catch {
     (this as unknown as { _notifyVisibilityState?: unknown })._notifyVisibilityState = null;
@@ -590,14 +610,15 @@ ArticleSchema.pre('findOneAndUpdate', async function () {
 ArticleSchema.post('findOneAndUpdate', function (doc: IArticle | null) {
   if (!doc) return;
 
-  const state = (this as unknown as { _notifyVisibilityState?: { id: string; previousVisibility?: string } | null })
+  const state = (this as unknown as { _notifyVisibilityState?: { id: string; previousVisibility?: string; previousStatus?: string } | null })
     ._notifyVisibilityState;
   if (!state) return;
 
-  // Only notify on private → public transition. Create-as-public does not
-  // reach findOneAndUpdate (that's .save()/.create() territory).
-  if (state.previousVisibility !== 'private') return;
-  if (doc.visibility !== 'public') return;
+  const becamePublic = state.previousVisibility === 'private' && doc.visibility === 'public';
+  const becamePublished = state.previousStatus === 'draft' && isPublishedStatus(doc.status);
+  const isPublicPublishedNow = doc.visibility === 'public' && isPublishedStatus(doc.status);
+  if (!isPublicPublishedNow) return;
+  if (!becamePublic && !becamePublished) return;
 
   dispatchArticlePublished(state.id, Date.now());
 });

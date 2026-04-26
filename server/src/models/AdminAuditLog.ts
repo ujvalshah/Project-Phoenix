@@ -21,7 +21,8 @@ export type AdminAction =
   | 'UPDATE_MEDIA_QUOTA'
   | 'UPDATE_DISCLAIMER_CONFIG'
   | 'UPDATE_VALUE_PROP_STRIP_CONFIG'
-  | 'UPDATE_MARKET_PULSE_INTRO_CONFIG';
+  | 'UPDATE_MARKET_PULSE_INTRO_CONFIG'
+  | 'UPDATE_HOME_MICRO_HEADER_CONFIG';
 
 export interface IAdminAuditLog extends Document {
   adminId: string;
@@ -58,7 +59,8 @@ const AdminAuditLogSchema = new Schema<IAdminAuditLog>({
       'UPDATE_MEDIA_QUOTA',
       'UPDATE_DISCLAIMER_CONFIG',
       'UPDATE_VALUE_PROP_STRIP_CONFIG',
-      'UPDATE_MARKET_PULSE_INTRO_CONFIG'
+      'UPDATE_MARKET_PULSE_INTRO_CONFIG',
+      'UPDATE_HOME_MICRO_HEADER_CONFIG'
     ],
     required: true,
     index: true

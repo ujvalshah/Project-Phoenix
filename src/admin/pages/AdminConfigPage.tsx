@@ -5,7 +5,7 @@ import { getNotificationSystemStatus, toggleNotificationSystem } from '@/service
 import { useToast } from '@/hooks/useToast';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
-import { VALUE_PROP_STRIP_COPY, MARKET_PULSE_INTRO_COPY } from '@/constants/onboardingCopy';
+import { VALUE_PROP_STRIP_COPY, MARKET_PULSE_INTRO_COPY, HOME_MICRO_HEADER_COPY } from '@/constants/onboardingCopy';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { adminConfigService, AVAILABLE_SERVICES } from '../services/adminConfigService';
 import { adminSettingsService, MediaLimits, DisclaimerConfig, ValuePropStripConfig } from '../services/adminSettingsService';
@@ -57,6 +57,11 @@ export const AdminConfigPage: React.FC = () => {
   const [isSavingMarketPulseIntro, setIsSavingMarketPulseIntro] = useState(false);
   const [marketPulseIntroLoadError, setMarketPulseIntroLoadError] = useState<string | null>(null);
   const [isReloadingMarketPulseIntro, setIsReloadingMarketPulseIntro] = useState(false);
+  const [_homeMicroHeaderConfig, setHomeMicroHeaderConfig] = useState<ValuePropStripConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
+  const [homeMicroHeaderDraft, setHomeMicroHeaderDraft] = useState<ValuePropStripConfig | null>(null);
+  const [isSavingHomeMicroHeader, setIsSavingHomeMicroHeader] = useState(false);
+  const [homeMicroHeaderLoadError, setHomeMicroHeaderLoadError] = useState<string | null>(null);
+  const [isReloadingHomeMicroHeader, setIsReloadingHomeMicroHeader] = useState(false);
 
   useEffect(() => {
     setPageHeader("System Configuration", "Manage global settings, feature toggles, and system alerts.");
@@ -65,7 +70,7 @@ export const AdminConfigPage: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const [permData, flagsData, signupData, limitsData, notifStatus, disclaimerData, valuePropStripData, marketPulseIntroData] = await Promise.all([
+      const [permData, flagsData, signupData, limitsData, notifStatus, disclaimerData, valuePropStripData, marketPulseIntroData, homeMicroHeaderData] = await Promise.all([
         adminConfigService.getRolePermissions(),
         adminConfigService.getFeatureFlags(),
         adminConfigService.getSignupConfig(),
@@ -74,6 +79,7 @@ export const AdminConfigPage: React.FC = () => {
         adminSettingsService.getDisclaimerConfig().catch(() => null),
         adminSettingsService.getValuePropStripConfig().catch(() => null),
         adminSettingsService.getMarketPulseIntroConfig().catch(() => null),
+        adminSettingsService.getHomeMicroHeaderConfig().catch(() => null),
       ]);
       setPermissions(permData);
       setFlags(flagsData);
@@ -113,6 +119,19 @@ export const AdminConfigPage: React.FC = () => {
         setMarketPulseIntroDraft(pulseFallback);
         setMarketPulseIntroLoadError('Could not load saved Market Pulse copy. Showing fallback text; save to persist changes.');
       }
+      if (homeMicroHeaderData) {
+        setHomeMicroHeaderConfig(homeMicroHeaderData);
+        setHomeMicroHeaderDraft(homeMicroHeaderData);
+        setHomeMicroHeaderLoadError(null);
+      } else {
+        const headerFallback = {
+          title: HOME_MICRO_HEADER_COPY.title,
+          body: HOME_MICRO_HEADER_COPY.body
+        };
+        setHomeMicroHeaderConfig(headerFallback);
+        setHomeMicroHeaderDraft(headerFallback);
+        setHomeMicroHeaderLoadError('Could not load saved homepage micro-header copy. Showing fallback text; save to persist changes.');
+      }
     } catch (e) {
       toast.error("Failed to load configuration");
     }
@@ -147,6 +166,22 @@ export const AdminConfigPage: React.FC = () => {
       toast.error('Failed to reload value-prop strip copy');
     } finally {
       setIsReloadingValuePropStrip(false);
+    }
+  };
+
+  const handleReloadHomeMicroHeader = async () => {
+    setIsReloadingHomeMicroHeader(true);
+    try {
+      const config = await adminSettingsService.getHomeMicroHeaderConfig();
+      setHomeMicroHeaderConfig(config);
+      setHomeMicroHeaderDraft(config);
+      setHomeMicroHeaderLoadError(null);
+      toast.success('Loaded latest homepage micro-header copy');
+    } catch {
+      setHomeMicroHeaderLoadError('Could not load saved homepage micro-header copy. Showing fallback text; save to persist changes.');
+      toast.error('Failed to reload homepage micro-header copy');
+    } finally {
+      setIsReloadingHomeMicroHeader(false);
     }
   };
 
@@ -280,6 +315,25 @@ export const AdminConfigPage: React.FC = () => {
       toast.error("Failed to update value-prop strip copy");
     } finally {
       setIsSavingValuePropStrip(false);
+    }
+  };
+
+  const handleSaveHomeMicroHeader = async () => {
+    if (!homeMicroHeaderDraft) return;
+    setIsSavingHomeMicroHeader(true);
+    try {
+      const result = await adminSettingsService.updateHomeMicroHeaderConfig({
+        title: homeMicroHeaderDraft.title,
+        body: homeMicroHeaderDraft.body
+      });
+      setHomeMicroHeaderConfig(result.config);
+      setHomeMicroHeaderDraft(result.config);
+      setHomeMicroHeaderLoadError(null);
+      toast.success(result.message || 'Homepage micro-header copy updated');
+    } catch (e) {
+      toast.error('Failed to update homepage micro-header copy');
+    } finally {
+      setIsSavingHomeMicroHeader(false);
     }
   };
 
@@ -863,7 +917,73 @@ export const AdminConfigPage: React.FC = () => {
           )}
         </section>
 
-        {/* 9. SYSTEM ANNOUNCEMENT */}
+        {/* 9. HOMEPAGE MICRO-HEADER COPY */}
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 rounded-lg">
+                <Info size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Homepage micro-header copy</h3>
+                <p className="text-xs text-slate-500">Editable H1 + support line shown above the Home feed for logged-out visitors.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleSaveHomeMicroHeader}
+              disabled={!homeMicroHeaderDraft || isSavingHomeMicroHeader}
+              className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {isSavingHomeMicroHeader ? 'Saving...' : <><Save size={14} /> Save Homepage Copy</>}
+            </button>
+          </div>
+
+          {homeMicroHeaderDraft ? (
+            <div className="space-y-4">
+              {homeMicroHeaderLoadError && (
+                <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <span>{homeMicroHeaderLoadError}</span>
+                  <button
+                    onClick={handleReloadHomeMicroHeader}
+                    disabled={isReloadingHomeMicroHeader}
+                    className="ml-3 px-3 py-1 rounded-md bg-amber-100 text-amber-900 font-semibold hover:bg-amber-200 transition-colors disabled:opacity-50"
+                  >
+                    {isReloadingHomeMicroHeader ? 'Retrying...' : 'Retry'}
+                  </button>
+                </div>
+              )}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Homepage H1</label>
+                <input
+                  type="text"
+                  value={homeMicroHeaderDraft.title}
+                  onChange={(e) => setHomeMicroHeaderDraft(p => p ? { ...p, title: e.target.value } : p)}
+                  maxLength={120}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                  placeholder="Enter homepage H1..."
+                />
+                <p className="text-[10px] text-slate-400 mt-1">{homeMicroHeaderDraft.title.length}/120 characters.</p>
+              </div>
+
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Homepage support line</label>
+                <textarea
+                  value={homeMicroHeaderDraft.body}
+                  onChange={(e) => setHomeMicroHeaderDraft(p => p ? { ...p, body: e.target.value } : p)}
+                  maxLength={500}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
+                  placeholder="Enter homepage support line..."
+                />
+                <p className="text-[10px] text-slate-400 mt-1">{homeMicroHeaderDraft.body.length}/500 characters.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4 text-slate-400">Loading homepage micro-header config...</div>
+          )}
+        </section>
+
+        {/* 10. SYSTEM ANNOUNCEMENT */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">

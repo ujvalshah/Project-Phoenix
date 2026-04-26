@@ -27,6 +27,7 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
   const source = getNuggetSourceLabel(article);
   const href = getNuggetPrimaryHref(article);
   const vis = article.visibility ?? 'private';
+  const lifecycleStatus = article.status === 'draft' ? 'draft' : 'published';
   const tags = useMemo(
     () =>
       Array.from(
@@ -42,7 +43,7 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
   const displayTags = showAllTags ? tags : tags.slice(0, MAX_TAGS);
 
   const published = article.publishedAt ? formatDate(article.publishedAt, false) : '—';
-  const updatedRaw = article.updated_at ?? article.created_at;
+  const updatedRaw = article.updated_at ?? article.created_at ?? article.publishedAt ?? undefined;
   const updated = updatedRaw ? formatDate(updatedRaw, false) : null;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -95,10 +96,10 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
             <span className="text-slate-300 dark:text-slate-600" aria-hidden>
               ·
             </span>
-            {vis === 'public' ? (
+            {lifecycleStatus === 'published' ? (
               <span className="inline-flex items-center gap-0.5">
                 <Globe className="h-3 w-3" aria-hidden />
-                Public
+                Published
               </span>
             ) : (
               <span className="inline-flex items-center gap-0.5">
@@ -109,7 +110,15 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
             <span className="text-slate-300 dark:text-slate-600" aria-hidden>
               ·
             </span>
-            <span>{published}</span>
+            <span>{lifecycleStatus === 'published' ? published : (updated || '—')}</span>
+            {lifecycleStatus === 'published' && (
+              <>
+                <span className="text-slate-300 dark:text-slate-600" aria-hidden>
+                  ·
+                </span>
+                <span>{vis === 'public' ? 'Public' : 'Private'}</span>
+              </>
+            )}
             {updated && (
               <>
                 <span className="text-slate-300 dark:text-slate-600" aria-hidden>

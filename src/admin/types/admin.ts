@@ -110,6 +110,7 @@ export interface AdminNugget {
   type: 'link' | 'text' | 'video' | 'image' | 'idea';
   url?: string;
   visibility: 'public' | 'private';
+  lifecycleStatus?: 'draft' | 'published';
   status: AdminNuggetStatus;
   createdAt: string;
   reports: number;

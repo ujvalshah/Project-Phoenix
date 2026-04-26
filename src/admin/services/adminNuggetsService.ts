@@ -32,7 +32,15 @@ export interface AdminNuggetListResponse {
 
 class AdminNuggetsService {
   // In-flight request guard to prevent duplicate concurrent stats requests
-  private inFlightStatsRequest: Promise<{ total: number; flagged: number; createdToday: number; public: number; private: number }> | null = null;
+  private inFlightStatsRequest: Promise<{
+    total: number;
+    flagged: number;
+    createdToday: number;
+    public: number;
+    private: number;
+    draft: number;
+    published: number;
+  }> | null = null;
 
   async listNuggets(filters?: AdminNuggetListFilters): Promise<AdminNuggetListResponse> {
     try {
@@ -102,8 +110,8 @@ class AdminNuggetsService {
         console.warn(`[AdminNuggetsService.listNuggets] Filtered out ${articles.length - validArticles.length} invalid articles`);
       }
       
-      // Filter by visibility (only show public in admin list)
-      let filtered = validArticles.filter(a => a && a.visibility === 'public');
+      // Admin should see draft + published nuggets.
+      const filtered = validArticles;
       const flaggedArticleIds = new Set(
         reports
           .filter(r => r.targetType === 'nugget' && r.status === 'open')
@@ -189,7 +197,15 @@ class AdminNuggetsService {
     }
   }
 
-  async getStats(): Promise<{ total: number; flagged: number; createdToday: number; public: number; private: number }> {
+  async getStats(): Promise<{
+    total: number;
+    flagged: number;
+    createdToday: number;
+    public: number;
+    private: number;
+    draft: number;
+    published: number;
+  }> {
     // Reuse in-flight request if one exists (prevents duplicate concurrent fetches)
     if (this.inFlightStatsRequest) {
       return this.inFlightStatsRequest;
@@ -205,6 +221,8 @@ class AdminNuggetsService {
             total: number;
             public: number;
             private: number;
+            draft?: number;
+            published?: number;
             createdToday: number;
             flagged: number;
             pendingModeration: number;
@@ -213,7 +231,7 @@ class AdminNuggetsService {
         
         if (!statsResponse || !statsResponse.nuggets) {
           console.error('[AdminNuggetsService.getStats] Invalid stats response:', statsResponse);
-          return { total: 0, flagged: 0, createdToday: 0, public: 0, private: 0 };
+          return { total: 0, flagged: 0, createdToday: 0, public: 0, private: 0, draft: 0, published: 0 };
         }
         
         return {
@@ -222,6 +240,8 @@ class AdminNuggetsService {
           createdToday: statsResponse.nuggets.createdToday || 0,
           public: statsResponse.nuggets.public || 0,
           private: statsResponse.nuggets.private || 0,
+          draft: statsResponse.nuggets.draft || 0,
+          published: statsResponse.nuggets.published || 0,
         };
       } catch (error: any) {
         console.error('[AdminNuggetsService.getStats] Error fetching stats:', error);

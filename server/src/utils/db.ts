@@ -204,7 +204,8 @@ function transformArticle(doc: any): any {
         name: authorName,
         avatar_url: rest.author?.avatar_url || undefined
       },
-    publishedAt: rest.publishedAt || new Date().toISOString(),
+    publishedAt: rest.publishedAt ?? null,
+    status: rest.status || 'published',
     // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
     tags: [], // Populated by resolveTagsFromIds() in normalizeArticleDoc/normalizeArticleDocs
     tagIds: rest.tagIds ? rest.tagIds.map((id: any) => id.toString()) : [],
