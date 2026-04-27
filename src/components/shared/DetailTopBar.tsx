@@ -75,6 +75,7 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
             meta={{
               text: [authorName, article?.excerpt ?? ''].filter(Boolean).join('\n'),
             }}
+            host={menuHost}
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
           />
         )}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Share2 } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { emitShareTelemetry } from '@/observability/shareTelemetry';
@@ -10,6 +10,7 @@ import {
 } from '@/sharing/platformTargets';
 import { copySharePayload, shareWithFallback } from '@/sharing/shareOrchestrator';
 import type { ShareContext, ShareItemData, ShareMeta } from '@/sharing/types';
+import { DropdownPortal, type AnchoredOverlayHost } from '@/components/UI/DropdownPortal';
 
 interface ShareMenuProps {
   data: ShareItemData;
@@ -17,6 +18,11 @@ interface ShareMenuProps {
   className?: string;
   iconSize?: number;
   surface?: ShareContext['surface'];
+  /**
+   * Portal host for the dropdown panel. Use `modal` when the menu lives inside
+   * a modal/drawer so it stacks above the modal body. Defaults to `dropdown`.
+   */
+  host?: Extract<AnchoredOverlayHost, 'dropdown' | 'modal'>;
 }
 
 export const ShareMenu: React.FC<ShareMenuProps> = ({
@@ -25,9 +31,10 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
   className = '',
   iconSize = 14,
   surface = 'unknown',
+  host = 'dropdown',
 }) => {
   const toast = useToast();
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const payload = useMemo(() => buildBaseSharePayload(data, meta), [data, meta]);
   const intents = useMemo(
@@ -38,18 +45,6 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
     }),
     [payload],
   );
-
-  useEffect(() => {
-    function onPointerDown(event: MouseEvent) {
-      if (!isOpen) return;
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [isOpen]);
 
   const telemetryBase = {
     entityType: data.type,
@@ -162,18 +157,29 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
   };
 
   return (
-    <div ref={rootRef} className="relative">
+    <>
       <button
+        ref={anchorRef}
         type="button"
         onClick={toggleMenu}
         className={`w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all hover:scale-105 active:scale-95 ${className}`}
         title="Share"
         aria-label="Share"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
       >
         <Share2 size={iconSize || 18} strokeWidth={1.5} />
       </button>
-      {isOpen && (
-        <div className="absolute right-0 z-50 mt-2 min-w-[180px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+      <DropdownPortal
+        isOpen={isOpen}
+        anchorRef={anchorRef}
+        align="right"
+        offsetY={8}
+        host={host}
+        onClickOutside={() => setIsOpen(false)}
+        className="min-w-[180px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+      >
+        <div>
           <button type="button" onClick={handlePrimaryShare} className="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
             Share now
           </button>
@@ -190,7 +196,7 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
             LinkedIn
           </button>
         </div>
-      )}
-    </div>
+      </DropdownPortal>
+    </>
   );
 };
