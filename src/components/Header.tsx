@@ -185,7 +185,13 @@ export const Header: React.FC<HeaderProps> = ({
   // Separate refs for desktop and mobile to avoid ref collision
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
   const mobileAvatarButtonRef = useRef<HTMLButtonElement>(null);
+  // The desktop filter button is rendered twice: inside the xl+ search cluster
+  // and inside the lg-to-xl tools cluster (xl:hidden). Both DOM nodes mount even
+  // when CSS-hidden, so a single ref would be claimed by whichever rendered last
+  // (the xl:hidden one), pointing the FilterPopover anchor at a display:none node
+  // at xl+ widths. Use one ref per layout and pick by viewport.
   const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const lgFilterButtonRef = useRef<HTMLButtonElement>(null);
   const mobileFilterButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -194,18 +200,22 @@ export const Header: React.FC<HeaderProps> = ({
 
   // Determine which avatar ref to use based on viewport width
   const [isMobile, setIsMobile] = useState(false);
+  // xl breakpoint (1280px) splits the two desktop filter button placements.
+  const [isXl, setIsXl] = useState(false);
 
   useEffect(() => {
-    const checkMobile = () => {
+    const checkViewport = () => {
       setIsMobile(window.innerWidth < 1024); // lg breakpoint
+      setIsXl(window.innerWidth >= 1280); // xl breakpoint
     };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    checkViewport();
+    window.addEventListener('resize', checkViewport);
+    return () => window.removeEventListener('resize', checkViewport);
   }, []);
 
   // Use the appropriate ref for the current viewport
   const activeAvatarRef = isMobile ? mobileAvatarButtonRef : avatarButtonRef;
+  const activeFilterButtonRef = isXl ? filterButtonRef : lgFilterButtonRef;
   
   const location = useLocation();
   const { currentUser, isAuthenticated, openAuthModal, logout } = useAuthSelector(
@@ -888,7 +898,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               type="button"
-              ref={filterButtonRef}
+              ref={lgFilterButtonRef}
               onClick={(e) => {
                 e.stopPropagation();
                 if (inlineDesktopFilters) {
@@ -1258,7 +1268,7 @@ export const Header: React.FC<HeaderProps> = ({
           !isMobile &&
           !(isHome && isInlineDesktopFiltersActive)
         }
-        anchorRef={filterButtonRef}
+        anchorRef={activeFilterButtonRef}
         onClickOutside={() => setIsFilterPopoverOpen(false)}
         className=""
       >

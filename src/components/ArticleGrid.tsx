@@ -1,8 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
-import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useSearchParams } from 'react-router-dom';
 import { Article } from '@/types';
-import { chunkArticlesForVirtualRows } from '@/utils/chunkArticlesForVirtualRows';
 import { NewsCard } from './NewsCard';
 import { MasonryGrid } from './MasonryGrid';
 import { EmptyState } from './UI/EmptyState';
@@ -17,7 +15,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface ArticleGridProps {
   articles: Article[];
-  viewMode: 'grid' | 'feed' | 'masonry';
+  viewMode: 'grid' | 'masonry';
   isLoading: boolean;
   /**
    * True while the articles infinite query is refetching (filters, search commit, stream, etc.) —
@@ -149,40 +147,44 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const isMultiColumnGrid = viewMode === 'grid' && isDesktop;
 
-  /** One normalization pass per `articles` update; stable item refs avoid redundant work in cards when the grid rerenders. */
+  /**
+   * Per-article cache keyed by source object identity. react-query preserves the
+   * underlying `Article` reference for cached pages across `fetchNextPage`, so when
+   * the outer `articles` array gets a new identity (page append), already-prepared
+   * cards keep stable `prepared` refs. That keeps `useNewsCard`'s memoized derivations
+   * (mediaClassification, etc.) from invalidating for every visible card on each append.
+   */
+  const prepareCacheRef = useRef<Map<string, { source: Article; prepared: Article }>>(new Map());
   const displayArticles = useMemo(() => {
+    const prevCache = prepareCacheRef.current;
+    const nextCache = new Map<string, { source: Article; prepared: Article }>();
     const out: Article[] = [];
     for (const a of articles) {
-      const p = prepareArticleForNewsCard(a);
-      if (!p) {
-        console.warn('[ArticleGrid] Skipping invalid article:', a);
+      if (!a || typeof a.id !== 'string') {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[ArticleGrid] Skipping invalid article:', a);
+        }
         continue;
       }
+      const cached = prevCache.get(a.id);
+      if (cached && cached.source === a) {
+        nextCache.set(a.id, cached);
+        out.push(cached.prepared);
+        continue;
+      }
+      const p = prepareArticleForNewsCard(a);
+      if (!p) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[ArticleGrid] Skipping invalid article:', a);
+        }
+        continue;
+      }
+      nextCache.set(a.id, { source: a, prepared: p });
       out.push(p);
     }
+    prepareCacheRef.current = nextCache;
     return out;
   }, [articles]);
-
-  /** Feed-only: one article per virtual row. Grid uses normal-flow CSS grid (no window virtualizer). */
-  const virtualRows = useMemo(
-    () => (viewMode === 'feed' ? chunkArticlesForVirtualRows(displayArticles, 1) : []),
-    [viewMode, displayArticles],
-  );
-
-  const rowVirtualizer = useWindowVirtualizer({
-    count: viewMode === 'feed' ? virtualRows.length : 0,
-    estimateSize: () => 520,
-    overscan: 6,
-    measureElement:
-      typeof document !== 'undefined'
-        ? (el) => el?.getBoundingClientRect().height ?? 520
-        : undefined,
-  });
-
-  useEffect(() => {
-    if (viewMode !== 'feed' || virtualRows.length === 0) return;
-    rowVirtualizer.measure();
-  }, [rowVirtualizer, viewMode, virtualRows.length]);
   
   // Initialize drawer state from URL on mount or when URL changes
   // CRITICAL: Only sync URL → state here, not state → URL (prevents bounce)
@@ -410,17 +412,11 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   // Error State: Show error UI when query fails
   if (error && !isLoading) {
     return (
-      <div
-        className={
-          viewMode === 'feed'
-            ? "max-w-2xl mx-auto"
-            : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full"
-        }
-      >
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full">
         <CardError
           error={error}
           onRetry={onRetry}
-          variant={viewMode === 'feed' ? 'feed' : 'grid'}
+          variant="grid"
           className="col-span-full"
         />
       </div>
@@ -432,18 +428,9 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   // a generic grid skeleton there flashes the wrong layout before hydrate.
   if (isLoading && viewMode !== 'masonry') {
     return (
-      <div
-        className={
-          viewMode === 'feed'
-            ? "max-w-2xl mx-auto flex flex-col gap-8"
-            : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full"
-        }
-      >
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full">
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <CardSkeleton
-            key={i}
-            variant={viewMode === 'feed' ? 'feed' : 'grid'}
-          />
+          <CardSkeleton key={i} variant="grid" />
         ))}
       </div>
     );
@@ -491,7 +478,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     );
   }
 
-  // Render feed (window-virtualized) or grid (normal-flow CSS grid — variable row heights are reliable).
+  // Render grid (normal-flow CSS grid — variable row heights are reliable).
   return (
     <div className="relative">
       {/* Feed refetch overlay (filters, search commit, stream, manual refresh, …) */}
@@ -507,82 +494,9 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
       className={`
         transition-opacity duration-300 motion-reduce:transition-none
         ${isFeedRefetching ? 'opacity-40 pointer-events-none' : 'opacity-100'}
-        ${viewMode === 'feed' ? 'max-w-2xl mx-auto w-full' : 'mx-auto w-full'}
+        mx-auto w-full
       `}
     >
-      {viewMode === 'feed' ? (
-      <div
-        className="w-full"
-        style={{
-          height: rowVirtualizer.getTotalSize(),
-          position: 'relative',
-        }}
-      >
-        {rowVirtualizer.getVirtualItems().map((vRow) => {
-          const rowArticles = virtualRows[vRow.index];
-          if (!rowArticles?.length) return null;
-
-          return (
-            <div
-              key={vRow.key}
-              data-virtual-row={vRow.index}
-              ref={rowVirtualizer.measureElement}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                transform: `translateY(${vRow.start}px)`,
-                paddingBottom: '2rem',
-              }}
-            >
-              {rowArticles.map((article) => {
-                const index = vRow.index;
-                const delay = Math.min(index * 50, 750);
-                return (
-                  <ErrorBoundary
-                    key={article.id}
-                    fallback={
-                      <CardError
-                        error={new Error('Failed to render card')}
-                        variant="feed"
-                      />
-                    }
-                  >
-                    <div
-                      className={`
-                        h-full
-                        ${shouldAnimate ? 'animate-fade-in-up' : ''}
-                        motion-reduce:animate-none motion-reduce:opacity-100
-                      `}
-                      style={{
-                        animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
-                      }}
-                    >
-                      <NewsCard
-                        ref={(el) => registerCard(article.id, el)}
-                        article={article}
-                        skipArticlePrepare
-                        viewMode="feed"
-                        onCategoryClick={onCategoryClick}
-                        onClick={handleCardClick}
-                        currentUserId={currentUserId}
-                        onTagClick={onTagClick}
-                        selectionMode={selectionMode}
-                        isSelected={selectedIds.includes(article.id)}
-                        onSelect={onSelect ? () => onSelect(article.id) : undefined}
-                        disableInlineExpansion={isMultiColumnGrid}
-                        searchHighlightQuery={searchHighlightQuery}
-                      />
-                    </div>
-                  </ErrorBoundary>
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
-      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full">
         {displayArticles.map((article, index) => {
           const delay = Math.min(index * 50, 750);
@@ -626,7 +540,6 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
           );
         })}
       </div>
-      )}
 
       {/* Infinite scroll (masonry uses its own trigger inside MasonryGrid) */}
       <InfiniteScrollTrigger
