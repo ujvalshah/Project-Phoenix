@@ -6,7 +6,7 @@ import { useRequireAuth } from './useRequireAuth';
 import { storageService } from '@/services/storageService';
 import { queryClient } from '@/queryClient';
 import { hasValidAuthor, logError, prepareArticleForNewsCard } from '@/utils/errorHandler';
-import { getAllImageUrls, getGridImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
+import { getAllImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 import { useVideoPlayerActions } from '@/context/VideoPlayerContext';
 import { useAuthSelector } from '@/context/AuthContext';
@@ -266,73 +266,43 @@ export const useNewsCard = ({
   
   const contentText = article.content || article.excerpt || '';
   const estimatedLength = estimateTextLength(contentText);
-  const actualLineCount = countTextLines(contentText);
   // Rough estimate: 2-3 lines ≈ 150-200 characters (conservative: use 200 as threshold)
   const CAPTION_THRESHOLD = 200; // Characters that fit in 2-3 lines
   const MAX_PREVIEW_LINES = 3; // Maximum lines for media-only caption
   
-  // Check for multi-image media
-  const allImageUrls = getAllImageUrls(article);
-  const gridImageUrls = getGridImageUrls(article);
-  const hasMultipleImages = gridImageUrls.length > 1;
-  
-  // ═══════════════════════════════════════════════════════════════════════
-  // GHOST IMAGE DETECTION: Dev-mode only debugging check
-  // ═══════════════════════════════════════════════════════════════════════
-  /**
-   * GHOST IMAGE DETECTION:
-   * 
-   * Purpose: Detect "ghost images" - images that are being rendered but are not
-   * explicitly persisted in the database. This can happen when:
-   * - Images are derived from classifyArticleMedia (computed on-the-fly)
-   * - Images come from previewMetadata.imageUrl (OG tags, not stored)
-   * - Images are inferred from legacy fields but not actually stored
-   * 
-   * Why this matters:
-   * - Ghost images may disappear if data structure changes
-   * - They indicate potential data inconsistency
-   * - They can cause issues during data migration or cleanup
-   * 
-   * The check:
-   * - Compares renderSet (allImageUrls) vs persistedSet (getPersistedImageUrls)
-   * - Warns if renderSet is not a subset of persistedSet
-   * - Only runs in dev mode (never in production)
-   * 
-   * This is a debugging tool only - it does not affect user experience.
-   */
-  if (import.meta.env.DEV) {
+  // Memoize on the article reference: ArticleGrid pins per-article identity
+  // across pagination appends, so this re-runs only when the underlying article
+  // actually changes (used by ghost-image dev check + handleMediaClick below).
+  const allImageUrls = useMemo(() => getAllImageUrls(article), [article]);
+
+  // Ghost-image detection (dev only). Previously ran synchronously on every
+  // render — for a 100-card feed that's 200+ Set constructions per re-render.
+  // Defer to a commit-time effect keyed on article id + image identity so it
+  // only runs when the source actually changes.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
     const persistedImageUrls = getPersistedImageUrls(article);
-    const renderSet = new Set(allImageUrls.map(url => url.toLowerCase().trim()));
     const persistedSet = new Set(persistedImageUrls.map(url => url.toLowerCase().trim()));
-    
-    // Check if renderSet is a subset of persistedSet
-    // If any URL in renderSet is not in persistedSet, we have ghost images
-    const ghostImages = allImageUrls.filter(url => {
-      const normalized = url.toLowerCase().trim();
-      return !persistedSet.has(normalized);
-    });
-    
+    const ghostImages = allImageUrls.filter(url => !persistedSet.has(url.toLowerCase().trim()));
     if (ghostImages.length > 0) {
-      const diff = {
+      console.warn('ghost-image-detected', {
         articleId: article.id.substring(0, 8) + '...',
         renderCount: allImageUrls.length,
         persistedCount: persistedImageUrls.length,
         ghostImages,
         allRenderUrls: allImageUrls,
         allPersistedUrls: persistedImageUrls,
-      };
-      console.warn('ghost-image-detected', diff);
+      });
     }
-  }
+  }, [article, allImageUrls]);
   
   // Get trimmed body text for classification
   const trimmedBody = contentText.trim();
   const trimmedBodyLineCount = countTextLines(trimmedBody);
   
-  // Determine card type with promotion rule
+  // Determine card type with promotion rule.
   let cardType: 'hybrid' | 'media-only';
-  let classificationReason = '';
-  
+
   // ═══════════════════════════════════════════════════════════════════════
   // ENFORCEMENT RULE: Long Text → MUST be Hybrid (regardless of media)
   // ═══════════════════════════════════════════════════════════════════════
@@ -341,123 +311,19 @@ export const useNewsCard = ({
   // This applies to: single images, multiple images, any media type
   // Do NOT treat cards with long text as media-only, even if they have media.
   const hasLongText = Boolean(trimmedBody) && trimmedBodyLineCount > MAX_PREVIEW_LINES;
-  const isMultiImageWithLongText = hasMultipleImages && hasLongText;
 
   if (!hasMedia) {
-    // No media = always Hybrid (text-only is a subset of Hybrid without media)
     cardType = 'hybrid';
-    classificationReason = 'no-media';
   } else if (hasLongText) {
-    // ENFORCEMENT: Any media + long text → MUST be Hybrid
-    // This ensures truncation + fade apply for all cards with long text
-    // Special case: Multi-image gets specific reason for debugging
-    if (isMultiImageWithLongText) {
-      cardType = 'hybrid';
-      classificationReason = `multi-image-long-text (${gridImageUrls.length} images, ${trimmedBodyLineCount} lines > ${MAX_PREVIEW_LINES})`;
-    } else {
-      cardType = 'hybrid';
-      classificationReason = `long-text (${trimmedBodyLineCount} lines > ${MAX_PREVIEW_LINES})`;
-    }
+    cardType = 'hybrid';
   } else {
-    // Has media - check if qualifies for Media-Only
     // CRITICAL: Use trimmedBodyLineCount consistently (same as enforcement rule)
     const hasMinimalText = estimatedLength <= CAPTION_THRESHOLD && !contentText.trim().includes('\n\n');
     const hasMinimalLines = trimmedBodyLineCount <= MAX_PREVIEW_LINES;
-    
-    // Media-Only ONLY if: minimal text AND no user-provided title (metadata titles don't count)
-    // Promotion rule: if text exceeds threshold or has user-provided title → Hybrid
-    // NOTE: Metadata titles are allowed for media-only cards (displayed in overlay, don't force hybrid)
-    // CRITICAL: hasUserProvidedTitle checks ONLY article.title (user-entered), NOT metadata titles
-    if (hasMinimalText && hasMinimalLines && !hasUserProvidedTitle) {
-      cardType = 'media-only';
-      classificationReason = 'minimal-text-no-user-title';
-    } else {
-      // Promotion to Hybrid: text exceeds caption length, has user-provided title, or has structured content
-      cardType = 'hybrid';
-      if (!hasMinimalText) {
-        classificationReason = `text-exceeds-threshold (${estimatedLength} > ${CAPTION_THRESHOLD})`;
-      } else if (!hasMinimalLines) {
-        classificationReason = `lines-exceed-preview (${trimmedBodyLineCount} > ${MAX_PREVIEW_LINES})`;
-      } else if (hasUserProvidedTitle) {
-        classificationReason = 'has-user-provided-title';
-      } else {
-        classificationReason = 'other';
-      }
-    }
+    // Media-Only ONLY if: minimal text AND no user-provided title (metadata titles don't count).
+    cardType = hasMinimalText && hasMinimalLines && !hasUserProvidedTitle ? 'media-only' : 'hybrid';
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
-  // COMPREHENSIVE DIAGNOSTICS: Log all card properties for debugging
-  // ═══════════════════════════════════════════════════════════════════════
-  
-  // Detect media variant (single image, gallery, embed, video, screenshot, etc.)
-  let mediaVariant = 'none';
-  if (hasMedia) {
-    if (hasMultipleImages && gridImageUrls.length >= 2) {
-      mediaVariant = `gallery (${gridImageUrls.length} images)`;
-    } else if (primaryMedia) {
-      if (primaryMedia.type === 'youtube') {
-        mediaVariant = 'video-youtube';
-      } else if (primaryMedia.type === 'image') {
-        mediaVariant = 'single-image';
-      } else if (primaryMedia.type === 'document' || primaryMedia.type === 'pdf') {
-        mediaVariant = 'document';
-      } else if (article.media?.type) {
-        mediaVariant = `embed-${article.media.type}`;
-      } else {
-        mediaVariant = `other-${primaryMedia.type || 'unknown'}`;
-      }
-    } else if (article.media) {
-      // FALLBACK: Legacy twitter/linkedin types render as generic link
-      if (article.media.type === 'twitter' || article.media.type === 'linkedin') {
-        mediaVariant = 'link-fallback';
-      } else {
-        mediaVariant = `embed-${article.media.type}`;
-      }
-    } else if (hasLegacyImages) {
-      mediaVariant = hasMultipleImages ? `gallery (${gridImageUrls.length} images)` : 'single-image';
-    } else if (hasLegacyVideo) {
-      mediaVariant = 'video';
-    }
-  }
-  
-  // Determine if card has body text (content or excerpt)
-  const hasBodyText = Boolean(trimmedBody && trimmedBody.length > 0);
-  
-  // For Media-Only cards, overlay text is rendered inside media container
-  // For Hybrid cards, body text is rendered in the content area
-  const hasOverlayText = cardType === 'media-only' && hasBodyText;
-  
-  // 🔍 AUDIT LOGGING - Card Classification (Enhanced with all diagnostics)
-  const auditData = {
-    id: article.id.substring(0, 8) + '...', // Shortened for readability
-    detectedCardType: cardType,
-    hasMedia,
-    mediaVariant,
-    hasPrimaryMedia,
-    hasSupportingMedia,
-    hasLegacyMedia,
-    hasLegacyImages,
-    hasLegacyVideo,
-    primaryMediaType: primaryMedia?.type || article.media?.type || 'none',
-    mediaCount: gridImageUrls.length,
-    hasMultipleImages,
-    hasBodyText,
-    hasOverlayText,
-    contentLength: contentText.length,
-    estimatedLength,
-    actualLineCount,
-    trimmedBodyLineCount,
-    hasLongText,
-    isMultiImageWithLongText,
-    hasUserProvidedTitle,
-    hasMetadataTitle: !!article.media?.previewMetadata?.title?.trim(),
-    shouldShowTitle, // For display purposes (includes metadata titles)
-    classificationReason,
-    maxPreviewLines: MAX_PREVIEW_LINES,
-    contentPreview: contentText.substring(0, 80) + (contentText.length > 80 ? '...' : ''),
-  };
-
   // ────────────────────────────────────────
   // DATA (formatted/derived)
   // ────────────────────────────────────────

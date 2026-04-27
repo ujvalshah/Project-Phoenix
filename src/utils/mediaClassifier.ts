@@ -597,8 +597,9 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
     addImageUrl(article.media.previewMetadata.imageUrl, 'og-image');
   }
 
-  // PHASE 2B: Log duplicates detected for debugging
-  if (duplicatesDetected.length > 0) {
+  // PHASE 2B: Log duplicates detected for debugging (DEV only — this fires per
+  // card on every render and was previously running in production).
+  if (import.meta.env.DEV && duplicatesDetected.length > 0) {
     console.log('[getAllImageUrls] Duplicates filtered out:', {
       articleId: article.id,
       duplicatesCount: duplicatesDetected.length,

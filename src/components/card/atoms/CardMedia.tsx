@@ -129,27 +129,6 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
     return true;
   }, [primaryMedia, gridImageUrls.length]);
   
-  // 🔍 AUDIT LOGGING - CardMedia Rendering Mode (moved after shouldRenderMultiImageGrid definition)
-  useEffect(() => {
-    if (!hasMedia) return;
-    
-    let mediaVariant = 'unknown';
-    if (shouldRenderMultiImageGrid) {
-      mediaVariant = `multi-image-grid (${gridImageUrls.length} images)`;
-    } else if (primaryMedia) {
-      if (primaryMedia.type === 'youtube') {
-        mediaVariant = 'youtube-video';
-      } else if (primaryMedia.type === 'image') {
-        mediaVariant = 'single-image';
-      } else if (primaryMedia.type === 'document' || primaryMedia.type === 'pdf') {
-        mediaVariant = 'document';
-      } else {
-        mediaVariant = `other-${primaryMedia.type}`;
-      }
-    }
-    
-  }, [article.id, hasMedia, primaryMedia, thumbnailUrl, shouldRenderMultiImageGrid, gridImageUrls.length, className]);
-
   // PHASE 1: Consistent fixed aspect ratio across all cards (16:9 for uniformity)
   const { aspectRatio, backgroundClass } = useMemo(() => {
     if (!primaryMedia) return { aspectRatio: '16/9', backgroundClass: 'bg-slate-100 dark:bg-slate-800' };

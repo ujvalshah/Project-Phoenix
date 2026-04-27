@@ -32,6 +32,15 @@
     <link rel="stylesheet" href="/index.css">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#0f172a">
+
+    <!-- Network hints: warm DNS+TLS for the API and image origins so the first
+         feed request and the first thumbnail per session don't pay the full
+         handshake serially. -->
+    <link rel="preconnect" href="https://nuggets-zhih.onrender.com" crossorigin>
+    <link rel="preconnect" href="https://img.youtube.com" crossorigin>
+    <link rel="preconnect" href="https://i.ytimg.com" crossorigin>
+    <link rel="dns-prefetch" href="https://www.youtube.com">
+    <link rel="dns-prefetch" href="https://plausible.io">
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
