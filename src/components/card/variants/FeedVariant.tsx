@@ -39,14 +39,13 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
     [data.showDisclaimer, data.disclaimerText, disclaimerConfig]
   );
 
-  // Dev-only integrity check (see GridVariant for context).
+  // Warn if cardType is media-only but has long text
   React.useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    if (data.cardType !== 'media-only') return;
     const textLength = (data.content || data.excerpt || '').length;
-    if (textLength > 200) {
-      console.warn('[CARD-AUDIT] media-only card has long text', {
+    if (data.cardType === 'media-only' && textLength > 200) {
+      console.warn('[CARD-AUDIT] ⚠️ MEDIA-ONLY CARD WITH LONG TEXT!', {
         id: data.id.substring(0, 8) + '...',
+        cardType: data.cardType,
         contentLength: textLength,
       });
     }

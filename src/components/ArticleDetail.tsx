@@ -202,13 +202,8 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
     return null;
   }, [article]);
 
-  // Classify media into primary and supporting (safe with null checks).
-  // Memoized on the article reference — list pages preserve identity across
-  // pagination, so this only re-runs when the underlying article changes.
-  const { primaryMedia, supportingMedia } = useMemo(
-    () => classifyArticleMedia(article),
-    [article],
-  );
+  // Classify media into primary and supporting (safe with null checks)
+  const { primaryMedia, supportingMedia } = classifyArticleMedia(article);
   const drawerMediaItems = useMemo(() => {
     const items: Array<{
       type: string;
