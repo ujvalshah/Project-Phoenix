@@ -3,7 +3,7 @@ import { Article } from '@/types';
 import { MasonryAtom } from './masonry/MasonryAtom';
 import { useMasonry } from '@/hooks/useMasonry';
 import { Loader2 } from 'lucide-react';
-import { getMasonryVisibleMedia } from '@/utils/masonryMediaHelper';
+import { collectMasonryMediaItems, type MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { CardSkeleton } from './card/CardSkeleton';
 import { CardError } from './card/CardError';
 
@@ -13,7 +13,11 @@ import { CardError } from './card/CardError';
  */
 interface MasonryEntry {
   article: Article;
-  mediaItemId?: string; // If specified, render only this media item; otherwise render all visible items (backward compatibility)
+  mediaItemId: string;
+  /** This tile’s media item (avoids per-tile media collection in MasonryAtom/MediaBlock). */
+  tileMediaItem: MasonryMediaItem;
+  /** Full media list for this article (lightbox carousel); one shared array per article across its tiles. */
+  allMasonryItemsForArticle: MasonryMediaItem[];
 }
 
 interface MasonryGridProps {
@@ -142,20 +146,20 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
     const entries: MasonryEntry[] = [];
 
     for (const article of articles) {
-      const visibleMediaItems = getMasonryVisibleMedia(article);
+      // Single collect per article (getMasonryVisibleMedia would repeat this work per tile).
+      const allMasonryItems = collectMasonryMediaItems(article);
+      const visibleMediaItems = allMasonryItems.filter((item) => item.showInMasonry === true);
 
-      // Skip articles with no visible media items
-      // Masonry view is exclusively for media content
       if (visibleMediaItems.length === 0) {
         continue;
       }
 
-      // Create one entry per selected media item
-      // Each entry represents one tile in the masonry grid
       for (const mediaItem of visibleMediaItems) {
         entries.push({
           article,
           mediaItemId: mediaItem.id,
+          tileMediaItem: mediaItem,
+          allMasonryItemsForArticle: allMasonryItems,
         });
       }
     }
@@ -228,7 +232,7 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
             {columnEntries.map((entry, entryIdx) => {
               // Ensure unique React keys even if mediaItemId is duplicate
               // Use entryIdx in addition to mediaItemId to guarantee uniqueness
-              const uniqueKey = `${entry.article.id}-${entry.mediaItemId || 'all'}-${entryIdx}-${columnEntries.length}`;
+              const uniqueKey = `${entry.article.id}-${entry.mediaItemId}-${entryIdx}-${columnEntries.length}`;
 
               // Calculate global index for stagger (across all columns)
               // Formula: column index + (row index * number of columns)
@@ -250,6 +254,8 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
                   <MasonryAtom
                     article={entry.article}
                     mediaItemId={entry.mediaItemId}
+                    tileMediaItem={entry.tileMediaItem}
+                    prefetchedAllMasonryItems={entry.allMasonryItemsForArticle}
                     onArticleClick={onArticleClick}
                     onCategoryClick={onCategoryClick}
                     currentUserId={currentUserId}

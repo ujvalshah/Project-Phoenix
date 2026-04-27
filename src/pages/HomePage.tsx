@@ -712,13 +712,37 @@ export const HomePage: React.FC<HomePageProps> = ({
     touchStartRef.current = 0;
   };
 
-  const toggleTag = (tag: string) => {
-    setSelectedCategories(
-      selectedCategories.includes(tag)
-        ? selectedCategories.filter(c => c !== tag)
-        : [...selectedCategories, tag]
+  const toggleTag = useCallback((tag: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(tag) ? prev.filter((c) => c !== tag) : [...prev, tag],
     );
-  };
+  }, [setSelectedCategories]);
+
+  const handleArticleGridClick = useCallback(
+    (article: Article) => {
+      if (isCommittedSearch) {
+        const rank = articles.findIndex((a) => a.id === article.id) + 1;
+        recordSearchEvent({
+          name: 'search_result_clicked',
+          payload: {
+            query: committedQuery,
+            resultId: article.id,
+            rank: rank > 0 ? rank : undefined,
+            sourceType: article.source_type || null,
+          },
+        });
+      }
+      setSelectedArticle(article);
+    },
+    [isCommittedSearch, committedQuery, articles],
+  );
+
+  const handleArticleTagClick = useCallback(
+    (t: string) => {
+      setSelectedTag(t);
+    },
+    [setSelectedTag],
+  );
 
   const handleClearToolbar = useCallback(() => {
     if (toggleFormatTag) {
@@ -784,23 +808,9 @@ export const HomePage: React.FC<HomePageProps> = ({
           isLoading={isLoadingArticles}
           isFeedRefetching={isFeedRefetching}
           searchHighlightQuery={isCommittedSearch ? committedQuery : undefined}
-          onArticleClick={(article) => {
-            if (isCommittedSearch) {
-              const rank = articles.findIndex((a) => a.id === article.id) + 1;
-              recordSearchEvent({
-                name: 'search_result_clicked',
-                payload: {
-                  query: committedQuery,
-                  resultId: article.id,
-                  rank: rank > 0 ? rank : undefined,
-                  sourceType: article.source_type || null,
-                },
-              });
-            }
-            setSelectedArticle(article);
-          }}
-          onTagClick={(t) => setSelectedTag(t)}
-          onCategoryClick={(c) => toggleTag(c)}
+          onArticleClick={handleArticleGridClick}
+          onTagClick={handleArticleTagClick}
+          onCategoryClick={toggleTag}
           currentUserId={currentUserId}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}

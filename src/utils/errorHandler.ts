@@ -182,6 +182,24 @@ export function sanitizeArticle(article: any): any {
 }
 
 /**
+ * Single normalization path for feed cards: shallow clone + defaults via {@link sanitizeArticle},
+ * then guarantee author fields match {@link hasValidAuthor} expectations.
+ * Call once per article before `NewsCard` when using `skipArticlePrepare` in `useNewsCard`.
+ */
+export function prepareArticleForNewsCard(article: unknown): any {
+  const s = sanitizeArticle(article);
+  if (!s) return null;
+  if (!hasValidAuthor(s)) {
+    s.author = {
+      id: s.author?.id || '',
+      name: s.author?.name || 'Unknown',
+      avatar_url: s.author?.avatar_url,
+    };
+  }
+  return s;
+}
+
+/**
  * Safe error logging (prevents console spam in production)
  */
 export function logError(context: string, error: any, details?: Record<string, any>) {

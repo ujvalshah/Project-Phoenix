@@ -64,6 +64,11 @@ const MasonryNonYouTubeTitleScrim: React.FC<{ text: string; titleId: string }> =
 interface MediaBlockProps {
   article: Article;
   mediaItemId?: string; // If specified, render only this media item (for individual tile rendering)
+  /**
+   * When provided (MasonryGrid path), skips expensive collectMasonryMediaItems/getMasonryVisibleMedia
+   * per tile — same array is shared for all tiles of an article.
+   */
+  prefetchedAllMasonryItems?: MasonryMediaItem[];
   onCategoryClick?: (category: string) => void;
   onArticleClick?: (article: Article) => void; // For opening Article Detail drawer
 }
@@ -105,44 +110,44 @@ interface MediaBlockProps {
 export const MediaBlock: React.FC<MediaBlockProps> = ({
   article,
   mediaItemId,
+  prefetchedAllMasonryItems,
   onCategoryClick,
   onArticleClick,
 }) => {
-  // Get media items that should be visible in Masonry layout (for rendering tiles)
-  const visibleMediaItems = getMasonryVisibleMedia(article);
-  
-  // If no media should be shown, return null
-  if (visibleMediaItems.length === 0) return null;
+  const allMediaItems = useMemo(
+    () => prefetchedAllMasonryItems ?? collectMasonryMediaItems(article),
+    [article, prefetchedAllMasonryItems],
+  );
 
-  // If mediaItemId is specified, render only that specific media item (for individual tile rendering)
-  // Otherwise, render all visible items (backward compatibility - shouldn't happen in new code)
-  const itemsToRender = mediaItemId
-    ? visibleMediaItems.filter(item => item.id === mediaItemId)
-    : visibleMediaItems;
-  
-  // If the specified mediaItemId doesn't exist, return null
-  if (itemsToRender.length === 0) return null;
+  const visibleMediaItems = useMemo(
+    () =>
+      prefetchedAllMasonryItems
+        ? prefetchedAllMasonryItems.filter((item) => item.showInMasonry === true)
+        : getMasonryVisibleMedia(article),
+    [article, prefetchedAllMasonryItems],
+  );
 
-  // State for image carousel (lightbox)
+  const itemsToRender = useMemo(() => {
+    if (visibleMediaItems.length === 0) return [];
+    return mediaItemId
+      ? visibleMediaItems.filter((item) => item.id === mediaItemId)
+      : visibleMediaItems;
+  }, [visibleMediaItems, mediaItemId]);
+
   const [showLightbox, setShowLightbox] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [lightboxImages, setLightboxImages] = useState<string[]>([]);
 
-  // Collect ALL media items from the nugget (not just visible ones)
-  // This ensures the carousel includes all images, even if they're not marked for masonry display
-  const allMediaItems = collectMasonryMediaItems(article);
-  
-  // Collect ALL image URLs from the complete media list (for carousel)
-  // The carousel shows all images from the nugget, not just the visible masonry tiles
   const allImageUrls = useMemo(() => {
-    const items = collectMasonryMediaItems(article);
-    return items.filter((item) => item.type === 'image').map((item) => item.url);
-  }, [article]);
+    return allMediaItems.filter((item) => item.type === 'image').map((item) => item.url);
+  }, [allMediaItems]);
 
   const lightboxSourceLinks = useMemo(
     () => buildLightboxSourceLinksForImageUrls(article, allImageUrls),
-    [article, allImageUrls]
+    [article, allImageUrls],
   );
+
+  if (itemsToRender.length === 0) return null;
 
   /**
    * Handle click on a media tile

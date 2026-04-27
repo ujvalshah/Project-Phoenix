@@ -1,13 +1,15 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useSearchParams } from 'react-router-dom';
 import { Article } from '@/types';
+import { chunkArticlesForVirtualRows } from '@/utils/chunkArticlesForVirtualRows';
 import { NewsCard } from './NewsCard';
 import { MasonryGrid } from './MasonryGrid';
 import { EmptyState } from './UI/EmptyState';
 import { SearchX, Loader2 } from 'lucide-react';
 import { useRowExpansion } from '@/hooks/useRowExpansion';
 import { ErrorBoundary } from './UI/ErrorBoundary';
-import { sanitizeArticle } from '@/utils/errorHandler';
+import { prepareArticleForNewsCard } from '@/utils/errorHandler';
 import { CardSkeleton } from './card/CardSkeleton';
 import { CardError } from './card/CardError';
 import { ArticleDrawer } from './ArticleDrawer';
@@ -124,7 +126,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   searchHighlightQuery,
 }) => {
   const isFeedRefetching = isFeedRefetchingProp ?? isFilterRefetchingLegacy;
-  const { expandedId, toggleExpansion, registerCard } = useRowExpansion();
+  const { registerCard } = useRowExpansion();
   // Default to animated-visible when we already have data at mount so cards
   // never get stuck at opacity-0 if the loading transition is missed (e.g.
   // cached React Query hydration, back/forward nav, tab restore). The
@@ -146,6 +148,41 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   // Detect if we're in desktop multi-column grid mode
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const isMultiColumnGrid = viewMode === 'grid' && isDesktop;
+
+  /** One normalization pass per `articles` update; stable item refs avoid redundant work in cards when the grid rerenders. */
+  const displayArticles = useMemo(() => {
+    const out: Article[] = [];
+    for (const a of articles) {
+      const p = prepareArticleForNewsCard(a);
+      if (!p) {
+        console.warn('[ArticleGrid] Skipping invalid article:', a);
+        continue;
+      }
+      out.push(p);
+    }
+    return out;
+  }, [articles]);
+
+  /** Feed-only: one article per virtual row. Grid uses normal-flow CSS grid (no window virtualizer). */
+  const virtualRows = useMemo(
+    () => (viewMode === 'feed' ? chunkArticlesForVirtualRows(displayArticles, 1) : []),
+    [viewMode, displayArticles],
+  );
+
+  const rowVirtualizer = useWindowVirtualizer({
+    count: viewMode === 'feed' ? virtualRows.length : 0,
+    estimateSize: () => 520,
+    overscan: 6,
+    measureElement:
+      typeof document !== 'undefined'
+        ? (el) => el?.getBoundingClientRect().height ?? 520
+        : undefined,
+  });
+
+  useEffect(() => {
+    if (viewMode !== 'feed' || virtualRows.length === 0) return;
+    rowVirtualizer.measure();
+  }, [rowVirtualizer, viewMode, virtualRows.length]);
   
   // Initialize drawer state from URL on mount or when URL changes
   // CRITICAL: Only sync URL → state here, not state → URL (prevents bounce)
@@ -165,7 +202,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     }
     
     if (expandedIdFromUrl) {
-      const article = articles.find(a => a.id === expandedIdFromUrl);
+      const article = displayArticles.find((a) => a.id === expandedIdFromUrl);
       if (article) {
         // Only update if state doesn't match URL (prevents unnecessary updates)
         if (expandedArticleId !== expandedIdFromUrl || !drawerOpen) {
@@ -196,7 +233,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         setExpandedArticleId(null);
       }
     }
-  }, [expandedIdFromUrl, articles, isMultiColumnGrid, setSearchParams]); // Removed drawerOpen from deps
+  }, [expandedIdFromUrl, displayArticles, isMultiColumnGrid, setSearchParams]); // Removed drawerOpen from deps
   
   // Handle browser back/forward navigation
   useEffect(() => {
@@ -208,7 +245,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
       const expandedId = params.get('expanded');
       
       if (expandedId) {
-        const article = articles.find(a => a.id === expandedId);
+        const article = displayArticles.find((a) => a.id === expandedId);
         if (article) {
           setExpandedArticleId(expandedId);
           setDrawerOpen(true);
@@ -226,22 +263,19 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [articles, isMultiColumnGrid]);
+  }, [displayArticles, isMultiColumnGrid]);
   
-  // Find expanded article and sanitize it to ensure author data exists
-  const expandedArticle = expandedArticleId 
-    ? (() => {
-        const found = articles.find(a => a.id === expandedArticleId);
-        return found ? sanitizeArticle(found) : null;
-      })()
+  // Find expanded article (already normalized in displayArticles)
+  const expandedArticle = expandedArticleId
+    ? displayArticles.find((a) => a.id === expandedArticleId) ?? null
     : null;
   
   // Find current article index for navigation
   const currentIndex = expandedArticleId 
-    ? articles.findIndex(a => a.id === expandedArticleId)
+    ? displayArticles.findIndex((a) => a.id === expandedArticleId)
     : -1;
   const canNavigatePrev = currentIndex > 0;
-  const canNavigateNext = currentIndex >= 0 && currentIndex < articles.length - 1;
+  const canNavigateNext = currentIndex >= 0 && currentIndex < displayArticles.length - 1;
 
   // Trigger animations when loading completes OR when component mounts with data
   useEffect(() => {
@@ -309,7 +343,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   }, [isMultiColumnGrid, onArticleClick, setSearchParams]);
   
   // YouTube timestamp click handler (for drawer)
-  const handleYouTubeTimestampClick = useCallback((videoId: string, timestamp: number, originalUrl: string) => {
+  const handleYouTubeTimestampClick = useCallback((_videoId: string, _timestamp: number, _originalUrl: string) => {
     // This will be handled by ArticleDetail component in the drawer
     // The handler is passed through to maintain consistency
   }, []);
@@ -345,8 +379,8 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     if (currentIndex === -1) return;
     
     const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex >= 0 && newIndex < articles.length) {
-      const newArticle = articles[newIndex];
+    if (newIndex >= 0 && newIndex < displayArticles.length) {
+      const newArticle = displayArticles[newIndex];
       
       // Set flag to prevent useEffect from double-updating
       isUpdatingFromUrlRef.current = true;
@@ -371,7 +405,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }
-  }, [currentIndex, articles, setSearchParams]);
+  }, [currentIndex, displayArticles, setSearchParams]);
 
   // Error State: Show error UI when query fails
   if (error && !isLoading) {
@@ -457,10 +491,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     );
   }
 
-  // Render feed or grid layout
-  // RESPONSIVE CARD HEIGHTS:
-  // - Mobile (1 col): auto-rows-auto - cards size to their content naturally
-  // - Tablet+ (2+ cols): auto-rows-fr - equal height rows for visual consistency
+  // Render feed (window-virtualized) or grid (normal-flow CSS grid — variable row heights are reliable).
   return (
     <div className="relative">
       {/* Feed refetch overlay (filters, search commit, stream, manual refresh, …) */}
@@ -476,71 +507,133 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
       className={`
         transition-opacity duration-300 motion-reduce:transition-none
         ${isFeedRefetching ? 'opacity-40 pointer-events-none' : 'opacity-100'}
-        ${viewMode === 'feed'
-          ? "max-w-2xl mx-auto flex flex-col gap-8"
-          : "grid grid-cols-1 auto-rows-auto md:grid-cols-2 md:auto-rows-fr lg:grid-cols-3 xl:grid-cols-4 gap-6 mx-auto w-full"
-        }
+        ${viewMode === 'feed' ? 'max-w-2xl mx-auto w-full' : 'mx-auto w-full'}
       `}
     >
-      {articles.map((article, index) => {
-        // Sanitize article data before rendering
-        const sanitized = sanitizeArticle(article);
-        if (!sanitized) {
-          console.warn('[ArticleGrid] Skipping invalid article:', article);
-          return null;
-        }
+      {viewMode === 'feed' ? (
+      <div
+        className="w-full"
+        style={{
+          height: rowVirtualizer.getTotalSize(),
+          position: 'relative',
+        }}
+      >
+        {rowVirtualizer.getVirtualItems().map((vRow) => {
+          const rowArticles = virtualRows[vRow.index];
+          if (!rowArticles?.length) return null;
 
-        // Calculate staggered delay (50ms per card, max 15 cards = 750ms)
-        const delay = Math.min(index * 50, 750);
-
-        return (
-          <ErrorBoundary
-            key={sanitized.id}
-            fallback={
-              <CardError
-                error={new Error('Failed to render card')}
-                variant={viewMode === 'feed' ? 'feed' : 'grid'}
-              />
-            }
-          >
+          return (
             <div
-              className={`
-                h-full
-                ${shouldAnimate ? 'animate-fade-in-up' : ''}
-                motion-reduce:animate-none motion-reduce:opacity-100
-              `}
+              key={vRow.key}
+              data-virtual-row={vRow.index}
+              ref={rowVirtualizer.measureElement}
               style={{
-                animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${vRow.start}px)`,
+                paddingBottom: '2rem',
               }}
             >
-              <NewsCard
-                ref={(el) => registerCard(sanitized.id, el)}
-                article={sanitized}
-                viewMode={viewMode}
-                onCategoryClick={onCategoryClick}
-                onClick={handleCardClick}
-                currentUserId={currentUserId}
-                onTagClick={onTagClick}
-                selectionMode={selectionMode}
-                isSelected={selectedIds.includes(sanitized.id)}
-                onSelect={onSelect ? () => onSelect(sanitized.id) : undefined}
-                // Disable inline expansion for desktop multi-column grid
-                disableInlineExpansion={isMultiColumnGrid}
-                searchHighlightQuery={searchHighlightQuery}
-              />
+              {rowArticles.map((article) => {
+                const index = vRow.index;
+                const delay = Math.min(index * 50, 750);
+                return (
+                  <ErrorBoundary
+                    key={article.id}
+                    fallback={
+                      <CardError
+                        error={new Error('Failed to render card')}
+                        variant="feed"
+                      />
+                    }
+                  >
+                    <div
+                      className={`
+                        h-full
+                        ${shouldAnimate ? 'animate-fade-in-up' : ''}
+                        motion-reduce:animate-none motion-reduce:opacity-100
+                      `}
+                      style={{
+                        animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
+                      }}
+                    >
+                      <NewsCard
+                        ref={(el) => registerCard(article.id, el)}
+                        article={article}
+                        skipArticlePrepare
+                        viewMode="feed"
+                        onCategoryClick={onCategoryClick}
+                        onClick={handleCardClick}
+                        currentUserId={currentUserId}
+                        onTagClick={onTagClick}
+                        selectionMode={selectionMode}
+                        isSelected={selectedIds.includes(article.id)}
+                        onSelect={onSelect ? () => onSelect(article.id) : undefined}
+                        disableInlineExpansion={isMultiColumnGrid}
+                        searchHighlightQuery={searchHighlightQuery}
+                      />
+                    </div>
+                  </ErrorBoundary>
+                );
+              })}
             </div>
-          </ErrorBoundary>
-        );
-      })}
-
-      {/* Infinite Scroll Trigger - Only show for grid views (not masonry, which has its own) */}
-      {viewMode !== 'masonry' && (
-        <InfiniteScrollTrigger
-          onIntersect={handleLoadMore}
-          isLoading={isFetchingNextPage}
-          hasMore={hasNextPage}
-        />
+          );
+        })}
+      </div>
+      ) : (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full">
+        {displayArticles.map((article, index) => {
+          const delay = Math.min(index * 50, 750);
+          return (
+            <ErrorBoundary
+              key={article.id}
+              fallback={
+                <CardError
+                  error={new Error('Failed to render card')}
+                  variant="grid"
+                />
+              }
+            >
+              <div
+                className={`
+                  h-full
+                  ${shouldAnimate ? 'animate-fade-in-up' : ''}
+                  motion-reduce:animate-none motion-reduce:opacity-100
+                `}
+                style={{
+                  animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
+                }}
+              >
+                <NewsCard
+                  ref={(el) => registerCard(article.id, el)}
+                  article={article}
+                  skipArticlePrepare
+                  viewMode="grid"
+                  onCategoryClick={onCategoryClick}
+                  onClick={handleCardClick}
+                  currentUserId={currentUserId}
+                  onTagClick={onTagClick}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIds.includes(article.id)}
+                  onSelect={onSelect ? () => onSelect(article.id) : undefined}
+                  disableInlineExpansion={isMultiColumnGrid}
+                  searchHighlightQuery={searchHighlightQuery}
+                />
+              </div>
+            </ErrorBoundary>
+          );
+        })}
+      </div>
       )}
+
+      {/* Infinite scroll (masonry uses its own trigger inside MasonryGrid) */}
+      <InfiniteScrollTrigger
+        onIntersect={handleLoadMore}
+        isLoading={isFetchingNextPage}
+        hasMore={hasNextPage}
+      />
       
       {/* Article Drawer - Only for desktop multi-column grid */}
       {isMultiColumnGrid && expandedArticle && (

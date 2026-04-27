@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Article } from '@/types';
 import { useToast } from './useToast';
 import { useRequireAuth } from './useRequireAuth';
 import { storageService } from '@/services/storageService';
 import { queryClient } from '@/queryClient';
-import { sanitizeArticle, hasValidAuthor, logError } from '@/utils/errorHandler';
+import { hasValidAuthor, logError, prepareArticleForNewsCard } from '@/utils/errorHandler';
 import { getAllImageUrls, getGridImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 import { useVideoPlayerActions } from '@/context/VideoPlayerContext';
@@ -77,6 +77,8 @@ export interface NewsCardLogic {
 
 interface UseNewsCardProps {
   article: Article;
+  /** When true, `article` must already be from {@link prepareArticleForNewsCard} (e.g. ArticleGrid list). */
+  skipArticlePrepare?: boolean;
   currentUserId?: string;
   onCategoryClick?: (category: string) => void;
   onTagClick?: (tag: string) => void;
@@ -85,7 +87,8 @@ interface UseNewsCardProps {
 }
 
 export const useNewsCard = ({
-  article,
+  article: articleInput,
+  skipArticlePrepare = false,
   currentUserId,
   onCategoryClick,
   onTagClick,
@@ -112,7 +115,7 @@ export const useNewsCard = ({
   const [linkPreviewUrl, setLinkPreviewUrl] = useState<string | null>(null);
   
   const { playVideo } = useVideoPlayerActions();
-  const cardElementIdRef = useRef<string>(`video-card-${article.id}`);
+  const cardElementIdRef = useRef<string>(`video-card-${articleInput.id}`);
   const [collectionAnchor, setCollectionAnchor] = useState<DOMRect | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -137,28 +140,27 @@ export const useNewsCard = ({
   // ────────────────────────────────────────
   // COMPUTED VALUES / DERIVED DATA
   // ────────────────────────────────────────
-  // Sanitize article data to ensure all required fields exist
-  const sanitizedArticle = sanitizeArticle(article);
-  if (!sanitizedArticle) {
-    logError('useNewsCard', new Error('Invalid article data'), { article });
-    throw new Error('Invalid article: article is null or undefined');
-  }
-  
-  // Ensure author exists
-  if (!hasValidAuthor(sanitizedArticle)) {
-    logError('useNewsCard', new Error('Article missing author data'), { article: sanitizedArticle });
-    // Create fallback author
-    sanitizedArticle.author = {
-      id: sanitizedArticle.author?.id || '',
-      name: sanitizedArticle.author?.name || 'Unknown',
-      avatar_url: sanitizedArticle.author?.avatar_url,
-    };
-  }
-  
-  // Use sanitized article for all operations
-  article = sanitizedArticle;
+  const article = useMemo((): Article => {
+    if (
+      skipArticlePrepare &&
+      articleInput &&
+      typeof articleInput.id === 'string' &&
+      hasValidAuthor(articleInput)
+    ) {
+      return articleInput;
+    }
+    const p = prepareArticleForNewsCard(articleInput);
+    if (!p) {
+      logError('useNewsCard', new Error('Invalid article data'), { article: articleInput });
+      throw new Error('Invalid article: article is null or undefined');
+    }
+    return p as Article;
+  }, [articleInput, skipArticlePrepare]);
 
   const isOwner = currentUserId === article.author.id;
+
+  const mediaClassification = useMemo(() => classifyArticleMedia(article), [article]);
+  const primaryMedia = mediaClassification.primaryMedia;
   
   // ═══════════════════════════════════════════════════════════════════════
   // MEDIA DETECTION: Comprehensive check for all media types
@@ -389,7 +391,6 @@ export const useNewsCard = ({
   // ═══════════════════════════════════════════════════════════════════════
   
   // Detect media variant (single image, gallery, embed, video, screenshot, etc.)
-  const { primaryMedia } = classifyArticleMedia(article);
   let mediaVariant = 'none';
   if (hasMedia) {
     if (hasMultipleImages && gridImageUrls.length >= 2) {
@@ -522,7 +523,6 @@ export const useNewsCard = ({
     // YOUTUBE VIDEOS: Expand inline in card (not modal)
     // This maintains context and provides better UX
     // Check multiple sources: primaryMedia, article.media, and article.video
-    const { primaryMedia } = classifyArticleMedia(article);
     const isYouTube = 
       primaryMedia?.type === 'youtube' ||
       article.media?.type === 'youtube' ||
@@ -641,7 +641,6 @@ export const useNewsCard = ({
     }
     
     // Get the YouTube video URL from the article
-    const { primaryMedia } = classifyArticleMedia(article);
     const youtubeUrl = primaryMedia?.url || article.media?.url || article.video;
     
     if (import.meta.env.DEV) {
@@ -680,7 +679,6 @@ export const useNewsCard = ({
       if (import.meta.env.DEV) {
         console.log('[handleYouTubeTimestampClick] Opening mini player with timestamp:', timestamp);
       }
-      const { primaryMedia } = classifyArticleMedia(article);
       const videoTitle = primaryMedia?.previewMetadata?.title || article.title || '';
       playVideo({
         videoUrl: youtubeUrl,

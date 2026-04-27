@@ -12,13 +12,21 @@ import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
-import { getMasonryVisibleMedia, resolveMasonrySourceLink } from '@/utils/masonryMediaHelper';
+import {
+  getMasonryVisibleMedia,
+  resolveMasonrySourceLink,
+  type MasonryMediaItem,
+} from '@/utils/masonryMediaHelper';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { articleKeys, invalidateArticleListCaches } from '@/services/queryKeys/articleKeys';
 
 interface MasonryAtomProps {
   article: Article;
   mediaItemId?: string; // If specified, render only this media item
+  /** From MasonryGrid — avoids getMasonryVisibleMedia per tile. */
+  tileMediaItem?: MasonryMediaItem;
+  /** From MasonryGrid — passed to MediaBlock for lightbox without re-collecting. */
+  prefetchedAllMasonryItems?: MasonryMediaItem[];
   onArticleClick: (article: Article) => void;
   onCategoryClick?: (category: string) => void;
   currentUserId?: string;
@@ -36,6 +44,8 @@ interface MasonryAtomProps {
 export const MasonryAtom: React.FC<MasonryAtomProps> = ({
   article,
   mediaItemId,
+  tileMediaItem,
+  prefetchedAllMasonryItems,
   onArticleClick,
   onCategoryClick,
   currentUserId,
@@ -68,20 +78,22 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
     currentUserId,
   });
 
-  // Determine if we should render media or text
-  // If mediaItemId is undefined, it means this is a text-only tile (no visible media items)
-  // If mediaItemId is defined, render that specific media item
-  const visibleMediaItems = getMasonryVisibleMedia(article);
-  const shouldRenderMedia = mediaItemId !== undefined && visibleMediaItems.length > 0;
-  
+  const shouldRenderMedia =
+    mediaItemId !== undefined &&
+    (tileMediaItem != null ||
+      getMasonryVisibleMedia(article).some((i) => i.id === mediaItemId));
+
   const isOwner = currentUserId && article.author ? currentUserId === article.author.id : false;
   const isAdmin = currentUser?.role === 'admin';
 
-  const currentTileItem = mediaItemId
-    ? visibleMediaItems.find((i) => i.id === mediaItemId)
-    : undefined;
-
-  const sourceLink = resolveMasonrySourceLink(article, currentTileItem);
+  const sourceLink = tileMediaItem
+    ? resolveMasonrySourceLink(article, tileMediaItem)
+    : resolveMasonrySourceLink(
+        article,
+        mediaItemId
+          ? getMasonryVisibleMedia(article).find((i) => i.id === mediaItemId)
+          : undefined,
+      );
 
   const handleReport = async (payload: ReportPayload) => {
     try {
@@ -179,6 +191,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
             <MediaBlock
               article={article}
               mediaItemId={mediaItemId}
+              prefetchedAllMasonryItems={prefetchedAllMasonryItems}
               onCategoryClick={onCategoryClick}
               onArticleClick={onArticleClick}
             />
@@ -229,20 +242,24 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
         </div>
       </div>
 
-      {/* Modals */}
-      <CollectionPopover
-        isOpen={showCollectionPopover}
-        onClose={() => setShowCollectionPopover(false)}
-        articleId={article.id}
-        mode="private"
-        anchorRect={collectionAnchor}
-      />
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        onSubmit={handleReport}
-        articleId={article.id}
-      />
+      {/* Mount only when open — avoids N× popover/modal subtrees on long masonry feeds */}
+      {showCollectionPopover && (
+        <CollectionPopover
+          isOpen
+          onClose={() => setShowCollectionPopover(false)}
+          articleId={article.id}
+          mode="private"
+          anchorRect={collectionAnchor}
+        />
+      )}
+      {showReportModal && (
+        <ReportModal
+          isOpen
+          onClose={() => setShowReportModal(false)}
+          onSubmit={handleReport}
+          articleId={article.id}
+        />
+      )}
       {showEditModal && (
         <CreateNuggetModalLoadable
           isOpen

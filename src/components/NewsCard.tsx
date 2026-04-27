@@ -19,6 +19,8 @@ import { getAllImageUrls } from '@/utils/mediaClassifier';
 
 interface NewsCardProps {
   article: Article;
+  /** Set when `article` was produced by `prepareArticleForNewsCard` (feed grid path). */
+  skipArticlePrepare?: boolean;
   viewMode: 'grid' | 'feed' | 'masonry';
   onTagClick?: (tag: string) => void;
   onCategoryClick: (category: string) => void;
@@ -41,6 +43,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
   (
     {
       article,
+      skipArticlePrepare = false,
       viewMode,
       onCategoryClick,
       onClick,
@@ -64,6 +67,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
     // Call the logic hook
     const hookResult = useNewsCard({
       article,
+      skipArticlePrepare,
       currentUserId,
       onCategoryClick,
       onTagClick,
