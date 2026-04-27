@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getOverlayHost } from '@/utils/overlayHosts';
-import { FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock } from 'lucide-react';
+import { FolderPlus, MoreVertical, Flag, Trash2, Edit2, Globe, Lock, Copy } from 'lucide-react';
 import { ShareMenu } from '@/components/shared/ShareMenu';
 import { BookmarkButton } from '@/components/bookmarks';
 import { twMerge } from 'tailwind-merge';
@@ -18,6 +18,7 @@ interface CardActionsProps {
   onAddToCollection?: (e: React.MouseEvent) => void;
   onReport?: () => void;
   onEdit?: () => void;
+  onDuplicate?: () => void;
   onDelete?: () => void;
   onToggleVisibility?: () => void;
   showMenu: boolean;
@@ -40,6 +41,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
   onAddToCollection,
   onReport,
   onEdit,
+  onDuplicate,
   onDelete,
   onToggleVisibility,
   showMenu,
@@ -122,6 +124,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
             visibility={visibility}
             onAddToCollection={onAddToCollection}
             onEdit={onEdit}
+            onDuplicate={onDuplicate}
             onToggleVisibility={onToggleVisibility}
             onReport={onReport}
             onDelete={onDelete}
@@ -149,6 +152,7 @@ interface MenuDropdownProps {
   visibility?: 'public' | 'private';
   onAddToCollection?: (e: React.MouseEvent) => void;
   onEdit?: () => void;
+  onDuplicate?: () => void;
   onToggleVisibility?: () => void;
   onReport?: () => void;
   onDelete?: () => void;
@@ -162,6 +166,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
   visibility,
   onAddToCollection,
   onEdit,
+  onDuplicate,
   onToggleVisibility,
   onReport,
   onDelete,
@@ -179,11 +184,12 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
       visibility,
       !!onAddToCollection,
       !!onEdit,
+      !!onDuplicate,
       !!onToggleVisibility,
       !!onReport,
       !!onDelete,
     ],
-    [isOwner, isAdmin, visibility, onAddToCollection, onEdit, onToggleVisibility, onReport, onDelete]
+    [isOwner, isAdmin, visibility, onAddToCollection, onEdit, onDuplicate, onToggleVisibility, onReport, onDelete]
   );
 
   useLayoutEffect(() => {
@@ -241,6 +247,15 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
         label: 'Edit',
         icon: <Edit2 size={12} aria-hidden="true" />,
         onClick: () => onEdit(),
+        visible: true,
+      });
+    }
+    if (onDuplicate) {
+      menuItems.push({
+        id: 'duplicate',
+        label: 'Duplicate',
+        icon: <Copy size={12} aria-hidden="true" />,
+        onClick: () => onDuplicate(),
         visible: true,
       });
     }

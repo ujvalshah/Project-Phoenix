@@ -12,10 +12,13 @@
  *   // Enable verbose logging
  * }
  * ```
+ * NUGGET_MODAL_* performance values come from @/config/nuggetPerformanceConfig (single env map).
  *
  * Note: USE_IMAGE_MANAGER feature flag was removed in Phase 9.
  * The useImageManager hook is now always used (legacy code removed).
  */
+
+import { NUGGET_PERFORMANCE } from '@/config/nuggetPerformanceConfig';
 
 export const FEATURE_FLAGS = {
   /**
@@ -63,6 +66,28 @@ export const FEATURE_FLAGS = {
    * Toggle via VITE_FEATURE_MARKET_PULSE environment variable
    */
   MARKET_PULSE: import.meta.env.VITE_FEATURE_MARKET_PULSE === 'true',
+
+  /**
+   * DUPLICATE_NUGGET_TITLE_SUFFIX: Auto-append "(Copy)" to duplicated nugget titles.
+   *
+   * Enabled by default for safer duplicate UX so copied content is clearly distinguishable.
+   * Set VITE_FEATURE_DUPLICATE_NUGGET_TITLE_SUFFIX=false to disable.
+   */
+  DUPLICATE_NUGGET_TITLE_SUFFIX:
+    import.meta.env.VITE_FEATURE_DUPLICATE_NUGGET_TITLE_SUFFIX !== 'false',
+
+  /**
+   * NUGGET_MODAL_CHUNK_PRELOAD: Preload the CreateNuggetModal entry chunk (and, when editor
+   * is lazy, the ContentEditor sub-chunk) on hover / pointerdown before the user opens create.
+   * @see NUGGET_PERFORMANCE in @/config/nuggetPerformanceConfig
+   */
+  NUGGET_MODAL_CHUNK_PRELOAD: NUGGET_PERFORMANCE.chunkPreload,
+
+  /**
+   * NUGGET_MODAL_EDITOR_LAZY: When true, ContentEditor loads in a separate async chunk.
+   * @see NUGGET_PERFORMANCE in @/config/nuggetPerformanceConfig
+   */
+  NUGGET_MODAL_EDITOR_LAZY: NUGGET_PERFORMANCE.editorLazySplit,
 } as const;
 
 /**

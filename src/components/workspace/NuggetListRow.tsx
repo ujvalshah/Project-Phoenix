@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, Globe, Lock, Pencil, Trash2 } from 'lucide-react';
+import { Copy, ExternalLink, Globe, Lock, Pencil, Trash2 } from 'lucide-react';
 import type { Article } from '@/types';
 import { getThumbnailUrl } from '@/utils/mediaClassifier';
 import { formatDate } from '@/utils/formatters';
@@ -14,6 +14,7 @@ interface NuggetListRowProps {
   compact?: boolean;
   canManage?: boolean;
   onEdit?: (article: Article) => void;
+  onDuplicate?: (article: Article) => void;
   onDelete?: (article: Article) => void;
 }
 
@@ -28,6 +29,7 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
   compact = false,
   canManage = false,
   onEdit,
+  onDuplicate,
   onDelete,
 }) => {
   const [showAllTags, setShowAllTags] = React.useState(false);
@@ -182,6 +184,19 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
               title="Edit"
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
+          {canManage && onDuplicate && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate(article);
+              }}
+              className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              title="Duplicate"
+            >
+              <Copy className="h-3.5 w-3.5" aria-hidden />
             </button>
           )}
           {canManage && onDelete && (

@@ -3,6 +3,7 @@ import { apiClient } from '@/services/apiClient';
 export interface ValuePropStripCopy {
   title: string;
   body: string;
+  enabled?: boolean;
 }
 
 export const onboardingCopyService = {
@@ -16,5 +17,9 @@ export const onboardingCopyService = {
 
   async getHomeMicroHeaderCopy(): Promise<ValuePropStripCopy> {
     return apiClient.get<ValuePropStripCopy>('/config/home-micro-header');
+  },
+
+  async getMarketPulseMicroHeaderCopy(): Promise<ValuePropStripCopy> {
+    return apiClient.get<ValuePropStripCopy>('/config/market-pulse-micro-header');
   }
 };

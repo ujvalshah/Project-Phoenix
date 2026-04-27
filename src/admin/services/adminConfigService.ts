@@ -1,8 +1,6 @@
 
 import { RolePermissions, ServiceDefinition, FeatureFlags, SignupConfig } from '../types/admin';
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 export const AVAILABLE_SERVICES: ServiceDefinition[] = [
   { id: 'batch_import', label: 'Batch Import', description: 'Import content via CSV/Excel.', category: 'data' },
   { id: 'data_export', label: 'Data Export', description: 'Download personal data.', category: 'data' },
@@ -43,34 +41,28 @@ class AdminConfigService {
 
   // --- RBAC ---
   async getRolePermissions(): Promise<RolePermissions> {
-    await delay(400);
     return JSON.parse(JSON.stringify(this.permissions));
   }
 
   async updateRolePermission(role: keyof RolePermissions, services: string[]): Promise<void> {
-    await delay(300);
     this.permissions[role] = services as any;
   }
 
   // --- FLAGS ---
   async getFeatureFlags(): Promise<FeatureFlags> {
-    await delay(200);
     return { ...this.featureFlags };
   }
 
   async updateFeatureFlag(key: keyof FeatureFlags, value: boolean): Promise<void> {
-    await delay(300);
     this.featureFlags[key] = value;
   }
 
   // --- SIGNUP CONFIG ---
   async getSignupConfig(): Promise<SignupConfig> {
-    await delay(200);
     return { ...this.signupConfig };
   }
 
   async updateSignupConfig(key: keyof SignupConfig, rule: Partial<{ show: boolean, required: boolean }>): Promise<void> {
-    await delay(300);
     this.signupConfig[key] = { ...this.signupConfig[key], ...rule };
   }
 }

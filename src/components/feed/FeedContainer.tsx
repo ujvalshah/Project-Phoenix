@@ -91,10 +91,7 @@ export const FeedContainer: React.FC<FeedContainerProps> = ({
   
   // Track container width for card height calculation
   const [containerWidth, setContainerWidth] = React.useState(375); // Default mobile width
-  
-  // Track container width for card height calculation
-  const [containerWidth, setContainerWidth] = React.useState(375); // Default mobile width
-  
+
   // Calculate card height based on container width
   const cardHeight = useMemo(() => {
     return estimateCardHeight(containerWidth);

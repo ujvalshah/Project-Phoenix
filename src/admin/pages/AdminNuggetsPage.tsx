@@ -5,14 +5,14 @@ import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
 import { AdminCollection, AdminNugget } from '../types/admin';
 import { adminNuggetsService } from '../services/adminNuggetsService';
-import { AlertTriangle, Trash2, EyeOff, Globe, Lock, Video, Image as ImageIcon, Link as LinkIcon, StickyNote, CheckCircle2, FileText, PlusCircle, Edit2, Layout, LayoutGrid, Rows3, Search } from 'lucide-react';
+import { AlertTriangle, Trash2, EyeOff, Globe, Lock, Video, Image as ImageIcon, Link as LinkIcon, StickyNote, CheckCircle2, FileText, PlusCircle, Edit2, Layout, LayoutGrid, Rows3, Search, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { AdminDrawer } from '../components/AdminDrawer';
 import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useSearchParams } from 'react-router-dom';
-import { CreateNuggetModal } from '@/components/CreateNuggetModal';
+import { CreateNuggetModalLoadable } from '@/components/CreateNuggetModalLoadable';
 import { storageService } from '@/services/storageService';
 import { Article } from '@/types';
 import { adminCollectionsService } from '../services/adminCollectionsService';
@@ -79,6 +79,7 @@ export const AdminNuggetsPage: React.FC = () => {
   const [itemToDelete, setItemToDelete] = useState<AdminNugget | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ nugget: AdminNugget; timeoutId: number } | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [duplicateMode, setDuplicateMode] = useState(false);
   const [articleToEdit, setArticleToEdit] = useState<Article | null>(null);
   const [isLoadingArticle, setIsLoadingArticle] = useState(false);
   const [articleLoadError, setArticleLoadError] = useState<string | null>(null);
@@ -260,7 +261,7 @@ export const AdminNuggetsPage: React.FC = () => {
   // Fetch full article data when entering edit mode
   useEffect(() => {
     const fetchArticleForEdit = async () => {
-      if (selectedNugget && editMode) {
+      if (selectedNugget && (editMode || duplicateMode)) {
         setIsLoadingArticle(true);
         setArticleLoadError(null);
         try {
@@ -293,7 +294,7 @@ export const AdminNuggetsPage: React.FC = () => {
     };
 
     fetchArticleForEdit();
-  }, [selectedNugget, editMode]);
+  }, [selectedNugget, editMode, duplicateMode]);
 
   const handleStatusChange = async (nugget: AdminNugget, newStatus: 'active' | 'hidden') => {
     try {
@@ -514,6 +515,7 @@ export const AdminNuggetsPage: React.FC = () => {
           <button 
             onClick={() => { 
               setSelectedNugget(n); 
+              setDuplicateMode(false);
               setEditMode(true); 
             }}
             className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 rounded-md text-[10px] font-bold transition-colors"
@@ -521,6 +523,19 @@ export const AdminNuggetsPage: React.FC = () => {
           >
             <Edit2 size={14} />
             <span className="hidden md:inline">Edit</span>
+          </button>
+          <button
+            onClick={() => {
+              setSelectedNugget(n);
+              setEditMode(false);
+              setDuplicateMode(true);
+              toast.info(`Duplicating "${n.title?.trim() || 'Untitled'}"`);
+            }}
+            className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 rounded-md text-[10px] font-bold transition-colors"
+            title="Duplicate Nugget"
+          >
+            <Copy size={14} />
+            <span className="hidden md:inline">Duplicate</span>
           </button>
           
           {can('admin.nuggets.hide') && (
@@ -875,7 +890,7 @@ export const AdminNuggetsPage: React.FC = () => {
           sortKey={sortKey}
           sortDirection={sortDirection}
           onSortChange={(k, d) => { setSortKey(k); setSortDirection(d); }}
-          onRowClick={(n) => { setEditMode(false); setSelectedNugget(n); }}
+          onRowClick={(n) => { setEditMode(false); setDuplicateMode(false); setSelectedNugget(n); }}
           selection={{
             enabled: true,
             selectedIds: selectedIds,
@@ -901,7 +916,7 @@ export const AdminNuggetsPage: React.FC = () => {
                   return (
                     <article
                       key={nugget.id}
-                      onClick={() => { setEditMode(false); setSelectedNugget(nugget); }}
+                      onClick={() => { setEditMode(false); setDuplicateMode(false); setSelectedNugget(nugget); }}
                       className={`rounded-xl border p-3 cursor-pointer transition-colors ${
                         isSelected
                           ? 'border-primary-300 bg-primary-50/40 dark:bg-primary-900/10'
@@ -981,10 +996,25 @@ export const AdminNuggetsPage: React.FC = () => {
 
                       <div className="mt-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => { setSelectedNugget(nugget); setEditMode(true); }}
+                          onClick={() => {
+                            setSelectedNugget(nugget);
+                            setDuplicateMode(false);
+                            setEditMode(true);
+                          }}
                           className="px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50"
                         >
                           Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedNugget(nugget);
+                            setEditMode(false);
+                            setDuplicateMode(true);
+                            toast.info(`Duplicating "${nugget.title?.trim() || 'Untitled'}"`);
+                          }}
+                          className="px-2 py-1 text-[10px] font-bold bg-white border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50"
+                        >
+                          Duplicate
                         </button>
                         {can('admin.nuggets.hide') && (
                           <button
@@ -1038,8 +1068,8 @@ export const AdminNuggetsPage: React.FC = () => {
       
       {/* View-only drawer - only show when NOT in edit mode */}
       <AdminDrawer 
-        isOpen={!!selectedNugget && !editMode && !isLoadingArticle} 
-        onClose={() => { setSelectedNugget(null); setEditMode(false); setArticleToEdit(null); }} 
+        isOpen={!!selectedNugget && !editMode && !duplicateMode && !isLoadingArticle} 
+        onClose={() => { setSelectedNugget(null); setEditMode(false); setDuplicateMode(false); setArticleToEdit(null); }} 
         title="Nugget Details" 
         width="lg"
       >
@@ -1076,9 +1106,9 @@ export const AdminNuggetsPage: React.FC = () => {
 
       {/* Full-featured Edit Modal */}
       {/* Only show modal when article is loaded AND not loading */}
-      {!isLoadingArticle && (
-        <CreateNuggetModal
-          isOpen={editMode && !!articleToEdit}
+      {!isLoadingArticle && editMode && articleToEdit && (
+        <CreateNuggetModalLoadable
+          isOpen
           onClose={async () => {
             // Refresh admin list after edit modal closes (handles both save and cancel)
             // The modal already invalidates query cache, but admin page uses direct service calls
@@ -1088,20 +1118,40 @@ export const AdminNuggetsPage: React.FC = () => {
               console.error('[AdminNuggetsPage] Error refreshing after edit:', error);
             }
             setEditMode(false);
+            setDuplicateMode(false);
             setSelectedNugget(null);
             setArticleToEdit(null);
           }}
           mode="edit"
-          initialData={articleToEdit || undefined}
+          initialData={articleToEdit}
+        />
+      )}
+      {!isLoadingArticle && duplicateMode && articleToEdit && (
+        <CreateNuggetModalLoadable
+          isOpen
+          onClose={async () => {
+            try {
+              await loadData();
+            } catch (error) {
+              console.error('[AdminNuggetsPage] Error refreshing after duplicate modal close:', error);
+            }
+            setEditMode(false);
+            setDuplicateMode(false);
+            setSelectedNugget(null);
+            setArticleToEdit(null);
+          }}
+          mode="create"
+          prefillData={articleToEdit}
         />
       )}
       
       {/* Show loading/error state while fetching article */}
-      {editMode && (isLoadingArticle || articleLoadError) && (
+      {(editMode || duplicateMode) && (isLoadingArticle || articleLoadError) && (
         <AdminDrawer
           isOpen={true}
           onClose={() => {
             setEditMode(false);
+            setDuplicateMode(false);
             setSelectedNugget(null);
             setArticleToEdit(null);
             setArticleLoadError(null);
@@ -1121,6 +1171,7 @@ export const AdminNuggetsPage: React.FC = () => {
                   <button
                     onClick={() => {
                       setEditMode(false);
+                      setDuplicateMode(false);
                       setSelectedNugget(null);
                       setArticleToEdit(null);
                       setArticleLoadError(null);

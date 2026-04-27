@@ -25,11 +25,13 @@ export interface UpdateDisclaimerBody {
 export interface ValuePropStripConfig {
   title: string;
   body: string;
+  enabled?: boolean;
 }
 
 export interface UpdateValuePropStripBody {
   title?: string;
   body?: string;
+  enabled?: boolean;
 }
 
 export const adminSettingsService = {
@@ -77,5 +79,15 @@ export const adminSettingsService = {
     body: UpdateValuePropStripBody
   ): Promise<{ message: string; config: ValuePropStripConfig }> {
     return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/home-micro-header', body);
+  },
+
+  async getMarketPulseMicroHeaderConfig(): Promise<ValuePropStripConfig> {
+    return apiClient.get<ValuePropStripConfig>('/admin/settings/market-pulse-micro-header');
+  },
+
+  async updateMarketPulseMicroHeaderConfig(
+    body: UpdateValuePropStripBody
+  ): Promise<{ message: string; config: ValuePropStripConfig }> {
+    return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/market-pulse-micro-header', body);
   }
 };

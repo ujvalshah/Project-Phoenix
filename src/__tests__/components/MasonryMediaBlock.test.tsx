@@ -9,10 +9,10 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
-vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({
-    currentUser: { id: 'u1', role: 'user', name: 'Author' },
-  }),
+vi.mock('@/context/AuthContext', () => ({
+  shallowEqualAuth: (a: unknown, b: unknown) => a === b,
+  useAuthSelector: (sel: (s: { user: { id: string } | null }) => unknown) =>
+    sel({ user: { id: 'u1' } }),
 }));
 
 vi.mock('@/hooks/useToast', () => ({
@@ -46,8 +46,8 @@ vi.mock('@/components/ReportModal', () => ({
   ReportModal: () => null,
 }));
 
-vi.mock('@/components/CreateNuggetModal', () => ({
-  CreateNuggetModal: () => null,
+vi.mock('@/components/CreateNuggetModalLoadable', () => ({
+  CreateNuggetModalLoadable: () => null,
 }));
 
 vi.mock('@/components/ImageLightbox', () => ({
@@ -118,7 +118,7 @@ describe('Masonry MediaBlock thumbnail overlay', () => {
     );
 
     // Trigger ActionHUD visibility (focus capture on the tile subtree)
-    fireEvent.focus(screen.getByRole('button', { name: /view image in gallery/i }));
+    fireEvent.focus(screen.getByRole('button', { name: /Masonry caption/i }));
 
     const button = screen.getByRole('button', { name: /open source in new tab/i });
     expect(button).toHaveTextContent('Source');
@@ -143,7 +143,7 @@ describe('Masonry MediaBlock thumbnail overlay', () => {
       />
     );
 
-    fireEvent.focus(screen.getByRole('button', { name: /view image in gallery/i }));
+    fireEvent.focus(screen.getByRole('button', { name: /Masonry caption/i }));
 
     const button = screen.getByRole('button', { name: /open source in new tab/i });
     expect(button).toBeTruthy();

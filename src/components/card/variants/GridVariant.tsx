@@ -584,6 +584,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
           onAddToCollection={handlers.onAddToCollection}
           onReport={handlers.onReport}
           onEdit={handlers.onEdit}
+          onDuplicate={handlers.onDuplicate}
           onDelete={handlers.onDelete}
           onToggleVisibility={handlers.onToggleVisibility}
           showMenu={showMenu}

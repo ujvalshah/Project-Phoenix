@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderPlus, Plus, Settings, SquareCheck } from 'lucide-react';
+import { preloadCreateNuggetModalChunk } from '@/components/createNuggetModalChunk';
+import { useAuthSelector } from '@/context/AuthContext';
 
 interface WorkspaceHeaderProps {
   title: string;
@@ -18,8 +20,14 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   onToggleSelect,
 }) => {
   const navigate = useNavigate();
+  const userId = useAuthSelector((a) => a.user?.id);
+  const onPreloadNuggetModal = useCallback(
+    () => preloadCreateNuggetModalChunk({ userId: userId ?? null }),
+    [userId],
+  );
 
   const openCreateNugget = () => {
+    preloadCreateNuggetModalChunk({ userId: userId ?? null });
     window.dispatchEvent(new CustomEvent('nuggets:open-create-modal'));
   };
 
@@ -37,6 +45,8 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
           <>
             <button
               type="button"
+              onPointerEnter={onPreloadNuggetModal}
+              onPointerDown={onPreloadNuggetModal}
               onClick={openCreateNugget}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 px-2.5 text-[12px] font-semibold text-white transition-all hover:bg-slate-800 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
             >

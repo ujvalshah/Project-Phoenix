@@ -46,7 +46,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Article } from '@/types';
-import { Clock, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, ExternalLink, ChevronLeft, ChevronRight, ArrowUp } from 'lucide-react';
 import { formatDate, formatReadTime } from '@/utils/formatters';
 import { AddToCollectionModal } from './AddToCollectionModal';
 import { DetailTopBar } from './shared/DetailTopBar';
@@ -55,7 +55,7 @@ import { EmbeddedMedia } from './embeds/EmbeddedMedia';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useAuth } from '@/hooks/useAuth';
 import { ReportModal } from './ReportModal';
-import { CreateNuggetModal } from './CreateNuggetModal';
+import { CreateNuggetModalLoadable } from './CreateNuggetModalLoadable';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 import { useDisclaimerConfig, resolveDisclaimer } from '@/hooks/useDisclaimerConfig';
@@ -117,6 +117,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const [drawerMediaIndex, setDrawerMediaIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [inlineVideoStartTime, setInlineVideoStartTime] = useState<number | null>(null);
+  const [isMediaCarouselInView, setIsMediaCarouselInView] = useState(true);
   const mediaCarouselRef = useRef<HTMLDivElement>(null);
 
   const { withAuth } = useRequireAuth();
@@ -269,6 +270,39 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
     return ytItem?.url || article?.media?.url || article?.video || null;
   }, [drawerMediaItems, article?.media?.url, article?.video]);
 
+  useEffect(() => {
+    if (!isModal || !currentDrawerMedia || !mediaCarouselRef.current) {
+      setIsMediaCarouselInView(true);
+      return;
+    }
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsMediaCarouselInView(true);
+      return;
+    }
+
+    const mediaContainer = mediaCarouselRef.current;
+    const drawerScrollContainer = mediaContainer.closest('#drawer-content') as HTMLElement | null;
+    if (!drawerScrollContainer) {
+      setIsMediaCarouselInView(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        setIsMediaCarouselInView(entry.isIntersecting && entry.intersectionRatio >= 0.2);
+      },
+      {
+        root: drawerScrollContainer,
+        threshold: [0, 0.2, 0.5, 1],
+      }
+    );
+
+    observer.observe(mediaContainer);
+    return () => observer.disconnect();
+  }, [isModal, currentDrawerMedia, article?.id]);
+
   const handleDrawerTimestampClick = useCallback(
     (videoId: string, timestamp: number, originalUrl: string) => {
       if (!isModal) {
@@ -289,7 +323,6 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
       if (youtubeCarouselIndex >= 0) {
         setDrawerMediaIndex(youtubeCarouselIndex);
         setInlineVideoStartTime(timestamp);
-        mediaCarouselRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } else if (articleYouTubeUrl) {
         playVideo({
           videoUrl: articleYouTubeUrl,
@@ -324,6 +357,11 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
 
   const isCurrentItemYouTube = currentDrawerMedia?.type === 'youtube';
   const shouldShowInlineVideo = isModal && isCurrentItemYouTube && inlineVideoStartTime !== null;
+  const showJumpToPlayerButton = isModal && Boolean(currentDrawerMedia) && !isMediaCarouselInView;
+
+  const handleJumpToPlayer = useCallback(() => {
+    mediaCarouselRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const inlineEmbedUrl = useMemo(() => {
     if (!shouldShowInlineVideo || !currentDrawerMedia) return null;
@@ -555,6 +593,19 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                   />
               </div>
 
+              {showJumpToPlayerButton && (
+                <button
+                  type="button"
+                  onClick={handleJumpToPlayer}
+                  aria-label="Jump to player"
+                  title="Jump to player"
+                  className="fixed bottom-4 right-4 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg backdrop-blur transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <ArrowUp size={16} />
+                  <span className="sr-only">Jump to player</span>
+                </button>
+              )}
+
               {/* Disclaimer */}
               {resolvedDisclaimer && (
                 <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] italic text-slate-400 dark:text-slate-500 leading-snug [&_a]:underline [&_a]:text-slate-500 dark:[&_a]:text-slate-400">
@@ -612,8 +663,8 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
           targetType="nugget"
       />
       {showEditModal && (
-        <CreateNuggetModal
-          isOpen={showEditModal}
+        <CreateNuggetModalLoadable
+          isOpen
           onClose={() => setShowEditModal(false)}
           mode="edit"
           initialData={article}

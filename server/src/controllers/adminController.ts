@@ -10,6 +10,7 @@ import { DisclaimerConfig } from '../models/DisclaimerConfig.js';
 import { ValuePropStripConfig } from '../models/ValuePropStripConfig.js';
 import { MarketPulseIntroConfig } from '../models/MarketPulseIntroConfig.js';
 import { HomeMicroHeaderConfig } from '../models/HomeMicroHeaderConfig.js';
+import { MarketPulseMicroHeaderConfig } from '../models/MarketPulseMicroHeaderConfig.js';
 import { LRUCache } from '../utils/lruCache.js';
 import { buildModerationQuery, getModerationStats } from '../services/moderationService.js';
 import {
@@ -32,6 +33,10 @@ import {
   getHomeMicroHeaderConfig,
   invalidateHomeMicroHeaderCache
 } from '../services/homeMicroHeaderConfigService.js';
+import {
+  getMarketPulseMicroHeaderConfig,
+  invalidateMarketPulseMicroHeaderCache
+} from '../services/marketPulseMicroHeaderConfigService.js';
 import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { getLogger } from '../utils/logger.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
@@ -54,6 +59,11 @@ const updateDisclaimerSchema = z.object({
 const updateOnboardingTitleBodySchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(120, 'Title too long').optional(),
   body: z.string().trim().min(1, 'Body is required').max(500, 'Body too long').optional()
+});
+
+/** For dismissible onboarding strips (title + body + global enabled toggle). */
+const updateOnboardingStripSchema = updateOnboardingTitleBodySchema.extend({
+  enabled: z.boolean().optional()
 });
 
 // Optional `reason` body for lifecycle endpoints. Free-text is captured in the
@@ -668,7 +678,7 @@ export async function getValuePropStripSettings(_req: AdminRequest, res: Respons
 /**
  * Update value-prop strip config (admin only).
  * PATCH /api/admin/settings/value-prop-strip
- * Body: { title?, body? }
+ * Body: { title?, body?, enabled? }
  */
 export async function updateValuePropStripSettings(req: AdminRequest, res: Response) {
   const adminId = req.userId;
@@ -676,13 +686,13 @@ export async function updateValuePropStripSettings(req: AdminRequest, res: Respo
     return res.status(401).json({ message: 'Admin authentication required' });
   }
 
-  const parseResult = updateOnboardingTitleBodySchema.safeParse(req.body);
+  const parseResult = updateOnboardingStripSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
   }
 
   const updates = parseResult.data;
-  if (updates.title === undefined && updates.body === undefined) {
+  if (updates.title === undefined && updates.body === undefined && updates.enabled === undefined) {
     return res.status(400).json({ message: 'At least one field must be provided' });
   }
 
@@ -694,6 +704,7 @@ export async function updateValuePropStripSettings(req: AdminRequest, res: Respo
       id: 'default' as const,
       title: updates.title ?? current.title,
       body: updates.body ?? current.body,
+      enabled: updates.enabled ?? current.enabled,
       updatedAt: new Date()
     };
 
@@ -707,7 +718,8 @@ export async function updateValuePropStripSettings(req: AdminRequest, res: Respo
 
     const newValue = {
       title: newDoc.title,
-      body: newDoc.body
+      body: newDoc.body,
+      enabled: newDoc.enabled
     };
 
     await AdminAuditLog.create({
@@ -754,7 +766,7 @@ export async function getMarketPulseIntroSettings(_req: AdminRequest, res: Respo
 /**
  * Update Market Pulse intro copy (admin only).
  * PATCH /api/admin/settings/market-pulse-intro
- * Body: { title?, body? }
+ * Body: { title?, body?, enabled? }
  */
 export async function updateMarketPulseIntroSettings(req: AdminRequest, res: Response) {
   const adminId = req.userId;
@@ -762,13 +774,13 @@ export async function updateMarketPulseIntroSettings(req: AdminRequest, res: Res
     return res.status(401).json({ message: 'Admin authentication required' });
   }
 
-  const parseResult = updateOnboardingTitleBodySchema.safeParse(req.body);
+  const parseResult = updateOnboardingStripSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
   }
 
   const updates = parseResult.data;
-  if (updates.title === undefined && updates.body === undefined) {
+  if (updates.title === undefined && updates.body === undefined && updates.enabled === undefined) {
     return res.status(400).json({ message: 'At least one field must be provided' });
   }
 
@@ -780,6 +792,7 @@ export async function updateMarketPulseIntroSettings(req: AdminRequest, res: Res
       id: 'default' as const,
       title: updates.title ?? current.title,
       body: updates.body ?? current.body,
+      enabled: updates.enabled ?? current.enabled,
       updatedAt: new Date()
     };
 
@@ -793,7 +806,8 @@ export async function updateMarketPulseIntroSettings(req: AdminRequest, res: Res
 
     const newValue = {
       title: newDoc.title,
-      body: newDoc.body
+      body: newDoc.body,
+      enabled: newDoc.enabled
     };
 
     await AdminAuditLog.create({
@@ -905,6 +919,92 @@ export async function updateHomeMicroHeaderSettings(req: AdminRequest, res: Resp
   } catch (error) {
     getLogger().error({ error, adminId }, 'Failed to update Home micro-header config');
     return res.status(500).json({ message: 'Failed to update Home micro-header config' });
+  }
+}
+
+/**
+ * Get current Market Pulse micro-header copy.
+ * GET /api/admin/settings/market-pulse-micro-header
+ * Returns effective config (from DB or defaults).
+ */
+export async function getMarketPulseMicroHeaderSettings(_req: AdminRequest, res: Response) {
+  try {
+    const config = await getMarketPulseMicroHeaderConfig();
+    return res.json(config);
+  } catch (error) {
+    getLogger().error({ error }, 'Failed to get Market Pulse micro-header config');
+    return res.status(500).json({ message: 'Failed to get Market Pulse micro-header config' });
+  }
+}
+
+/**
+ * Update Market Pulse micro-header copy (admin only).
+ * PATCH /api/admin/settings/market-pulse-micro-header
+ * Body: { title?, body? }
+ */
+export async function updateMarketPulseMicroHeaderSettings(req: AdminRequest, res: Response) {
+  const adminId = req.userId;
+  if (!adminId) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+
+  const parseResult = updateOnboardingTitleBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
+  }
+
+  const updates = parseResult.data;
+  if (updates.title === undefined && updates.body === undefined) {
+    return res.status(400).json({ message: 'At least one field must be provided' });
+  }
+
+  try {
+    const current = await getMarketPulseMicroHeaderConfig();
+    const previousValue = { ...current };
+
+    const newDoc = {
+      id: 'default' as const,
+      title: updates.title ?? current.title,
+      body: updates.body ?? current.body,
+      updatedAt: new Date()
+    };
+
+    await MarketPulseMicroHeaderConfig.findOneAndUpdate(
+      { id: 'default' },
+      { $set: newDoc },
+      { upsert: true, new: true }
+    );
+
+    invalidateMarketPulseMicroHeaderCache();
+
+    const newValue = {
+      title: newDoc.title,
+      body: newDoc.body
+    };
+
+    await AdminAuditLog.create({
+      adminId,
+      action: 'UPDATE_MARKET_PULSE_MICRO_HEADER_CONFIG',
+      targetType: 'system',
+      targetId: 'market_pulse_micro_header_config',
+      previousValue: previousValue as Record<string, unknown>,
+      newValue: newValue as Record<string, unknown>,
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.get('User-Agent')
+    });
+
+    getLogger().info(
+      { action: 'UPDATE_MARKET_PULSE_MICRO_HEADER_CONFIG', adminId, previousValue, newValue, target: 'market_pulse_micro_header_config' },
+      'Admin updated Market Pulse micro-header config'
+    );
+
+    return res.json({
+      message: 'Market Pulse micro-header config updated',
+      config: newValue
+    });
+  } catch (error) {
+    getLogger().error({ error, adminId }, 'Failed to update Market Pulse micro-header config');
+    return res.status(500).json({ message: 'Failed to update Market Pulse micro-header config' });
   }
 }
 

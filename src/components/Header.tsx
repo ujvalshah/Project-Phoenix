@@ -22,6 +22,7 @@ import { DropdownPortal } from './UI/DropdownPortal';
 import { shallowEqual as shallowEqualFilters, useFilterSelector } from '@/context/FilterStateContext';
 import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
+import { preloadCreateNuggetModalChunk } from '@/components/createNuggetModalChunk';
 import { useLegalPages } from '@/hooks/useLegalPages';
 import { usePulseUnseenCount, useStandardUnseenCount } from '@/hooks/usePulseUnseen';
 import { formatNavBadgeCount, hasNavBadge } from '@/utils/navBadge';
@@ -215,6 +216,11 @@ export const Header: React.FC<HeaderProps> = ({
       logout: a.logout,
     }),
     shallowEqualAuth,
+  );
+  const currentUserId = currentUser?.id;
+  const onPreloadNuggetModal = useCallback(
+    () => preloadCreateNuggetModalChunk({ userId: currentUserId ?? null }),
+    [currentUserId],
   );
   const headerToast = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -929,8 +935,11 @@ export const Header: React.FC<HeaderProps> = ({
               <ArrowUpDown size={16} />
             </button>
 
-            {/* Create button */}
+            {/* Create button — preload editor chunk on intent (hover / press) before click */}
             <button
+              type="button"
+              onPointerEnter={onPreloadNuggetModal}
+              onPointerDown={onPreloadNuggetModal}
               onClick={withAuth(onCreateNugget)}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors dark:text-slate-200 dark:hover:text-white"
               aria-label="Create Nugget"

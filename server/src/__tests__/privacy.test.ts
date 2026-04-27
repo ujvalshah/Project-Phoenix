@@ -6,7 +6,7 @@
  * Run: npm test -- privacy.test.ts
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import mongoose from 'mongoose';
 import { connectDB } from '../utils/db.js';
 import { Article } from '../models/Article.js';

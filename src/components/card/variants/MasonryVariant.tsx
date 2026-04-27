@@ -225,6 +225,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
             onAddToCollection={handlers.onAddToCollection}
             onReport={handlers.onReport}
             onEdit={handlers.onEdit}
+            onDuplicate={handlers.onDuplicate}
             onDelete={handlers.onDelete}
             onToggleVisibility={handlers.onToggleVisibility}
             showMenu={showMenu}

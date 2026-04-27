@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, startTransition } from 'react';
 import { ModalShell } from '@/components/UI/ModalShell';
 // useNavigate removed - not currently used in this component
 import { X, Globe, Lock, Loader2, Zap } from 'lucide-react';
@@ -22,7 +22,6 @@ import { SourceBadge } from './shared/SourceBadge';
 import { DimensionTagPicker } from './CreateNuggetModal/DimensionTagPicker';
 import { CollectionSelector } from './CreateNuggetModal/CollectionSelector';
 import { TitleInput } from './CreateNuggetModal/TitleInput';
-import { ContentEditor } from './CreateNuggetModal/ContentEditor';
 import { UrlInput } from './CreateNuggetModal/UrlInput';
 import { AttachmentManager, FileAttachment } from './CreateNuggetModal/AttachmentManager';
 import { FormFooter } from './CreateNuggetModal/FormFooter';
@@ -35,24 +34,31 @@ import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import type { Article, ExternalLink, LayoutVisibility } from '@/types';
 import { DEFAULT_LAYOUT_VISIBILITY } from '@/types';
 import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeArticleInput';
+import { buildDuplicatePrefill } from '@/shared/articleNormalization/duplicatePrefill';
 import { useImageManager } from '@/hooks/useImageManager';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { validateBeforeSave, formatValidationResult } from '@/shared/articleNormalization/preSaveValidation';
 import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
 import { useAllCollections } from '@/hooks/useNuggetFormData';
 import { useDisclaimerConfig } from '@/hooks/useDisclaimerConfig';
+import { NuggetContentEditorPanel } from './CreateNuggetModal/NuggetContentEditorPanel';
+import { getNuggetModalCtpBudgetWarnMs } from '@/utils/nuggetModalPerfConfig';
 
-interface CreateNuggetModalProps {
+export interface CreateNuggetModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode?: 'create' | 'edit';
   initialData?: Article;
+  prefillData?: Article;
 }
 
 // FileAttachment is now imported from AttachmentManager
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (before compression)
 const MAX_FILE_SIZE_AFTER_COMPRESSION = 500 * 1024; // 500KB (after compression)
+
+const MODAL_FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * PHASE 2: TITLE GENERATION POLICY (NON-NEGOTIABLE)
@@ -70,7 +76,13 @@ const MAX_FILE_SIZE_AFTER_COMPRESSION = 500 * 1024; // 500KB (after compression)
  * - Title is only populated when user clicks "Generate title" button
  */
 
-export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, onClose, mode = 'create', initialData }) => {
+export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({
+  isOpen,
+  onClose,
+  mode = 'create',
+  initialData,
+  prefillData,
+}) => {
   // Auth
   const { currentUser, currentUserId, isAdmin } = useAuthSelector(
     (a) => ({
@@ -85,8 +97,16 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     initialData?.status === 'draft' ? 'draft' : 'published';
   const toast = useToast();
 
+  const duplicatePrefillPayload = useMemo(
+    () => (mode === 'create' && prefillData ? buildDuplicatePrefill(prefillData) : null),
+    [mode, prefillData]
+  );
+  const duplicateSourceTitle = useMemo(() => prefillData?.title?.trim() || 'Untitled', [prefillData?.title]);
+  const duplicatePrefillArticle = duplicatePrefillPayload?.article;
+  const duplicatePrefillUrls = duplicatePrefillPayload?.sourceUrls || [];
+
   // Unified image management hook (Phase 9: Legacy code removed)
-  const imageManager = useImageManager(mode, initialData);
+  const imageManager = useImageManager(mode, initialData, duplicatePrefillArticle);
   
   // Store syncFromArticle in ref to avoid dependency on imageManager object
   // syncFromArticle is stable (useCallback with []), so ref update is safe
@@ -132,6 +152,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   
   // Refs for accessibility and focus management
   const modalRef = useRef<HTMLDivElement>(null);
+  const modalTabFocusableListRef = useRef<HTMLElement[]>([]);
   const collectionsComboboxRef = useRef<HTMLDivElement>(null);
   const collectionsListboxRef = useRef<HTMLDivElement>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
@@ -193,6 +214,21 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Explicitly deleted images tracked by useImageManager hook (Phase 9: Legacy code removed)
   const explicitlyDeletedImages = imageManager.explicitlyDeletedUrls;
+
+  // Defer paged public+private collection fetches to the next frame so open click can paint first.
+  const [collectionsQueryReady, setCollectionsQueryReady] = useState(false);
+  useEffect(() => {
+    if (!isOpen) {
+      setCollectionsQueryReady(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      setCollectionsQueryReady(true);
+    });
+    return () => {
+      cancelAnimationFrame(id);
+    };
+  }, [isOpen]);
   
   // Data Source State - Now using React Query for caching and automatic refetch
   // Note: queryClient is imported from @/queryClient (singleton instance)
@@ -200,7 +236,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
   const {
     data: allCollections = [],
     isLoading: _isLoadingCollections, // eslint-disable-line @typescript-eslint/no-unused-vars -- Available for future loading state UI
-  } = useAllCollections();
+  } = useAllCollections({ enabled: isOpen && collectionsQueryReady });
 
   // UI State
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -229,22 +265,72 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     };
   }, [isOpen]);
 
+  // Optional: console warning when rAF-approx time from open to paint exceeds budget (env-driven).
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    const budget = getNuggetModalCtpBudgetWarnMs();
+    if (budget <= 0) return;
+    const markA = `nugget-modal-ctp-a-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const markB = `${markA}-end`;
+    const measureName = `nugget-modal-ctp-${markA}`;
+    try {
+      performance.mark(markA);
+    } catch {
+      return;
+    }
+    let raf1 = 0;
+    let raf2 = 0;
+    let cancelled = false;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (cancelled) return;
+        try {
+          performance.mark(markB);
+          performance.measure(measureName, markA, markB);
+          const entry = performance.getEntriesByName(measureName, 'measure').pop() as
+            | PerformanceMeasure
+            | undefined;
+          const ms = entry?.duration ?? 0;
+          performance.clearMarks(markA);
+          performance.clearMarks(markB);
+          performance.clearMeasures(measureName);
+          if (ms > budget) {
+            console.warn(
+              `[perf] Nugget create modal (rAF-approx) ${ms.toFixed(0)}ms > budget ${budget}ms (set VITE_NUGGET_MODAL_CTP_BUDGET_WARN_MS=0 to disable)`,
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    startTransition(() => {
       // Data loading is now handled by React Query hooks (useAllCollections)
       // No need to call loadData() - React Query provides caching and automatic refetch
       
-      // Initialize form from initialData when in edit mode (only once per nugget)
-      if (mode === 'edit' && initialData && initializedFromDataRef.current !== initialData.id) {
-        setTitle(initialData.title || '');
-        setIsTitleUserEdited(!!initialData.title); // PHASE 6: Mark as edited if title exists
+      // Initialize form from article data (edit or duplicate prefill) only once per source.
+      const articleToInitialize = mode === 'edit' ? initialData : duplicatePrefillArticle;
+      const initializationKey = articleToInitialize?.id || null;
+
+      if (articleToInitialize && initializationKey && initializedFromDataRef.current !== initializationKey) {
+        setTitle(articleToInitialize.title || '');
+        setIsTitleUserEdited(!!articleToInitialize.title); // PHASE 6: Mark as edited if title exists
         setSuggestedTitle(null); // PHASE 3: Clear suggestion in edit mode
-        setContent(initialData.content || '');
-        setDimensionTagIds(initialData.tagIds || []);
+        setContent(articleToInitialize.content || '');
+        setDimensionTagIds(articleToInitialize.tagIds || []);
         // Initialize customCreatedAt if article has isCustomCreatedAt flag (admin only)
-        if (isAdmin && (initialData as any).isCustomCreatedAt && initialData.publishedAt) {
+        if (mode === 'edit' && isAdmin && (articleToInitialize as any).isCustomCreatedAt && articleToInitialize.publishedAt) {
           // Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
-          const date = new Date(initialData.publishedAt);
+          const date = new Date(articleToInitialize.publishedAt);
           const year = date.getFullYear();
           const month = String(date.getMonth() + 1).padStart(2, '0');
           const day = String(date.getDate()).padStart(2, '0');
@@ -252,20 +338,20 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
           const minutes = String(date.getMinutes()).padStart(2, '0');
           setCustomCreatedAt(`${year}-${month}-${day}T${hours}:${minutes}`);
         }
-        setVisibility(initialData.visibility || 'public');
-        setContentStream(initialData.contentStream || 'standard');
+        setVisibility(articleToInitialize.visibility || 'public');
+        setContentStream(articleToInitialize.contentStream || 'standard');
         // Initialize externalLinks and layoutVisibility from initialData
-        setExternalLinks(initialData.externalLinks || []);
-        setLayoutVisibility(initialData.layoutVisibility || {
+        setExternalLinks(articleToInitialize.externalLinks || []);
+        setLayoutVisibility(articleToInitialize.layoutVisibility || {
           grid: true,
           masonry: true,
           feed: true,
         });
         // Initialize disclaimer from initialData
-        if (initialData.showDisclaimer !== undefined) {
-          setShowDisclaimer(initialData.showDisclaimer);
+        if (articleToInitialize.showDisclaimer !== undefined) {
+          setShowDisclaimer(articleToInitialize.showDisclaimer);
         }
-        setDisclaimerText(initialData.disclaimerText || '');
+        setDisclaimerText(articleToInitialize.disclaimerText || '');
 
         // V2: displayImageId will be initialized in a separate effect after masonryMediaItems loads
         // This ensures we use the actual item ID from imageManager (not a mismatched generated one)
@@ -276,14 +362,16 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         const contentUrls: string[] = [];
 
         // 1. Original source URL (from unfurl metadata) - highest priority
-        if (initialData.media?.previewMetadata?.url) {
-          contentUrls.push(initialData.media.previewMetadata.url);
+        if (mode === 'create' && duplicatePrefillUrls.length > 0) {
+          contentUrls.push(...duplicatePrefillUrls);
+        } else if (articleToInitialize.media?.previewMetadata?.url) {
+          contentUrls.push(articleToInitialize.media.previewMetadata.url);
         }
 
         // 2. media.url if different from previewMetadata.url and not a Cloudinary URL
-        if (initialData.media?.url) {
-          const mediaUrl = initialData.media.url;
-          const isDifferent = mediaUrl !== initialData.media?.previewMetadata?.url;
+        if (articleToInitialize.media?.url) {
+          const mediaUrl = articleToInitialize.media.url;
+          const isDifferent = mediaUrl !== articleToInitialize.media?.previewMetadata?.url;
           const notCloudinary = !isCloudinaryUrl(mediaUrl);
           const notAlreadyIncluded = !contentUrls.includes(mediaUrl);
 
@@ -299,8 +387,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         const primaryUrl = contentUrls.length > 0 ? contentUrls[0] : null;
         if (primaryUrl) {
           setDetectedLink(primaryUrl);
-          if (initialData.media) {
-            setLinkMetadata(initialData.media);
+          if (articleToInitialize.media) {
+            setLinkMetadata(articleToInitialize.media);
           }
         } else {
           setDetectedLink(null);
@@ -312,15 +400,15 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         // MediaIds are preserved from initialData and will be included in update
         
         // Sync imageManager with article data (Phase 9: Legacy code removed)
-        imageManager.syncFromArticle(initialData);
+        imageManager.syncFromArticle(articleToInitialize);
         
-        initializedFromDataRef.current = initialData.id;
+        initializedFromDataRef.current = initializationKey;
       } else if (mode === 'create') {
         // Reset initialization ref when switching to create mode
         initializedFromDataRef.current = null;
       }
-    }
-  }, [isOpen, mode, initialData]);
+    });
+  }, [isOpen, mode, initialData, duplicatePrefillArticle, duplicatePrefillUrls, isAdmin]);
 
   // Load editorial collection membership when editing (runs after init effect sets visibility)
   useEffect(() => {
@@ -407,30 +495,49 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
 
   // Focus trap and initial focus when modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      modalTabFocusableListRef.current = [];
+      return;
+    }
 
     const modal = modalRef.current;
     if (!modal) return;
 
+    const collectFocusable = () => {
+      modalTabFocusableListRef.current = Array.from(
+        modal.querySelectorAll(MODAL_FOCUSABLE_SELECTOR),
+      ) as HTMLElement[];
+    };
+
+    collectFocusable();
+    const onFocusInCapture = () => {
+      requestAnimationFrame(() => {
+        collectFocusable();
+      });
+    };
+    modal.addEventListener('focusin', onFocusInCapture, true);
+
     // Focus first focusable element after a short delay to allow DOM to settle
     const timer = setTimeout(() => {
-      const firstFocusable = modal.querySelector(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      ) as HTMLElement;
+      collectFocusable();
+      const firstFocusable =
+        modalTabFocusableListRef.current[0] ??
+        (modal.querySelector(MODAL_FOCUSABLE_SELECTOR) as HTMLElement);
       firstFocusable?.focus();
     }, 100);
 
-    // Focus trap handler
+    // Focus trap handler (uses cached list; on-demand one collect if list empty)
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
 
-      // Tab handling is managed by SelectableDropdown components
-
-      const focusableElements = modal.querySelectorAll(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      const firstElement = focusableElements[0] as HTMLElement;
-      const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+      let focusableElements = modalTabFocusableListRef.current;
+      if (focusableElements.length === 0) {
+        collectFocusable();
+        focusableElements = modalTabFocusableListRef.current;
+      }
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (!firstElement) return;
 
       if (e.shiftKey) {
         if (document.activeElement === firstElement) {
@@ -461,6 +568,7 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
     document.addEventListener('keydown', handleEscape);
     return () => {
       clearTimeout(timer);
+      modal.removeEventListener('focusin', onFocusInCapture, true);
       modal.removeEventListener('keydown', handleTab);
       document.removeEventListener('keydown', handleEscape);
     };
@@ -2109,9 +2217,16 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
         
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-20 shrink-0">
-            <h2 id="modal-title" className="text-sm font-bold text-slate-900 dark:text-white">
-              {mode === 'edit' ? 'Edit Nugget' : 'Create Nugget'}
-            </h2>
+            <div className="min-w-0">
+              <h2 id="modal-title" className="text-sm font-bold text-slate-900 dark:text-white">
+                {mode === 'edit' ? 'Edit Nugget' : 'Create Nugget'}
+              </h2>
+              {mode === 'create' && prefillData && (
+                <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
+                  Duplicating from: {duplicateSourceTitle}
+                </p>
+              )}
+            </div>
             <button 
               onClick={handleClose} 
               aria-label="Close modal"
@@ -2386,8 +2501,8 @@ export const CreateNuggetModal: React.FC<CreateNuggetModalProps> = ({ isOpen, on
                   )}
                 </div>
 
-                {/* Editor Area with AI Trigger */}
-                <ContentEditor
+                {/* Editor area — async or inlined ContentEditor (see NuggetContentEditorPanel) */}
+                <NuggetContentEditorPanel
                     value={content}
                     onChange={(newContent) => {
                         setContent(newContent);

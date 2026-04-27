@@ -18,7 +18,7 @@ import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
 import { ContentTabs, type ContentTabItem } from '@/components/workspace/ContentTabs';
 import { Z_INDEX } from '@/constants/zIndex';
-import { CreateNuggetModal } from '@/components/CreateNuggetModal';
+import { CreateNuggetModalLoadable } from '@/components/CreateNuggetModalLoadable';
 import {
   ContentToolbar,
   type CollectionContentSort,
@@ -125,6 +125,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
 
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
+  const [duplicatingArticle, setDuplicatingArticle] = useState<Article | null>(null);
   const wasEditingRef = useRef(false);
 
   const [selectionMode, setSelectionMode] = useState(false);
@@ -659,6 +660,11 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     }
   };
 
+  const handleDuplicateArticle = (article: Article) => {
+    toast.info(`Duplicating "${article.title?.trim() || 'Untitled'}"`);
+    setDuplicatingArticle(article);
+  };
+
   // Early returns for loading and error states
   const isPageLoading =
     profileUserQuery.isLoading ||
@@ -982,6 +988,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                         compact={contentView === 'compact'}
                         canManage={isOwner}
                         onEdit={(article) => setEditingArticle(article)}
+                        onDuplicate={handleDuplicateArticle}
                         onDelete={handleDeleteSingleArticle}
                       />
                     ))}
@@ -1005,12 +1012,22 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
         />
       )}
 
-      <CreateNuggetModal
-        isOpen={!!editingArticle}
-        onClose={() => setEditingArticle(null)}
-        mode="edit"
-        initialData={editingArticle ?? undefined}
-      />
+      {editingArticle && (
+        <CreateNuggetModalLoadable
+          isOpen
+          onClose={() => setEditingArticle(null)}
+          mode="edit"
+          initialData={editingArticle}
+        />
+      )}
+      {duplicatingArticle && (
+        <CreateNuggetModalLoadable
+          isOpen
+          onClose={() => setDuplicatingArticle(null)}
+          mode="create"
+          prefillData={duplicatingArticle}
+        />
+      )}
 
       <ConfirmActionModal 
         isOpen={showDeleteConfirm}

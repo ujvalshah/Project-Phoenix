@@ -313,7 +313,8 @@ function articleToImageItems(article: Article): ImageItem[] {
  */
 export function useImageManager(
   mode: 'create' | 'edit',
-  initialArticle?: Article
+  initialArticle?: Article,
+  prefillArticle?: Article
 ): UseImageManagerReturn {
   // Track initial article ID to detect changes
   const initialArticleIdRef = useRef<string | undefined>(initialArticle?.id);
@@ -326,6 +327,15 @@ export function useImageManager(
     if (mode === 'edit' && initialArticle) {
       return {
         images: articleToImageItems(initialArticle),
+        pendingDeletions: new Set(),
+        isInitialized: true,
+        explicitlyDeleted: new Set(),
+      };
+    }
+    // Initialize from prefill data in create mode (duplicate workflow)
+    if (mode === 'create' && prefillArticle) {
+      return {
+        images: articleToImageItems(prefillArticle),
         pendingDeletions: new Set(),
         isInitialized: true,
         explicitlyDeleted: new Set(),

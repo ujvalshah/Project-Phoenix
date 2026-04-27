@@ -1,6 +1,6 @@
 import React from 'react';
 import { Article } from '@/types';
-import { ExternalLink, MoreVertical, Flag, Edit2, Trash2, FolderPlus } from 'lucide-react';
+import { ExternalLink, MoreVertical, Flag, Edit2, Trash2, FolderPlus, Copy } from 'lucide-react';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
 
 type SourceLinkLabel = 'Link' | 'Source';
@@ -19,6 +19,7 @@ interface ActionHUDProps {
   isAdmin?: boolean;
   onReport?: () => void;
   onEdit?: () => void;
+  onDuplicate?: () => void;
   onDelete?: () => void;
 }
 
@@ -41,6 +42,7 @@ export const ActionHUD: React.FC<ActionHUDProps> = ({
   isAdmin = false,
   onReport,
   onEdit,
+  onDuplicate,
   onDelete,
 }) => {
   return (
@@ -105,6 +107,20 @@ export const ActionHUD: React.FC<ActionHUDProps> = ({
                     className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
                   >
                     <Edit2 size={12} /> Edit
+                  </button>
+                )}
+                {(isOwner || isAdmin) && onDuplicate && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDuplicate();
+                      onMenuClose();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                  >
+                    <Copy size={12} /> Duplicate
                   </button>
                 )}
 

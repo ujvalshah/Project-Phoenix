@@ -117,8 +117,10 @@ export function useCollections(type?: 'public' | 'private') {
 
 /**
  * Hook to get all collections (both public and private).
+ * Pass `enabled: false` to defer the fetch (e.g. one frame after modal open).
  */
-export function useAllCollections() {
+export function useAllCollections(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   return useQuery({
     queryKey: nuggetFormKeys.collections(),
     queryFn: async () => {
@@ -133,6 +135,7 @@ export function useAllCollections() {
         ).values()
       );
     },
+    enabled,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,
     refetchOnWindowFocus: false,

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { BackToTopButton } from '@/components/UI/BackToTopButton';
@@ -10,8 +10,8 @@ import { FeedScrollStateProvider } from '@/context/FeedScrollStateContext';
 import { VideoPlayerProvider } from '@/context/VideoPlayerContext';
 import { MainLayout } from '@/components/layouts/MainLayout';
 import { FilterStateProvider } from '@/context/FilterStateContext';
-import { CreateNuggetModal } from '@/components/CreateNuggetModal';
 import { useAuthSelector } from '@/context/AuthContext';
+import { CreateNuggetModalLoadable } from '@/components/CreateNuggetModalLoadable';
 import { consumePendingNavigation, recordRouteStartMark } from '@/utils/routeProfiling';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -25,6 +25,7 @@ import { FilterResultsProvider } from '@/context/FilterResultsContext';
 import { DesktopFilterSidebarProvider } from '@/context/DesktopFilterSidebarContext';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { PlausibleRouteTracker, PublicRouteSeo } from '@/seo/RouteSeo';
+import { preloadCreateNuggetModalChunk } from '@/components/createNuggetModalChunk';
 
 // Legacy hash URL redirect handler
 // Redirects old /#/path URLs to clean /path URLs for backwards compatibility
@@ -151,6 +152,10 @@ const AppContent: React.FC = () => {
 
   // Use Auth hook for user context
   const currentUserId = useAuthSelector((a) => a.user?.id || '');
+  const currentUserIdRef = useRef(currentUserId);
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
 
   useEffect(() => {
     if (window.matchMedia('(prefers-color-scheme: dark)').matches) setIsDark(true);
@@ -163,7 +168,10 @@ const AppContent: React.FC = () => {
   }, [isDark]);
 
   useEffect(() => {
-    const openCreate = () => setIsCreateOpen(true);
+    const openCreate = () => {
+      preloadCreateNuggetModalChunk({ userId: currentUserIdRef.current || null });
+      setIsCreateOpen(true);
+    };
     window.addEventListener('nuggets:open-create-modal', openCreate);
     return () => window.removeEventListener('nuggets:open-create-modal', openCreate);
   }, []);
@@ -208,7 +216,10 @@ const AppContent: React.FC = () => {
         setSidebarOpen={setSidebarOpen}
         viewMode={viewMode}
         setViewMode={setViewMode}
-        onCreateNugget={() => setIsCreateOpen(true)}
+        onCreateNugget={() => {
+          preloadCreateNuggetModalChunk({ userId: currentUserId || null });
+          setIsCreateOpen(true);
+        }}
       />
 
       <MainLayout>
@@ -324,7 +335,12 @@ const AppContent: React.FC = () => {
         <PersistentVideoPlayer />
         <NotificationPrompt />
         
-        <CreateNuggetModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
+        {isCreateOpen && (
+          <CreateNuggetModalLoadable
+            isOpen
+            onClose={() => setIsCreateOpen(false)}
+          />
+        )}
         <AuthModal />
       </MainLayout>
       <MobileBottomNav />

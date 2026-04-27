@@ -8,11 +8,13 @@ const cache = new LRUCache<MarketPulseIntroConfigData>(5, CACHE_TTL_MS);
 export interface MarketPulseIntroConfigData {
   title: string;
   body: string;
+  enabled: boolean;
 }
 
 const DEFAULTS: MarketPulseIntroConfigData = {
   title: 'Market Pulse',
-  body: 'Daily stream of high-signal market updates and macro intelligence. Refreshed every day.'
+  body: 'Daily stream of high-signal market updates and macro intelligence. Refreshed every day.',
+  enabled: true
 };
 
 /**
@@ -29,7 +31,8 @@ export async function getMarketPulseIntroConfig(): Promise<MarketPulseIntroConfi
   const config: MarketPulseIntroConfigData = doc
     ? {
         title: doc.title,
-        body: doc.body
+        body: doc.body,
+        enabled: doc.enabled !== false
       }
     : { ...DEFAULTS };
 

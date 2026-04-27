@@ -317,6 +317,7 @@ import { getDisclaimerConfig } from './services/disclaimerConfigService.js';
 import { getValuePropStripConfig } from './services/valuePropStripConfigService.js';
 import { getMarketPulseIntroConfig } from './services/marketPulseIntroConfigService.js';
 import { getHomeMicroHeaderConfig } from './services/homeMicroHeaderConfigService.js';
+import { getMarketPulseMicroHeaderConfig } from './services/marketPulseMicroHeaderConfigService.js';
 app.get('/api/config/disclaimer', async (_req, res) => {
   try {
     const config = await getDisclaimerConfig();
@@ -353,6 +354,16 @@ app.get('/api/config/home-micro-header', async (_req, res) => {
     return res.json(config);
   } catch {
     return res.status(500).json({ message: 'Failed to get Home micro-header config' });
+  }
+});
+
+// Public Market Pulse micro-header copy (no auth required).
+app.get('/api/config/market-pulse-micro-header', async (_req, res) => {
+  try {
+    const config = await getMarketPulseMicroHeaderConfig();
+    return res.json(config);
+  } catch {
+    return res.status(500).json({ message: 'Failed to get Market Pulse micro-header config' });
   }
 });
 

@@ -9,7 +9,7 @@ import { ReportModal, ReportPayload } from './ReportModal';
 import { ArticleModal } from './ArticleModal';
 import { ImageLightbox } from './ImageLightbox';
 import { ArticleDetail } from './ArticleDetail';
-import { CreateNuggetModal } from './CreateNuggetModal';
+import { CreateNuggetModalLoadable } from './CreateNuggetModalLoadable';
 import { LinkPreviewModal } from './LinkPreviewModal';
 import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
@@ -242,12 +242,22 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             ) : undefined
           }
         />
-        <CreateNuggetModal
-          isOpen={modals.showEditModal}
-          onClose={() => modals.setShowEditModal(false)}
-          mode="edit"
-          initialData={originalArticle}
-        />
+        {modals.showEditModal && (
+          <CreateNuggetModalLoadable
+            isOpen
+            onClose={() => modals.setShowEditModal(false)}
+            mode="edit"
+            initialData={originalArticle}
+          />
+        )}
+        {modals.showDuplicateModal && (
+          <CreateNuggetModalLoadable
+            isOpen
+            onClose={() => modals.setShowDuplicateModal(false)}
+            mode="create"
+            prefillData={originalArticle}
+          />
+        )}
         {/* Link Preview Modal - Progressive disclosure for external links */}
         {modals.showLinkPreview && modals.linkPreviewUrl && (
           <LinkPreviewModal

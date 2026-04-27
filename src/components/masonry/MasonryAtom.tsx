@@ -6,7 +6,7 @@ import { ActionHUD } from './ActionHUD';
 import { useMasonryInteraction } from '@/hooks/useMasonryInteraction';
 import { CollectionPopover } from '@/components/CollectionPopover';
 import { ReportModal, ReportPayload } from '@/components/ReportModal';
-import { CreateNuggetModal } from '@/components/CreateNuggetModal';
+import { CreateNuggetModalLoadable } from '@/components/CreateNuggetModalLoadable';
 import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
@@ -42,6 +42,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
   const { currentUser } = useAuthSelector(
@@ -218,6 +219,10 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
               isAdmin={isAdmin}
               onReport={() => setShowReportModal(true)}
               onEdit={() => setShowEditModal(true)}
+              onDuplicate={() => {
+                toast.info(`Duplicating "${article.title?.trim() || 'Untitled'}"`);
+                setShowDuplicateModal(true);
+              }}
               onDelete={handleDelete}
             />
           )}
@@ -239,11 +244,19 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
         articleId={article.id}
       />
       {showEditModal && (
-        <CreateNuggetModal
-          isOpen={showEditModal}
+        <CreateNuggetModalLoadable
+          isOpen
           onClose={() => setShowEditModal(false)}
           mode="edit"
           initialData={article}
+        />
+      )}
+      {showDuplicateModal && (
+        <CreateNuggetModalLoadable
+          isOpen
+          onClose={() => setShowDuplicateModal(false)}
+          mode="create"
+          prefillData={article}
         />
       )}
     </>

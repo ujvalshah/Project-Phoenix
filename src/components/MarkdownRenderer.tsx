@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
@@ -51,6 +51,28 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   prose = false,
   onYouTubeTimestampClick,
 }) => {
+  const [activeTimestampHref, setActiveTimestampHref] = useState<string | null>(null);
+  const clearTimestampHighlightTimeoutRef = useRef<number | null>(null);
+
+  const highlightTimestamp = useCallback((href: string) => {
+    setActiveTimestampHref(href);
+    if (clearTimestampHighlightTimeoutRef.current !== null) {
+      window.clearTimeout(clearTimestampHighlightTimeoutRef.current);
+    }
+    clearTimestampHighlightTimeoutRef.current = window.setTimeout(() => {
+      setActiveTimestampHref(null);
+      clearTimestampHighlightTimeoutRef.current = null;
+    }, 900);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (clearTimestampHighlightTimeoutRef.current !== null) {
+        window.clearTimeout(clearTimestampHighlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Compact components for card/feed views (prose=false)
   const compactComponents: Components = useMemo(() => ({
     table: ({ children }) => (
@@ -291,10 +313,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
                   if (import.meta.env.DEV) {
                     console.log('[MarkdownRenderer] Plain text timestamp clicked:', { timestamp });
                   }
+                  highlightTimestamp(href);
                   // Pass empty videoId - handler will get it from article context
                   onYouTubeTimestampClick('', timestamp, '');
                 }}
-                className="text-primary-600 dark:text-primary-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+                className={twMerge(
+                  'text-primary-600 dark:text-primary-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit rounded-sm transition-colors',
+                  activeTimestampHref === href && 'bg-primary-100 dark:bg-primary-900/40'
+                )}
               >
                 {children}
               </button>
@@ -313,9 +339,13 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  highlightTimestamp(href);
                   onYouTubeTimestampClick(videoId, startTime, href);
                 }}
-                className="text-primary-600 dark:text-primary-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+                className={twMerge(
+                  'text-primary-600 dark:text-primary-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit rounded-sm transition-colors',
+                  activeTimestampHref === href && 'bg-primary-100 dark:bg-primary-900/40'
+                )}
               >
                 {children}
               </button>
@@ -337,7 +367,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         );
       },
     };
-  }, [components, onTagClick, onYouTubeTimestampClick]);
+  }, [components, onTagClick, onYouTubeTimestampClick, activeTimestampHref, highlightTimestamp]);
 
   if (!content) return null;
 

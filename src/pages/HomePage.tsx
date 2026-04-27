@@ -47,6 +47,7 @@ import { useMarkFeedSeen } from '@/hooks/usePulseUnseen';
 import { endActiveSearchDraft, recordSearchEvent } from '@/observability/telemetry';
 import {
   HOME_MICRO_HEADER_COPY,
+  MARKET_PULSE_MICRO_HEADER_COPY,
   MARKET_PULSE_INTRO_COPY,
   PULSE_INTRO_DISMISSED_KEY,
   VALUE_PROP_STRIP_COPY,
@@ -70,7 +71,11 @@ const ValuePropStrip: React.FC = () => {
     onboardingCopyService.getValuePropStripCopy()
       .then((remoteCopy) => {
         if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
-          setCopy(remoteCopy);
+          setCopy({
+            title: remoteCopy.title,
+            body: remoteCopy.body,
+            enabled: remoteCopy.enabled ?? true,
+          });
         }
       })
       .catch(() => {
@@ -81,7 +86,7 @@ const ValuePropStrip: React.FC = () => {
     };
   }, [dismissed]);
 
-  if (dismissed) return null;
+  if (dismissed || copy.enabled === false) return null;
 
   const handleDismiss = () => {
     setDismissed(true);
@@ -119,7 +124,11 @@ const MarketPulseIntroBanner: React.FC = () => {
     onboardingCopyService.getMarketPulseIntroCopy()
       .then((remoteCopy) => {
         if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
-          setCopy(remoteCopy);
+          setCopy({
+            title: remoteCopy.title,
+            body: remoteCopy.body,
+            enabled: remoteCopy.enabled ?? true,
+          });
         }
       })
       .catch(() => {
@@ -130,7 +139,7 @@ const MarketPulseIntroBanner: React.FC = () => {
     };
   }, [dismissed]);
 
-  if (dismissed) return null;
+  if (dismissed || copy.enabled === false) return null;
 
   const handleDismiss = () => {
     setDismissed(true);
@@ -155,15 +164,15 @@ const MarketPulseIntroBanner: React.FC = () => {
 };
 
 const PublicHomeIntro: React.FC<{ isPulseStream: boolean }> = ({ isPulseStream }) => {
-  const [copy, setCopy] = useState(HOME_MICRO_HEADER_COPY);
+  const [homeCopy, setHomeCopy] = useState(HOME_MICRO_HEADER_COPY);
+  const [marketPulseCopy, setMarketPulseCopy] = useState(MARKET_PULSE_MICRO_HEADER_COPY);
 
   useEffect(() => {
-    if (isPulseStream) return;
     let isCancelled = false;
     onboardingCopyService.getHomeMicroHeaderCopy()
       .then((remoteCopy) => {
         if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
-          setCopy(remoteCopy);
+          setHomeCopy(remoteCopy);
         }
       })
       .catch(() => {
@@ -172,17 +181,33 @@ const PublicHomeIntro: React.FC<{ isPulseStream: boolean }> = ({ isPulseStream }
     return () => {
       isCancelled = true;
     };
-  }, [isPulseStream]);
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+    onboardingCopyService.getMarketPulseMicroHeaderCopy()
+      .then((remoteCopy) => {
+        if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
+          setMarketPulseCopy(remoteCopy);
+        }
+      })
+      .catch(() => {
+        // Keep local constants as fallback when API/config is unavailable.
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const activeCopy = isPulseStream ? marketPulseCopy : homeCopy;
 
   return (
     <section className="mx-4 mb-0.5 px-0 pt-0.5 pb-0 lg:mx-6" aria-label="Nuggets homepage intro">
       <h1 className="max-w-[62ch] text-[15px] font-medium leading-5 tracking-tight text-slate-950 dark:text-white sm:text-base lg:max-w-none">
-        {isPulseStream
-          ? 'Market Pulse: high-signal updates for investors and operators'
-          : copy.title}
+        {activeCopy.title}
       </h1>
       <p className="mt-0.5 max-w-[62ch] text-[11.5px] leading-4 text-slate-500 dark:text-slate-400 sm:text-xs">
-        {isPulseStream ? 'High-signal updates, organized without the noise.' : copy.body}
+        {activeCopy.body}
       </p>
     </section>
   );

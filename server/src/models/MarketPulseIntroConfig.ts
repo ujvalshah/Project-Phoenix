@@ -8,6 +8,7 @@ export interface IMarketPulseIntroConfig extends Document {
   id: 'default';
   title: string;
   body: string;
+  enabled: boolean;
   updatedAt: Date;
 }
 
@@ -27,6 +28,10 @@ const MarketPulseIntroConfigSchema = new Schema<IMarketPulseIntroConfig>({
     type: String,
     required: true,
     maxlength: 500
+  },
+  enabled: {
+    type: Boolean,
+    default: true
   },
   updatedAt: {
     type: Date,

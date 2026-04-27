@@ -57,6 +57,7 @@ export interface NewsCardHandlers {
   onTagClick?: (tag: string) => void;
   onDelete?: () => void;
   onEdit?: () => void;
+  onDuplicate?: () => void;
   onReport?: () => void;
   onAddToCollection?: (e: React.MouseEvent) => void;
   onToggleVisibility?: () => void;
@@ -589,9 +590,16 @@ export const useNewsCard = ({
   };
 
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
   const handleEdit = () => {
     setShowEditModal(true);
+    setShowMenu(false);
+  };
+
+  const handleDuplicate = () => {
+    toast.info(`Duplicating "${article.title?.trim() || 'Untitled'}"`);
+    setShowDuplicateModal(true);
     setShowMenu(false);
   };
 
@@ -757,6 +765,7 @@ export const useNewsCard = ({
         onTagClick: onTagClick ? handleTagClick : undefined,
         onDelete: undefined,
         onEdit: undefined,
+        onDuplicate: undefined,
         onReport: undefined,
         onAddToCollection: undefined,
         onToggleVisibility: undefined,
@@ -774,6 +783,7 @@ export const useNewsCard = ({
         onTagClick: onTagClick ? handleTagClick : undefined,
         onDelete: (isOwner || isAdmin) ? handleDelete : undefined,
         onEdit: (isOwner || isAdmin) ? handleEdit : undefined,
+        onDuplicate: (isOwner || isAdmin) ? handleDuplicate : undefined,
         onReport: withAuth(handleReport, 'guestReports'),
         onAddToCollection: isAdmin ? withAuth(handleAddToCollection) : undefined,
         onToggleVisibility: isOwner ? handleToggleVisibility : undefined,
@@ -810,6 +820,7 @@ export const useNewsCard = ({
       showMenu,
       showTagPopover,
       showEditModal,
+      showDuplicateModal,
       showLinkPreview,
       linkPreviewUrl,
       setShowCollection,
@@ -818,6 +829,7 @@ export const useNewsCard = ({
       setShowLightbox,
       setLightboxInitialIndex,
       setShowEditModal,
+      setShowDuplicateModal,
       setShowLinkPreview,
       setLinkPreviewUrl,
       collectionMode,

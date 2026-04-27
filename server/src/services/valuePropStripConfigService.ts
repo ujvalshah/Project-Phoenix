@@ -8,11 +8,13 @@ const cache = new LRUCache<ValuePropStripConfigData>(5, CACHE_TTL_MS);
 export interface ValuePropStripConfigData {
   title: string;
   body: string;
+  enabled: boolean;
 }
 
 const DEFAULTS: ValuePropStripConfigData = {
   title: 'Nuggets: The Knowledge App',
-  body: 'Curated high-signal insights across Markets, Geopolitics, AI, and Tech. Save time — follow signal, not noise.'
+  body: 'Curated high-signal insights across Markets, Geopolitics, AI, and Tech. Save time — follow signal, not noise.',
+  enabled: true
 };
 
 /**
@@ -29,7 +31,8 @@ export async function getValuePropStripConfig(): Promise<ValuePropStripConfigDat
   const config: ValuePropStripConfigData = doc
     ? {
         title: doc.title,
-        body: doc.body
+        body: doc.body,
+        enabled: doc.enabled !== false
       }
     : { ...DEFAULTS };
 

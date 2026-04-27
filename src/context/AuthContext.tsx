@@ -93,8 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const init = async () => {
       try {
-        // 1) Validate session first. This gates auth UX, so do it on the
-        // critical path and unblock UI as soon as it settles.
+        // 1) Session validation — unblock isLoading as soon as this completes.
         try {
           const freshUser = await authService.getCurrentUser();
           setModularUser(freshUser);
@@ -112,24 +111,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         captureException(e instanceof Error ? e : new Error(String(e)), {
           route: 'AuthContext/init',
         });
-      }
-
-      // 2) Load config before unblocking UI so consumers (AuthModal signup
-      // fields, feature-flag gates) never see a null → resolved flicker.
-      try {
-        const [flags, sConf] = await Promise.all([
-          adminConfigService.getFeatureFlags(),
-          adminConfigService.getSignupConfig(),
-        ]);
-        setFeatureFlags(flags);
-        setSignupConfig(sConf);
-      } catch (e) {
-        captureException(e instanceof Error ? e : new Error(String(e)), {
-          route: 'AuthContext/configInit',
-        });
       } finally {
         setIsLoading(false);
       }
+
+      // 2) Feature flags + signup config — non-blocking; consumers use null until resolved.
+      void (async () => {
+        try {
+          const [flags, sConf] = await Promise.all([
+            adminConfigService.getFeatureFlags(),
+            adminConfigService.getSignupConfig(),
+          ]);
+          setFeatureFlags(flags);
+          setSignupConfig(sConf);
+        } catch (e) {
+          captureException(e instanceof Error ? e : new Error(String(e)), {
+            route: 'AuthContext/configInit',
+          });
+        }
+      })();
     };
     init();
   }, [syncSearchCohortStorage]);
