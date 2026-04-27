@@ -21,7 +21,7 @@ export function buildBaseSharePayload(
   if (excerpt) lines.push(compact(excerpt, 160));
 
   return {
-    title: title || 'Nuggets',
+    title: title || undefined,
     text: lines.join('\n\n'),
     url: data.shareUrl,
   };

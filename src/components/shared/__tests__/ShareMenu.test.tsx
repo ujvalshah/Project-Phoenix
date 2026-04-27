@@ -104,7 +104,7 @@ describe('ShareMenu fallback behavior', () => {
     expect(writeText).not.toHaveBeenCalled();
   });
 
-  it('falls back to copy when native share errors', async () => {
+  it('surfaces native_failed without silently copying when native share errors', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(global.navigator, 'clipboard', {
       configurable: true,
@@ -126,9 +126,13 @@ describe('ShareMenu fallback behavior', () => {
     fireEvent.click(screen.getByRole('button', { name: /share now/i }));
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalled();
-      expect(toast.success).toHaveBeenCalledWith('Link copied!');
+      expect(toast.error).toHaveBeenCalledWith('Share unavailable — try Copy link below');
     });
+    // Must not silently copy and lie to the user that they shared.
+    expect(writeText).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    // Menu stays open so the user can tap "Copy link" without re-opening.
+    expect(screen.getByRole('button', { name: /copy link/i })).toBeInTheDocument();
   });
 
   it('opens platform intent urls in new tab', async () => {

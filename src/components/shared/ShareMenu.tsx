@@ -53,6 +53,13 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
     shareUrl: data.shareUrl,
   } as const;
 
+  const getDiagnosticUserAgent = (): string | undefined => {
+    if (typeof navigator === 'undefined' || typeof navigator.userAgent !== 'string') {
+      return undefined;
+    }
+    return navigator.userAgent.slice(0, 256);
+  };
+
   const handlePrimaryShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
     emitShareTelemetry('share_attempted', {
@@ -81,6 +88,20 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
       setIsOpen(false);
       return;
     }
+    if (outcome.status === 'native_failed') {
+      // Surface, don't lie. Keep the menu open so the user can tap "Copy link"
+      // (or a platform intent) directly without re-opening the share menu.
+      emitShareTelemetry('share_native_failed', {
+        ...telemetryBase,
+        platform: 'native',
+        method: 'native',
+        userAgent: getDiagnosticUserAgent(),
+        errorName: outcome.errorName,
+        errorMessage: outcome.errorMessage,
+      });
+      toast.error('Share unavailable — try Copy link below');
+      return;
+    }
     if (outcome.status === 'copy_success') {
       emitShareTelemetry('share_copy_success', {
         ...telemetryBase,
@@ -95,6 +116,7 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
       ...telemetryBase,
       platform: 'copy',
       method: 'copy',
+      userAgent: getDiagnosticUserAgent(),
     });
     toast.error('Unable to share or copy link');
     setIsOpen(false);
@@ -120,6 +142,7 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
         ...telemetryBase,
         platform: 'copy',
         method: 'copy',
+        userAgent: getDiagnosticUserAgent(),
       });
       toast.error('Unable to copy link');
     }
@@ -162,7 +185,7 @@ export const ShareMenu: React.FC<ShareMenuProps> = ({
         ref={anchorRef}
         type="button"
         onClick={toggleMenu}
-        className={`w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all hover:scale-105 active:scale-95 ${className}`}
+        className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all hover:scale-105 active:scale-95 ${className}`}
         title="Share"
         aria-label="Share"
         aria-haspopup="menu"

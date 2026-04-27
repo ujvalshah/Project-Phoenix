@@ -59,6 +59,7 @@ export interface ShareEvent {
     | 'share_attempted'
     | 'share_native_success'
     | 'share_native_cancelled'
+    | 'share_native_failed'
     | 'share_copy_success'
     | 'share_copy_failed'
     | 'share_platform_click';

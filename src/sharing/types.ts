@@ -16,7 +16,11 @@ export interface ShareContext {
 }
 
 export interface SharePayload {
-  title: string;
+  /**
+   * Optional. Omitted when the source has no real title — avoids Android
+   * share-target chooser prefilling a generic placeholder as email subject.
+   */
+  title?: string;
   text: string;
   url: string;
 }

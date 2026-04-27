@@ -7,6 +7,7 @@ export type ShareTelemetryEventName =
   | 'share_attempted'
   | 'share_native_success'
   | 'share_native_cancelled'
+  | 'share_native_failed'
   | 'share_copy_success'
   | 'share_copy_failed'
   | 'share_platform_click';
@@ -19,6 +20,10 @@ export interface ShareTelemetryPayload {
   method: 'native' | 'copy' | 'platform_intent' | 'system';
   canonicalUrlVersion: string;
   shareUrl: string;
+  /** Diagnostic fields, only attached on failure events. Truncated upstream. */
+  userAgent?: string;
+  errorName?: string;
+  errorMessage?: string;
 }
 
 export function emitShareTelemetry(
