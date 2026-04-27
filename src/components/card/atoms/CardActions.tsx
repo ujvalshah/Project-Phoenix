@@ -34,7 +34,6 @@ export const CardActions: React.FC<CardActionsProps> = ({
   articleId,
   articleTitle,
   articleExcerpt,
-  authorName,
   isOwner,
   isAdmin,
   visibility,
@@ -73,7 +72,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
           }}
           surface="card_actions"
           meta={{
-            text: [authorName, articleExcerpt].filter(Boolean).join('\n'),
+            text: articleExcerpt,
           }}
         />
       )}
