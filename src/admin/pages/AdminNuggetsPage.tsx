@@ -57,6 +57,8 @@ export const AdminNuggetsPage: React.FC = () => {
   const [filteredTotal, setFilteredTotal] = useState(0);
   const [collectionOptions, setCollectionOptions] = useState<AdminCollection[]>([]);
   const [targetCollectionId, setTargetCollectionId] = useState('');
+  const [collectionSearchQuery, setCollectionSearchQuery] = useState('');
+  const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
@@ -67,6 +69,7 @@ export const AdminNuggetsPage: React.FC = () => {
   ]);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const columnMenuAnchorRef = useRef<HTMLButtonElement>(null);
+  const collectionDropdownAnchorRef = useRef<HTMLButtonElement>(null);
   const [failedPreviewById, setFailedPreviewById] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
     if (typeof window === 'undefined') return 'table';
@@ -214,6 +217,12 @@ export const AdminNuggetsPage: React.FC = () => {
     setFailedPreviewById({});
   }, [nuggets, currentPage, viewMode]);
 
+  useEffect(() => {
+    if (!showCollectionDropdown) {
+      setCollectionSearchQuery('');
+    }
+  }, [showCollectionDropdown]);
+
   // Derived state
   const processedNuggets = useMemo(() => {
     let result = [...nuggets];
@@ -257,6 +266,20 @@ export const AdminNuggetsPage: React.FC = () => {
     const parentName = collectionNameById.get(collection.parentId) || `Parent ${collection.parentId.slice(0, 6)}`;
     return `${collection.name} (${parentName})`;
   }, [collectionNameById]);
+
+  const selectedCollectionLabel = useMemo(() => {
+    if (!targetCollectionId) return 'Select collection';
+    const selectedCollection = collectionOptions.find((collection) => collection.id === targetCollectionId);
+    return selectedCollection ? formatCollectionOptionLabel(selectedCollection) : 'Select collection';
+  }, [targetCollectionId, collectionOptions, formatCollectionOptionLabel]);
+
+  const filteredCollectionOptions = useMemo(() => {
+    const normalizedQuery = collectionSearchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return collectionOptions;
+    return collectionOptions.filter((collection) =>
+      formatCollectionOptionLabel(collection).toLowerCase().includes(normalizedQuery)
+    );
+  }, [collectionOptions, collectionSearchQuery, formatCollectionOptionLabel]);
 
   // Fetch full article data when entering edit mode
   useEffect(() => {
@@ -703,20 +726,72 @@ export const AdminNuggetsPage: React.FC = () => {
               Max {ADMIN_BATCH_ADD_CAP} per add
             </span>
           )}
-          <div className="min-w-0 w-full max-w-full flex-1 basis-[10rem] sm:w-auto sm:min-w-[11rem] sm:max-w-[14rem] md:max-w-[18rem]">
-            <select
-              value={targetCollectionId}
-              onChange={(e) => setTargetCollectionId(e.target.value)}
+          <div className="relative min-w-0 w-full max-w-full flex-1 basis-[10rem] sm:w-auto sm:min-w-[11rem] sm:max-w-[14rem] md:max-w-[18rem]">
+            <button
+              ref={collectionDropdownAnchorRef}
+              type="button"
+              onClick={() => setShowCollectionDropdown((prev) => !prev)}
               aria-label="Target collection for bulk add"
-              className="box-border w-full min-w-0 max-w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300"
+              aria-haspopup="listbox"
+              aria-expanded={showCollectionDropdown}
+              className="box-border flex w-full min-w-0 max-w-full items-center justify-between gap-2 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300"
             >
-            <option value="">Select collection</option>
-            {collectionOptions.map((collection) => (
-              <option key={collection.id} value={collection.id}>
-                {formatCollectionOptionLabel(collection)}
-              </option>
-            ))}
-            </select>
+              <span className="truncate">{selectedCollectionLabel}</span>
+              <span className="text-slate-400">▾</span>
+            </button>
+            <DropdownPortal
+              isOpen={showCollectionDropdown}
+              anchorRef={collectionDropdownAnchorRef}
+              align="left"
+              host="dropdown"
+              offsetY={8}
+              onClickOutside={() => setShowCollectionDropdown(false)}
+              className="w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-2"
+            >
+              <div className="relative mb-2">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                <input
+                  type="text"
+                  value={collectionSearchQuery}
+                  onChange={(e) => setCollectionSearchQuery(e.target.value)}
+                  placeholder="Search collections..."
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 pl-7 pr-2 text-xs text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+              <div className="max-h-56 overflow-y-auto custom-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetCollectionId('');
+                    setShowCollectionDropdown(false);
+                  }}
+                  className="w-full text-left rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+                >
+                  Select collection
+                </button>
+                {filteredCollectionOptions.length === 0 ? (
+                  <div className="px-2 py-2 text-xs text-slate-400">No collections found</div>
+                ) : (
+                  filteredCollectionOptions.map((collection) => (
+                    <button
+                      key={collection.id}
+                      type="button"
+                      onClick={() => {
+                        setTargetCollectionId(collection.id);
+                        setShowCollectionDropdown(false);
+                      }}
+                      className={`w-full text-left rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+                        targetCollectionId === collection.id
+                          ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {formatCollectionOptionLabel(collection)}
+                    </button>
+                  ))
+                )}
+              </div>
+            </DropdownPortal>
           </div>
           <button
             onClick={handleBulkAction}
@@ -726,7 +801,7 @@ export const AdminNuggetsPage: React.FC = () => {
             {isAssigning ? 'Adding...' : 'Add to collection'}
           </button>
       </div>
-  ) : null, [selectedIds.length, targetCollectionId, collectionOptions, formatCollectionOptionLabel, handleBulkAction, isAssigning]);
+  ) : null, [selectedIds.length, targetCollectionId, collectionOptions, formatCollectionOptionLabel, handleBulkAction, isAssigning, showCollectionDropdown, selectedCollectionLabel, filteredCollectionOptions, collectionSearchQuery]);
 
   const CardToolbar = useMemo(() => (
     <div

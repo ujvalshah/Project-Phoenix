@@ -206,7 +206,7 @@ const PublicHomeIntro: React.FC<{ isPulseStream: boolean }> = ({ isPulseStream }
       <h1 className="max-w-[62ch] text-[15px] font-medium leading-5 tracking-tight text-slate-950 dark:text-white sm:text-base lg:max-w-none">
         {activeCopy.title}
       </h1>
-      <p className="mt-0.5 max-w-[62ch] text-[11.5px] leading-4 text-slate-500 dark:text-slate-400 sm:text-xs">
+      <p className="mt-0.5 max-w-[62ch] text-[11.5px] leading-4 text-slate-500 dark:text-slate-400 sm:text-xs lg:max-w-none lg:whitespace-nowrap">
         {activeCopy.body}
       </p>
     </section>
