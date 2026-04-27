@@ -76,24 +76,15 @@ export const GridVariant: React.FC<GridVariantProps> = ({
     return { url: null, shouldShow: false };
   }, [data.externalLinks, data.media]);
   
-  // Warn if cardType is media-only but will render as hybrid or has long text
+  // Dev-only integrity check: media-only cards must keep their text within the
+  // caption budget. Gated to DEV so the effect never fires in production.
   React.useEffect(() => {
-    const hasText = Boolean((data.content || data.excerpt || '').trim());
+    if (!import.meta.env.DEV) return;
+    if (data.cardType !== 'media-only') return;
     const textLength = (data.content || data.excerpt || '').length;
-    const renderedCardType = data.cardType === 'media-only' ? 'media-only' : 'hybrid';
-    
-    if (data.cardType === 'media-only' && renderedCardType !== 'media-only') {
-      console.error('[CARD-AUDIT] ❌ CRITICAL: Media-only card being rendered as hybrid!', {
+    if (textLength > 200) {
+      console.warn('[CARD-AUDIT] media-only card has long text', {
         id: data.id.substring(0, 8) + '...',
-        detectedCardType: data.cardType,
-        renderedCardType,
-      });
-    }
-    
-    if (data.cardType === 'media-only' && textLength > 200) {
-      console.warn('[CARD-AUDIT] ⚠️ MEDIA-ONLY CARD WITH LONG TEXT!', {
-        id: data.id.substring(0, 8) + '...',
-        cardType: data.cardType,
         contentLength: textLength,
       });
     }

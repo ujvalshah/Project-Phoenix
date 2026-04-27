@@ -4,9 +4,26 @@ import { Article } from '@/types';
 import { getOverlayHost } from '@/utils/overlayHosts';
 
 // Lazy load ArticleDetail - only loads when drawer opens
-const ArticleDetailLazy = lazy(() => 
-  import('./ArticleDetail').then(module => ({ default: module.ArticleDetail }))
+const importArticleDetail = () => import('./ArticleDetail');
+const ArticleDetailLazy = lazy(() =>
+  importArticleDetail().then((module) => ({ default: module.ArticleDetail })),
 );
+
+/**
+ * Warm the ArticleDetail chunk + its transitive heavy deps (markdown, embeds)
+ * before the user actually clicks. Safe to call repeatedly — module imports
+ * are deduped by the bundler. Use on card hover/focus and once on idle.
+ */
+let prefetched = false;
+export const prefetchArticleDrawer = (): void => {
+  if (prefetched) return;
+  prefetched = true;
+  importArticleDetail().catch(() => {
+    // Network failure during idle prefetch is non-fatal — the lazy load on
+    // actual open will retry and surface any error in the Suspense boundary.
+    prefetched = false;
+  });
+};
 
 interface ArticleDrawerProps {
   isOpen: boolean;
@@ -45,46 +62,41 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const scrollPositionRef = useRef<number>(0);
 
-  // Lock body scroll when drawer is open - keep scrollbar visible to prevent layout shift
-  // This is simpler, more performant, and eliminates layout shift completely
+  // Lock body scroll when drawer is open. The position:fixed write on a long
+  // grid forces a full-page reflow; running it inline with the open click made
+  // the click feel sluggish. We defer the lock to the next animation frame so
+  // React can paint the drawer slide-in first, then the body lock applies on
+  // the following frame — user perceives an immediate response.
   useEffect(() => {
-    if (isOpen) {
-      // Store current scroll position
-      scrollPositionRef.current = window.scrollY;
-      
-      // Store previous focus for restoration
-      previousFocusRef.current = document.activeElement as HTMLElement;
-      setIsClosing(false);
-      
-      // Prevent scrolling but keep scrollbar visible to avoid layout shift
-      // Using position: fixed prevents scrolling, overflow-y: scroll keeps scrollbar visible
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${scrollPositionRef.current}px`;
-      document.body.style.width = '100%';
-      document.body.style.overflowY = 'scroll'; // Keep scrollbar visible
-    } else {
-      // Restore scroll position and remove fixed positioning
-      const scrollY = scrollPositionRef.current;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflowY = '';
-      
-      // Restore scroll position after a brief delay to ensure styles are applied
-      setTimeout(() => {
-        window.scrollTo(0, scrollY);
-      }, 0);
-    }
+    if (!isOpen) return;
+
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    setIsClosing(false);
+
+    let cancelled = false;
+    const rafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const scrollY = window.scrollY;
+      scrollPositionRef.current = scrollY;
+      const body = document.body;
+      body.style.position = 'fixed';
+      body.style.top = `-${scrollY}px`;
+      body.style.width = '100%';
+      body.style.overflowY = 'scroll'; // keep scrollbar gutter to avoid shift
+    });
+
     return () => {
-      // Cleanup: restore scroll position and remove fixed positioning
+      cancelled = true;
+      cancelAnimationFrame(rafId);
       const scrollY = scrollPositionRef.current;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflowY = '';
-      setTimeout(() => {
+      const body = document.body;
+      body.style.position = '';
+      body.style.top = '';
+      body.style.width = '';
+      body.style.overflowY = '';
+      if (scrollY > 0) {
         window.scrollTo(0, scrollY);
-      }, 0);
+      }
     };
   }, [isOpen]);
 
@@ -99,7 +111,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
       if (previousFocusRef.current) {
         previousFocusRef.current.focus();
       }
-    }, 200); // Match animation duration
+    }, 180); // Match animation duration (drawer transform)
   }, [onClose]);
 
   // Keyboard handlers
@@ -171,11 +183,14 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
       aria-label="Article details drawer"
       aria-describedby="drawer-content"
     >
-      {/* Grid Overlay - Dimmed background, clickable to close */}
+      {/* Grid Overlay - Dimmed background, clickable to close.
+          backdrop-blur-sm was previously applied here — it triggers a full-screen
+          GPU filter pass over the grid every frame of the fade and again while
+          the drawer slides in. Flat dim is visually equivalent and far cheaper. */}
       <div
         className={`
-          absolute inset-0 bg-black/40 backdrop-blur-sm
-          transition-opacity duration-300
+          absolute inset-0 bg-black/50
+          transition-opacity duration-150
           ${isClosing ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'}
         `}
         onClick={handleClose}
@@ -189,7 +204,8 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
           pointer-events-auto relative w-full sm:w-[400px] lg:w-[500px] h-full
           bg-white dark:bg-slate-950 shadow-2xl
           flex flex-col border-l border-slate-200 dark:border-slate-800
-          transform transition-transform duration-300 ease-out
+          transform transition-transform duration-200 ease-out
+          will-change-transform
           ${isClosing ? 'translate-x-full' : 'translate-x-0'}
         `}
         onClick={(e) => e.stopPropagation()}

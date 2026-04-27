@@ -10,7 +10,7 @@ import { ErrorBoundary } from './UI/ErrorBoundary';
 import { prepareArticleForNewsCard } from '@/utils/errorHandler';
 import { CardSkeleton } from './card/CardSkeleton';
 import { CardError } from './card/CardError';
-import { ArticleDrawer } from './ArticleDrawer';
+import { ArticleDrawer, prefetchArticleDrawer } from './ArticleDrawer';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface ArticleGridProps {
@@ -146,6 +146,25 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   // Detect if we're in desktop multi-column grid mode
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const isMultiColumnGrid = viewMode === 'grid' && isDesktop;
+
+  // Idle-prefetch the drawer chunk once the grid is mounted in desktop mode.
+  // The drawer's ArticleDetail bundle (markdown renderer, embeds, modals) is
+  // ~heavy; warming it before the first click eliminates the post-click
+  // "Loading article…" spinner.
+  useEffect(() => {
+    if (!isMultiColumnGrid) return;
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(() => prefetchArticleDrawer());
+      return () => {
+        const cancel = (window as Window & { cancelIdleCallback?: (id: number) => void })
+          .cancelIdleCallback;
+        cancel?.(id);
+      };
+    }
+    const timer = setTimeout(prefetchArticleDrawer, 1500);
+    return () => clearTimeout(timer);
+  }, [isMultiColumnGrid]);
 
   /**
    * Per-article cache keyed by source object identity. react-query preserves the
@@ -370,11 +389,11 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
       isUpdatingFromUrlRef.current = false;
     }, 100);
     
-    // Restore scroll position after animation
+    // Restore scroll position after animation (matches drawer transform duration)
     setTimeout(() => {
       window.scrollTo({ top: previousScrollPositionRef.current, behavior: 'auto' });
       setExpandedArticleId(null);
-    }, 300);
+    }, 200);
   }, [setSearchParams]);
   
   const handleNavigateToCard = useCallback((direction: 'prev' | 'next') => {
@@ -519,6 +538,8 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
                 style={{
                   animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
                 }}
+                onMouseEnter={isMultiColumnGrid ? prefetchArticleDrawer : undefined}
+                onFocus={isMultiColumnGrid ? prefetchArticleDrawer : undefined}
               >
                 <NewsCard
                   ref={(el) => registerCard(article.id, el)}
