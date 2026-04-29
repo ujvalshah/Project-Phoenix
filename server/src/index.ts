@@ -367,6 +367,27 @@ app.get('/api/config/market-pulse-micro-header', async (_req, res) => {
   }
 });
 
+// Single response for homepage onboarding/microcopy (replaces four parallel public GETs).
+app.get('/api/config/onboarding-bundle', async (_req, res) => {
+  try {
+    const [valuePropStrip, marketPulseIntro, homeMicroHeader, marketPulseMicroHeader] =
+      await Promise.all([
+        getValuePropStripConfig(),
+        getMarketPulseIntroConfig(),
+        getHomeMicroHeaderConfig(),
+        getMarketPulseMicroHeaderConfig(),
+      ]);
+    return res.json({
+      valuePropStrip,
+      marketPulseIntro,
+      homeMicroHeader,
+      marketPulseMicroHeader,
+    });
+  } catch {
+    return res.status(500).json({ message: 'Failed to get onboarding bundle' });
+  }
+});
+
 // Health Check - Enhanced to verify DB connectivity
 app.get('/api/health', async (req, res) => {
   // Audit Phase-3 Fix: Add debug logging around health checks for observability
@@ -512,7 +533,28 @@ app.use(ogMiddleware);
 // Production: Serve React Static Files
 if (env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../../../dist');
-  app.use(express.static(distPath));
+  const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+  app.use(express.static(distPath, {
+    etag: true,
+    lastModified: true,
+    setHeaders(res, filepath): void {
+      const posixPath = filepath.split(path.sep).join('/');
+      if (path.basename(filepath) === 'index.html') {
+        res.setHeader('Cache-Control', 'no-cache');
+        return;
+      }
+      /** Vite/Rollup fingerprint: `basename-[hash].[ext]` with 8+ hash chars (`dist/assets/…`). */
+      const baseName = path.basename(filepath);
+      const underAssets = /\/assets\//.test(posixPath);
+      const looksHashedRollupFilename = /^.+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(baseName);
+      if (underAssets && looksHashedRollupFilename) {
+        res.setHeader(
+          'Cache-Control',
+          `public, max-age=${ONE_YEAR_SECONDS}, immutable`,
+        );
+      }
+    },
+  }));
   // SPA catch-all: serve index.html for all non-API routes
   // so React Router can handle client-side routing (e.g. /article/:id)
   app.get(/^\/.*/, (req, res) => {

@@ -396,35 +396,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
 
 MarkdownRenderer.displayName = 'MarkdownRenderer';
 
-/**
- * Utility function to detect if content contains markdown tables.
- * Used by CardContent to decide whether to force expansion or hide tables in collapsed state.
- */
-export function contentHasTable(content: string): boolean {
-  if (!content) return false;
-  
-  // Check for table patterns: lines with pipes and separator lines
-  const lines = content.split('\n');
-  let hasTableHeader = false;
-  let hasTableSeparator = false;
-  
-  for (const line of lines) {
-    const trimmed = line.trim();
-    // Table row with pipes
-    if (trimmed.includes('|') && !trimmed.startsWith('|')) {
-      hasTableHeader = true;
-    }
-    // Or proper table row starting and ending with pipes
-    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-      hasTableHeader = true;
-    }
-    // Table separator (e.g., |---|---|)
-    if (/^\|?[\s\-:]+\|[\s\-:|]+\|?$/.test(trimmed)) {
-      hasTableSeparator = true;
-    }
-  }
-  
-  return hasTableHeader && hasTableSeparator;
-}
+/** @deprecated Prefer {@link contentHasMarkdownTable} — kept for callers outside CardContent */
+export {
+  contentHasMarkdownTable as contentHasTable,
+} from '@/utils/contentHasMarkdownTable';
 
 

@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { articleService, PaginatedArticlesResponse } from '@/services/articleService';
 import { FilterState, SortOrder, ContentStream, Article } from '@/types';
 import { articleKeys } from '@/services/queryKeys/articleKeys';
+import { INFINITE_ARTICLES_STALE_MS } from '@/constants/reactQueryTiming';
 import { MIN_RELEVANCE_SEARCH_LENGTH, normalizeSearchQuery } from '@/utils/searchQuery';
 import { resolveCommittedSearchMode } from '@/utils/searchMode';
 
@@ -138,7 +139,7 @@ export const buildInfiniteArticlesQueryOptions = (options: InfiniteArticlesOptio
   getNextPageParam: (lastPage: PaginatedArticlesResponse) =>
     lastPage?.hasMore ? lastPage.page + 1 : undefined,
   initialPageParam: 1,
-  staleTime: 1000 * 30,
+  staleTime: INFINITE_ARTICLES_STALE_MS,
 });
 
 export const useInfiniteArticles = ({

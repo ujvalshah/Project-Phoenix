@@ -1,4 +1,4 @@
 {
-  "indexJsMaxBytes": 1200000,
+  "indexJsMaxBytes": 550000,
   "createNuggetModalChunkMaxBytes": 190000
 }

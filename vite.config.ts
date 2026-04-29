@@ -60,5 +60,47 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, 'src'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return;
+
+            // Keep React runtime + router together to avoid cross-chunk churn.
+            if (
+              id.includes('/react/') ||
+              id.includes('/react-dom/') ||
+              id.includes('/scheduler/') ||
+              id.includes('/react-router/')
+            ) {
+              return 'vendor-react';
+            }
+
+            // Data/cache/runtime virtualization layer used across feed surfaces.
+            if (id.includes('/@tanstack/react-query/') || id.includes('/@tanstack/react-virtual/')) {
+              return 'vendor-query';
+            }
+
+            // Markdown parser/render stack is lazy in card paths; isolate for caching.
+            if (
+              id.includes('/react-markdown/') ||
+              id.includes('/remark-gfm/') ||
+              id.includes('/remark-') ||
+              id.includes('/rehype-') ||
+              id.includes('/mdast-') ||
+              id.includes('/micromark/') ||
+              id.includes('/unist-')
+            ) {
+              return 'vendor-markdown';
+            }
+
+            // Keep observability SDK out of initial app code when possible.
+            if (id.includes('/@sentry/')) {
+              return 'vendor-sentry';
+            }
+          },
+        },
+      },
+    },
   };
 });

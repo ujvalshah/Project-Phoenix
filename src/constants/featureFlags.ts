@@ -88,6 +88,18 @@ export const FEATURE_FLAGS = {
    * @see NUGGET_PERFORMANCE in @/config/nuggetPerformanceConfig
    */
   NUGGET_MODAL_EDITOR_LAZY: NUGGET_PERFORMANCE.editorLazySplit,
+
+  /**
+   * HOME_FEED_VIRTUALIZATION: Window-virtualized homepage grid (Phase A).
+   *
+   * When enabled (VITE_HOME_FEED_VIRTUALIZATION=true):
+   * - Grid view uses `useWindowVirtualizer` + row banding only in single-column mode.
+   * - Multi-column desktop grid remains on the legacy non-virtualized renderer for layout fidelity.
+   * - Masonry view is unchanged (still non-virtualized).
+   *
+   * Roll out after profiling; default off.
+   */
+  HOME_FEED_VIRTUALIZATION: import.meta.env.VITE_HOME_FEED_VIRTUALIZATION === 'true',
 } as const;
 
 /**

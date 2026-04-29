@@ -53,38 +53,56 @@ import {
   VALUE_PROP_STRIP_COPY,
   VALUEPROP_DISMISSED_KEY,
 } from '@/constants/onboardingCopy';
-import { onboardingCopyService } from '@/services/onboardingCopyService';
+import { useQuery } from '@tanstack/react-query';
+import type { ValuePropStripCopy } from '@/services/onboardingCopyService';
+import {
+  onboardingCopyService,
+  ONBOARDING_PUBLIC_QUERY_KEY,
+} from '@/services/onboardingCopyService';
+
+/** Merge CMS copy onto local fallback (same semantics as prior per-route fetches). */
+function mergeBannerCopy(
+  defaults: typeof VALUE_PROP_STRIP_COPY | typeof MARKET_PULSE_INTRO_COPY,
+  remote?: ValuePropStripCopy | null,
+): ValuePropStripCopy {
+  if (remote?.title && remote?.body) {
+    return {
+      title: remote.title,
+      body: remote.body,
+      enabled: remote.enabled ?? true,
+    };
+  }
+  return {
+    title: defaults.title,
+    body: defaults.body,
+    enabled: defaults.enabled ?? true,
+  };
+}
+
+function mergeMicroHeaderLine(
+  defaults: typeof HOME_MICRO_HEADER_COPY | typeof MARKET_PULSE_MICRO_HEADER_COPY,
+  remote?: ValuePropStripCopy | null,
+): { title: string; body: string } {
+  if (remote?.title && remote?.body) {
+    return { title: remote.title, body: remote.body };
+  }
+  return { title: defaults.title, body: defaults.body };
+}
 
 /** Compact value proposition strip shown to first-time visitors */
-const ValuePropStrip: React.FC = () => {
-  const [copy, setCopy] = useState(VALUE_PROP_STRIP_COPY);
+const ValuePropStrip: React.FC<{ stripRemote?: ValuePropStripCopy | null }> = ({
+  stripRemote,
+}) => {
+  const copy = useMemo(
+    () => mergeBannerCopy(VALUE_PROP_STRIP_COPY, stripRemote),
+    [stripRemote],
+  );
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem(VALUEPROP_DISMISSED_KEY) === '1';
     }
     return false;
   });
-
-  useEffect(() => {
-    if (dismissed) return;
-    let isCancelled = false;
-    onboardingCopyService.getValuePropStripCopy()
-      .then((remoteCopy) => {
-        if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
-          setCopy({
-            title: remoteCopy.title,
-            body: remoteCopy.body,
-            enabled: remoteCopy.enabled ?? true,
-          });
-        }
-      })
-      .catch(() => {
-        // Keep local constants as fallback when API/config is unavailable.
-      });
-    return () => {
-      isCancelled = true;
-    };
-  }, [dismissed]);
 
   if (dismissed || copy.enabled === false) return null;
 
@@ -109,35 +127,19 @@ const ValuePropStrip: React.FC = () => {
 };
 
 /** One-time intro banner for Market Pulse, shown on first visit to the pulse feed */
-const MarketPulseIntroBanner: React.FC = () => {
-  const [copy, setCopy] = useState(MARKET_PULSE_INTRO_COPY);
+const MarketPulseIntroBanner: React.FC<{ pulseIntroRemote?: ValuePropStripCopy | null }> = ({
+  pulseIntroRemote,
+}) => {
+  const copy = useMemo(
+    () => mergeBannerCopy(MARKET_PULSE_INTRO_COPY, pulseIntroRemote),
+    [pulseIntroRemote],
+  );
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem(PULSE_INTRO_DISMISSED_KEY) === '1';
     }
     return false;
   });
-
-  useEffect(() => {
-    if (dismissed) return;
-    let isCancelled = false;
-    onboardingCopyService.getMarketPulseIntroCopy()
-      .then((remoteCopy) => {
-        if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
-          setCopy({
-            title: remoteCopy.title,
-            body: remoteCopy.body,
-            enabled: remoteCopy.enabled ?? true,
-          });
-        }
-      })
-      .catch(() => {
-        // Keep local constants as fallback when API/config is unavailable.
-      });
-    return () => {
-      isCancelled = true;
-    };
-  }, [dismissed]);
 
   if (dismissed || copy.enabled === false) return null;
 
@@ -163,41 +165,19 @@ const MarketPulseIntroBanner: React.FC = () => {
   );
 };
 
-const PublicHomeIntro: React.FC<{ isPulseStream: boolean }> = ({ isPulseStream }) => {
-  const [homeCopy, setHomeCopy] = useState(HOME_MICRO_HEADER_COPY);
-  const [marketPulseCopy, setMarketPulseCopy] = useState(MARKET_PULSE_MICRO_HEADER_COPY);
-
-  useEffect(() => {
-    let isCancelled = false;
-    onboardingCopyService.getHomeMicroHeaderCopy()
-      .then((remoteCopy) => {
-        if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
-          setHomeCopy(remoteCopy);
-        }
-      })
-      .catch(() => {
-        // Keep local constants as fallback when API/config is unavailable.
-      });
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let isCancelled = false;
-    onboardingCopyService.getMarketPulseMicroHeaderCopy()
-      .then((remoteCopy) => {
-        if (!isCancelled && remoteCopy?.title && remoteCopy?.body) {
-          setMarketPulseCopy(remoteCopy);
-        }
-      })
-      .catch(() => {
-        // Keep local constants as fallback when API/config is unavailable.
-      });
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
+const PublicHomeIntro: React.FC<{
+  isPulseStream: boolean;
+  homeMicroServer?: ValuePropStripCopy | null;
+  pulseMicroServer?: ValuePropStripCopy | null;
+}> = ({ isPulseStream, homeMicroServer, pulseMicroServer }) => {
+  const homeCopy = useMemo(
+    () => mergeMicroHeaderLine(HOME_MICRO_HEADER_COPY, homeMicroServer),
+    [homeMicroServer],
+  );
+  const marketPulseCopy = useMemo(
+    () => mergeMicroHeaderLine(MARKET_PULSE_MICRO_HEADER_COPY, pulseMicroServer),
+    [pulseMicroServer],
+  );
 
   const activeCopy = isPulseStream ? marketPulseCopy : homeCopy;
 
@@ -283,6 +263,15 @@ export const HomePage: React.FC<HomePageProps> = ({
     }),
     shallowEqualAuth,
   );
+
+  // Public onboarding/microcopy: only fetch for anonymous visitors who actually see the banners.
+  const onboardingBundleQuery = useQuery({
+    queryKey: ONBOARDING_PUBLIC_QUERY_KEY,
+    queryFn: () => onboardingCopyService.fetchPublicBundle(),
+    staleTime: 1000 * 60 * 10,
+    enabled: !isAuthenticated,
+  });
+
   const markFeedSeen = useMarkFeedSeen();
 
   // Clear the matching unseen badge when an authenticated user lands on that
@@ -791,8 +780,18 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const feedMain = (
     <div className="max-w-[1800px] mx-auto pb-4">
-      {!isAuthenticated && <PublicHomeIntro isPulseStream={isPulseStream} />}
-      {contentStream === 'pulse' ? <MarketPulseIntroBanner /> : <ValuePropStrip />}
+      {!isAuthenticated && (
+        <PublicHomeIntro
+          isPulseStream={isPulseStream}
+          homeMicroServer={onboardingBundleQuery.data?.homeMicroHeader}
+          pulseMicroServer={onboardingBundleQuery.data?.marketPulseMicroHeader}
+        />
+      )}
+      {contentStream === 'pulse' ? (
+        <MarketPulseIntroBanner pulseIntroRemote={onboardingBundleQuery.data?.marketPulseIntro} />
+      ) : (
+        <ValuePropStrip stripRemote={onboardingBundleQuery.data?.valuePropStrip} />
+      )}
       <div className="px-4 lg:px-6">
         <div
           className="mt-0.5 mb-2 text-[10.5px] leading-4 tabular-nums text-slate-500/90 dark:text-slate-400 sm:text-[11px]"

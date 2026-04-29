@@ -1,8 +1,10 @@
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Article } from '@/types';
 import { NewsCard } from './NewsCard';
 import { MasonryGrid } from './MasonryGrid';
+import { HomeGridVirtualized } from '@/components/feed/HomeGridVirtualized';
+import type { HomeGridVirtualizedApi } from '@/components/feed/HomeGridVirtualized';
 import { EmptyState } from './UI/EmptyState';
 import { SearchX, Loader2 } from 'lucide-react';
 import { useRowExpansion } from '@/hooks/useRowExpansion';
@@ -12,6 +14,8 @@ import { CardSkeleton } from './card/CardSkeleton';
 import { CardError } from './card/CardError';
 import { ArticleDrawer } from './ArticleDrawer';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { isFeatureEnabled } from '@/constants/featureFlags';
+import { useHomeGridColumnCount } from '@/hooks/useHomeGridColumnCount';
 
 interface ArticleGridProps {
   articles: Article[];
@@ -125,6 +129,9 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
 }) => {
   const isFeedRefetching = isFeedRefetchingProp ?? isFilterRefetchingLegacy;
   const { registerCard } = useRowExpansion();
+  /** Stagger fade-in only for the first rows so very long feeds do not schedule hundreds of delayed animations. */
+  const staggerCapIndex = 20;
+
   // Default to animated-visible when we already have data at mount so cards
   // never get stuck at opacity-0 if the loading transition is missed (e.g.
   // cached React Query hydration, back/forward nav, tab restore). The
@@ -140,7 +147,6 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   // Drawer state for desktop multi-column grid
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [expandedArticleId, setExpandedArticleId] = useState<string | null>(null);
-  const previousScrollPositionRef = useRef<number>(0);
   const isUpdatingFromUrlRef = useRef(false); // Prevent double updates
   
   // Detect if we're in desktop multi-column grid mode
@@ -185,7 +191,56 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     prepareCacheRef.current = nextCache;
     return out;
   }, [articles]);
-  
+
+  const gridColumnCount = useHomeGridColumnCount();
+  // Phase A safety rail: virtualize only in single-column layout.
+  // Multi-column desktop keeps the proven non-virtualized grid because row-banding
+  // introduces visible dead-space artifacts with mixed-height cards.
+  const virtualizeHomeGrid =
+    isFeatureEnabled('HOME_FEED_VIRTUALIZATION') &&
+    viewMode === 'grid' &&
+    gridColumnCount === 1;
+  const homeGridVirtualApiRef = useRef<HomeGridVirtualizedApi | null>(null);
+  const virtualListAnchorRef = useRef<HTMLDivElement>(null);
+  const [virtualListScrollMargin, setVirtualListScrollMargin] = useState(0);
+  const virtualizeHomeGridRef = useRef(virtualizeHomeGrid);
+  virtualizeHomeGridRef.current = virtualizeHomeGrid;
+
+  useLayoutEffect(() => {
+    if (!virtualizeHomeGrid) return;
+    const el = virtualListAnchorRef.current;
+    if (!el) return;
+    const compute = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setVirtualListScrollMargin(Math.max(0, Math.round(top)));
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    // Catch late layout shifts from fonts/images/async chrome above the list.
+    window.addEventListener('load', compute);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('load', compute);
+    };
+  }, [virtualizeHomeGrid, displayArticles.length, gridColumnCount]);
+
+  useEffect(() => {
+    if (!virtualizeHomeGrid || !isMultiColumnGrid) return;
+    if (!drawerOpen || !expandedArticleId) return;
+    const idx = displayArticles.findIndex((a) => a.id === expandedArticleId);
+    if (idx < 0) return;
+    const id = requestAnimationFrame(() => {
+      homeGridVirtualApiRef.current?.scrollToFlatArticleIndex(idx);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [
+    virtualizeHomeGrid,
+    isMultiColumnGrid,
+    drawerOpen,
+    expandedArticleId,
+    displayArticles,
+  ]);
+
   // Initialize drawer state from URL on mount or when URL changes
   // CRITICAL: Only sync URL → state here, not state → URL (prevents bounce)
   useEffect(() => {
@@ -307,6 +362,12 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     prevLoadingRef.current = isLoading;
   }, [isLoading, articles.length, shouldAnimate]);
 
+  // Warm the drawer detail chunk in desktop grid mode so first open avoids suspense spinner jank.
+  useEffect(() => {
+    if (!isMultiColumnGrid || displayArticles.length === 0) return;
+    void import('./ArticleDetail');
+  }, [isMultiColumnGrid, displayArticles.length]);
+
   // Infinite Scroll Handler
   const handleLoadMore = useCallback(() => {
     if (!isFetchingNextPage && hasNextPage && onLoadMore) {
@@ -318,8 +379,6 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   const handleCardClick = useCallback((article: Article) => {
     if (isMultiColumnGrid) {
       // Desktop multi-column grid: Open drawer
-      previousScrollPositionRef.current = window.scrollY;
-      
       // Set flag to prevent useEffect from double-updating
       isUpdatingFromUrlRef.current = true;
       
@@ -369,12 +428,10 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     setTimeout(() => {
       isUpdatingFromUrlRef.current = false;
     }, 100);
-    
-    // Restore scroll position after animation
-    setTimeout(() => {
-      window.scrollTo({ top: previousScrollPositionRef.current, behavior: 'auto' });
-      setExpandedArticleId(null);
-    }, 300);
+
+    // Clear selected article immediately on close; ArticleDrawer already handles exit animation
+    // and scroll-lock restoration, so delaying this introduces noticeable close/open lag.
+    setExpandedArticleId(null);
   }, [setSearchParams]);
   
   const handleNavigateToCard = useCallback((direction: 'prev' | 'next') => {
@@ -401,7 +458,10 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         isUpdatingFromUrlRef.current = false;
       }, 100);
       
-      // Scroll to new card in grid (optional enhancement)
+      if (virtualizeHomeGridRef.current) {
+        homeGridVirtualApiRef.current?.scrollToFlatArticleIndex(newIndex);
+      }
+      // Scroll to new card in grid (optional enhancement; may no-op if row not mounted yet)
       const cardElement = document.querySelector(`[data-article-id="${newArticle.id}"]`);
       if (cardElement) {
         cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -483,7 +543,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
     <div className="relative">
       {/* Feed refetch overlay (filters, search commit, stream, manual refresh, …) */}
       {isFeedRefetching && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-white/60 pt-24 backdrop-blur-[1px] transition-opacity duration-200 dark:bg-slate-950/60">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-white/70 pt-24 transition-opacity duration-200 dark:bg-slate-950/70">
           <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-full shadow-lg border border-slate-200 dark:border-slate-700">
             <Loader2 size={16} className="animate-spin text-primary-500" />
             <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Refreshing feed…</span>
@@ -497,49 +557,73 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         mx-auto w-full
       `}
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full">
-        {displayArticles.map((article, index) => {
-          const delay = Math.min(index * 50, 750);
-          return (
-            <ErrorBoundary
-              key={article.id}
-              fallback={
-                <CardError
-                  error={new Error('Failed to render card')}
-                  variant="grid"
-                />
-              }
-            >
-              <div
-                className={`
+      {virtualizeHomeGrid ? (
+        <div ref={virtualListAnchorRef}>
+          <HomeGridVirtualized
+            displayArticles={displayArticles}
+            columnCount={gridColumnCount}
+            shouldAnimate={shouldAnimate}
+            staggerCapIndex={staggerCapIndex}
+            onCategoryClick={onCategoryClick}
+            onCardClick={handleCardClick}
+            currentUserId={currentUserId}
+            onTagClick={onTagClick}
+            selectionMode={selectionMode}
+            selectedIds={selectedIds}
+            onSelect={onSelect}
+            disableInlineExpansion={isMultiColumnGrid}
+            searchHighlightQuery={searchHighlightQuery}
+            registerCard={registerCard}
+            scrollMarginTop={virtualListScrollMargin}
+            apiRef={homeGridVirtualApiRef}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full">
+          {displayArticles.map((article, index) => {
+            const delay =
+              index <= staggerCapIndex && shouldAnimate ? Math.min(index * 50, 750) : 0;
+            return (
+              <ErrorBoundary
+                key={article.id}
+                fallback={
+                  <CardError
+                    error={new Error('Failed to render card')}
+                    variant="grid"
+                  />
+                }
+              >
+                <div
+                  className={`
                   h-full
                   ${shouldAnimate ? 'animate-fade-in-up' : ''}
                   motion-reduce:animate-none motion-reduce:opacity-100
                 `}
-                style={{
-                  animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
-                }}
-              >
-                <NewsCard
-                  ref={(el) => registerCard(article.id, el)}
-                  article={article}
-                  skipArticlePrepare
-                  viewMode="grid"
-                  onCategoryClick={onCategoryClick}
-                  onClick={handleCardClick}
-                  currentUserId={currentUserId}
-                  onTagClick={onTagClick}
-                  selectionMode={selectionMode}
-                  isSelected={selectedIds.includes(article.id)}
-                  onSelect={onSelect ? () => onSelect(article.id) : undefined}
-                  disableInlineExpansion={isMultiColumnGrid}
-                  searchHighlightQuery={searchHighlightQuery}
-                />
-              </div>
-            </ErrorBoundary>
-          );
-        })}
-      </div>
+                  style={{
+                    animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
+                  }}
+                >
+                  <NewsCard
+                    ref={(el) => registerCard(article.id, el)}
+                    article={article}
+                    skipArticlePrepare
+                    viewMode="grid"
+                    onCategoryClick={onCategoryClick}
+                    onClick={handleCardClick}
+                    currentUserId={currentUserId}
+                    onTagClick={onTagClick}
+                    selectionMode={selectionMode}
+                    isSelected={selectedIds.includes(article.id)}
+                    onSelect={onSelect ? () => onSelect(article.id) : undefined}
+                    disableInlineExpansion={isMultiColumnGrid}
+                    searchHighlightQuery={searchHighlightQuery}
+                  />
+                </div>
+              </ErrorBoundary>
+            );
+          })}
+        </div>
+      )}
 
       {/* Infinite scroll (masonry uses its own trigger inside MasonryGrid) */}
       <InfiniteScrollTrigger

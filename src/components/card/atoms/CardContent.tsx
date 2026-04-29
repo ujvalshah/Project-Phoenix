@@ -1,8 +1,14 @@
-import React, { useState, useCallback, useLayoutEffect, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useLayoutEffect, useRef, useMemo, useEffect, lazy, Suspense } from 'react';
 import { twMerge } from 'tailwind-merge';
 import { ChevronUp, ChevronDown } from 'lucide-react';
-import { MarkdownRenderer, contentHasTable } from '@/components/MarkdownRenderer';
+import { LightweightMarkdownExcerpt } from './LightweightMarkdownExcerpt';
+import { contentHasMarkdownTable } from '@/utils/contentHasMarkdownTable';
 import { CardTitle } from './CardTitle';
+
+/** Full GFM renderer — async chunk so collapsed cards avoid loading react-markdown until expand/table/path needs it */
+const MarkdownRendererLazy = lazy(() =>
+  import('@/components/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
+);
 
 interface CardContentProps {
   excerpt: string;
@@ -105,8 +111,30 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
     return result.trim();
   }, [content, excerpt]);
   
-  // Detect if content contains tables - tables should not be line-clamped
-  const hasTable = useMemo(() => contentHasTable(displayContent), [displayContent]);
+  // Tables need full markdown (GFM pipes) — collapses lightweight excerpt path otherwise
+  const hasTable = useMemo(
+    () => contentHasMarkdownTable(displayContent),
+    [displayContent],
+  );
+
+  const disclaimerHasTable = useMemo(
+    () => (disclaimerText ? contentHasMarkdownTable(disclaimerText) : false),
+    [disclaimerText],
+  );
+
+  const needsFullMarkdownBody = isExpanded || hasTable;
+
+  useEffect(() => {
+    if (needsFullMarkdownBody && displayContent.trim()) {
+      void import('@/components/MarkdownRenderer');
+    }
+  }, [needsFullMarkdownBody, displayContent]);
+
+  useEffect(() => {
+    if (disclaimerHasTable && disclaimerText?.trim()) {
+      void import('@/components/MarkdownRenderer');
+    }
+  }, [disclaimerHasTable, disclaimerText]);
 
   // Measurement-based overflow detection using useLayoutEffect
   // CRITICAL: Only measure when collapsed (max-height applied)
@@ -328,21 +356,12 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   const isHybridCard = cardType === 'hybrid';
   const isMediaOnlyCard = cardType === 'media-only';
 
-  // CRITICAL FIX: We need max-height APPLIED to measure overflow correctly.
-  // The flow is:
-  // 1. Apply max-height constraint (always, until measurement completes)
-  // 2. Measure scrollHeight vs clientHeight
-  // 3. If overflow detected → keep max-height, show "Read more"
-  // 4. If no overflow → remove max-height, hide "Read more"
-
-  // CRITICAL FIX: Separate truncation from expansion
-  // - Truncation should ALWAYS apply when content overflows (for grid cards)
-  // - Expansion controls only show when allowExpansion={true}
-  // - When allowExpansion={false}, content is truncated but clicking opens drawer instead
-  
-  // shouldApplyMaxHeight: Apply constraint when overflow detected, regardless of allowExpansion
-  // This ensures content is always truncated in grid view, even when expansion is disabled
-  const shouldApplyMaxHeight = !isExpanded && (!measured || hadOverflowWhenCollapsed);
+  // shouldApplyMaxHeight: Always cap the collapsed body so grid rows stay uniform.
+  // Reason: `items-stretch` rows inflate every card to the tallest sibling, so a
+  // single card whose `scrollHeight` happens to land just under the 180px threshold
+  // (more likely now that the lightweight excerpt drops paragraph margins) would
+  // balloon the entire row. Measurement still drives the fade overlay below.
+  const shouldApplyMaxHeight = !isExpanded;
 
   // shouldShowFade: Show fade overlay when content is truncated
   // - If allowExpansion={true}: Show fade with "Read more" button
@@ -355,39 +374,6 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
 
   // Show collapse control when: expanded, AND allowExpansion, AND content had overflow
   const showCollapse = allowExpansion && isExpanded && hadOverflowWhenCollapsed;
-  
-  // 🔍 AUDIT LOGGING - Truncation Application
-  // Calculate approximate line count for body text
-  const bodyLineCount = useMemo(() => {
-    if (!displayContent) return 0;
-    const lines = displayContent.split('\n').filter(line => line.trim().length > 0);
-    return lines.length;
-  }, [displayContent]);
-  
-  useEffect(() => {
-    // Get current measurements for runtime audit
-    const el = contentRef.current;
-    const scrollHeight = el?.scrollHeight ?? 0;
-    const clientHeight = el?.clientHeight ?? 0;
-    const offsetHeight = el?.offsetHeight ?? 0;
-    const computedStyle = el ? window.getComputedStyle(el) : null;
-    const lineHeight = computedStyle 
-      ? parseFloat(computedStyle.lineHeight) || parseFloat(computedStyle.fontSize) * 1.5 
-      : 0;
-    const visibleLines = lineHeight > 0 ? Math.floor(clientHeight / lineHeight) : 0;
-    const MIN_VISIBLE_LINES = 2.5;
-    
-    // Warn if measurement might be wrong (scrollHeight === clientHeight with long content)
-    if (measured && !hadOverflowWhenCollapsed && displayContent.length > 200) {
-      console.warn('[TRUNCATION-AUDIT-RUNTIME] ⚠️ Long content but no overflow detected!', {
-        contentLength: displayContent.length,
-        scrollHeight,
-        clientHeight,
-        areEqual: scrollHeight === clientHeight,
-        maxHeightApplied: shouldApplyMaxHeight,
-      });
-    }
-  }, [cardType, isHybridCard, allowExpansion, hasTable, isExpanded, shouldApplyMaxHeight, shouldClamp, showCollapse, hadOverflowWhenCollapsed, measured, bodyLineCount, displayContent.length]);
 
   return (
     <div 
@@ -440,15 +426,27 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
             isHybridCard ? 'leading-relaxed' : ''
           )}
         >
-          <MarkdownRenderer
-            content={displayContent}
-            onYouTubeTimestampClick={onYouTubeTimestampClick}
-          />
+          {needsFullMarkdownBody ? (
+            <Suspense fallback={<LightweightMarkdownExcerpt content={displayContent} />}>
+              <MarkdownRendererLazy
+                content={displayContent}
+                onYouTubeTimestampClick={onYouTubeTimestampClick}
+              />
+            </Suspense>
+          ) : (
+            <LightweightMarkdownExcerpt content={displayContent} />
+          )}
         </div>
         {/* DISCLAIMER: Footnote at the end of card content */}
         {disclaimerText && (
           <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] italic text-slate-400 dark:text-slate-500 leading-snug [&_a]:underline [&_a]:text-slate-500 dark:[&_a]:text-slate-400">
-            <MarkdownRenderer content={disclaimerText} />
+            {disclaimerHasTable ? (
+              <Suspense fallback={<LightweightMarkdownExcerpt content={disclaimerText} />}>
+                <MarkdownRendererLazy content={disclaimerText} />
+              </Suspense>
+            ) : (
+              <LightweightMarkdownExcerpt content={disclaimerText} />
+            )}
           </div>
         )}
         {/* FADE OVERLAY: Show when content is truncated */}
