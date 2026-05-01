@@ -14,7 +14,6 @@ import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useToast } from '@/hooks/useToast';
 import { Loader2 } from 'lucide-react';
-import { adminFeedbackService } from '@/admin/services/adminFeedbackService';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 import { getOverlayHost } from '@/utils/overlayHosts';
@@ -200,12 +199,14 @@ export const Header: React.FC<HeaderProps> = ({
 
   // Determine which avatar ref to use based on viewport width
   const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
   // xl breakpoint (1280px) splits the two desktop filter button placements.
   const [isXl, setIsXl] = useState(false);
 
   useEffect(() => {
     const checkViewport = () => {
       setIsMobile(window.innerWidth < 1024); // lg breakpoint
+      setIsTablet(window.innerWidth >= 768 && window.innerWidth < 1024);
       setIsXl(window.innerWidth >= 1280); // xl breakpoint
     };
     checkViewport();
@@ -519,18 +520,6 @@ export const Header: React.FC<HeaderProps> = ({
   // Use global filter hook as single source of truth for active filter state
   const hasActiveFilters = filters.hasActiveFilters;
   const activeFilterCount = filters.activeFilterCount;
-
-  // Track window size for tablet detection
-  const [isTablet, setIsTablet] = useState(false);
-  
-  useEffect(() => {
-    const checkTablet = () => {
-      setIsTablet(window.innerWidth >= 768 && window.innerWidth < 1024);
-    };
-    checkTablet();
-    window.addEventListener('resize', checkTablet);
-    return () => window.removeEventListener('resize', checkTablet);
-  }, []);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -1474,6 +1463,7 @@ const DrawerFeedbackForm: React.FC<DrawerFeedbackFormProps> = ({ isAuthenticated
             }
           : undefined;
 
+      const { adminFeedbackService } = await import('@/admin/services/adminFeedbackService');
       await adminFeedbackService.submitFeedback(
         feedback.trim(),
         'general',
@@ -1587,15 +1577,22 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setIsMounted(true);
-      const raf = requestAnimationFrame(() => setIsVisible(true));
-      return () => cancelAnimationFrame(raf);
+      let innerRaf = 0;
+      const outerRaf = requestAnimationFrame(() => {
+        setIsMounted(true);
+        innerRaf = requestAnimationFrame(() => setIsVisible(true));
+      });
+      return () => {
+        cancelAnimationFrame(outerRaf);
+        cancelAnimationFrame(innerRaf);
+      };
     }
-    setIsVisible(false);
-    // Fallback unmount: transitionend will not fire under prefers-reduced-motion
-    // (transition-none), so guarantee cleanup on a matching timeout.
+    const rafHide = requestAnimationFrame(() => setIsVisible(false));
     const t = window.setTimeout(() => setIsMounted(false), 250);
-    return () => window.clearTimeout(t);
+    return () => {
+      cancelAnimationFrame(rafHide);
+      window.clearTimeout(t);
+    };
   }, [isOpen]);
 
   // Unmount once the drawer's exit transform finishes. Using onTransitionEnd
