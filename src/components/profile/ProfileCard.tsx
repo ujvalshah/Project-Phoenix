@@ -4,7 +4,6 @@ import { MapPin, Link as LinkIcon, Twitter, Linkedin, Github, Camera, Save, Edit
 import { useToast } from '@/hooks/useToast';
 import { storageService } from '@/services/storageService';
 import { Avatar } from '../shared/Avatar';
-import { adminConfigService } from '@/admin/services/adminConfigService';
 import { LAYOUT_CLASSES } from '@/constants/layout';
 import { useMediaUpload } from '@/hooks/useMediaUpload';
 
@@ -51,16 +50,9 @@ interface ProfileCardProps {
 export const ProfileCard: React.FC<ProfileCardProps> = ({ user, isOwner, nuggetCount, onUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [allowUpload, setAllowUpload] = useState(false);
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaUpload = useMediaUpload({ purpose: 'avatar' });
-
-  useEffect(() => {
-    adminConfigService.getFeatureFlags().then(flags => {
-        setAllowUpload(flags.enableAvatarUpload);
-    });
-  }, []);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -188,7 +180,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, isOwner, nuggetC
               className="w-full h-full text-3xl" 
             />
         </div>
-        {isEditing && allowUpload && (
+        {isEditing && (
             <>
                 <button 
                     onClick={() => fileInputRef.current?.click()}

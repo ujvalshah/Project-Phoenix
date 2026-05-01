@@ -25,12 +25,6 @@ vi.mock('@/services/storageService', () => ({
   },
 }));
 
-vi.mock('@/admin/services/adminConfigService', () => ({
-  adminConfigService: {
-    getFeatureFlags: vi.fn().mockResolvedValue({ enableAvatarUpload: true }),
-  },
-}));
-
 vi.mock('@/hooks/useMediaUpload', () => ({
   useMediaUpload: () => ({
     upload: vi.fn(),

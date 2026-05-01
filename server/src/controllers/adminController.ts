@@ -7,8 +7,6 @@ import { Feedback } from '../models/Feedback.js';
 import { AdminAuditLog } from '../models/AdminAuditLog.js';
 import { MediaQuotaConfig } from '../models/MediaQuotaConfig.js';
 import { DisclaimerConfig } from '../models/DisclaimerConfig.js';
-import { ValuePropStripConfig } from '../models/ValuePropStripConfig.js';
-import { MarketPulseIntroConfig } from '../models/MarketPulseIntroConfig.js';
 import { HomeMicroHeaderConfig } from '../models/HomeMicroHeaderConfig.js';
 import { MarketPulseMicroHeaderConfig } from '../models/MarketPulseMicroHeaderConfig.js';
 import { LRUCache } from '../utils/lruCache.js';
@@ -21,14 +19,6 @@ import {
   getDisclaimerConfig,
   invalidateDisclaimerCache
 } from '../services/disclaimerConfigService.js';
-import {
-  getValuePropStripConfig,
-  invalidateValuePropStripCache
-} from '../services/valuePropStripConfigService.js';
-import {
-  getMarketPulseIntroConfig,
-  invalidateMarketPulseIntroCache
-} from '../services/marketPulseIntroConfigService.js';
 import {
   getHomeMicroHeaderConfig,
   invalidateHomeMicroHeaderCache
@@ -59,11 +49,6 @@ const updateDisclaimerSchema = z.object({
 const updateOnboardingTitleBodySchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(120, 'Title too long').optional(),
   body: z.string().trim().min(1, 'Body is required').max(500, 'Body too long').optional()
-});
-
-/** For dismissible onboarding strips (title + body + global enabled toggle). */
-const updateOnboardingStripSchema = updateOnboardingTitleBodySchema.extend({
-  enabled: z.boolean().optional()
 });
 
 // Optional `reason` body for lifecycle endpoints. Free-text is captured in the
@@ -657,182 +642,6 @@ export async function updateDisclaimerSettings(req: AdminRequest, res: Response)
   } catch (error) {
     getLogger().error({ error, adminId }, 'Failed to update disclaimer config');
     return res.status(500).json({ message: 'Failed to update disclaimer config' });
-  }
-}
-
-/**
- * Get current value-prop strip config.
- * GET /api/admin/settings/value-prop-strip
- * Returns effective config (from DB or defaults).
- */
-export async function getValuePropStripSettings(_req: AdminRequest, res: Response) {
-  try {
-    const config = await getValuePropStripConfig();
-    return res.json(config);
-  } catch (error) {
-    getLogger().error({ error }, 'Failed to get value-prop strip config');
-    return res.status(500).json({ message: 'Failed to get value-prop strip config' });
-  }
-}
-
-/**
- * Update value-prop strip config (admin only).
- * PATCH /api/admin/settings/value-prop-strip
- * Body: { title?, body?, enabled? }
- */
-export async function updateValuePropStripSettings(req: AdminRequest, res: Response) {
-  const adminId = req.userId;
-  if (!adminId) {
-    return res.status(401).json({ message: 'Admin authentication required' });
-  }
-
-  const parseResult = updateOnboardingStripSchema.safeParse(req.body);
-  if (!parseResult.success) {
-    return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
-  }
-
-  const updates = parseResult.data;
-  if (updates.title === undefined && updates.body === undefined && updates.enabled === undefined) {
-    return res.status(400).json({ message: 'At least one field must be provided' });
-  }
-
-  try {
-    const current = await getValuePropStripConfig();
-    const previousValue = { ...current };
-
-    const newDoc = {
-      id: 'default' as const,
-      title: updates.title ?? current.title,
-      body: updates.body ?? current.body,
-      enabled: updates.enabled ?? current.enabled,
-      updatedAt: new Date()
-    };
-
-    await ValuePropStripConfig.findOneAndUpdate(
-      { id: 'default' },
-      { $set: newDoc },
-      { upsert: true, new: true }
-    );
-
-    invalidateValuePropStripCache();
-
-    const newValue = {
-      title: newDoc.title,
-      body: newDoc.body,
-      enabled: newDoc.enabled
-    };
-
-    await AdminAuditLog.create({
-      adminId,
-      action: 'UPDATE_VALUE_PROP_STRIP_CONFIG',
-      targetType: 'system',
-      targetId: 'value_prop_strip_config',
-      previousValue: previousValue as Record<string, unknown>,
-      newValue: newValue as Record<string, unknown>,
-      ipAddress: req.ip || req.socket?.remoteAddress,
-      userAgent: req.get('User-Agent')
-    });
-
-    getLogger().info(
-      { action: 'UPDATE_VALUE_PROP_STRIP_CONFIG', adminId, previousValue, newValue, target: 'value_prop_strip_config' },
-      'Admin updated value-prop strip config'
-    );
-
-    return res.json({
-      message: 'Value-prop strip config updated',
-      config: newValue
-    });
-  } catch (error) {
-    getLogger().error({ error, adminId }, 'Failed to update value-prop strip config');
-    return res.status(500).json({ message: 'Failed to update value-prop strip config' });
-  }
-}
-
-/**
- * Get current Market Pulse intro copy.
- * GET /api/admin/settings/market-pulse-intro
- * Returns effective config (from DB or defaults).
- */
-export async function getMarketPulseIntroSettings(_req: AdminRequest, res: Response) {
-  try {
-    const config = await getMarketPulseIntroConfig();
-    return res.json(config);
-  } catch (error) {
-    getLogger().error({ error }, 'Failed to get Market Pulse intro config');
-    return res.status(500).json({ message: 'Failed to get Market Pulse intro config' });
-  }
-}
-
-/**
- * Update Market Pulse intro copy (admin only).
- * PATCH /api/admin/settings/market-pulse-intro
- * Body: { title?, body?, enabled? }
- */
-export async function updateMarketPulseIntroSettings(req: AdminRequest, res: Response) {
-  const adminId = req.userId;
-  if (!adminId) {
-    return res.status(401).json({ message: 'Admin authentication required' });
-  }
-
-  const parseResult = updateOnboardingStripSchema.safeParse(req.body);
-  if (!parseResult.success) {
-    return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
-  }
-
-  const updates = parseResult.data;
-  if (updates.title === undefined && updates.body === undefined && updates.enabled === undefined) {
-    return res.status(400).json({ message: 'At least one field must be provided' });
-  }
-
-  try {
-    const current = await getMarketPulseIntroConfig();
-    const previousValue = { ...current };
-
-    const newDoc = {
-      id: 'default' as const,
-      title: updates.title ?? current.title,
-      body: updates.body ?? current.body,
-      enabled: updates.enabled ?? current.enabled,
-      updatedAt: new Date()
-    };
-
-    await MarketPulseIntroConfig.findOneAndUpdate(
-      { id: 'default' },
-      { $set: newDoc },
-      { upsert: true, new: true }
-    );
-
-    invalidateMarketPulseIntroCache();
-
-    const newValue = {
-      title: newDoc.title,
-      body: newDoc.body,
-      enabled: newDoc.enabled
-    };
-
-    await AdminAuditLog.create({
-      adminId,
-      action: 'UPDATE_MARKET_PULSE_INTRO_CONFIG',
-      targetType: 'system',
-      targetId: 'market_pulse_intro_config',
-      previousValue: previousValue as Record<string, unknown>,
-      newValue: newValue as Record<string, unknown>,
-      ipAddress: req.ip || req.socket?.remoteAddress,
-      userAgent: req.get('User-Agent')
-    });
-
-    getLogger().info(
-      { action: 'UPDATE_MARKET_PULSE_INTRO_CONFIG', adminId, previousValue, newValue, target: 'market_pulse_intro_config' },
-      'Admin updated Market Pulse intro config'
-    );
-
-    return res.json({
-      message: 'Market Pulse intro config updated',
-      config: newValue
-    });
-  } catch (error) {
-    getLogger().error({ error, adminId }, 'Failed to update Market Pulse intro config');
-    return res.status(500).json({ message: 'Failed to update Market Pulse intro config' });
   }
 }
 

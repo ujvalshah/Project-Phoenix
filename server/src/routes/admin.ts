@@ -11,10 +11,6 @@ import {
   updateMediaLimits,
   getDisclaimerSettings,
   updateDisclaimerSettings,
-  getValuePropStripSettings,
-  updateValuePropStripSettings,
-  getMarketPulseIntroSettings,
-  updateMarketPulseIntroSettings,
   getHomeMicroHeaderSettings,
   updateHomeMicroHeaderSettings,
   getMarketPulseMicroHeaderSettings,
@@ -56,18 +52,6 @@ router.get('/settings/disclaimer', authenticateToken, requireAdminRole, getDiscl
 
 // PATCH /api/admin/settings/disclaimer - Update disclaimer config (admin only)
 router.patch('/settings/disclaimer', authenticateToken, requireAdminRole, adminMutationLimiter, updateDisclaimerSettings);
-
-// GET /api/admin/settings/value-prop-strip - Get first-time value-prop strip copy (admin only)
-router.get('/settings/value-prop-strip', authenticateToken, requireAdminRole, getValuePropStripSettings);
-
-// PATCH /api/admin/settings/value-prop-strip - Update first-time value-prop strip copy (admin only)
-router.patch('/settings/value-prop-strip', authenticateToken, requireAdminRole, adminMutationLimiter, updateValuePropStripSettings);
-
-// GET /api/admin/settings/market-pulse-intro - Get Market Pulse first-visit intro copy (admin only)
-router.get('/settings/market-pulse-intro', authenticateToken, requireAdminRole, getMarketPulseIntroSettings);
-
-// PATCH /api/admin/settings/market-pulse-intro - Update Market Pulse first-visit intro copy (admin only)
-router.patch('/settings/market-pulse-intro', authenticateToken, requireAdminRole, adminMutationLimiter, updateMarketPulseIntroSettings);
 
 // GET /api/admin/settings/home-micro-header - Get homepage micro-header copy (admin only)
 router.get('/settings/home-micro-header', authenticateToken, requireAdminRole, getHomeMicroHeaderSettings);

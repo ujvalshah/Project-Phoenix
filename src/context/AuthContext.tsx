@@ -5,8 +5,6 @@ import { User as ModularUser } from '@/types/user';
 import { LoginPayload, SignupPayload, AuthProvider as AuthProviderType } from '@/types/auth';
 import { authService } from '@/services/authService';
 import { apiClient } from '@/services/apiClient';
-import { FeatureFlags, SignupConfig } from '@/admin/types/admin';
-import { adminConfigService } from '@/admin/services/adminConfigService';
 import { isTransientAuthMeError } from '@/utils/authBootstrapErrors';
 import { getSafeUsernameHandle } from '@/utils/userIdentity';
 import { captureException } from '@/utils/sentry';
@@ -21,8 +19,6 @@ interface AuthContextType {
   modularUser: ModularUser | null; // New Schema
   isAuthenticated: boolean;
   isLoading: boolean;
-  featureFlags: FeatureFlags | null;
-  signupConfig: SignupConfig | null;
   login: (payload: LoginPayload) => Promise<void>;
   signup: (payload: SignupPayload) => Promise<{ needsVerification: boolean }>;
   socialLogin: (provider: AuthProviderType) => Promise<void>;
@@ -42,8 +38,6 @@ const AuthContext = createContext<AuthStore | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [modularUser, setModularUser] = useState<ModularUser | null>(null);
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlags | null>(null);
-  const [signupConfig, setSignupConfig] = useState<SignupConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Modal State
@@ -114,22 +108,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } finally {
         setIsLoading(false);
       }
-
-      // 2) Feature flags + signup config — non-blocking; consumers use null until resolved.
-      void (async () => {
-        try {
-          const [flags, sConf] = await Promise.all([
-            adminConfigService.getFeatureFlags(),
-            adminConfigService.getSignupConfig(),
-          ]);
-          setFeatureFlags(flags);
-          setSignupConfig(sConf);
-        } catch (e) {
-          captureException(e instanceof Error ? e : new Error(String(e)), {
-            route: 'AuthContext/configInit',
-          });
-        }
-      })();
     };
     init();
   }, [syncSearchCohortStorage]);
@@ -238,8 +216,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       modularUser,      // Expose new schema
       isAuthenticated: !!modularUser,
       isLoading,
-      featureFlags,
-      signupConfig,
       login,
       signup,
       socialLogin,
@@ -252,8 +228,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     legacyUser,
     modularUser,
     isLoading,
-    featureFlags,
-    signupConfig,
     login,
     signup,
     socialLogin,

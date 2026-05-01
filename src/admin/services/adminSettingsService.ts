@@ -22,13 +22,14 @@ export interface UpdateDisclaimerBody {
   enableByDefault?: boolean;
 }
 
-export interface ValuePropStripConfig {
+/** Homepage / Market Pulse micro-header (H1 + line) from admin settings. */
+export interface MicroHeaderCopyConfig {
   title: string;
   body: string;
   enabled?: boolean;
 }
 
-export interface UpdateValuePropStripBody {
+export interface UpdateMicroHeaderCopyBody {
   title?: string;
   body?: string;
   enabled?: boolean;
@@ -51,43 +52,29 @@ export const adminSettingsService = {
     return apiClient.patch<{ message: string; config: DisclaimerConfig }>('/admin/settings/disclaimer', body);
   },
 
-  async getValuePropStripConfig(): Promise<ValuePropStripConfig> {
-    return apiClient.get<ValuePropStripConfig>('/admin/settings/value-prop-strip');
-  },
-
-  async updateValuePropStripConfig(
-    body: UpdateValuePropStripBody
-  ): Promise<{ message: string; config: ValuePropStripConfig }> {
-    return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/value-prop-strip', body);
-  },
-
-  async getMarketPulseIntroConfig(): Promise<ValuePropStripConfig> {
-    return apiClient.get<ValuePropStripConfig>('/admin/settings/market-pulse-intro');
-  },
-
-  async updateMarketPulseIntroConfig(
-    body: UpdateValuePropStripBody
-  ): Promise<{ message: string; config: ValuePropStripConfig }> {
-    return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/market-pulse-intro', body);
-  },
-
-  async getHomeMicroHeaderConfig(): Promise<ValuePropStripConfig> {
-    return apiClient.get<ValuePropStripConfig>('/admin/settings/home-micro-header');
+  async getHomeMicroHeaderConfig(): Promise<MicroHeaderCopyConfig> {
+    return apiClient.get<MicroHeaderCopyConfig>('/admin/settings/home-micro-header');
   },
 
   async updateHomeMicroHeaderConfig(
-    body: UpdateValuePropStripBody
-  ): Promise<{ message: string; config: ValuePropStripConfig }> {
-    return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/home-micro-header', body);
+    body: UpdateMicroHeaderCopyBody
+  ): Promise<{ message: string; config: MicroHeaderCopyConfig }> {
+    return apiClient.patch<{ message: string; config: MicroHeaderCopyConfig }>(
+      '/admin/settings/home-micro-header',
+      body,
+    );
   },
 
-  async getMarketPulseMicroHeaderConfig(): Promise<ValuePropStripConfig> {
-    return apiClient.get<ValuePropStripConfig>('/admin/settings/market-pulse-micro-header');
+  async getMarketPulseMicroHeaderConfig(): Promise<MicroHeaderCopyConfig> {
+    return apiClient.get<MicroHeaderCopyConfig>('/admin/settings/market-pulse-micro-header');
   },
 
   async updateMarketPulseMicroHeaderConfig(
-    body: UpdateValuePropStripBody
-  ): Promise<{ message: string; config: ValuePropStripConfig }> {
-    return apiClient.patch<{ message: string; config: ValuePropStripConfig }>('/admin/settings/market-pulse-micro-header', body);
-  }
+    body: UpdateMicroHeaderCopyBody
+  ): Promise<{ message: string; config: MicroHeaderCopyConfig }> {
+    return apiClient.patch<{ message: string; config: MicroHeaderCopyConfig }>(
+      '/admin/settings/market-pulse-micro-header',
+      body,
+    );
+  },
 };

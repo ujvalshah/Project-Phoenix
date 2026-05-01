@@ -3,6 +3,77 @@ import { getLogger } from './logger.js';
 
 const SLOW_QUERY_THRESHOLD_MS = 500; // Log queries slower than 500ms
 
+let mongooseHooksAttached = false;
+
+/**
+ * Register Mongoose plugins and connection listeners exactly once after a successful connect.
+ * (Previously lived only on the retry-exhaustion path — which never threw, so failed boots
+ * could still proceed and surface as 500s on first query.)
+ */
+function attachMongooseHooksOnce(): void {
+  if (mongooseHooksAttached) return;
+  mongooseHooksAttached = true;
+
+  mongoose.plugin((schema: mongoose.Schema) => {
+    schema.pre(
+      ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'count', 'countDocuments', 'aggregate'],
+      function () {
+        const startTime = Date.now();
+        const collectionName = this.model?.collection?.name || 'unknown';
+        const operation = this.op || 'unknown';
+        (this as { _queryStartTime?: number; _queryCollection?: string; _queryOperation?: string })._queryStartTime =
+          startTime;
+        (this as { _queryCollection?: string })._queryCollection = collectionName;
+        (this as { _queryOperation?: string })._queryOperation = operation;
+      },
+    );
+
+    schema.post(
+      ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'count', 'countDocuments', 'aggregate'],
+      function () {
+        const startTime = (this as { _queryStartTime?: number })._queryStartTime;
+        if (startTime) {
+          const duration = Date.now() - startTime;
+          const collectionName = (this as { _queryCollection?: string })._queryCollection || 'unknown';
+          const operation = (this as { _queryOperation?: string })._queryOperation || 'unknown';
+          if (duration >= SLOW_QUERY_THRESHOLD_MS) {
+            const logger = getLogger();
+            logger.warn({
+              msg: 'Slow database query detected',
+              collection: collectionName,
+              operation,
+              duration: `${duration}ms`,
+            });
+          }
+        }
+      },
+    );
+  });
+
+  mongoose.connection.on('error', (err: Error) => {
+    const logger = getLogger();
+    logger.error({
+      msg: 'MongoDB connection error',
+      error: {
+        message: err.message,
+        stack: err.stack,
+      },
+    });
+  });
+
+  mongoose.connection.on('disconnected', () => {
+    const logger = getLogger();
+    logger.warn({ msg: 'MongoDB disconnected' });
+  });
+
+  process.once('SIGINT', async () => {
+    await mongoose.connection.close();
+    const logger = getLogger();
+    logger.info({ msg: 'MongoDB connection closed through app termination' });
+    process.exit(0);
+  });
+}
+
 /**
  * Connect to MongoDB database
  */
@@ -46,6 +117,7 @@ export async function connectDB(): Promise<void> {
       await mongoose.connect(connectionString);
       // Audit Phase-1 Fix: Explicitly enable strictQuery to reject unknown query fields
       mongoose.set('strictQuery', true);
+      attachMongooseHooksOnce();
       const logger = getLogger();
       logger.info({ msg: 'Database connected', database: 'MongoDB' });
       // Audit Phase-3 Fix: Log informational message when connection stabilizes after retry
@@ -72,80 +144,16 @@ export async function connectDB(): Promise<void> {
       }
     }
   }
-  
-  // All retries exhausted - throw last error
-  try {
-    
-    // Database Performance Monitoring
-    // Hook into mongoose queries to detect slow operations
-    mongoose.plugin((schema: mongoose.Schema) => {
-      schema.pre(['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'count', 'countDocuments', 'aggregate'], function() {
-        const startTime = Date.now();
-        const collectionName = this.model?.collection?.name || 'unknown';
-        const operation = this.op || 'unknown';
-        
-        // Store start time on query
-        (this as any)._queryStartTime = startTime;
-        (this as any)._queryCollection = collectionName;
-        (this as any)._queryOperation = operation;
-      });
-      
-      schema.post(['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'count', 'countDocuments', 'aggregate'], function() {
-        const startTime = (this as any)._queryStartTime;
-        if (startTime) {
-          const duration = Date.now() - startTime;
-          const collectionName = (this as any)._queryCollection || 'unknown';
-          const operation = (this as any)._queryOperation || 'unknown';
-          
-          if (duration >= SLOW_QUERY_THRESHOLD_MS) {
-            const logger = getLogger();
-            logger.warn({
-              msg: 'Slow database query detected',
-              collection: collectionName,
-              operation,
-              duration: `${duration}ms`,
-            });
-          }
-        }
-      });
-    });
-    
-    // Handle connection events
-    mongoose.connection.on('error', (err) => {
-      const logger = getLogger();
-      logger.error({
-        msg: 'MongoDB connection error',
-        error: {
-          message: err.message,
-          stack: err.stack,
-        },
-      });
-    });
-    
-    mongoose.connection.on('disconnected', () => {
-      const logger = getLogger();
-      logger.warn({ msg: 'MongoDB disconnected' });
-    });
-    
-    // Graceful shutdown
-    process.on('SIGINT', async () => {
-      await mongoose.connection.close();
-      const logger = getLogger();
-      logger.info({ msg: 'MongoDB connection closed through app termination' });
-      process.exit(0);
-    });
-  } catch (error: any) {
-    // This catch block now only handles errors from the retry loop
-    const logger = getLogger();
-    logger.error({
-      msg: 'Failed to connect to MongoDB after retries',
-      error: {
-        message: lastError?.message || error.message,
-        stack: lastError?.stack || error.stack,
-      },
-    });
-    throw lastError || error;
-  }
+
+  const logger = getLogger();
+  logger.error({
+    msg: 'Failed to connect to MongoDB after retries',
+    error: {
+      message: lastError?.message ?? 'unknown',
+      stack: lastError?.stack,
+    },
+  });
+  throw lastError ?? new Error('MongoDB connection failed after retries');
 }
 
 /**

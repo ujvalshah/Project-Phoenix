@@ -25,7 +25,6 @@ interface DetailTopBarProps {
   onReport: () => void;
   isOwner: boolean;
   isAdmin: boolean;
-  showAuthorName?: boolean;
 }
 
 export const DetailTopBar: React.FC<DetailTopBarProps> = ({
@@ -40,7 +39,6 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
   onReport,
   isOwner,
   isAdmin,
-  showAuthorName = true,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const menuAnchorRef = useRef<HTMLButtonElement>(null);
@@ -56,9 +54,7 @@ export const DetailTopBar: React.FC<DetailTopBarProps> = ({
         {authorName && (
           <>
             <Avatar name={authorName} size="sm" />
-            {showAuthorName && (
-              <div className="text-sm font-bold text-slate-900 dark:text-white truncate">{authorName}</div>
-            )}
+            <div className="text-sm font-bold text-slate-900 dark:text-white truncate">{authorName}</div>
           </>
         )}
       </div>

@@ -28,7 +28,7 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { Article } from '@/types';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
-import { Loader2, X, Zap } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { PageStack } from '@/components/layouts/PageStack';
@@ -45,43 +45,17 @@ import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import { useFilterResults } from '@/context/FilterResultsContext';
 import { useMarkFeedSeen } from '@/hooks/usePulseUnseen';
 import { endActiveSearchDraft, recordSearchEvent } from '@/observability/telemetry';
-import {
-  HOME_MICRO_HEADER_COPY,
-  MARKET_PULSE_MICRO_HEADER_COPY,
-  MARKET_PULSE_INTRO_COPY,
-  PULSE_INTRO_DISMISSED_KEY,
-  VALUE_PROP_STRIP_COPY,
-  VALUEPROP_DISMISSED_KEY,
-} from '@/constants/onboardingCopy';
+import { HOME_MICRO_HEADER_COPY, MARKET_PULSE_MICRO_HEADER_COPY } from '@/constants/onboardingCopy';
 import { useQuery } from '@tanstack/react-query';
-import type { ValuePropStripCopy } from '@/services/onboardingCopyService';
+import type { PublicMicroHeaderCopy } from '@/services/onboardingCopyService';
 import {
   onboardingCopyService,
   ONBOARDING_PUBLIC_QUERY_KEY,
 } from '@/services/onboardingCopyService';
 
-/** Merge CMS copy onto local fallback (same semantics as prior per-route fetches). */
-function mergeBannerCopy(
-  defaults: typeof VALUE_PROP_STRIP_COPY | typeof MARKET_PULSE_INTRO_COPY,
-  remote?: ValuePropStripCopy | null,
-): ValuePropStripCopy {
-  if (remote?.title && remote?.body) {
-    return {
-      title: remote.title,
-      body: remote.body,
-      enabled: remote.enabled ?? true,
-    };
-  }
-  return {
-    title: defaults.title,
-    body: defaults.body,
-    enabled: defaults.enabled ?? true,
-  };
-}
-
 function mergeMicroHeaderLine(
   defaults: typeof HOME_MICRO_HEADER_COPY | typeof MARKET_PULSE_MICRO_HEADER_COPY,
-  remote?: ValuePropStripCopy | null,
+  remote?: PublicMicroHeaderCopy | null,
 ): { title: string; body: string } {
   if (remote?.title && remote?.body) {
     return { title: remote.title, body: remote.body };
@@ -89,86 +63,10 @@ function mergeMicroHeaderLine(
   return { title: defaults.title, body: defaults.body };
 }
 
-/** Compact value proposition strip shown to first-time visitors */
-const ValuePropStrip: React.FC<{ stripRemote?: ValuePropStripCopy | null }> = ({
-  stripRemote,
-}) => {
-  const copy = useMemo(
-    () => mergeBannerCopy(VALUE_PROP_STRIP_COPY, stripRemote),
-    [stripRemote],
-  );
-  const [dismissed, setDismissed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(VALUEPROP_DISMISSED_KEY) === '1';
-    }
-    return false;
-  });
-
-  if (dismissed || copy.enabled === false) return null;
-
-  const handleDismiss = () => {
-    setDismissed(true);
-    localStorage.setItem(VALUEPROP_DISMISSED_KEY, '1');
-  };
-
-  return (
-    <div className="relative mx-4 lg:mx-6 mb-3 px-4 py-3 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200/60 rounded-xl">
-      <button
-        onClick={handleDismiss}
-        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
-        aria-label="Dismiss"
-      >
-        <X size={14} />
-      </button>
-      <p className="text-sm font-semibold text-gray-900 pr-6">{copy.title}</p>
-      <p className="text-xs text-gray-600 mt-0.5">{copy.body}</p>
-    </div>
-  );
-};
-
-/** One-time intro banner for Market Pulse, shown on first visit to the pulse feed */
-const MarketPulseIntroBanner: React.FC<{ pulseIntroRemote?: ValuePropStripCopy | null }> = ({
-  pulseIntroRemote,
-}) => {
-  const copy = useMemo(
-    () => mergeBannerCopy(MARKET_PULSE_INTRO_COPY, pulseIntroRemote),
-    [pulseIntroRemote],
-  );
-  const [dismissed, setDismissed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(PULSE_INTRO_DISMISSED_KEY) === '1';
-    }
-    return false;
-  });
-
-  if (dismissed || copy.enabled === false) return null;
-
-  const handleDismiss = () => {
-    setDismissed(true);
-    localStorage.setItem(PULSE_INTRO_DISMISSED_KEY, '1');
-  };
-
-  return (
-    <div className="relative mx-4 lg:mx-6 mb-3 px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 rounded-xl">
-      <button
-        onClick={handleDismiss}
-        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
-        aria-label="Dismiss"
-      >
-        <X size={14} />
-      </button>
-      <p className="text-sm font-semibold text-gray-900 pr-6 flex items-center gap-1.5">
-        <Zap size={14} className="text-amber-500" /> {copy.title}
-      </p>
-      <p className="text-xs text-gray-600 mt-0.5">{copy.body}</p>
-    </div>
-  );
-};
-
 const PublicHomeIntro: React.FC<{
   isPulseStream: boolean;
-  homeMicroServer?: ValuePropStripCopy | null;
-  pulseMicroServer?: ValuePropStripCopy | null;
+  homeMicroServer?: PublicMicroHeaderCopy | null;
+  pulseMicroServer?: PublicMicroHeaderCopy | null;
 }> = ({ isPulseStream, homeMicroServer, pulseMicroServer }) => {
   const homeCopy = useMemo(
     () => mergeMicroHeaderLine(HOME_MICRO_HEADER_COPY, homeMicroServer),
@@ -264,10 +162,10 @@ export const HomePage: React.FC<HomePageProps> = ({
     shallowEqualAuth,
   );
 
-  // Public onboarding/microcopy: only fetch for anonymous visitors who actually see the banners.
-  const onboardingBundleQuery = useQuery({
+  // Public micro-header CMS copy (anonymous homepage / pulse stream only).
+  const onboardingMicroHeadersQuery = useQuery({
     queryKey: ONBOARDING_PUBLIC_QUERY_KEY,
-    queryFn: () => onboardingCopyService.fetchPublicBundle(),
+    queryFn: () => onboardingCopyService.fetchMicroHeaderBundle(),
     staleTime: 1000 * 60 * 10,
     enabled: !isAuthenticated,
   });
@@ -783,14 +681,9 @@ export const HomePage: React.FC<HomePageProps> = ({
       {!isAuthenticated && (
         <PublicHomeIntro
           isPulseStream={isPulseStream}
-          homeMicroServer={onboardingBundleQuery.data?.homeMicroHeader}
-          pulseMicroServer={onboardingBundleQuery.data?.marketPulseMicroHeader}
+          homeMicroServer={onboardingMicroHeadersQuery.data?.homeMicroHeader}
+          pulseMicroServer={onboardingMicroHeadersQuery.data?.marketPulseMicroHeader}
         />
-      )}
-      {contentStream === 'pulse' ? (
-        <MarketPulseIntroBanner pulseIntroRemote={onboardingBundleQuery.data?.marketPulseIntro} />
-      ) : (
-        <ValuePropStrip stripRemote={onboardingBundleQuery.data?.valuePropStrip} />
       )}
       <div className="px-4 lg:px-6">
         <div

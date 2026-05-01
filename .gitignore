@@ -97,3 +97,4 @@ tests/e2e/.auth-state.json
 test-results/
 playwright-report/
 reports/
+scripts/validate/output/

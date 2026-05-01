@@ -3,6 +3,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import { AuthProvider } from '@/context/AuthContext';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/queryClient';
 import { initSentry } from './utils/sentry';
@@ -24,7 +25,9 @@ if (container) {
     <React.StrictMode>
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
-          <App />
+          <AuthProvider>
+            <App />
+          </AuthProvider>
         </QueryClientProvider>
       </BrowserRouter>
     </React.StrictMode>

@@ -56,6 +56,7 @@ export default defineConfig(({ mode }) => {
       'process.env.REACT_APP_VERSION': JSON.stringify(process.env.npm_package_version),
     },
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(__dirname, 'src'),
       },

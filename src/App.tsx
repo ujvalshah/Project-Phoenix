@@ -5,7 +5,6 @@ import { Header } from '@/components/Header';
 import { BackToTopButton } from '@/components/UI/BackToTopButton';
 import { ToastContainer } from '@/components/UI/Toast';
 import { ToastProvider } from '@/context/ToastContext';
-import { AuthProvider } from '@/context/AuthContext';
 import { FeedScrollStateProvider } from '@/context/FeedScrollStateContext';
 import { VideoPlayerProvider } from '@/context/VideoPlayerContext';
 import { MainLayout } from '@/components/layouts/MainLayout';
@@ -355,17 +354,15 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <AuthProvider>
-          <VideoPlayerProvider>
-            <FeedScrollStateProvider>
-              <FilterStateProvider>
-                <DesktopFilterSidebarProvider>
-                  <AppContent />
-                </DesktopFilterSidebarProvider>
-              </FilterStateProvider>
-            </FeedScrollStateProvider>
-          </VideoPlayerProvider>
-        </AuthProvider>
+        <VideoPlayerProvider>
+          <FeedScrollStateProvider>
+            <FilterStateProvider>
+              <DesktopFilterSidebarProvider>
+                <AppContent />
+              </DesktopFilterSidebarProvider>
+            </FilterStateProvider>
+          </FeedScrollStateProvider>
+        </VideoPlayerProvider>
       </ToastProvider>
     </ErrorBoundary>
   );

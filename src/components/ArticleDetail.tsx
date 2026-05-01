@@ -121,7 +121,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const mediaCarouselRef = useRef<HTMLDivElement>(null);
 
   const { withAuth } = useRequireAuth();
-  const { currentUser, isAdmin, featureFlags } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
   const { playVideo } = useVideoPlayerActions();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -418,7 +418,6 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                onReport={() => setShowReportModal(true)}
                isOwner={isOwner}
                isAdmin={isAdmin}
-               showAuthorName={featureFlags?.showAuthorName ?? false}
            />
        )}
 

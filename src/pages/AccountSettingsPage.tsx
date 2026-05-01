@@ -16,7 +16,6 @@ import type { NotificationFrequency } from '@/types/user';
 import { ProfileFormData, AVATAR_COLORS } from '../types/settings';
 import { userToProfileForm } from '../models/userFormMappers';
 import { Avatar } from '../components/shared/Avatar';
-import { adminConfigService } from '../admin/services/adminConfigService';
 import { HeaderSpacer } from '../components/layouts/HeaderSpacer';
 import { LAYOUT_CLASSES } from '../constants/layout';
 import { Z_INDEX } from '../constants/zIndex';
@@ -271,9 +270,6 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
   // Legal pages
   const { enabledPages: legalPages } = useLegalPages();
 
-  // Config State
-  const [enableAvatarUpload, setEnableAvatarUpload] = useState(false);
-  
   // Modals
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -317,10 +313,6 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
       });
     }
 
-    // Load Config
-    adminConfigService.getFeatureFlags().then(flags => {
-        setEnableAvatarUpload(flags.enableAvatarUpload);
-    });
   }, [modularUser, currentUser]);
 
   // --- HANDLERS ---
@@ -641,7 +633,7 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
         currentName={profileData.displayName}
         currentColor={profileData.avatarColor || 'blue'}
         onSelect={handleAvatarSelection}
-        allowUpload={enableAvatarUpload}
+        allowUpload={true}
       />
 
       <ConfirmActionModal 

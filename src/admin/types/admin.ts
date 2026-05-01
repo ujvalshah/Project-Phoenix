@@ -19,49 +19,6 @@ export type AdminPermission =
   | 'admin.moderation.view'
   | 'admin.feedback.view';
 
-// --- Service Privilege Types ---
-export type ServiceId = 
-  | 'batch_import'
-  | 'ai_summary'
-  | 'ai_auto_tag'
-  | 'create_public_collection'
-  | 'view_analytics'
-  | 'data_export'
-  | 'unlimited_nuggets';
-
-export interface ServiceDefinition {
-  id: ServiceId;
-  label: string;
-  description: string;
-  category: 'content' | 'ai' | 'data';
-}
-
-export type RolePermissions = Record<AdminRole, ServiceId[]>;
-
-export interface FeatureFlags {
-  enableAvatarUpload: boolean;
-  enablePublicSignup: boolean;
-  maintenanceMode: boolean;
-  // Guest Capabilities
-  guestBookmarks: boolean;
-  guestReports: boolean;
-  // Display Settings
-  showAuthorName: boolean;
-}
-
-// --- Signup Configuration Types ---
-export interface FieldRule {
-  show: boolean;
-  required: boolean;
-}
-
-export interface SignupConfig {
-  phone: FieldRule;
-  gender: FieldRule;
-  location: FieldRule; // Covers Pincode, City, Country
-  dob: FieldRule; // New Date of Birth field
-}
-
 // --- Entity Types ---
 
 // Mirrors backend `UserStatus` (PR7b). The third state is `banned` (a stronger

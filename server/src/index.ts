@@ -314,8 +314,6 @@ app.use('/api/notifications', notificationsRouter);
 
 // Public disclaimer config endpoint (no auth required — used by card rendering)
 import { getDisclaimerConfig } from './services/disclaimerConfigService.js';
-import { getValuePropStripConfig } from './services/valuePropStripConfigService.js';
-import { getMarketPulseIntroConfig } from './services/marketPulseIntroConfigService.js';
 import { getHomeMicroHeaderConfig } from './services/homeMicroHeaderConfigService.js';
 import { getMarketPulseMicroHeaderConfig } from './services/marketPulseMicroHeaderConfigService.js';
 app.get('/api/config/disclaimer', async (_req, res) => {
@@ -324,26 +322,6 @@ app.get('/api/config/disclaimer', async (_req, res) => {
     return res.json(config);
   } catch {
     return res.status(500).json({ message: 'Failed to get disclaimer config' });
-  }
-});
-
-// Public first-time value-prop strip copy endpoint (no auth required).
-app.get('/api/config/value-prop-strip', async (_req, res) => {
-  try {
-    const config = await getValuePropStripConfig();
-    return res.json(config);
-  } catch {
-    return res.status(500).json({ message: 'Failed to get value-prop strip config' });
-  }
-});
-
-// Public Market Pulse first-visit intro copy (no auth required).
-app.get('/api/config/market-pulse-intro', async (_req, res) => {
-  try {
-    const config = await getMarketPulseIntroConfig();
-    return res.json(config);
-  } catch {
-    return res.status(500).json({ message: 'Failed to get Market Pulse intro config' });
   }
 });
 
@@ -367,19 +345,14 @@ app.get('/api/config/market-pulse-micro-header', async (_req, res) => {
   }
 });
 
-// Single response for homepage onboarding/microcopy (replaces four parallel public GETs).
+// Homepage micro-headers for anonymous visitors (SEO H1 lines).
 app.get('/api/config/onboarding-bundle', async (_req, res) => {
   try {
-    const [valuePropStrip, marketPulseIntro, homeMicroHeader, marketPulseMicroHeader] =
-      await Promise.all([
-        getValuePropStripConfig(),
-        getMarketPulseIntroConfig(),
-        getHomeMicroHeaderConfig(),
-        getMarketPulseMicroHeaderConfig(),
-      ]);
+    const [homeMicroHeader, marketPulseMicroHeader] = await Promise.all([
+      getHomeMicroHeaderConfig(),
+      getMarketPulseMicroHeaderConfig(),
+    ]);
     return res.json({
-      valuePropStrip,
-      marketPulseIntro,
       homeMicroHeader,
       marketPulseMicroHeader,
     });

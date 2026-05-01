@@ -648,7 +648,7 @@ export const useNewsCard = ({
         onDelete: (isOwner || isAdmin) ? handleDelete : undefined,
         onEdit: (isOwner || isAdmin) ? handleEdit : undefined,
         onDuplicate: (isOwner || isAdmin) ? handleDuplicate : undefined,
-        onReport: withAuth(handleReport, 'guestReports'),
+        onReport: withAuth(handleReport),
         onAddToCollection: isAdmin ? withAuth(handleAddToCollection) : undefined,
         onToggleVisibility: isOwner ? handleToggleVisibility : undefined,
         onAuthorClick: handleAuthorClick,

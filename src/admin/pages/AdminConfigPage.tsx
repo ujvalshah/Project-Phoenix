@@ -1,15 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, Shield, Check, ToggleLeft, ToggleRight, Settings, Users, ClipboardType, Eye, EyeOff, HardDrive, Bell, FileText, Zap } from 'lucide-react';
+import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, ToggleLeft, ToggleRight, HardDrive, Bell, FileText, Zap } from 'lucide-react';
 import { getNotificationSystemStatus, toggleNotificationSystem } from '@/services/notificationService';
 import { useToast } from '@/hooks/useToast';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
-import { VALUE_PROP_STRIP_COPY, MARKET_PULSE_INTRO_COPY, HOME_MICRO_HEADER_COPY, MARKET_PULSE_MICRO_HEADER_COPY } from '@/constants/onboardingCopy';
+import { HOME_MICRO_HEADER_COPY, MARKET_PULSE_MICRO_HEADER_COPY } from '@/constants/onboardingCopy';
 import { useAdminHeader } from '../layout/AdminLayout';
-import { adminConfigService, AVAILABLE_SERVICES } from '../services/adminConfigService';
-import { adminSettingsService, MediaLimits, DisclaimerConfig, ValuePropStripConfig } from '../services/adminSettingsService';
-import { RolePermissions, ServiceId, AdminRole, FeatureFlags, SignupConfig } from '../types/admin';
+import { adminSettingsService, MediaLimits, DisclaimerConfig, MicroHeaderCopyConfig } from '../services/adminSettingsService';
 
 interface SystemAnnouncement {
   active: boolean;
@@ -35,10 +33,6 @@ export const AdminConfigPage: React.FC = () => {
   const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
 
   // --- Config State ---
-  const [permissions, setPermissions] = useState<RolePermissions | null>(null);
-  const [flags, setFlags] = useState<FeatureFlags | null>(null);
-  const [signupConfig, setSignupConfig] = useState<SignupConfig | null>(null);
-  const [isSavingPerms, setIsSavingPerms] = useState(false);
   const [mediaLimits, setMediaLimits] = useState<MediaLimits | null>(null);
   const [mediaLimitsDraft, setMediaLimitsDraft] = useState<MediaLimits | null>(null);
   const [isSavingMediaLimits, setIsSavingMediaLimits] = useState(false);
@@ -47,49 +41,32 @@ export const AdminConfigPage: React.FC = () => {
   const [_disclaimerConfig, setDisclaimerConfig] = useState<DisclaimerConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
   const [disclaimerDraft, setDisclaimerDraft] = useState<DisclaimerConfig | null>(null);
   const [isSavingDisclaimer, setIsSavingDisclaimer] = useState(false);
-  const [_valuePropStripConfig, setValuePropStripConfig] = useState<ValuePropStripConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
-  const [valuePropStripDraft, setValuePropStripDraft] = useState<ValuePropStripConfig | null>(null);
-  const [isSavingValuePropStrip, setIsSavingValuePropStrip] = useState(false);
-  const [valuePropStripLoadError, setValuePropStripLoadError] = useState<string | null>(null);
-  const [isReloadingValuePropStrip, setIsReloadingValuePropStrip] = useState(false);
-  const [_marketPulseIntroConfig, setMarketPulseIntroConfig] = useState<ValuePropStripConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
-  const [marketPulseIntroDraft, setMarketPulseIntroDraft] = useState<ValuePropStripConfig | null>(null);
-  const [isSavingMarketPulseIntro, setIsSavingMarketPulseIntro] = useState(false);
-  const [marketPulseIntroLoadError, setMarketPulseIntroLoadError] = useState<string | null>(null);
-  const [isReloadingMarketPulseIntro, setIsReloadingMarketPulseIntro] = useState(false);
-  const [_homeMicroHeaderConfig, setHomeMicroHeaderConfig] = useState<ValuePropStripConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
-  const [homeMicroHeaderDraft, setHomeMicroHeaderDraft] = useState<ValuePropStripConfig | null>(null);
+  const [_homeMicroHeaderConfig, setHomeMicroHeaderConfig] = useState<MicroHeaderCopyConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
+  const [homeMicroHeaderDraft, setHomeMicroHeaderDraft] = useState<MicroHeaderCopyConfig | null>(null);
   const [isSavingHomeMicroHeader, setIsSavingHomeMicroHeader] = useState(false);
   const [homeMicroHeaderLoadError, setHomeMicroHeaderLoadError] = useState<string | null>(null);
   const [isReloadingHomeMicroHeader, setIsReloadingHomeMicroHeader] = useState(false);
-  const [_marketPulseMicroHeaderConfig, setMarketPulseMicroHeaderConfig] = useState<ValuePropStripConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
-  const [marketPulseMicroHeaderDraft, setMarketPulseMicroHeaderDraft] = useState<ValuePropStripConfig | null>(null);
+  const [_marketPulseMicroHeaderConfig, setMarketPulseMicroHeaderConfig] = useState<MicroHeaderCopyConfig | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars -- tracks saved state
+  const [marketPulseMicroHeaderDraft, setMarketPulseMicroHeaderDraft] = useState<MicroHeaderCopyConfig | null>(null);
   const [isSavingMarketPulseMicroHeader, setIsSavingMarketPulseMicroHeader] = useState(false);
   const [marketPulseMicroHeaderLoadError, setMarketPulseMicroHeaderLoadError] = useState<string | null>(null);
   const [isReloadingMarketPulseMicroHeader, setIsReloadingMarketPulseMicroHeader] = useState(false);
 
   useEffect(() => {
-    setPageHeader("System Configuration", "Manage global settings, feature toggles, and system alerts.");
+    setPageHeader("System Configuration", "Manage global settings and system alerts.");
     loadConfig();
   }, []);
 
   const loadConfig = async () => {
     try {
-      const [permData, flagsData, signupData, limitsData, notifStatus, disclaimerData, valuePropStripData, marketPulseIntroData, homeMicroHeaderData, marketPulseMicroHeaderData] = await Promise.all([
-        adminConfigService.getRolePermissions(),
-        adminConfigService.getFeatureFlags(),
-        adminConfigService.getSignupConfig(),
+      const [limitsData, notifStatus, disclaimerData, homeMicroHeaderData, marketPulseMicroHeaderData] =
+        await Promise.all([
         adminSettingsService.getMediaLimits().catch(() => null),
         getNotificationSystemStatus().catch(() => true),
         adminSettingsService.getDisclaimerConfig().catch(() => null),
-        adminSettingsService.getValuePropStripConfig().catch(() => null),
-        adminSettingsService.getMarketPulseIntroConfig().catch(() => null),
         adminSettingsService.getHomeMicroHeaderConfig().catch(() => null),
         adminSettingsService.getMarketPulseMicroHeaderConfig().catch(() => null),
       ]);
-      setPermissions(permData);
-      setFlags(flagsData);
-      setSignupConfig(signupData);
       setNotificationsEnabled(notifStatus);
       if (limitsData) {
         setMediaLimits(limitsData);
@@ -98,36 +75,6 @@ export const AdminConfigPage: React.FC = () => {
       if (disclaimerData) {
         setDisclaimerConfig(disclaimerData);
         setDisclaimerDraft(disclaimerData);
-      }
-      if (valuePropStripData) {
-        const normalizedValueProp = { ...valuePropStripData, enabled: valuePropStripData.enabled ?? true };
-        setValuePropStripConfig(normalizedValueProp);
-        setValuePropStripDraft(normalizedValueProp);
-        setValuePropStripLoadError(null);
-      } else {
-        const fallbackCopy = {
-          title: VALUE_PROP_STRIP_COPY.title,
-          body: VALUE_PROP_STRIP_COPY.body,
-          enabled: VALUE_PROP_STRIP_COPY.enabled
-        };
-        setValuePropStripConfig(fallbackCopy);
-        setValuePropStripDraft(fallbackCopy);
-        setValuePropStripLoadError('Could not load saved copy. Showing fallback text; save to persist changes.');
-      }
-      if (marketPulseIntroData) {
-        const normalizedMarketPulseIntro = { ...marketPulseIntroData, enabled: marketPulseIntroData.enabled ?? true };
-        setMarketPulseIntroConfig(normalizedMarketPulseIntro);
-        setMarketPulseIntroDraft(normalizedMarketPulseIntro);
-        setMarketPulseIntroLoadError(null);
-      } else {
-        const pulseFallback = {
-          title: MARKET_PULSE_INTRO_COPY.title,
-          body: MARKET_PULSE_INTRO_COPY.body,
-          enabled: MARKET_PULSE_INTRO_COPY.enabled
-        };
-        setMarketPulseIntroConfig(pulseFallback);
-        setMarketPulseIntroDraft(pulseFallback);
-        setMarketPulseIntroLoadError('Could not load saved Market Pulse copy. Showing fallback text; save to persist changes.');
       }
       if (homeMicroHeaderData) {
         setHomeMicroHeaderConfig(homeMicroHeaderData);
@@ -160,40 +107,6 @@ export const AdminConfigPage: React.FC = () => {
     }
   };
 
-  const handleReloadMarketPulseIntro = async () => {
-    setIsReloadingMarketPulseIntro(true);
-    try {
-      const config = await adminSettingsService.getMarketPulseIntroConfig();
-      const normalizedConfig = { ...config, enabled: config.enabled ?? true };
-      setMarketPulseIntroConfig(normalizedConfig);
-      setMarketPulseIntroDraft(normalizedConfig);
-      setMarketPulseIntroLoadError(null);
-      toast.success('Loaded latest Market Pulse intro copy');
-    } catch {
-      setMarketPulseIntroLoadError('Could not load saved Market Pulse copy. Showing fallback text; save to persist changes.');
-      toast.error('Failed to reload Market Pulse intro copy');
-    } finally {
-      setIsReloadingMarketPulseIntro(false);
-    }
-  };
-
-  const handleReloadValuePropStrip = async () => {
-    setIsReloadingValuePropStrip(true);
-    try {
-      const config = await adminSettingsService.getValuePropStripConfig();
-      const normalizedConfig = { ...config, enabled: config.enabled ?? true };
-      setValuePropStripConfig(normalizedConfig);
-      setValuePropStripDraft(normalizedConfig);
-      setValuePropStripLoadError(null);
-      toast.success('Loaded latest value-prop strip copy');
-    } catch {
-      setValuePropStripLoadError('Could not load saved copy. Showing fallback text; save to persist changes.');
-      toast.error('Failed to reload value-prop strip copy');
-    } finally {
-      setIsReloadingValuePropStrip(false);
-    }
-  };
-
   const handleReloadHomeMicroHeader = async () => {
     setIsReloadingHomeMicroHeader(true);
     try {
@@ -212,61 +125,6 @@ export const AdminConfigPage: React.FC = () => {
 
   const handleSaveAnnouncement = () => {
     toast.success("System announcement updated");
-  };
-
-  const handleTogglePermission = (role: AdminRole, serviceId: ServiceId) => {
-    if (!permissions) return;
-    const current = permissions[role];
-    const updated = current.includes(serviceId)
-      ? current.filter(id => id !== serviceId)
-      : [...current, serviceId];
-    
-    setPermissions({ ...permissions, [role]: updated });
-  };
-
-  const handleToggleFlag = async (key: keyof FeatureFlags) => {
-    if (!flags) return;
-    const newValue = !flags[key];
-    setFlags({ ...flags, [key]: newValue }); // Optimistic
-    try {
-        await adminConfigService.updateFeatureFlag(key, newValue);
-        toast.success(`Updated ${key}`);
-    } catch (e) {
-        toast.error("Failed to update flag");
-        setFlags({ ...flags }); // Revert
-    }
-  };
-
-  const handleUpdateSignupRule = async (field: keyof SignupConfig, ruleKey: 'show' | 'required') => {
-      if (!signupConfig) return;
-      const currentRule = signupConfig[field];
-      const newValue = !currentRule[ruleKey];
-      
-      const newConfig = { ...signupConfig, [field]: { ...currentRule, [ruleKey]: newValue } };
-      setSignupConfig(newConfig);
-
-      try {
-          await adminConfigService.updateSignupConfig(field, { [ruleKey]: newValue });
-      } catch (e) {
-          toast.error("Failed to update rule");
-          setSignupConfig(signupConfig); // Revert
-      }
-  };
-
-  const handleSavePermissions = async () => {
-    if (!permissions) return;
-    setIsSavingPerms(true);
-    try {
-      await Promise.all([
-        adminConfigService.updateRolePermission('user', permissions.user),
-        adminConfigService.updateRolePermission('admin', permissions.admin),
-      ]);
-      toast.success("Access privileges updated");
-    } catch (e) {
-      toast.error("Failed to save privileges");
-    } finally {
-      setIsSavingPerms(false);
-    }
   };
 
   const handleSaveMediaLimits = async () => {
@@ -303,45 +161,6 @@ export const AdminConfigPage: React.FC = () => {
       toast.error("Failed to update disclaimer config");
     } finally {
       setIsSavingDisclaimer(false);
-    }
-  };
-
-  const handleSaveMarketPulseIntro = async () => {
-    if (!marketPulseIntroDraft) return;
-    setIsSavingMarketPulseIntro(true);
-    try {
-      const result = await adminSettingsService.updateMarketPulseIntroConfig({
-        title: marketPulseIntroDraft.title,
-        body: marketPulseIntroDraft.body,
-        enabled: marketPulseIntroDraft.enabled ?? true
-      });
-      setMarketPulseIntroConfig(result.config);
-      setMarketPulseIntroDraft(result.config);
-      setMarketPulseIntroLoadError(null);
-      toast.success(result.message || 'Market Pulse intro copy updated');
-    } catch (e) {
-      toast.error('Failed to update Market Pulse intro copy');
-    } finally {
-      setIsSavingMarketPulseIntro(false);
-    }
-  };
-
-  const handleSaveValuePropStrip = async () => {
-    if (!valuePropStripDraft) return;
-    setIsSavingValuePropStrip(true);
-    try {
-      const result = await adminSettingsService.updateValuePropStripConfig({
-        title: valuePropStripDraft.title,
-        body: valuePropStripDraft.body,
-        enabled: valuePropStripDraft.enabled ?? true
-      });
-      setValuePropStripConfig(result.config);
-      setValuePropStripDraft(result.config);
-      toast.success(result.message || "Value-prop strip copy updated");
-    } catch (e) {
-      toast.error("Failed to update value-prop strip copy");
-    } finally {
-      setIsSavingValuePropStrip(false);
     }
   };
 
@@ -415,93 +234,11 @@ export const AdminConfigPage: React.FC = () => {
     }
   };
 
-  // Group services by category for cleaner UI
-  const groupedServices = {
-    'AI Services': AVAILABLE_SERVICES.filter(s => s.category === 'ai'),
-    'Data & Import': AVAILABLE_SERVICES.filter(s => s.category === 'data'),
-    'Content Features': AVAILABLE_SERVICES.filter(s => s.category === 'content'),
-  };
-
   return (
     <div>
       <div className="max-w-5xl space-y-8">
         
-        {/* 1. FEATURE FLAGS */}
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                    <Settings size={20} />
-                </div>
-                <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Feature Flags</h3>
-                    <p className="text-xs text-slate-500">Toggle system capabilities on or off globally.</p>
-                </div>
-            </div>
-
-            {flags ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* AVATAR UPLOAD */}
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white">Avatar File Uploads</div>
-                            <div className="text-xs text-slate-500 mt-0.5">Allow users to upload custom images.</div>
-                        </div>
-                        <button 
-                            onClick={() => handleToggleFlag('enableAvatarUpload')}
-                            className={`transition-colors ${flags.enableAvatarUpload ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                        >
-                            {flags.enableAvatarUpload ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                        </button>
-                    </div>
-
-                    {/* PUBLIC REGISTRATION */}
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white">Public Registration</div>
-                            <div className="text-xs text-slate-500 mt-0.5">Allow new users to sign up.</div>
-                        </div>
-                        <button 
-                            onClick={() => handleToggleFlag('enablePublicSignup')}
-                            className={`transition-colors ${flags.enablePublicSignup ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                        >
-                            {flags.enablePublicSignup ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                        </button>
-                    </div>
-
-                    {/* MAINTENANCE */}
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white">Maintenance Mode</div>
-                            <div className="text-xs text-slate-500 mt-0.5">Restrict access to admins only.</div>
-                        </div>
-                        <button
-                            onClick={() => handleToggleFlag('maintenanceMode')}
-                            className={`transition-colors ${flags.maintenanceMode ? 'text-amber-600' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                        >
-                            {flags.maintenanceMode ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                        </button>
-                    </div>
-
-                    {/* SHOW AUTHOR NAME */}
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white">Show Author Name</div>
-                            <div className="text-xs text-slate-500 mt-0.5">Display author name on nugget headers.</div>
-                        </div>
-                        <button
-                            onClick={() => handleToggleFlag('showAuthorName')}
-                            className={`transition-colors ${flags.showAuthorName ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                        >
-                            {flags.showAuthorName ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <div className="text-center py-4 text-slate-400">Loading flags...</div>
-            )}
-        </section>
-
-        {/* 2. NOTIFICATION SYSTEM */}
+        {/* 1. NOTIFICATION SYSTEM */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400 rounded-lg">
@@ -536,200 +273,7 @@ export const AdminConfigPage: React.FC = () => {
           </div>
         </section>
 
-        {/* 3. SIGNUP FORM CUSTOMIZATION */}
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-                    <ClipboardType size={20} />
-                </div>
-                <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Signup Form Customization</h3>
-                    <p className="text-xs text-slate-500">Manage which fields are visible or mandatory during registration.</p>
-                </div>
-            </div>
-
-            {signupConfig ? (
-                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-                    <table className="w-full text-left">
-                        <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
-                            <tr>
-                                <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Field Name</th>
-                                <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Visible</th>
-                                <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Required</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                            {[
-                                { key: 'location', label: 'Location (Pincode/City/Country)' },
-                                { key: 'gender', label: 'Gender Selection' },
-                                { key: 'phone', label: 'Phone Number' },
-                                { key: 'dob', label: 'Date of Birth' }
-                            ].map((row) => {
-                                const config = signupConfig[row.key as keyof SignupConfig];
-                                return (
-                                    <tr key={row.key} className="hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{row.label}</span>
-                                        </td>
-                                        <td className="px-6 py-4 text-center">
-                                            <button 
-                                                onClick={() => handleUpdateSignupRule(row.key as keyof SignupConfig, 'show')}
-                                                className={`transition-colors ${config.show ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600'}`}
-                                            >
-                                                {config.show ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
-                                            </button>
-                                        </td>
-                                        <td className="px-6 py-4 text-center">
-                                            <button 
-                                                onClick={() => handleUpdateSignupRule(row.key as keyof SignupConfig, 'required')}
-                                                disabled={!config.show}
-                                                className={`transition-colors ${!config.show ? 'opacity-30 cursor-not-allowed' : ''} ${config.required ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600'}`}
-                                            >
-                                                {config.required ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
-                                            </button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            ) : (
-                <div className="text-center py-4 text-slate-400">Loading form config...</div>
-            )}
-        </section>
-
-        {/* 3. GUEST RESTRICTIONS */}
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
-                    <Users size={20} />
-                </div>
-                <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Guest Permissions</h3>
-                    <p className="text-xs text-slate-500">Configure what non-authenticated users can do.</p>
-                </div>
-            </div>
-
-            {flags ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white">Allow Guest Bookmarks</div>
-                            <div className="text-xs text-slate-500 mt-0.5">Save to device local storage without login.</div>
-                        </div>
-                        <button 
-                            onClick={() => handleToggleFlag('guestBookmarks')}
-                            className={`transition-colors ${flags.guestBookmarks ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                        >
-                            {flags.guestBookmarks ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                        </button>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white">Allow Guest Reports</div>
-                            <div className="text-xs text-slate-500 mt-0.5">Anonymous content reporting.</div>
-                        </div>
-                        <button 
-                            onClick={() => handleToggleFlag('guestReports')}
-                            className={`transition-colors ${flags.guestReports ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                        >
-                            {flags.guestReports ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                        </button>
-                    </div>
-                </div>
-            ) : null}
-        </section>
-
-        {/* 4. RBAC MATRIX */}
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
-                <Shield size={20} />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Registered User Privileges</h3>
-                <p className="text-xs text-slate-500">Fine-grained access control for signed-in accounts.</p>
-              </div>
-            </div>
-            <button 
-              onClick={handleSavePermissions}
-              disabled={isSavingPerms}
-              className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              {isSavingPerms ? 'Saving...' : <><Save size={14} /> Save Privileges</>}
-            </button>
-          </div>
-
-          {!permissions ? (
-            <div className="text-center py-8 text-slate-400">Loading configuration...</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 dark:border-slate-800">
-                    <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-1/2">Feature / Service</th>
-                    <th className="py-3 px-4 text-center text-xs font-bold text-slate-900 dark:text-white w-1/4 bg-slate-50 dark:bg-slate-800/50 rounded-t-xl">Standard User</th>
-                    <th className="py-3 px-4 text-center text-xs font-bold text-purple-600 dark:text-purple-400 w-1/4 bg-purple-50 dark:bg-purple-900/10 rounded-t-xl">Admin</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {Object.entries(groupedServices).map(([category, services]) => (
-                    <React.Fragment key={category}>
-                      <tr className="bg-slate-50/50 dark:bg-slate-800/30">
-                        <td colSpan={3} className="py-2 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          {category}
-                        </td>
-                      </tr>
-                      {services.map(service => (
-                        <tr key={service.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
-                          <td className="py-3 px-4">
-                            <div className="font-bold text-sm text-slate-700 dark:text-slate-200">{service.label}</div>
-                            <div className="text-xs text-slate-400 font-medium">{service.description}</div>
-                          </td>
-                          
-                          {/* User Column */}
-                          <td className="py-3 px-4 text-center align-middle bg-slate-50/30 dark:bg-slate-800/20">
-                            <label className="relative inline-flex items-center justify-center cursor-pointer p-2">
-                              <input 
-                                type="checkbox" 
-                                className="peer sr-only"
-                                checked={permissions['user'].includes(service.id)}
-                                onChange={() => handleTogglePermission('user', service.id)}
-                              />
-                              <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-600 rounded flex items-center justify-center peer-checked:bg-slate-900 peer-checked:border-slate-900 dark:peer-checked:bg-white dark:peer-checked:border-white transition-all">
-                                <Check size={12} className="text-white dark:text-slate-900 opacity-0 peer-checked:opacity-100" strokeWidth={3} />
-                              </div>
-                            </label>
-                          </td>
-
-                          {/* Admin Column */}
-                          <td className="py-3 px-4 text-center align-middle bg-purple-50/30 dark:bg-purple-900/5">
-                            <label className="relative inline-flex items-center justify-center cursor-pointer p-2">
-                              <input 
-                                type="checkbox" 
-                                className="peer sr-only"
-                                checked={permissions['admin'].includes(service.id)}
-                                onChange={() => handleTogglePermission('admin', service.id)}
-                              />
-                              <div className="w-5 h-5 border-2 border-purple-200 dark:border-purple-800 rounded flex items-center justify-center peer-checked:bg-purple-600 peer-checked:border-purple-600 transition-all">
-                                <Check size={12} className="text-white opacity-0 peer-checked:opacity-100" strokeWidth={3} />
-                              </div>
-                            </label>
-                          </td>
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        {/* 5. MEDIA / STORAGE LIMITS */}
+        {/* 2. MEDIA / STORAGE LIMITS */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-6">
             <div className="flex items-center gap-3">
@@ -794,7 +338,7 @@ export const AdminConfigPage: React.FC = () => {
           )}
         </section>
 
-        {/* 6. DISCLAIMER CONFIG */}
+        {/* 3. DISCLAIMER CONFIG */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-6">
             <div className="flex items-center gap-3">
@@ -847,163 +391,7 @@ export const AdminConfigPage: React.FC = () => {
           )}
         </section>
 
-        {/* 7. HOMEPAGE VALUE-PROP STRIP */}
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-3 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 rounded-lg">
-                <Megaphone size={20} />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Homepage onboarding strip (dismissible)</h3>
-                <p className="text-xs text-slate-500">Shown to first-time Home visitors only; users can dismiss it and it is stored in localStorage.</p>
-              </div>
-            </div>
-            <button
-              onClick={handleSaveValuePropStrip}
-              disabled={!valuePropStripDraft || isSavingValuePropStrip}
-              className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              {isSavingValuePropStrip ? 'Saving...' : <><Save size={14} /> Save Value Prop</>}
-            </button>
-          </div>
-
-          {valuePropStripDraft ? (
-            <div className="space-y-4">
-              {valuePropStripLoadError && (
-                <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                  <span>{valuePropStripLoadError}</span>
-                  <button
-                    onClick={handleReloadValuePropStrip}
-                    disabled={isReloadingValuePropStrip}
-                    className="ml-3 px-3 py-1 rounded-md bg-amber-100 text-amber-900 font-semibold hover:bg-amber-200 transition-colors disabled:opacity-50"
-                  >
-                    {isReloadingValuePropStrip ? 'Retrying...' : 'Retry'}
-                  </button>
-                </div>
-              )}
-              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">Enabled</div>
-                  <div className="text-xs text-slate-500 mt-0.5">Show this onboarding strip to eligible new Home visitors.</div>
-                </div>
-                <button
-                  onClick={() => setValuePropStripDraft((p) => p ? { ...p, enabled: !(p.enabled ?? true) } : p)}
-                  className={`transition-colors ${(valuePropStripDraft.enabled ?? true) ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                >
-                  {(valuePropStripDraft.enabled ?? true) ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                </button>
-              </div>
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Strip Title</label>
-                <input
-                  type="text"
-                  value={valuePropStripDraft.title}
-                  onChange={(e) => setValuePropStripDraft(p => p ? { ...p, title: e.target.value } : p)}
-                  maxLength={120}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                  placeholder="Enter strip title..."
-                />
-                <p className="text-[10px] text-slate-400 mt-1">{valuePropStripDraft.title.length}/120 characters.</p>
-              </div>
-
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Strip Body</label>
-                <textarea
-                  value={valuePropStripDraft.body}
-                  onChange={(e) => setValuePropStripDraft(p => p ? { ...p, body: e.target.value } : p)}
-                  maxLength={500}
-                  rows={3}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
-                  placeholder="Enter strip body..."
-                />
-                <p className="text-[10px] text-slate-400 mt-1">{valuePropStripDraft.body.length}/500 characters.</p>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-4 text-slate-400">Loading value-prop strip config...</div>
-          )}
-        </section>
-
-        {/* 8. MARKET PULSE INTRO STRIP */}
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-3 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded-lg">
-                <Zap size={20} />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Market Pulse onboarding strip (dismissible)</h3>
-                <p className="text-xs text-slate-500">Shown on first Market Pulse visit; users can dismiss it and it is stored in localStorage.</p>
-              </div>
-            </div>
-            <button
-              onClick={handleSaveMarketPulseIntro}
-              disabled={!marketPulseIntroDraft || isSavingMarketPulseIntro}
-              className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              {isSavingMarketPulseIntro ? 'Saving...' : <><Save size={14} /> Save Market Pulse intro</>}
-            </button>
-          </div>
-
-          {marketPulseIntroDraft ? (
-            <div className="space-y-4">
-              {marketPulseIntroLoadError && (
-                <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                  <span>{marketPulseIntroLoadError}</span>
-                  <button
-                    onClick={handleReloadMarketPulseIntro}
-                    disabled={isReloadingMarketPulseIntro}
-                    className="ml-3 px-3 py-1 rounded-md bg-amber-100 text-amber-900 font-semibold hover:bg-amber-200 transition-colors disabled:opacity-50"
-                  >
-                    {isReloadingMarketPulseIntro ? 'Retrying...' : 'Retry'}
-                  </button>
-                </div>
-              )}
-              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">Enabled</div>
-                  <div className="text-xs text-slate-500 mt-0.5">Show this onboarding strip to eligible first-time Market Pulse visitors.</div>
-                </div>
-                <button
-                  onClick={() => setMarketPulseIntroDraft((p) => p ? { ...p, enabled: !(p.enabled ?? true) } : p)}
-                  className={`transition-colors ${(marketPulseIntroDraft.enabled ?? true) ? 'text-green-600 dark:text-green-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}
-                >
-                  {(marketPulseIntroDraft.enabled ?? true) ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
-                </button>
-              </div>
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Strip title</label>
-                <input
-                  type="text"
-                  value={marketPulseIntroDraft.title}
-                  onChange={(e) => setMarketPulseIntroDraft(p => p ? { ...p, title: e.target.value } : p)}
-                  maxLength={120}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  placeholder="Enter title..."
-                />
-                <p className="text-[10px] text-slate-400 mt-1">{marketPulseIntroDraft.title.length}/120 characters.</p>
-              </div>
-
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Strip body</label>
-                <textarea
-                  value={marketPulseIntroDraft.body}
-                  onChange={(e) => setMarketPulseIntroDraft(p => p ? { ...p, body: e.target.value } : p)}
-                  maxLength={500}
-                  rows={3}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
-                  placeholder="Enter body..."
-                />
-                <p className="text-[10px] text-slate-400 mt-1">{marketPulseIntroDraft.body.length}/500 characters.</p>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-4 text-slate-400">Loading Market Pulse intro config...</div>
-          )}
-        </section>
-
-        {/* 9. HOMEPAGE MICRO-HEADER COPY */}
+        {/* 4. HOMEPAGE MICRO-HEADER COPY */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-6">
             <div className="flex items-center gap-3">
@@ -1069,7 +457,7 @@ export const AdminConfigPage: React.FC = () => {
           )}
         </section>
 
-        {/* 10. MARKET PULSE MICRO-HEADER COPY */}
+        {/* 5. MARKET PULSE MICRO-HEADER COPY */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-6">
             <div className="flex items-center gap-3">
@@ -1135,7 +523,7 @@ export const AdminConfigPage: React.FC = () => {
           )}
         </section>
 
-        {/* 11. SYSTEM ANNOUNCEMENT */}
+        {/* 6. SYSTEM ANNOUNCEMENT */}
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
