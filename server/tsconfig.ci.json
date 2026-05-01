@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/config/**/*.ts",
+    "src/services/apiResponseCacheService.ts",
+    "src/utils/sentry.ts",
+    "src/utils/metrics.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src/scripts/**", "src/__tests__/**"]
+}

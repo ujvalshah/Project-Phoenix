@@ -3,6 +3,10 @@ import { LegalPage } from '../models/LegalPage.js';
 import { updateLegalPageSchema } from '../utils/validation.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+import { buildApiCacheKey, getOrSetCachedJson, invalidateApiResponseCachePrefix } from '../services/apiResponseCacheService.js';
+
+const LEGAL_PAGES_CACHE_NAMESPACE = 'legal:pages:v1';
+const LEGAL_PAGES_CACHE_TTL_SECONDS = 120;
 
 /** Normalize a LegalPage document to a clean JSON shape (without content) */
 function normalizePage(page: Record<string, unknown>) {
@@ -26,12 +30,15 @@ function normalizePage(page: Record<string, unknown>) {
  */
 export const getLegalPages = async (req: Request, res: Response) => {
   try {
-    const pages = await LegalPage.find()
-      .select('-content')
-      .sort({ order: 1 })
-      .lean();
-
-    res.json(pages.map(normalizePage));
+    const cacheKey = buildApiCacheKey(LEGAL_PAGES_CACHE_NAMESPACE, ['all']);
+    const payload = await getOrSetCachedJson(cacheKey, LEGAL_PAGES_CACHE_TTL_SECONDS, async () => {
+      const pages = await LegalPage.find()
+        .select('-content')
+        .sort({ order: 1 })
+        .lean();
+      return pages.map(normalizePage);
+    });
+    res.json(payload);
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
     const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
@@ -52,16 +59,25 @@ export const getLegalPages = async (req: Request, res: Response) => {
 export const getLegalPageBySlug = async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
-    const page = await LegalPage.findOne({ slug }).lean();
+    const cacheKey = buildApiCacheKey(LEGAL_PAGES_CACHE_NAMESPACE, ['slug', slug]);
+    const pagePayload = await getOrSetCachedJson(
+      cacheKey,
+      LEGAL_PAGES_CACHE_TTL_SECONDS,
+      async () => {
+        const page = await LegalPage.findOne({ slug }).lean();
+        if (!page) return null;
+        return {
+          ...normalizePage(page),
+          content: page.content,
+        };
+      },
+    );
 
-    if (!page) {
+    if (!pagePayload) {
       return res.status(404).json({ message: 'Legal page not found' });
     }
 
-    res.json({
-      ...normalizePage(page),
-      content: page.content,
-    });
+    res.json(pagePayload);
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
     const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
@@ -100,6 +116,7 @@ export const updateLegalPage = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Legal page not found' });
     }
 
+    await invalidateApiResponseCachePrefix(LEGAL_PAGES_CACHE_NAMESPACE);
     res.json({
       ...normalizePage(page),
       content: page.content,

@@ -9,6 +9,10 @@ import { resolveTagIdsToNames } from '../utils/tagHelpers.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import { createOrResolveTag, createOrResolveTags } from '../services/tagCreationService.js';
+import { buildApiCacheKey, getOrSetCachedJson, invalidateApiResponseCachePrefix } from '../services/apiResponseCacheService.js';
+
+const TAG_TAXONOMY_CACHE_NAMESPACE = 'tags:taxonomy:v1';
+const TAG_TAXONOMY_CACHE_TTL_SECONDS = 60;
 
 // Validation schemas
 //
@@ -204,6 +208,7 @@ export const createTag = async (req: Request, res: Response) => {
     // For simplicity, always return 201 (created) since the service handles both cases
     // The frontend doesn't need to distinguish - it just needs the tag object
     invalidateTagNameCache();
+    await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     res.status(201).json(tag);
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -230,18 +235,18 @@ export const createTag = async (req: Request, res: Response) => {
 
 export const updateTag = async (req: Request, res: Response) => {
   try {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ message: 'Tag ID is required' });
     }
 
-    // Log rename attempt
-    console.log('[Tags] Update tag request:', { id, body: req.body });
+    requestLogger.debug({ id }, '[Tags] Update tag request');
 
     // Validate input
     const validationResult = updateTagSchema.safeParse(req.body);
     if (!validationResult.success) {
-      console.log('[Tags] Validation failed:', validationResult.error.errors);
+      requestLogger.warn({ id, errors: validationResult.error.errors }, '[Tags] Validation failed');
       return res.status(400).json({ 
         message: 'Validation failed', 
         errors: validationResult.error.errors 
@@ -251,7 +256,7 @@ export const updateTag = async (req: Request, res: Response) => {
     // Fetch current tag BEFORE updating (needed for article updates)
     const currentTag = await Tag.findById(id);
     if (!currentTag) {
-      console.log('[Tags] Tag not found:', id);
+      requestLogger.info({ id }, '[Tags] Tag not found');
       return res.status(404).json({ message: 'Tag not found' });
     }
 
@@ -279,13 +284,13 @@ export const updateTag = async (req: Request, res: Response) => {
       oldName = currentTag.rawName;
       newName = trimmedName;
       
-      console.log('[Tags] Renaming tag:', { 
+      requestLogger.info({
         id, 
         oldRawName: oldName,
         oldCanonicalName: currentTag.canonicalName,
         newRawName: newName, 
         newCanonicalName: canonicalName 
-      });
+      }, '[Tags] Renaming tag');
       
       // Check if the new canonicalName would create a duplicate
       // This prevents case variations (e.g., "AI" vs "ai" vs "Ai") from creating separate tags
@@ -295,11 +300,11 @@ export const updateTag = async (req: Request, res: Response) => {
       });
       
       if (existingTag) {
-        console.log('[Tags] Duplicate tag found:', { 
+        requestLogger.warn({
           existingTagId: existingTag._id, 
           existingTagName: existingTag.rawName,
           requestedName: trimmedName
-        });
+        }, '[Tags] Duplicate tag found');
         return res.status(409).json({ message: 'A tag with this name already exists' });
       }
       
@@ -327,7 +332,7 @@ export const updateTag = async (req: Request, res: Response) => {
       updateData.aliases = validationResult.data.aliases;
     }
 
-    console.log('[Tags] Update data:', updateData);
+    requestLogger.debug({ id, fields: Object.keys(updateData) }, '[Tags] Update data prepared');
 
     const tag = await Tag.findByIdAndUpdate(
       id,
@@ -336,22 +341,23 @@ export const updateTag = async (req: Request, res: Response) => {
     );
     
     if (!tag) {
-      console.log('[Tags] Tag update failed - tag not found after update:', id);
+      requestLogger.warn({ id }, '[Tags] Tag update failed - tag not found after update');
       return res.status(404).json({ message: 'Tag not found' });
     }
     
     const normalizedTag = normalizeDoc(tag);
-    console.log('[Tags] Tag updated successfully:', { 
+    requestLogger.info({
       id: normalizedTag.id, 
       rawName: normalizedTag.rawName, 
       canonicalName: normalizedTag.canonicalName,
       name: normalizedTag.name // Virtual field
-    });
+    }, '[Tags] Tag updated successfully');
     
     // Tag rename: no article-level propagation needed — articles reference
     // tags by ObjectId (tagIds), which is stable across renames. The tag-name
     // cache is invalidated so API responses reflect the new name immediately.
     invalidateTagNameCache();
+    await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     res.json(normalizedTag);
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -395,6 +401,7 @@ export const deleteTag = async (req: Request, res: Response) => {
     }
 
     invalidateTagNameCache();
+    await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     res.status(204).send();
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -441,6 +448,7 @@ export const softDeleteTagById = async (req: Request, res: Response) => {
     tag.status = 'deprecated';
     await tag.save();
     invalidateTagNameCache();
+    await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
 
     res.json({ message: 'Tag deprecated', tag: normalizeDoc(tag) });
   } catch (error: any) {
@@ -544,42 +552,50 @@ export const resolveTags = async (req: Request, res: Response) => {
  */
 export const getTagTaxonomy = async (req: Request, res: Response) => {
   try {
-    // Fetch all active dimension tags in one query
-    const dimensionTags = await Tag.find({
-      dimension: { $exists: true, $ne: null },
-      status: 'active',
-    })
-      .sort({ sortOrder: 1, rawName: 1 })
-      .lean();
+    const cacheKey = buildApiCacheKey(TAG_TAXONOMY_CACHE_NAMESPACE, ['active']);
+    const payload = await getOrSetCachedJson(
+      cacheKey,
+      TAG_TAXONOMY_CACHE_TTL_SECONDS,
+      async () => {
+        // Fetch all active dimension tags in one query
+        const dimensionTags = await Tag.find({
+          dimension: { $exists: true, $ne: null },
+          status: 'active',
+        })
+          .sort({ sortOrder: 1, rawName: 1 })
+          .lean();
 
-    // Compute usage counts for all dimension tags in one aggregation
-    const tagIds = dimensionTags.map(t => t._id);
-    const usageAgg = await Article.aggregate([
-      { $match: { tagIds: { $in: tagIds } } },
-      { $unwind: '$tagIds' },
-      { $match: { tagIds: { $in: tagIds } } },
-      { $group: { _id: '$tagIds', count: { $sum: 1 } } },
-    ]);
-    const usageMap = new Map<string, number>();
-    for (const row of usageAgg) {
-      usageMap.set(row._id.toString(), row.count);
-    }
+        // Compute usage counts for all dimension tags in one aggregation
+        const tagIds = dimensionTags.map(t => t._id);
+        const usageAgg = await Article.aggregate([
+          { $match: { tagIds: { $in: tagIds } } },
+          { $unwind: '$tagIds' },
+          { $match: { tagIds: { $in: tagIds } } },
+          { $group: { _id: '$tagIds', count: { $sum: 1 } } },
+        ]);
+        const usageMap = new Map<string, number>();
+        for (const row of usageAgg) {
+          usageMap.set(row._id.toString(), row.count);
+        }
 
-    const normalize = (t: typeof dimensionTags[number]) => ({
-      id: t._id.toString(),
-      rawName: t.rawName,
-      canonicalName: t.canonicalName,
-      dimension: t.dimension,
-      sortOrder: t.sortOrder ?? 0,
-      usageCount: usageMap.get(t._id.toString()) || 0,
-    });
+        const normalize = (t: typeof dimensionTags[number]) => ({
+          id: t._id.toString(),
+          rawName: t.rawName,
+          canonicalName: t.canonicalName,
+          dimension: t.dimension,
+          sortOrder: t.sortOrder ?? 0,
+          usageCount: usageMap.get(t._id.toString()) || 0,
+        });
 
-    // Partition into three flat arrays
-    const formats = dimensionTags.filter(t => t.dimension === 'format').map(normalize);
-    const domains = dimensionTags.filter(t => t.dimension === 'domain').map(normalize);
-    const subtopics = dimensionTags.filter(t => t.dimension === 'subtopic').map(normalize);
+        // Partition into three flat arrays
+        const formats = dimensionTags.filter(t => t.dimension === 'format').map(normalize);
+        const domains = dimensionTags.filter(t => t.dimension === 'domain').map(normalize);
+        const subtopics = dimensionTags.filter(t => t.dimension === 'subtopic').map(normalize);
+        return { formats, domains, subtopics };
+      },
+    );
 
-    res.json({ formats, domains, subtopics });
+    res.json(payload);
   } catch (error: unknown) {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
     const err = error instanceof Error ? error : new Error(String(error));
@@ -672,6 +688,7 @@ export const reorderTaxonomy = async (req: Request, res: Response) => {
       await Tag.bulkWrite(ops);
     }
 
+    await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     return res.json({ message: `Sorted by ${mode}`, count: tags.length });
   } catch (error: unknown) {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -774,6 +791,7 @@ export const syncArticleTags = async (req: Request, res: Response) => {
       errors
     });
 
+    await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     res.json({
       message: 'Sync completed',
       totalArticleTags: articleTags.length,
