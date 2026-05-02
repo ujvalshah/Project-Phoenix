@@ -44,13 +44,12 @@
  * ============================================================================
  */
 
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Article, MediaType, PreviewMetadata } from '@/types';
 import { Clock, ExternalLink, ChevronLeft, ChevronRight, ArrowUp } from 'lucide-react';
 import { formatDate, formatReadTime } from '@/utils/formatters';
 import { AddToCollectionModal } from './AddToCollectionModal';
 import { DetailTopBar } from './shared/DetailTopBar';
-import { MarkdownRenderer } from './MarkdownRenderer';
 import { EmbeddedMedia } from './embeds/EmbeddedMedia';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useAuth } from '@/hooks/useAuth';
@@ -65,6 +64,34 @@ import { storageService } from '@/services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
 import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
+
+/** Code-split `react-markdown` / GFM out of the ArticleDetail chunk; shared by title, body, disclaimer. */
+const MarkdownRendererLazy = lazy(() =>
+  import('./MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
+);
+
+function ArticleDetailTitleMarkdownFallback(): React.ReactElement {
+  return (
+    <div
+      className="h-4 max-w-[85%] rounded bg-slate-200/80 dark:bg-slate-800 animate-pulse"
+      aria-hidden="true"
+    />
+  );
+}
+
+function ArticleDetailBodyMarkdownFallback(): React.ReactElement {
+  return (
+    <div
+      className="nugget-content text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-2"
+      aria-busy="true"
+      aria-label="Loading article text"
+    >
+      <div className="h-3 max-w-[95%] rounded bg-slate-200/80 dark:bg-slate-800 animate-pulse" />
+      <div className="h-3 w-full rounded bg-slate-200/80 dark:bg-slate-800 animate-pulse" />
+      <div className="h-3 max-w-[80%] rounded bg-slate-200/80 dark:bg-slate-800 animate-pulse" />
+    </div>
+  );
+}
 
 export interface ArticleDetailProps {
   article: Article;
@@ -440,7 +467,9 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                            aria-level={1}
                            className="text-sm font-semibold text-slate-900 dark:text-white leading-snug mb-3"
                        >
-                           <MarkdownRenderer content={article.title} />
+                           <Suspense fallback={<ArticleDetailTitleMarkdownFallback />}>
+                               <MarkdownRendererLazy content={article.title} />
+                           </Suspense>
                        </div>
                    )}
                    
@@ -571,37 +600,37 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                   </div>
               )}
 
-              {/* Content - RENDERING PARITY FIX: Uses exact same MarkdownRenderer configuration
-                  as CardContent (no prose prop, same className structure). Removed extensive
-                  className overrides that could interfere with MarkdownRenderer's component styles.
-                  This ensures GitHub-style markdown (links, tables, inline formatting) renders
-                  identically to the card preview. */}
-              <div className="nugget-content text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  <MarkdownRenderer
-                    content={resolvedBodyContent}
-                    onYouTubeTimestampClick={handleDrawerTimestampClick}
-                  />
-              </div>
+              {/* Body + disclaimer: nested Suspense so shell (top bar, meta, source, media) can commit
+                  before heavy react-markdown work. Chunk is split via MarkdownRendererLazy. */}
+              <Suspense fallback={<ArticleDetailBodyMarkdownFallback />}>
+                <>
+                  <div className="nugget-content text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    <MarkdownRendererLazy
+                      content={resolvedBodyContent}
+                      onYouTubeTimestampClick={handleDrawerTimestampClick}
+                    />
+                  </div>
 
-              {showJumpToPlayerButton && (
-                <button
-                  type="button"
-                  onClick={handleJumpToPlayer}
-                  aria-label="Jump to player"
-                  title="Jump to player"
-                  className="fixed bottom-4 right-4 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg backdrop-blur transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  <ArrowUp size={16} />
-                  <span className="sr-only">Jump to player</span>
-                </button>
-              )}
+                  {showJumpToPlayerButton && (
+                    <button
+                      type="button"
+                      onClick={handleJumpToPlayer}
+                      aria-label="Jump to player"
+                      title="Jump to player"
+                      className="fixed bottom-4 right-4 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg backdrop-blur transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <ArrowUp size={16} />
+                      <span className="sr-only">Jump to player</span>
+                    </button>
+                  )}
 
-              {/* Disclaimer */}
-              {resolvedDisclaimer && (
-                <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] italic text-slate-400 dark:text-slate-500 leading-snug [&_a]:underline [&_a]:text-slate-500 dark:[&_a]:text-slate-400">
-                  <MarkdownRenderer content={resolvedDisclaimer} />
-                </div>
-              )}
+                  {resolvedDisclaimer && (
+                    <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] italic text-slate-400 dark:text-slate-500 leading-snug [&_a]:underline [&_a]:text-slate-500 dark:[&_a]:text-slate-400">
+                      <MarkdownRendererLazy content={resolvedDisclaimer} />
+                    </div>
+                  )}
+                </>
+              </Suspense>
 
                {/* Primary Media Embed */}
                {!isModal && primaryMedia && (
