@@ -7,12 +7,30 @@
 import { Page, expect } from '@playwright/test';
 
 /**
- * Wait for the CreateNuggetModal to be visible
+ * Wait for Create Nugget / Edit Nugget modal (explicit dialog name — avoids indefinite wait
+ * when unauthenticated flows never mount a `[role="dialog"]` shell).
  */
 export async function waitForModal(page: Page): Promise<void> {
-  await page.waitForSelector('[role="dialog"]', { state: 'visible' });
-  // Wait for modal content to load
-  await page.waitForTimeout(500);
+  const loadingEditor = page.getByRole('status', { name: /^loading editor$/i });
+  const dialog = page.getByRole('dialog', { name: /^(Create|Edit) Nugget$/ });
+
+  /** Lazy chunk: Suspense may show `Loading editor` before `role="dialog"` mounts */
+  try {
+    await Promise.race([
+      dialog.waitFor({ state: 'visible', timeout: 8_000 }),
+      loadingEditor.waitFor({ state: 'visible', timeout: 8_000 }),
+    ]);
+  } catch {
+    /* Neither surfaced within 8s — continue with full dialog timeout below */
+  }
+
+  if (await loadingEditor.isVisible().catch(() => false)) {
+    await loadingEditor.waitFor({ state: 'detached', timeout: 90_000 });
+  }
+
+  await dialog.waitFor({ state: 'visible', timeout: 60_000 });
+  await dialog.getByLabel(/Title \(Optional\)/i).waitFor({ state: 'visible', timeout: 45_000 });
+  await page.waitForTimeout(200);
 }
 
 /**
@@ -152,13 +170,10 @@ export async function clickSaveButton(page: Page): Promise<void> {
  * Close the modal
  */
 export async function closeModal(page: Page): Promise<void> {
+  const dialog = page.getByRole('dialog', { name: /^(Create|Edit) Nugget$/ });
   const closeButton = page.locator('button[aria-label="Close modal"]').first();
   await closeButton.click();
-
-  // Wait for modal to close
-  await page.waitForSelector('[role="dialog"]', { state: 'hidden' }).catch(() => {
-    // Modal might already be closed
-  });
+  await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
 }
 
 /**
@@ -173,13 +188,32 @@ export async function waitForApiCall(page: Page): Promise<void> {
  * Open the create modal
  */
 export async function openCreateModal(page: Page): Promise<void> {
-  // Find and click the create/add button
-  const createButton = page.locator(
-    'button[aria-label*="Create"], button[aria-label*="Add"], button:has-text("Create"), button:has-text("New")'
-  ).first();
-  await createButton.waitFor({ state: 'visible' });
-  await createButton.click();
+  /**
+   * Scope to the fixed app header and use a dedicated test id (see Header create control).
+   * Avoids role/order ambiguity and stray matches outside the toolbar.
+   */
+  const createBtn = page.locator('header').getByTestId('create-nugget-button');
+  await createBtn.waitFor({ state: 'visible', timeout: 30_000 });
+  await expect(createBtn).toBeEnabled({ timeout: 10_000 });
 
+  const chunkWait = page.waitForResponse(
+    (res) =>
+      res.url().includes('CreateNuggetModal') &&
+      res.request().resourceType() === 'script' &&
+      res.ok(),
+    { timeout: 75_000 },
+  );
+
+  await createBtn.scrollIntoViewIfNeeded();
+  await createBtn.click();
+
+  try {
+    await chunkWait;
+  } catch {
+    /** Warmed chunk / cache — dialog wait still gates readiness */
+  }
+
+  await page.waitForLoadState('domcontentloaded');
   await waitForModal(page);
 }
 
