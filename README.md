@@ -150,7 +150,7 @@ The server will:
 
 1. Create a new Web Service on [Render](https://render.com)
 2. Connect your repo
-3. Build command: `npm install && npm run build` (builds the SPA and compiles `server/dist/`)
+3. Build command: `npm install --include=dev && npm run build` (builds the SPA and compiles `server/dist/`). Render runs installs with `NODE_ENV=production`, which **skips devDependencies** by default; Vite, TypeScript, and `tsc` live there, so a plain `npm install` leads to **`vite: not found`** and a failed build. `--include=dev` forces dev tools to install for the build step only.
 4. Start command: `npm run start` (runs the compiled server via `scripts/run-production-server.mjs`)
 
 If the app exits with **Cannot find module `.../server/dist/index.js`**, open the **build** log (not only deploy): it must show `vite build` and `tsc` finishing. The **Build command** must not be empty (use the command in step 3). Set **Root Directory** to the repository root (leave blank); if it is set to `src`, relative paths like `server/dist/index.js` resolve under `src/server/...` and the bundle is not found. The `start` script uses `scripts/run-production-server.mjs` so the server path is resolved from the repo root even when cwd is wrong. This repo ignores only the repo-root `/dist` (Vite output), not `server/dist`, so compiled server output is not mistaken for a gitignored folder.
