@@ -1,20 +1,24 @@
-# Project: Full-Stack AI Application (React 19 + Express 5)
+# Project Phoenix - Claude.md
 
-## 🏗 Architecture & Patterns
-- **Adapter Pattern:** The app uses `RestAdapter` via [`storageService`](src/services/storageService.ts) (`getAdapter`). When refactoring data logic, keep [`IAdapter`](src/services/adapters/IAdapter.ts) coherent with the backend API.
-- **Service Layer:** Logic must stay in the Service Layer, keeping UI (React) and Route Handlers (Express) thin.
-- **Strict Typing:** TypeScript strict mode is enabled. No `any` types allowed.
+## Project
+Full-stack React 19 + Express 5: articles and nugget workflows.
 
-## 🛠 Commands
-- **Install:** `npm install`
-- **Build:** `npm run build` (Vite for frontend, TS for backend)
-- **Test:** `npm test` (Uses Vitest)
-- **Lint:** `npm run lint` (ESLint + Prettier)
-- **Docker:** `docker-compose up --build`
+## Primary guidance
+- Canonical policy: **`AGENTS.md`**.
+- Scoped rules: **`.cursor/rules/*.mdc`** when editing matching paths.
 
-## 🛡 Production & Security Rules
-- **Phase:** Development
-- **Security:** Ensure `Helmet`, `CORS`, and `express-rate-limit` are correctly configured in `app.ts`.
-- **Validation:** Use `Zod` for all API request body validation.
-- **Errors:** All async code must use try/catch. Use `pino` for logging, never `console.log`.
-- **Performance:** Use `compression` middleware and check for React Query stale-time settings.
+## Read first when relevant
+Use the table in **`AGENTS.md`** (same paths: perf, modal, data layer, query, backend, flags/env).
+
+**Read-first pass required** before: flags/env; caches or query/fetch changes; create/edit modal loading/shell/chunks; adapter–API contract changes.
+
+## Architecture
+- Data: `storageService` + `IAdapter`; keep `IAdapter` aligned with backend when contracts change.
+- Logic in services/adapters/controllers; thin React and Express handlers.
+- TypeScript strict; no `any`.
+
+## Commands
+`npm install` · `npm run build` · `npm run build:server` · `npm run lint` · `npm run typecheck` · `npm test`
+
+## Guardrails
+Zod or existing validation before business logic. Project logger (`pino` patterns), not `console.log`. No duplicate ad-hoc caches over React Query baseline. Production server: compiled output, not runtime TS. Narrow, reversible changes; update docs when flags, rollouts, perf, or contracts change.

@@ -1,0 +1,32 @@
+---
+description: Performance program — docs/perf + handoff; perf, modal load, flags, cache/fetch
+globs:
+  - docs/perf/**
+  - src/**
+  - server/src/**
+  - scripts/**
+  - vite.config.ts
+  - .env.example
+alwaysApply: false
+---
+
+# Nuggets performance work
+
+Applies when touching performance, CWV, latency, modal loading, perf-related flags, or cache/query/fetch that affects speed.
+
+## Source-of-truth order
+1. User task · 2. `docs/perf/PERF_MASTER.md`, `docs/perf/LLM_HANDOFF.md` · 3. `AGENTS.md`, `CLAUDE.md`, this rule · 4. old plans
+
+## Read first when relevant
+Same table as **`AGENTS.md`** (perf, modal, data, query, backend, flags). **Read-first pass** before: flags/caches/fetch/modal-loading/contracts (see `AGENTS.md`).
+
+**Perf triggers:** Vite chunking / `check-bundle-budget`; modal load or shell-first boundaries; perf rollout flags; cache/query/fetch affecting latency.
+
+## Working rules
+- **Truth:** `PERF_MASTER` + `LLM_HANDOFF` beat chat.
+- **Scope:** one bottleneck with evidence per change.
+- **Handoff:** follow `LLM_HANDOFF` for order and checks.
+- **Evidence:** paths, traces, Lighthouse, bundle output.
+- **Validate:** `npm run lint`, `typecheck`, `test:ci`, `build`, `build:server` if server touched.
+- **Conflicts:** `docs/perf/**` and `docs/refactor-log/create-modal/**` win unless the task explicitly overrides.
+- Reversible changes; update governance docs in the same pass.

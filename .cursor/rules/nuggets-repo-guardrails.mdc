@@ -1,0 +1,32 @@
+---
+description: Architecture, flags, contracts, query/cache — safe delivery guardrails
+globs:
+  - src/**
+  - server/src/**
+  - scripts/**
+  - docs/perf/**
+  - docs/refactor-log/**
+  - vite.config.ts
+  - .env.example
+alwaysApply: false
+---
+
+# Project Phoenix coding rules
+
+## Source-of-truth order
+1. User task · 2. Governance in **`AGENTS.md`** read-first table · 3. `AGENTS.md`, `CLAUDE.md` · 4. old plans
+
+## Read first when relevant
+Full file list: **`AGENTS.md`** table. **Read-first pass** before: flags/env; caches / fetch / React Query; modal chunk/shell/load; frontend–backend contracts.
+
+## Architecture
+Smallest reversible change. Logic in services/adapters/controllers; thin UI and routes. Extend existing modules. Align `IAdapter` + API in one change.
+
+## Flags
+Modal/composer flags: update `00-flag-contract.md` and `99-cleanup-ledger.md`. No orphan temp flags.
+
+## Query / cache / fetch
+Reuse query keys, hooks, timing. No duplicate state (React + context + RQ) for the same server data. Backend response caching only with evidence + rollback.
+
+## Validation
+`npm run lint` · `typecheck` · `test` · `build` · `build:server` if server changed
