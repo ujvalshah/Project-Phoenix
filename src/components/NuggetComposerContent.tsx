@@ -52,7 +52,11 @@ import { useAllCollections } from '@/hooks/useNuggetFormData';
 import { useDisclaimerConfig } from '@/hooks/useDisclaimerConfig';
 import { NuggetContentEditorPanel } from './CreateNuggetModal/NuggetContentEditorPanel';
 import type { ContentDraft } from '@/components/modals/shellDraft';
-import { articleToContentDraft } from '@/components/modals/shellDraft';
+import {
+  articleToContentDraft,
+  pickComposerInitialContent,
+  pickComposerInitialTagIds,
+} from '@/components/modals/shellDraft';
 
 const UnifiedMediaManagerLazy = lazy(() =>
   import('./CreateNuggetModal/UnifiedMediaManager').then((m) => ({ default: m.UnifiedMediaManager })),
@@ -98,9 +102,15 @@ export type NuggetComposerContentProps = CreateNuggetModalProps & {
   /** Card excerpt from shell; empty => normalize generates from body/title */
   shellExcerpt: string;
   /**
-   * Summary slice for body/tags initial hydration (Phase 3). When omitted, derived from Article props.
+   * Summary slice for body/tags when v2 is on (`CreateNuggetModalLoadable` passes it).
+   * Omitted in legacy path; composer derives from Article via `articleToContentDraft`.
    */
   contentDraft?: ContentDraft;
+  /**
+   * Phase 3 hydration: ContentDraft-first + deferred `syncFromArticle`. Legacy: Article-only init.
+   * Gated at runtime by `VITE_NUGGET_COMPOSER_V2` cohort (see `CreateNuggetModalLoadable`).
+   */
+  composerHydrationV2: boolean;
   shellFileInputRef: React.RefObject<HTMLInputElement | null>;
   onFooterMetaChange: (meta: {
     canSubmit: boolean;
@@ -159,6 +169,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       onShellVisibilityChange,
       shellExcerpt,
       contentDraft: contentDraftProp,
+      composerHydrationV2,
       shellFileInputRef,
       onFooterMetaChange,
       onComposerReady,
@@ -360,16 +371,11 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       if (articleToInitialize && initializationKey && initializedFromDataRef.current !== initializationKey) {
         setIsTitleUserEdited(!!articleToInitialize.title); // PHASE 6: Mark as edited if title exists
         setSuggestedTitle(null); // PHASE 3: Clear suggestion in edit mode
-        /** Phase 3: ContentDraft-first; Article fallback only if draft body empty (transitional). */
         setContent(
-          resolvedContentDraft.content !== ''
-            ? resolvedContentDraft.content
-            : (articleToInitialize.content || ''),
+          pickComposerInitialContent(composerHydrationV2, resolvedContentDraft, articleToInitialize.content),
         );
         setDimensionTagIds(
-          resolvedContentDraft.tagIds.length > 0
-            ? [...resolvedContentDraft.tagIds]
-            : [...(articleToInitialize.tagIds ?? [])],
+          pickComposerInitialTagIds(composerHydrationV2, resolvedContentDraft, articleToInitialize.tagIds),
         );
         // Initialize customCreatedAt if article has isCustomCreatedAt flag (admin only)
         if (mode === 'edit' && isAdmin && (articleToInitialize as any).isCustomCreatedAt && articleToInitialize.publishedAt) {
@@ -442,10 +448,14 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
         // Editorial collections load via getCollectionsContainingArticle + editArticleCollections.
         // MediaIds are preserved from initialData and will be included in update
         
-        // Phase 3: defer heavy image graph hydration so shell + ContentDraft fields can commit first.
-        startTransition(() => {
+        // Composer v2: defer heavy image graph hydration so shell + ContentDraft fields commit first.
+        if (composerHydrationV2) {
+          startTransition(() => {
+            imageManager.syncFromArticle(articleToInitialize);
+          });
+        } else {
           imageManager.syncFromArticle(articleToInitialize);
-        });
+        }
         
         initializedFromDataRef.current = initializationKey;
       } else if (mode === 'create') {
@@ -453,7 +463,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
         initializedFromDataRef.current = null;
       }
     });
-  }, [isOpen, mode, initialData, duplicatePrefillArticle, duplicatePrefillUrls, isAdmin, resolvedContentDraft]);
+  }, [isOpen, mode, initialData, duplicatePrefillArticle, duplicatePrefillUrls, isAdmin, resolvedContentDraft, composerHydrationV2]);
 
   // Load editorial collection membership when editing (runs after init effect sets visibility)
   useEffect(() => {

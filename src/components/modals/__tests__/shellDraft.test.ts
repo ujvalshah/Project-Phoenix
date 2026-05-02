@@ -4,6 +4,8 @@ import {
   articleToContentDraft,
   articleToShellDraft,
   emptyShellDraft,
+  pickComposerInitialContent,
+  pickComposerInitialTagIds,
   shellDraftFromModalProps,
 } from '../shellDraft';
 
@@ -67,5 +69,34 @@ describe('shellDraft mappers', () => {
   it('articleToShellDraft create clears id', () => {
     const s = articleToShellDraft(baseArticle(), 'create');
     expect(s.id).toBe('');
+  });
+
+  describe('composer hydration picks (v2 vs legacy)', () => {
+    const divergentDraft = {
+      content: 'from-draft',
+      tags: [],
+      tagIds: ['d1'],
+    };
+
+    it('v2 prefers non-empty draft content over article', () => {
+      expect(pickComposerInitialContent(true, divergentDraft, 'from-article')).toBe('from-draft');
+    });
+
+    it('legacy always uses article content', () => {
+      expect(pickComposerInitialContent(false, divergentDraft, 'from-article')).toBe('from-article');
+    });
+
+    it('v2 falls back to article when draft body empty', () => {
+      const draft = articleToContentDraft(undefined);
+      expect(pickComposerInitialContent(true, draft, 'x')).toBe('x');
+    });
+
+    it('v2 prefers non-empty draft tag ids', () => {
+      expect(pickComposerInitialTagIds(true, divergentDraft, ['a', 'b'])).toEqual(['d1']);
+    });
+
+    it('legacy always uses article tag ids', () => {
+      expect(pickComposerInitialTagIds(false, divergentDraft, ['a', 'b'])).toEqual(['a', 'b']);
+    });
   });
 });

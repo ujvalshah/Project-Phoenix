@@ -10,7 +10,7 @@
 
 - **Create:** `App.tsx` / `WorkspaceHeader` / header open flow; `CreateNuggetModalLoadable` + dynamic `createNuggetModalChunk` preload.
 - **Edit:** Most routes pass in-memory `Article` as `initialData`; **admin nuggets** still block on `getArticleById` before modal (unchanged in Phase 1).
-- **Flags:** `VITE_FEATURE_NUGGET_MODAL_CHUNK_PRELOAD`, `VITE_NUGGET_MODAL_PRELOAD_ROLLOUT_PCT`, `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY`, `VITE_NUGGET_MODAL_CTP_BUDGET_WARN_MS` via `src/config/nuggetPerformanceConfig.ts`.
+- **Flags:** `VITE_FEATURE_NUGGET_MODAL_CHUNK_PRELOAD`, `VITE_NUGGET_MODAL_PRELOAD_ROLLOUT_PCT`, `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY`, `VITE_NUGGET_MODAL_CTP_BUDGET_WARN_MS`, `VITE_NUGGET_COMPOSER_V2` via `src/config/nuggetPerformanceConfig.ts` + cohort helper in `src/utils/performanceRollout.ts`.
 - **Guards:** `npm run test:perf-guards` (chunk cache + rollout + markdown slim); e2e `tests/e2e/perf-guards-nugget-modal.spec.ts` asserts no duplicate `CreateNuggetModal` chunk fetch on second open.
 
 ## Phase 1 — Thin shell + spinner-first fix (done)
@@ -78,12 +78,39 @@ flowchart TB
 
 **Implementation notes**
 
-- `CreateNuggetModalLoadable` passes **`contentDraft={articleToContentDraft(...)}`** into the lazy composer.
+- `CreateNuggetModalLoadable` passes **`contentDraft`** when the user is in the **`VITE_NUGGET_COMPOSER_V2`** cohort; legacy rollout omits it (composer derives the same slice from `Article` only for internal resolution).
 - First-time form init **does not** call `onShellTitleChange` / `onShellVisibilityChange` from article rows (shell is already aligned from `ShellDraft`).
 - **`imageManager.syncFromArticle`** runs inside a **nested `startTransition`** after lighter state is set so React can commit shell + text fields first.
 - **Phase 3 admin:** still out of scope (no shell-first admin).
 
 **Tests:** `src/components/modals/__tests__/shellDraft.test.ts` — mapper contracts.
+
+## Rollout — `VITE_NUGGET_COMPOSER_V2`
+
+Phase 3 hydration is **gated at runtime** by build env `VITE_NUGGET_COMPOSER_V2`, read in `src/config/nuggetPerformanceConfig.ts` and applied in `CreateNuggetModalLoadable` via `shouldEnableNuggetComposerV2ForUser(userId)` (`src/utils/performanceRollout.ts`). **Legacy path** (Article-first init, synchronous `syncFromArticle`, no `contentDraft` prop) is unchanged for rollback.
+
+| Env value | Effect |
+|-----------|--------|
+| *(unset / empty)* | **Legacy only** — **0%** of users get v2 (safe default). |
+| `false` / `0` | Legacy for all users (same as unset). |
+| `true` / `1` / `100` | **100%** v2 (e.g. staging preview). |
+| `0.01` | **1%** v2 (cohort). |
+| `0.1` | **~10%** v2 (deterministic bucket per user id or anonymous session seed). |
+| `10` | **10%** v2. Numeric **`1` is full on**, not 1%. |
+
+**Vercel:** set the variable on the Production / Preview project (or per-environment). Vite inlines values at **build** time, so changing the env requires a **redeploy**. For experiments without redeploy, you would need a runtime config mechanism (Edge Config, feature service); the cohort helper is ready for `%` rollout once the build contains the chosen percent.
+
+**Monitoring**
+
+- **Bundle:** `npm run analyze:bundle` (and optional `npm run analyze:bundle:print`) — compare `CreateNuggetModal` / loadable chunks between builds.
+- **Web Vitals:** Vercel Speed Insights / Web Analytics; runtime logs for `[perf][dev] nugget-modal-shell-visible` only appear in **local dev** (`import.meta.env.DEV`). Production observability relies on your RUM / analytics pipeline.
+- **Pre-merge:** `npm run test:perf-guards` (includes composer v2 env + picker tests). **Dual-path checks:** run smoke with env **omitted** (or `0`) vs `VITE_NUGGET_COMPOSER_V2=1` (rebuild or two preview deployments).
+
+**Rollback criteria**
+
+- Regressions in create/edit submit payloads, tag or body hydration, or media sync.
+- Sustained **LCP / INP** regression vs baseline on routes that open the composer.
+- Omit the variable or set **`VITE_NUGGET_COMPOSER_V2=0`** and redeploy; no admin or API changes required.
 
 ## Next tasks (ordered)
 

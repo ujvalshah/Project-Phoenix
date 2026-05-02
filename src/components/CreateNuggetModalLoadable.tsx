@@ -15,6 +15,9 @@ import { loadCreateNuggetModalModule } from './createNuggetModalChunk';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
 import { NuggetModalShell, NuggetComposerBodySkeleton } from '@/components/modals/NuggetModalShell';
 import { getNuggetModalCtpBudgetWarnMs } from '@/utils/nuggetModalPerfConfig';
+import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
+import { shouldEnableNuggetComposerV2ForUser } from '@/utils/performanceRollout';
+import { scheduleNuggetModalShellVisibleProbe } from '@/utils/nuggetModalShellVisibleProbe';
 import {
   articleToContentDraft,
   shellDraftFromModalProps,
@@ -51,6 +54,9 @@ const modalErrorFallback = (onClose: () => void) => (
 function CreateNuggetModalLoadableInner({ fallback: _fallback, ...props }: CreateNuggetModalLoadableProps) {
   const { isOpen, onClose, mode = 'create', initialData, prefillData } = props;
 
+  const currentUserId = useAuthSelector((a) => a.user?.id, shallowEqualAuth);
+  const composerHydrationV2 = shouldEnableNuggetComposerV2ForUser(currentUserId);
+
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<NuggetComposerHandle | null>(null);
@@ -82,14 +88,16 @@ function CreateNuggetModalLoadableInner({ fallback: _fallback, ...props }: Creat
     setComposerReady(true);
   }, []);
 
-  /** Preferred slice for composer text/tags hydration (Phase 3); matches modal props source. */
-  const contentDraft: ContentDraft = useMemo(
-    () =>
-      articleToContentDraft(
-        mode === 'edit' ? initialData : prefillData ?? undefined,
-      ),
-    [mode, initialData, prefillData],
-  );
+  /** V2: explicit ContentDraft from the same Article slice the shell uses; legacy: omitted (composer derives). */
+  const contentDraft: ContentDraft | undefined = useMemo(() => {
+    if (!composerHydrationV2) return undefined;
+    return articleToContentDraft(mode === 'edit' ? initialData : prefillData ?? undefined);
+  }, [composerHydrationV2, mode, initialData, prefillData]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return scheduleNuggetModalShellVisibleProbe();
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -220,6 +228,7 @@ function CreateNuggetModalLoadableInner({ fallback: _fallback, ...props }: Creat
             onShellVisibilityChange={setShellVisibilityFromComposer}
             shellExcerpt={shellDraft.excerpt}
             contentDraft={contentDraft}
+            composerHydrationV2={composerHydrationV2}
             shellFileInputRef={fileInputRef}
             onFooterMetaChange={onFooterMetaChange}
             onComposerReady={onComposerReady}

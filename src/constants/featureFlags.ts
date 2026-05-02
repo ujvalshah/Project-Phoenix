@@ -13,7 +13,7 @@
  * }
  * ```
  * Verbose client logging for image workflows uses `import.meta.env.DEV` in `useImageManager`, not a flag.
- * NUGGET_MODAL_* performance values come from @/config/nuggetPerformanceConfig (single env map).
+ * NUGGET_MODAL_* and composer v2 rollout (`VITE_NUGGET_COMPOSER_V2`) come from @/config/nuggetPerformanceConfig (single env map).
  *
  * Note: USE_IMAGE_MANAGER feature flag was removed in Phase 9.
  * The useImageManager hook is now always used (legacy code removed).
@@ -63,6 +63,12 @@ export const FEATURE_FLAGS = {
   NUGGET_MODAL_EDITOR_LAZY: NUGGET_PERFORMANCE.editorLazySplit,
 
   /**
+   * NUGGET_COMPOSER_V2_ACTIVE: Build participates in composer v2 rollout when env percent is non-zero.
+   * Per-user: `shouldEnableNuggetComposerV2ForUser` in `@/utils/performanceRollout` (re-exported below).
+   */
+  NUGGET_COMPOSER_V2_ACTIVE: NUGGET_PERFORMANCE.composerV2RolloutPercent > 0,
+
+  /**
    * HOME_FEED_VIRTUALIZATION (VITE_HOME_FEED_VIRTUALIZATION):
    *
    * **ArticleGrid-only:** Enables `HomeGridVirtualized` in `ArticleGrid.tsx` when
@@ -89,3 +95,5 @@ export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
 export function isFeatureEnabled(flag: FeatureFlagKey): boolean {
   return FEATURE_FLAGS[flag] === true;
 }
+
+export { shouldEnableNuggetComposerV2ForUser } from '@/utils/performanceRollout';

@@ -42,7 +42,7 @@
     "lint:fix:server": "eslint server/src/index.ts server/src/config server/src/routes server/src/controllers server/src/middleware server/src/models server/src/services server/src/utils/sentry.ts server/src/utils/metrics.ts --ext .ts --fix --rulesdir eslint-rules --rule \"no-unsafe-direct-mutation-fetch: off\"",
     "test:eslint-rules": "node eslint-rules/tests/no-unsafe-direct-mutation-fetch.test.cjs",
     "test": "vitest run",
-    "test:perf-guards": "vitest run src/utils/__tests__/performanceRollout.test.ts src/utils/__tests__/markdownSlimFeedIsolation.test.ts src/components/__tests__/createNuggetModalChunkCache.test.ts",
+    "test:perf-guards": "vitest run src/utils/__tests__/performanceRollout.test.ts src/utils/__tests__/nuggetComposerV2Rollout.test.ts src/utils/__tests__/markdownSlimFeedIsolation.test.ts src/components/__tests__/createNuggetModalChunkCache.test.ts src/components/modals/__tests__/shellDraft.test.ts",
     "test:ci": "vitest run",
     "test:e2e:smoke": "cross-env PLAYWRIGHT_SKIP_GLOBAL_AUTH=0 playwright test tests/e2e/perf-guards-nugget-modal.spec.ts",
     "test:watch": "vitest",

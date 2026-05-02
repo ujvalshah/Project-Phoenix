@@ -11,6 +11,11 @@ interface ImportMetaEnv {
   readonly VITE_NUGGET_MODAL_PRELOAD_ROLLOUT_PCT?: string;
   /** When >0, log a console warning if modal open → ~paint exceeds this many ms. */
   readonly VITE_NUGGET_MODAL_CTP_BUDGET_WARN_MS?: string;
+  /**
+   * Composer v2 (ContentDraft-first hydration): unset / empty = 0% (legacy only).
+   * `true` / `1` / `100` = full v2. `0` / `false` = legacy. `0.01` = 1%; `0.1` ≈ 10%; `10` = 10%.
+   */
+  readonly VITE_NUGGET_COMPOSER_V2?: string;
   readonly VITE_SENTRY_DSN?: string;
   readonly VITE_SENTRY_ENABLE_DEV?: string;
   readonly VITE_SENTRY_RELEASE?: string;

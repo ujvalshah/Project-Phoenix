@@ -48,3 +48,19 @@ export function shouldEnableNuggetModalPreloadForUser(userId: string | null | un
   if (pct <= 0) return false;
   return stableBucket0to99(userId) < pct;
 }
+
+/** 0–100 from build env `VITE_NUGGET_COMPOSER_V2` (see `nuggetPerformanceConfig`). */
+export function getNuggetComposerV2RolloutPercent(): number {
+  return NUGGET_PERFORMANCE.composerV2RolloutPercent;
+}
+
+/**
+ * Per-user gate for ContentDraft-first composer hydration (Phase 3) vs legacy Article-first init.
+ * Uses the same stable cohort bucket as modal chunk preload.
+ */
+export function shouldEnableNuggetComposerV2ForUser(userId: string | null | undefined): boolean {
+  const pct = getNuggetComposerV2RolloutPercent();
+  if (pct >= 100) return true;
+  if (pct <= 0) return false;
+  return stableBucket0to99(userId) < pct;
+}

@@ -97,3 +97,27 @@ export function articleToContentDraft(article: Article | undefined): ContentDraf
     tagIds: Array.isArray(article.tagIds) ? [...article.tagIds] : [],
   };
 }
+
+/** Phase 3 (v2): prefer `ContentDraft` body when non-empty; else article. Legacy: always article body. */
+export function pickComposerInitialContent(
+  composerHydrationV2: boolean,
+  draft: ContentDraft,
+  articleContent: string | undefined,
+): string {
+  if (!composerHydrationV2) {
+    return articleContent ?? '';
+  }
+  return draft.content !== '' ? draft.content : (articleContent ?? '');
+}
+
+/** Phase 3 (v2): prefer `ContentDraft` tags when non-empty; else article. Legacy: always article tag ids. */
+export function pickComposerInitialTagIds(
+  composerHydrationV2: boolean,
+  draft: ContentDraft,
+  articleTagIds: string[] | undefined,
+): string[] {
+  if (!composerHydrationV2) {
+    return [...(articleTagIds ?? [])];
+  }
+  return draft.tagIds.length > 0 ? [...draft.tagIds] : [...(articleTagIds ?? [])];
+}

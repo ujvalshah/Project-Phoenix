@@ -1,6 +1,6 @@
 # Flag contract — Nugget Composer vs editor infrastructure
 
-**Audience:** Implementers and reviewers. **Status:** Governance only (no runtime flag added yet for composer V2).
+**Audience:** Implementers and reviewers. **Status:** `VITE_NUGGET_COMPOSER_V2` is implemented (`nuggetPerformanceConfig`, `performanceRollout`, `CreateNuggetModalLoadable`).
 
 ## Canonical flags
 
@@ -13,7 +13,7 @@
 
 ## Temporary performance infrastructure (legacy preload / lazy)
 
-These already exist and are defined in `src/config/nuggetPerformanceConfig.ts`, surfaced through `FEATURE_FLAGS` in `src/constants/featureFlags.ts` and `src/utils/performanceRollout.ts`:
+These already exist and are defined in `src/config/nuggetPerformanceConfig.ts`, surfaced through `FEATURE_FLAGS` in `src/constants/featureFlags.ts` and `src/utils/performanceRollout.ts` (composer v2 cohort: `shouldEnableNuggetComposerV2ForUser`):
 
 | Env | Responsibility |
 |-----|----------------|
@@ -26,7 +26,7 @@ These already exist and are defined in `src/config/nuggetPerformanceConfig.ts`, 
 
 ## Rollout rules
 
-1. **`VITE_NUGGET_COMPOSER_V2` default-off** until shell-first behavior is verified against `00-kpi-contract.md`.
+1. **`VITE_NUGGET_COMPOSER_V2`:** unset or empty means **no v2 cohort** (legacy hydration only). Set **`true`** / **`1`** / **`100`** for full v2; partial % (`0.01`, `0.1`, `10`, …) uses the same cohort bucket as modal preload (`create-modal/README.md` rollout table).
 2. **`VITE_NUGGET_EDITOR_V2`** (when added) may ship independently: editor swaps must work inside either composer, unless a technical dependency forces a joint release (document that exception in the PR).
 3. Preload/lazy flags remain **independently toggleable** for incident response; turning them off must not imply composer V2 is on or off.
 
@@ -43,5 +43,5 @@ These already exist and are defined in `src/config/nuggetPerformanceConfig.ts`, 
 
 ## Current repo state (verified)
 
-- `VITE_NUGGET_COMPOSER_V2`: **not present** — this contract reserves the name.
+- `VITE_NUGGET_COMPOSER_V2`: **present** — parsed as cohort % in `nuggetPerformanceConfig.ts`; gates `contentDraft` + `composerHydrationV2` in `CreateNuggetModalLoadable` / `NuggetComposerContent`.
 - `VITE_NUGGET_EDITOR_V2`: **not present** — editor chunk behavior is `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY` only.
