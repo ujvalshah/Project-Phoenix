@@ -2,6 +2,43 @@
 
 Newest entries first.
 
+## 2026-05-02 — TASK-034: Markdown slim-down verification (scorecard + perf guard)
+
+What changed  
+
+- [`PERFORMANCE_SCORECARD.md`](PERFORMANCE_SCORECARD.md): `vendor-markdown` chunk snapshot note (raw / gzip from `analyze:bundle`), collapsed vs full `MarkdownRenderer` path, link to `markdownSlimFeedIsolation` test; perf-guard count **7 / 7**.
+- [`src/utils/__tests__/markdownSlimFeedIsolation.test.ts`](../../src/utils/__tests__/markdownSlimFeedIsolation.test.ts): asserts slim feed sources never import `react-markdown` / `remark-gfm`, `CardContent` stays lazy-only toward `MarkdownRenderer`, and `MarkdownRenderer` still imports the full stack.
+
+Why  
+
+- Locks **TASK-032** intent in CI-adjacent guards and docs: feed excerpt stays slim; `vendor-markdown` remains an isolated lazy route, not the collapsed card path.
+
+Related  
+
+- [`components/card/atoms/LightweightMarkdownExcerpt.tsx`](../../src/components/card/atoms/LightweightMarkdownExcerpt.tsx); [`MarkdownRenderer.tsx`](../../src/components/MarkdownRenderer.tsx)
+
+---
+
+## 2026-05-02 — TASK-026: Refactor + perf documentation closeout
+
+What changed  
+
+- [`docs/refactor-log/CLOSEOUT-TASK-026.md`](../refactor-log/CLOSEOUT-TASK-026.md): aligns completed tasks (TASK-001–025) with the repo, lists measurable wins and unresolved risks, and ranks **five** next-wave tasks (admin virtualization, home-feed E2E closure, Lighthouse/bundle guardrails, markdown strategy).
+- [`docs/refactor-log/00-context-bridge.md`](../refactor-log/00-context-bridge.md): removed stale bottleneck claim about **`ArticleGrid`** on Home.
+- [`docs/refactor-log/README.md`](../refactor-log/README.md): CI Playwright reality, TASK-025 link, note that **`docs/refactor/`** is unused.
+- [`docs/refactor-log/tasks/TASK-003-collection-detail-react-query.md`](../refactor-log/tasks/TASK-003-collection-detail-react-query.md): marked **implemented**.
+- [`docs/perf/PERFORMANCE_SCORECARD.md`](PERFORMANCE_SCORECARD.md): automation map (E2E smoke in CI), snapshot header date, TASK-025/026 task notes, gaps wording for Lighthouse.
+
+Why  
+
+- Prevents future agents from following outdated architecture notes and understating what CI already runs.
+
+Related  
+
+- [`tasks/TASK-025-admin-dashboard-rendering.md`](../refactor-log/tasks/TASK-025-admin-dashboard-rendering.md)
+
+---
+
 ## 2026-05-01 — WO-10: Metrics expansion + CI widening (B012 + I-CI-01)
 
 What changed  

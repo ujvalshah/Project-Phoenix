@@ -1,10 +1,56 @@
 # Core Web Vitals — Consolidated Audit & Incremental Fix Playbook
 
-**Status:** Planning / execution reference  
+**Status:** In progress — see **§0 Activity log** below.  
 **Stack:** React 19 + Vite 7 SPA (client-rendered unless otherwise noted)  
 **Goal:** Improve **LCP**, **INP**, and **CLS** without introducing regressions via “local optimizations” that break architecture, UX, or maintainability.
 
 This document merges two audits of the same codebase and turns them into **ordered, dependency-aware work** plus **instructions for humans and LLMs** so fixes stay **incremental**, **measurable**, and **root-cause oriented**.
+
+---
+
+## 0. Activity log (living document)
+
+Agents and humans **append rows** when landing changes; reference **CW-xx** IDs from §4.
+
+| When (UTC) | CW-ID(s) | Summary | Files / notes |
+|------------|-----------|---------|----------------|
+| 2026-05-01 | **CW-01** | First **`getPriorityThumbnailCount(column)`** tiles skip `animate-fade-in-up` and stagger (`opacity: 0` no longer gates LCP for those tiles). Shared cap `PRIORITY_THUMBNAIL_CAP = 8`; count = `min(cols×2, 8)`. | `src/constants/aboveFoldPriority.ts` (new), `ArticleGrid.tsx`, `HomeGridVirtualized.tsx`, `MasonryGrid.tsx` |
+| 2026-05-01 | **CW-02** | Hero path: **`Image`** accepts `loading` / `fetchPriority`; **`CardMedia`** `thumbnailLoadPriority`; **`GridVariant`** via **`NewsCard` `priorityThumbnail`**; masonry image tiles use **`priorityImageLoading`** on **`MediaBlock`**. | `Image.tsx`, `CardMedia.tsx`, `GridVariant.tsx`, `NewsCard.tsx`, `MediaBlock.tsx`, `MasonryAtom.tsx` |
+| 2026-05-01 | **CW-05** | Virtualizer row estimate uses **16:9** thumbnail height (matches **`CardMedia`** default aspect). | `src/utils/homeGridVirtualization.ts` |
+| 2026-05-01 | **CW-06** | **`isDark`** initialized from **`prefers-color-scheme`**; **`document.documentElement`** class synced in **`useLayoutEffect`** instead of **`useEffect`** to reduce flash/late theme application. | `App.tsx` |
+| 2026-05-01 | **CW-07** | **`PublicHomeIntro`** reserves vertical space (**`min-h-[4.75rem]`**) when CMS micro-header copy swaps in. | `HomePage.tsx` |
+| 2026-05-01 | **CW-03** | Idle **`import('@/pages/HomePage')`** after shell boots (narrow sequencing gap vs lazy route). **Timeout 1500ms** fallback. | `main.tsx` |
+| 2026-05-01 | *(Lab)* | Lighthouse **12** from repo root (Chrome headless) against **`http://127.0.0.1:3000/`** while **`npm run dev:all`** is running. Reports written as **`lighthouse-*.json`** (gitignored). | See **§0.1** for numbers and caveats |
+| 2026-05-01 | **CW-02** (follow-up) | **Multi-image** path: **`CardThumbnailGrid`** — primary cell (**index 0**) gets **`loading=eager` + `fetchPriority=high`** when parent **`thumbnailLoadPriority="high"`**. **`EmbeddedMedia`** preview **`<Image>`** accepts **`imageLoadPriority`** — used by **`MediaBlock`** for priority masonry (**YouTube**/OG preview). **`FeedVariant`** / **`MasonryVariant`** receive **`priorityThumbnail`** (same **`NewsCard`** prop as grid). | `CardThumbnailGrid.tsx`, `CardMedia.tsx`, `EmbeddedMedia.tsx`, `MediaBlock.tsx`, `FeedVariant.tsx`, `MasonryVariant.tsx`, `NewsCard.tsx`; removed stale **`EmbeddedMedia`** import from **`CardMedia`**. |
+| 2026-05-01 | **CW-08** (incremental) | **`NewsCard`**: **`CollectionPopover`**, **`ReportModal`**, **`ImageLightbox`** mount **only when their `show*` flag is true** — removes **`N_cards ×`** closed-modal hook trees from initial feed (full **CW-08** singleton refactor still future). **`ReportModal`** catch uses **`unknown`** instead of **`any`**. | `NewsCard.tsx` |
+| 2026-05-01 | **CW-02** (docs path) | **`DocumentPreview`** OG/PDF thumb uses shared **`Image`** with **`imageLoadPriority`** (`eager` / `fetchPriority` when high). **`EmbeddedMedia`** passes through for document branch. Masonry **`EmbeddedMedia`** already set priority for non-image tiles. | `DocumentPreview.tsx`, `EmbeddedMedia.tsx` |
+| 2026-05-01 | **CW-10** (incremental) | **Sentry**: **Session Replay sampling defaults to `0` in production** (was 0.1) — less main-thread work; **error-triggered replay remains `1`** by default. Opt in session replay with **`VITE_SENTRY_REPLAY_SESSION_SAMPLE_RATE`**. Optional **`VITE_SENTRY_REPLAY_ON_ERROR_SAMPLE_RATE`**. **`replayIntegration` omitted** only if both rates are 0. | `src/utils/sentry.ts`, `src/vite-env.d.ts` |
+| 2026-05-01 | *(DX)* | **`npm run perf:lh-mobile-local`** — same unthrottled mobile Lighthouse as **§0.1** (requires dev server on **:3000**). | `package.json` |
+| — | CW-08 (full singleton) | Not started — global modal host + **`activeArticleId`** — | — |
+| — | CW-09–CW-11 | Desktop virt, auth churn, Plausible defer — | — |
+
+### 0.1 Local Lighthouse run (CLI, from Cursor / CI-style shell)
+
+Yes — runs here via **`npx lighthouse@12`**. It is **not** the Chrome DevTools panel UI, but the **same underlying engine**.
+
+**Latest capture (UTC ~2026-05-01T08:02):**
+
+| Variant | Lighthouse flags (summary) | Performance score | LCP | FCP | CLS | TBT |
+|--------|-----------------------------|-------------------|-----|-----|-----|-----|
+| A — default mobile **simulated** throttling | `--form-factor=mobile`, `--disable-full-page-screenshot` | ~25 | **~58.7 s** | **~23.2 s** | **~0.016** | **~8.87 s** |
+| B — **unthrottled** (local sanity) | same + `--throttling-method=provided` | ~56 | **~4.2 s** | **~1.1 s** | **~0.016** | **~3.38 s** |
+
+**How to interpret:** Variant **A** reflects Lighthouse’s **4G slowdown + CPU slowdown** profile; against a **cold local dev server + dev bundles + backend on same machine**, it often looks **much worse than production or PageSpeed Insights** — use it for regressions vs a **fixed** local baseline, not as “our real LCP.” Variant **B** is closer to “this workstation loading localhost” but still **not field data**. **INP** is not a stable single number in Lighthouse 12 Performance category the same way as PSI field INP.
+
+**Reuse command (Windows-friendly):**
+
+```bash
+npx lighthouse@12 "http://127.0.0.1:3000/" --only-categories=performance --output=json --output-path="lighthouse-mobile-local-unthrottled.json" --form-factor=mobile --screenEmulation.mobile --quiet --disable-full-page-screenshot --max-wait-for-load=90000 --throttling-method=provided --chrome-flags="--headless=new --no-sandbox --disable-gpu"
+```
+
+Full-page screenshots were disabled (**`--disable-full-page-screenshot`**) to avoid **`Page.captureScreenshot`** timeouts under headless Windows.
+
+**Next queued (do not bundle blindly):** Repeat on **staging/production URL** in PageSpeed Insights for **CrUX-aligned** lab + field; **CW-08** full singleton modal host + **`DocumentPreview`** OG thumb priority if needed; **CW-09–11** per backlog §5.
 
 ---
 
@@ -31,9 +77,9 @@ This document merges two audits of the same codebase and turns them into **order
 
 | Area | Primary drivers (code-proven) | Strategic ceiling |
 |------|------------------------------|-------------------|
-| **LCP** | Client-only shell: `index.html` → blocking `index.css` → `main.tsx` bundle → lazy `HomePage` chunk → React Query feed → **card thumbnails**. **Feed cells use `animate-fade-in-up` starting at `opacity: 0`** (Tailwind). **`CardMedia` uses `loading="lazy"`** on hero thumbnails with **no `fetchPriority`**. | Without SSR/edge HTML or server-driven preload of the true LCP image, LCP stays **bound to JS + API + image discovery**. |
+| **LCP** | *(Partially addressed — see §0.)* Client-only shell still bounds absolute LCP; **above-fold tiles** no longer fade from `opacity: 0`; **priority** thumbnails use **eager + `fetchPriority="high"`** (capped); idle **HomePage chunk warm**. Remaining ceiling: SSR/preload hero URL, API TTFB. |
 | **INP** | Deep **provider tree**, **`NewsCard` mounting many modal/portals per card**, **desktop grid intentionally non-virtualized** (`columnCount > 1`), optional **`useYouTubeTitle` oEmbed** fan-out, **Sentry Browser Tracing + Replay** when DSN enabled. | Needs **structural** reductions (singleton modals, lighter card shell, selective Sentry) for large INP wins. |
-| **CLS** | **Virtual row estimator uses 4:3** in `estimateHomeGridRowHeightPx` while **`CardMedia` defaults to 16:9** (when `HOME_FEED_VIRTUALIZATION` is on). **Dark mode** applied in `useEffect` after first paint (`App.tsx`). **CMS intro** (`PublicHomeIntro`) can change line layout when copy arrives. | Fix estimator + theme strategy; validate virtualization path separately from grid path. |
+| **CLS** | *(Partially addressed — see §0.)* **`estimateHomeGridRowHeightPx`** uses **16:9**; theme class on **`<html>`** via **`useLayoutEffect`** + initial **`prefers-color-scheme`** match; **`PublicHomeIntro`** **`min-height`**. **measureElement** still required for mixed card heights. |
 
 **Third parties / head:** Plausible (`async` + inline `plausible.init`), preconnect hints for API/YouTube — lower risk than feed behavior but still worth profiling.
 
@@ -303,6 +349,8 @@ Use this as **sprint backlog order**; link PRs to **CW-xx** IDs.
 | — | CW-09 | 4 | Desktop virtualization (flagged) | High |
 | — | CW-04 | 4 | Auth re-render reduction | **Needs validation first** |
 
+**Batch note:** 2026-05-01 — **P0 (CW-01), P1 (CW-02), parts of P2–P3 (CW-05, CW-06, CW-07), P5 (CW-03)** implemented together with shared `aboveFoldPriority` (see §0). Remaining backlog rows unchanged.
+
 ---
 
 ## 6. Instructions for LLMs working on this plan
@@ -351,7 +399,7 @@ Paste or reference **`docs/CORE_WEB_VITALS_INCREMENTAL_FIX_PLAYBOOK.md`** when a
 | Bootstrap | `src/main.tsx`, `src/App.tsx` |
 | Lazy route | `src/App.tsx` (`HomePage` lazy) |
 | Feed shell | `src/pages/HomePage.tsx`, `src/hooks/useInfiniteArticles.ts` |
-| Grid / virt | `src/components/ArticleGrid.tsx`, `src/components/feed/HomeGridVirtualized.tsx`, `src/utils/homeGridVirtualization.ts`, `src/constants/featureFlags.ts` |
+| Grid / virt | `src/components/ArticleGrid.tsx`, `src/components/feed/HomeGridVirtualized.tsx`, `src/utils/homeGridVirtualization.ts`, `src/constants/featureFlags.ts`, `src/constants/aboveFoldPriority.ts` |
 | Masonry | `src/components/MasonryGrid.tsx` |
 | Card media / image | `src/components/card/atoms/CardMedia.tsx`, `src/components/Image.tsx`, `src/components/feed/ImageLayer.tsx` |
 | Animations | `tailwind.config.js` |

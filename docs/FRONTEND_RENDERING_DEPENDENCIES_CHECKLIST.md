@@ -88,7 +88,7 @@ If these contract fields are absent or renamed, visual behavior and card media o
 ## 4) Feature Flag Dependencies
 
 Share active feature flag values used by frontend:
-- `MARKET_PULSE` (changes nav and stream tabs)
+- `MARKET_PULSE` (nav, editor stream picker, and whether `?stream=pulse` applies; when off, `useFilterState` clamps the home feed to standard)
 - Any feed virtualization flags affecting card mounting/scroll behavior
 - Any experimental UI flags affecting card/media behavior
 
