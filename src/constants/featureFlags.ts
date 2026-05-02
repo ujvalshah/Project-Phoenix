@@ -63,12 +63,6 @@ export const FEATURE_FLAGS = {
   NUGGET_MODAL_EDITOR_LAZY: NUGGET_PERFORMANCE.editorLazySplit,
 
   /**
-   * NUGGET_COMPOSER_V2_ACTIVE: Build participates in composer v2 rollout when env percent is non-zero.
-   * Per-user: `shouldEnableNuggetComposerV2ForUser` in `@/utils/performanceRollout` (re-exported below).
-   */
-  NUGGET_COMPOSER_V2_ACTIVE: NUGGET_PERFORMANCE.composerV2RolloutPercent > 0,
-
-  /**
    * HOME_FEED_VIRTUALIZATION (VITE_HOME_FEED_VIRTUALIZATION):
    *
    * **ArticleGrid-only:** Enables `HomeGridVirtualized` in `ArticleGrid.tsx` when

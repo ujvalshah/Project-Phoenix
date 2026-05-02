@@ -1,47 +1,55 @@
-# Flag contract — Nugget Composer vs editor infrastructure
+# Flag contract — create/edit nugget modal
 
-**Audience:** Implementers and reviewers. **Status:** `VITE_NUGGET_COMPOSER_V2` is implemented (`nuggetPerformanceConfig`, `performanceRollout`, `CreateNuggetModalLoadable`).
+**Audience:** Implementers, reviewers, and the next agent. **Status:** Create/edit modal passes production smoke (save/edit, no failed requests). Rollout env vars and **legacy vs v2 hydration** branches remain until cleanup (see `99-cleanup-ledger.md`).
 
-## Canonical flags
+## Composer vs editor
 
-| Flag | Scope | Owner |
-|------|--------|--------|
-| `VITE_NUGGET_COMPOSER_V2` | **Composer architecture only:** shell-first open path, data-tier boundaries (`ShellDraft` / deferred detail), and routing of create vs edit through the new shell. **Must not** change markdown engine, toolbar, or editor internals. | Frontend platform / nugget UX |
-| `VITE_NUGGET_EDITOR_V2` | **Editor implementation only:** replacement or major rework of the rich-text body editor (e.g. new package, new toolbar, new serialization). **Must not** gate modal shell layout, preload orchestration, or “open before detail” behavior. | Editor owner |
+| Class | Meaning |
+|-------|---------|
+| **Composer (architecture)** | Shell, open path, hydration boundaries (`ContentDraft` vs Article-first), deferred work — **not** the rich-text implementation. |
+| **Editor (implementation)** | Editor chunking, package, toolbar, serialization — **not** shell layout or composer routing. |
+| **Modal loading / perf** | Chunk preload and cohorting for faster open — **not** “composer version” and **not** editor internals. |
 
-**Naming note:** Some older docs or chats may say `VITENUGGETEDITORV2` (no underscores). In this repo, Vite client env vars are `VITE_*` with underscores. **`VITE_NUGGET_EDITOR_V2` is the canonical spelling when the editor flag is introduced.** Today that flag **does not exist** in code; the only editor-related toggle is chunk splitting (below).
+## Canonical env vars (build-time)
 
-## Temporary performance infrastructure (legacy preload / lazy)
+| Env | Class | Controls | Default (if unset) |
+|-----|--------|----------|----------------------|
+| `VITE_NUGGET_COMPOSER_V2` | Composer | Cohort % for **ContentDraft-first** hydration (`shouldEnableNuggetComposerV2ForUser`). Gates `contentDraft` + `composerHydrationV2` in `CreateNuggetModalLoadable` → `NuggetComposerContent`. | `0` (legacy Article-first path) |
+| `VITE_NUGGET_EDITOR_V2` | Editor | **Reserved / not in repo yet.** Canonical name for a future editor swap. Today, editor delivery is only `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY`. | — |
+| `VITE_FEATURE_NUGGET_MODAL_CHUNK_PRELOAD` | Modal loading | Master switch for **intent preload** of the modal chunk (`preloadCreateNuggetModalChunk` → `createNuggetModalChunk.ts`). | on (`true`) |
+| `VITE_NUGGET_MODAL_PRELOAD_ROLLOUT_PCT` | Modal loading | **Preload-only** canary: `stableBucket0to99(userId)` vs this % (`performanceRollout.ts`). | `100` |
+| `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY` | Editor | When on, preloads/loads `ContentEditor` in a **separate async chunk**; when off, editor is inlined in the main modal chunk (`createNuggetModalChunk.ts`, `NuggetContentEditorPanel.tsx`). | on (`true`) |
+| `VITE_NUGGET_MODAL_CTP_BUDGET_WARN_MS` | Observability | Double-rAF **click-to-paint** console warning budget after open (`CreateNuggetModalLoadable.tsx`). `0` or omit = off. | `0` |
 
-These already exist and are defined in `src/config/nuggetPerformanceConfig.ts`, surfaced through `FEATURE_FLAGS` in `src/constants/featureFlags.ts` and `src/utils/performanceRollout.ts` (composer v2 cohort: `shouldEnableNuggetComposerV2ForUser`):
+## Runtime feature keys (`src/constants/featureFlags.ts`)
 
-| Env | Responsibility |
-|-----|----------------|
-| `VITE_FEATURE_NUGGET_MODAL_CHUNK_PRELOAD` | Intent-based preload of the `CreateNuggetModal` dynamic chunk (`src/components/createNuggetModalChunk.ts`). |
-| `VITE_NUGGET_MODAL_PRELOAD_ROLLOUT_PCT` | Canary cohorting for preload only (`stableBucket0to99` in `src/utils/performanceRollout.ts`). |
-| `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY` | Async `ContentEditor` chunk via `NuggetContentEditorPanel` (`src/components/CreateNuggetModal/NuggetContentEditorPanel.tsx`). |
-| `VITE_NUGGET_MODAL_CTP_BUDGET_WARN_MS` | Dev observability: double-rAF “click-to-paint” warning inside `CreateNuggetModal` (`src/components/CreateNuggetModal.tsx`). |
+Composer v2 rollout is **not** exposed as an `isFeatureEnabled` key — use `shouldEnableNuggetComposerV2ForUser` (re-exported from this module) or `NUGGET_PERFORMANCE.composerV2RolloutPercent`.
 
-**Treat these as rollback / observability knobs, not as “composer version” flags.** They must not be overloaded to mean “new shell architecture.”
+| Key | Source | Notes |
+|-----|--------|--------|
+| `NUGGET_MODAL_CHUNK_PRELOAD` | `NUGGET_PERFORMANCE.chunkPreload` | Same as `VITE_FEATURE_NUGGET_MODAL_CHUNK_PRELOAD`. |
+| `NUGGET_MODAL_EDITOR_LAZY` | `NUGGET_PERFORMANCE.editorLazySplit` | Same as `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY`. |
 
-## Rollout rules
+## Chat / shorthand → canonical spelling
 
-1. **`VITE_NUGGET_COMPOSER_V2`:** unset or empty means **no v2 cohort** (legacy hydration only). Set **`true`** / **`1`** / **`100`** for full v2; partial % (`0.01`, `0.1`, `10`, …) uses the same cohort bucket as modal preload (`create-modal/README.md` rollout table).
-2. **`VITE_NUGGET_EDITOR_V2`** (when added) may ship independently: editor swaps must work inside either composer, unless a technical dependency forces a joint release (document that exception in the PR).
-3. Preload/lazy flags remain **independently toggleable** for incident response; turning them off must not imply composer V2 is on or off.
+| Informal (no underscores) | Canonical env |
+|---------------------------|---------------|
+| `VITENUGGETCOMPOSERV2` | `VITE_NUGGET_COMPOSER_V2` |
+| `VITENUGGETEDITORV2` | `VITE_NUGGET_EDITOR_V2` (future) |
+| `VITENUGGETMODALPRELOADROLLOUTPCT` | `VITE_NUGGET_MODAL_PRELOAD_ROLLOUT_PCT` |
+| `VITEFEATURENUGGETMODALCHUNKPRELOAD` | `VITE_FEATURE_NUGGET_MODAL_CHUNK_PRELOAD` |
+| `VITEFEATURENUGGETMODALEDITORLAZY` | `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY` |
+| `VITENUGGETMODALCTPBUDGETWARNMS` | `VITE_NUGGET_MODAL_CTP_BUDGET_WARN_MS` |
 
-## Deprecation trigger
+## Single source in code
 
-- **Preload / lazy envs:** Deprecate only when their behavior is inlined into an always-on composer pipeline *and* incident runbooks no longer need per-knob rollback—or when superseded by explicit composer “stage” loading with the same operational guarantees.
-- **`VITE_NUGGET_COMPOSER_V2`:** Remove after shell-first is the only path in production for a full release cycle and old entry points are deleted.
+All `VITE_*` reads: `src/config/nuggetPerformanceConfig.ts`. Cohort helpers: `src/utils/performanceRollout.ts`. Chunk/preload: `src/components/createNuggetModalChunk.ts`.
 
-## Forbidden overlaps
+## Rules
 
-- **Do not** use `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY` or a future `VITE_NUGGET_EDITOR_V2` to **hide** shell-first work or to **route** composer layout.
-- **Do not** use `VITE_NUGGET_COMPOSER_V2` to swap TipTap/CodeMirror/alternate editors; that belongs on the editor flag.
-- **Do not** add new “uber-flags” that conflate “fast modal” and “new editor.”
-
-## Current repo state (verified)
-
-- `VITE_NUGGET_COMPOSER_V2`: **present** — parsed as cohort % in `nuggetPerformanceConfig.ts`; gates `contentDraft` + `composerHydrationV2` in `CreateNuggetModalLoadable` / `NuggetComposerContent`.
-- `VITE_NUGGET_EDITOR_V2`: **not present** — editor chunk behavior is `VITE_FEATURE_NUGGET_MODAL_EDITOR_LAZY` only.
+| Do | Don’t |
+|----|--------|
+| Use **composer** flags for shell / hydration / `contentDraft` routing. | Use composer flags to swap TipTap/editor packages. |
+| Use **editor** flags for chunking and (later) editor implementation. | Use editor flags to hide shell-first work or change composer layout. |
+| Use **modal loading** flags only for preload / cohorting; rollback per knob. | Treat preload % or chunk preload as “composer v2” or “editor v2”. |
+| Turn off preload/lazy flags for **incident rollback** independently of composer v2. | Conflate “fast modal” and “new editor” in one uber-flag. |
