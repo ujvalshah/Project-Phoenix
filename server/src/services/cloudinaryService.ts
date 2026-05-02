@@ -1,5 +1,5 @@
 import { v2 as cloudinary } from 'cloudinary';
-import { getEnv } from '../config/envValidation';
+import { getEnv } from '../config/envValidation.js';
 import { getLogger } from '../utils/logger.js';
 
 /**

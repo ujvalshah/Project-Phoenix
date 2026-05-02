@@ -57,10 +57,10 @@ import { initializeCloudinary } from './services/cloudinaryService.js';
 
 // Route Imports
 import authRouter from './routes/auth.js';
-import articlesRouter from './routes/articles';
-import usersRouter from './routes/users';
-import collectionsRouter from './routes/collections';
-import tagsRouter from './routes/tags';
+import articlesRouter from './routes/articles.js';
+import usersRouter from './routes/users.js';
+import collectionsRouter from './routes/collections.js';
+import tagsRouter from './routes/tags.js';
 import feedbackRouter from './routes/feedback.js';
 import moderationRouter from './routes/moderation.js';
 import adminRouter from './routes/admin.js';

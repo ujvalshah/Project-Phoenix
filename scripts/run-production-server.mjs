@@ -1,24 +1,43 @@
 /**
  * Runs the compiled Express app from an absolute path and cwd anchored at the
- * package root. This avoids MODULE_NOT_FOUND when the process cwd is wrong
- * (e.g. Render "Root Directory" set to `src/` so `node server/dist/index.js`
- * resolves to `src/server/dist/...` instead of repo `server/dist/...`).
+ * directory that contains `server/dist/index.js` (repo root).
+ *
+ * Walks up from this file so it still works if the script lives under an extra
+ * directory segment (e.g. some hosts mirror layout under `src/`).
  */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const packageRoot = path.resolve(__dirname, '..');
-const entry = path.join(packageRoot, 'server', 'dist', 'index.js');
+function findPackageRootWithServerDist(startDir) {
+  let dir = path.resolve(startDir);
+  const root = path.parse(dir).root;
+  while (dir !== root) {
+    const entry = path.join(dir, 'server', 'dist', 'index.js');
+    if (existsSync(entry)) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  return null;
+}
 
-if (!existsSync(entry)) {
+const startDir = path.dirname(fileURLToPath(import.meta.url));
+const packageRoot = findPackageRootWithServerDist(startDir);
+
+if (!packageRoot) {
   console.error(
-    `Production server bundle missing: ${entry}\nRun "npm run build" (or "npm run build:server") at the repository root, then redeploy.`,
+    `Could not find server/dist/index.js by walking up from ${startDir}.\nRun "npm run build" (or "npm run build:server") at the repository root, then redeploy.`,
   );
   process.exit(1);
 }
+
+const entry = path.join(packageRoot, 'server', 'dist', 'index.js');
 
 const child = spawn(process.execPath, [entry], {
   cwd: packageRoot,
