@@ -22,10 +22,7 @@ import {
   assertAllBookmarkFoldersOwned,
   getBookmarkCollectionIdsMap
 } from '../utils/bookmarkHelpers.js';
-import {
-  buildItemIdsMatchingBookmarkQuery,
-  paginateInMemory
-} from '../utils/bookmarkListSearch.js';
+import { createSearchRegex } from '../utils/escapeRegExp.js';
 
 /**
  * Bookmark Controller
@@ -232,61 +229,89 @@ export const getBookmarks = async (req: Request, res: Response) => {
       createdAt: string;
       lastAccessedAt: string;
       notes?: string;
+      article?: Record<string, unknown>;
     }>;
     let total: number;
     let hasMore: boolean;
 
     if (searchTrimmed.length > 0) {
-      // Search: filter against article text first, then paginate (correct total/hasMore)
-      const allBookmarks = await Bookmark.find(bookmarkQuery).sort(sortOrder).lean();
-      const uniqueItemIds = [...new Set(allBookmarks.map((b) => b.itemId))];
-      if (uniqueItemIds.length === 0) {
-        return res.json({
-          data: [],
-          meta: { total: 0, page, limit, hasMore: false }
-        });
-      }
-      const bookmarkArticleAccessQuery = {
-        _id: { $in: uniqueItemIds },
-        $or: [
-          { authorId: userId },
-          {
-            $and: [
+      // DB-bounded search: join bookmarks->articles, filter in Mongo, then paginate.
+      const searchRegex = createSearchRegex(searchTrimmed);
+      const aggregateResult = await Bookmark.aggregate<{
+        data: Array<{
+          _id: { toString: () => string };
+          itemId: string;
+          itemType: string;
+          createdAt: string;
+          lastAccessedAt: string;
+          notes?: string;
+          article: Record<string, unknown>;
+        }>;
+        meta: Array<{ total: number }>;
+      }>([
+        { $match: bookmarkQuery },
+        {
+          $lookup: {
+            from: 'articles',
+            let: { bookmarkItemId: '$itemId' },
+            pipeline: [
               {
-                $or: [
-                  { visibility: 'public' },
-                  { visibility: { $exists: false } },
-                  { visibility: null },
-                ],
+                $match: {
+                  $expr: { $eq: [{ $toString: '$_id' }, '$$bookmarkItemId'] },
+                },
               },
               {
-                $or: [
-                  { status: 'published' },
-                  { status: { $exists: false } },
-                  { status: null },
-                ],
+                $match: {
+                  $or: [
+                    { authorId: userId },
+                    {
+                      $and: [
+                        {
+                          $or: [
+                            { visibility: 'public' },
+                            { visibility: { $exists: false } },
+                            { visibility: null },
+                          ],
+                        },
+                        {
+                          $or: [
+                            { status: 'published' },
+                            { status: { $exists: false } },
+                            { status: null },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+              {
+                $match: {
+                  $or: [
+                    { title: searchRegex },
+                    { content: searchRegex },
+                    { excerpt: searchRegex },
+                  ],
+                },
               },
             ],
+            as: 'article',
           },
-        ],
-      };
-      const articlesForSearch = await Article.find(bookmarkArticleAccessQuery)
-        .select('title content excerpt')
-        .lean();
-      const matchingItemIds = buildItemIdsMatchingBookmarkQuery(
-        articlesForSearch as Array<{
-          _id: { toString: () => string };
-          title?: string;
-          content?: string;
-          excerpt?: string;
-        }>,
-        searchTrimmed
-      );
-      const filtered = allBookmarks.filter((b) => matchingItemIds.has(b.itemId));
-      const paged = paginateInMemory(filtered, page, limit);
-      pageBookmarks = paged.pageItems;
-      total = paged.total;
-      hasMore = paged.hasMore;
+        },
+        { $unwind: '$article' },
+        { $sort: sortOrder },
+        {
+          $facet: {
+            data: [{ $skip: skip }, { $limit: limit }],
+            meta: [{ $count: 'total' }],
+          },
+        },
+      ]);
+
+      const facet = aggregateResult[0] ?? { data: [], meta: [] };
+      pageBookmarks = facet.data;
+      total = facet.meta[0]?.total ?? 0;
+      hasMore = skip + pageBookmarks.length < total;
     } else {
       total = await Bookmark.countDocuments(bookmarkQuery);
       pageBookmarks = await Bookmark.find(bookmarkQuery)
@@ -297,32 +322,40 @@ export const getBookmarks = async (req: Request, res: Response) => {
       hasMore = skip + pageBookmarks.length < total;
     }
 
-    // Full article documents + tag resolution for the current page only
+    // Full article documents + tag resolution for the current page only.
+    // Search path already fetched joined articles via aggregation.
     const itemIds = pageBookmarks.map((b) => b.itemId);
-    const articles = await Article.find({
-      _id: { $in: itemIds },
-      $or: [
-        { authorId: userId },
-        {
-          $and: [
+    const preloadedArticles = searchTrimmed.length > 0
+      ? pageBookmarks
+          .map((b) => b.article)
+          .filter((a): a is Record<string, unknown> => Boolean(a))
+      : [];
+    const articles = preloadedArticles.length > 0
+      ? preloadedArticles
+      : await Article.find({
+          _id: { $in: itemIds },
+          $or: [
+            { authorId: userId },
             {
-              $or: [
-                { visibility: 'public' },
-                { visibility: { $exists: false } },
-                { visibility: null },
-              ],
-            },
-            {
-              $or: [
-                { status: 'published' },
-                { status: { $exists: false } },
-                { status: null },
+              $and: [
+                {
+                  $or: [
+                    { visibility: 'public' },
+                    { visibility: { $exists: false } },
+                    { visibility: null },
+                  ],
+                },
+                {
+                  $or: [
+                    { status: 'published' },
+                    { status: { $exists: false } },
+                    { status: null },
+                  ],
+                },
               ],
             },
           ],
-        },
-      ],
-    }).lean();
+        }).lean();
     const tagNameMap = await getTagNameMap();
     const articleMap = new Map(
       articles.map((a) => {
@@ -511,25 +544,128 @@ export const batchToggle = async (req: Request, res: Response) => {
     }
 
     const { itemIds, itemType, action } = validation.data;
-    const results: { itemId: string; success: boolean; error?: string }[] = [];
+    const nowIso = new Date().toISOString();
+    const results: { itemId: string; success: boolean; error?: string }[] = itemIds.map((itemId) => ({
+      itemId,
+      success: true,
+    }));
 
-    for (const itemId of itemIds) {
-      try {
-        if (action === 'bookmark') {
-          const { bookmarkId, created } = await getOrCreateBookmark(userId, itemId, itemType as BookmarkItemType);
-          if (created) {
-            await ensureBookmarkInDefaultCollection(bookmarkId, userId);
-          }
-          results.push({ itemId, success: true });
-        } else {
-          const status = await getBookmarkStatus(userId, itemId, itemType as BookmarkItemType);
-          if (status.isBookmarked && status.bookmarkId) {
-            await deleteBookmarkCompletely(status.bookmarkId, userId);
-          }
-          results.push({ itemId, success: true });
+    if (action === 'bookmark') {
+      const defaultCollectionId = await ensureDefaultCollection(userId);
+
+      const existingBookmarks = await Bookmark.find({
+        userId,
+        itemType,
+        itemId: { $in: itemIds },
+      })
+        .select('_id itemId')
+        .lean();
+      const existingByItemId = new Map(existingBookmarks.map((b) => [b.itemId, b._id.toString()]));
+
+      const toCreate = itemIds.filter((id) => !existingByItemId.has(id));
+      if (toCreate.length > 0) {
+        try {
+          await Bookmark.insertMany(
+            toCreate.map((itemId) => ({
+              userId,
+              itemId,
+              itemType,
+              createdAt: nowIso,
+              lastAccessedAt: nowIso,
+            })),
+            { ordered: false },
+          );
+        } catch {
+          // Duplicate races are acceptable in unordered bulk inserts.
         }
-      } catch (itemError: any) {
-        results.push({ itemId, success: false, error: itemError.message });
+      }
+
+      await Bookmark.updateMany(
+        { userId, itemType, itemId: { $in: itemIds } },
+        { $set: { lastAccessedAt: nowIso } },
+      );
+
+      const allBookmarks = await Bookmark.find({
+        userId,
+        itemType,
+        itemId: { $in: itemIds },
+      })
+        .select('_id itemId')
+        .lean();
+      const bookmarkIds = allBookmarks.map((b) => b._id.toString());
+
+      const existingLinks = await BookmarkCollectionLink.find({
+        collectionId: defaultCollectionId,
+        bookmarkId: { $in: bookmarkIds },
+      })
+        .select('bookmarkId')
+        .lean();
+      const linkedBookmarkIds = new Set(existingLinks.map((l) => l.bookmarkId));
+      const linksToCreate = allBookmarks
+        .filter((b) => !linkedBookmarkIds.has(b._id.toString()))
+        .map((b) => ({
+          userId,
+          bookmarkId: b._id.toString(),
+          collectionId: defaultCollectionId,
+          createdAt: nowIso,
+        }));
+
+      if (linksToCreate.length > 0) {
+        try {
+          await BookmarkCollectionLink.insertMany(linksToCreate, { ordered: false });
+        } catch {
+          // Duplicate races are acceptable in unordered bulk inserts.
+        }
+      }
+
+      // Keep counter accurate after unordered inserts (race-safe).
+      const accurateCount = await BookmarkCollectionLink.countDocuments({
+        collectionId: defaultCollectionId,
+      });
+      await BookmarkCollection.updateOne(
+        { _id: defaultCollectionId },
+        { $set: { bookmarkCount: accurateCount, updatedAt: nowIso } },
+      );
+    } else {
+      const existingBookmarks = await Bookmark.find({
+        userId,
+        itemType,
+        itemId: { $in: itemIds },
+      })
+        .select('_id itemId')
+        .lean();
+
+      if (existingBookmarks.length > 0) {
+        const bookmarkIds = existingBookmarks.map((b) => b._id.toString());
+        const links = await BookmarkCollectionLink.find({
+          bookmarkId: { $in: bookmarkIds },
+        })
+          .select('collectionId')
+          .lean();
+
+        await BookmarkCollectionLink.deleteMany({ bookmarkId: { $in: bookmarkIds } });
+        await Bookmark.deleteMany({ _id: { $in: bookmarkIds } });
+
+        const removedPerCollection = new Map<string, number>();
+        for (const link of links) {
+          removedPerCollection.set(
+            link.collectionId,
+            (removedPerCollection.get(link.collectionId) ?? 0) + 1,
+          );
+        }
+
+        if (removedPerCollection.size > 0) {
+          const updates = Array.from(removedPerCollection.entries()).map(([collectionId, removed]) => ({
+            updateOne: {
+              filter: { _id: collectionId },
+              update: {
+                $inc: { bookmarkCount: -removed },
+                $set: { updatedAt: nowIso },
+              },
+            },
+          }));
+          await BookmarkCollection.bulkWrite(updates);
+        }
       }
     }
 

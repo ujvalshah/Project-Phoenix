@@ -135,7 +135,8 @@ export async function uploadToCloudinary(
       bytes: uploadResult.bytes
     };
   } catch (error: any) {
-    console.error('[Cloudinary] Upload error:', error);
+    const logger = getLogger().child({ service: 'cloudinary' });
+    logger.error({ err: error }, '[Cloudinary] Upload error');
     throw new Error(`Cloudinary upload failed: ${error.message || 'Unknown error'}`);
   }
 }
@@ -153,8 +154,9 @@ export async function deleteFromCloudinary(
   publicId: string,
   resourceType: 'image' | 'video' | 'raw' = 'image'
 ): Promise<boolean> {
+  const logger = getLogger().child({ service: 'cloudinary' });
   if (!isConfigured) {
-    console.warn('[Cloudinary] Delete skipped - Cloudinary not configured');
+    logger.warn({ publicId, resourceType }, '[Cloudinary] Delete skipped - Cloudinary not configured');
     return false;
   }
 
@@ -168,11 +170,11 @@ export async function deleteFromCloudinary(
       return true; // Success or already deleted
     }
 
-    console.warn(`[Cloudinary] Delete returned unexpected result: ${result.result}`);
+    logger.warn({ publicId, resourceType, result: result.result }, '[Cloudinary] Delete returned unexpected result');
     return false;
   } catch (error: any) {
     // Best-effort deletion - log but don't throw
-    console.error(`[Cloudinary] Delete error for ${publicId}:`, error.message);
+    logger.error({ err: error, publicId, resourceType }, '[Cloudinary] Delete error');
     return false;
   }
 }

@@ -17,6 +17,7 @@ import {
   ensureRedisConnection,
 } from '../utils/redisClient.js';
 import { getEnv } from '../config/envValidation.js';
+import { User } from '../models/User.js';
 
 /**
  * Error thrown when Redis is unavailable for a critical operation.
@@ -45,7 +46,12 @@ const PREFIX = {
   LOCKOUT: 'lock:',           // Account lockout counters
   LOCKOUT_TIME: 'locktime:',  // Lockout timestamp
   SESSION: 'sess:',           // Active sessions per user
+  /** Short-TTL mirror of Mongo `User.tokenVersion` for auth middleware (ADR-002) */
+  USER_TOKEN_VERSION: 'utv:',
 } as const;
+
+/** Sanity bound for persisted tokenVersion increments */
+const MAX_TOKEN_VERSION_CACHE_VALUE = 1_000_000_000;
 
 /**
  * Reuse-detection window (seconds). If a rotated (deleted) refresh token
@@ -76,6 +82,21 @@ const CONFIG = {
  */
 function getClient() {
   return getRedisClientOrFallback();
+}
+
+function hasPipeline(client: ReturnType<typeof getClient>): client is ReturnType<typeof getClient> & {
+  pipeline: () => {
+    setEx: (...args: unknown[]) => unknown;
+    sAdd: (...args: unknown[]) => unknown;
+    expire: (...args: unknown[]) => unknown;
+    sMembers: (...args: unknown[]) => unknown;
+    get: (...args: unknown[]) => unknown;
+    del: (...args: unknown[]) => unknown;
+    sRem: (...args: unknown[]) => unknown;
+    exec: () => Promise<unknown[]>;
+  };
+} {
+  return typeof (client as { pipeline?: unknown }).pipeline === 'function';
 }
 
 /**
@@ -178,6 +199,138 @@ export async function isTokenBlacklisted(token: string): Promise<boolean> {
 }
 
 // ============================================================================
+// USER tokenVersion CACHE (authenticateToken — fewer Mongo reads on hot paths)
+// ============================================================================
+
+/**
+ * Delete cached Mongo `tokenVersion` for `userId`. Call after every path that
+ * bumps `User.tokenVersion` so enforcement cannot accept stale JWTs beyond TTL.
+ */
+export async function invalidateUserTokenVersionCache(userId: string): Promise<void> {
+  if (!isRedisAvailable()) {
+    return;
+  }
+
+  try {
+    const client = getClient();
+    await client.del(`${PREFIX.USER_TOKEN_VERSION}${userId}`);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    getLogger().warn({
+      msg: '[TokenService] Failed to invalidate user tokenVersion cache',
+      userId,
+      err: { message: errMsg },
+    });
+  }
+}
+
+/**
+ * Stamp Redis with the authoritative `tokenVersion` after Mongo writes (preferred
+ * to DEL-only invalidate: overwrites stale entries even if delete failed silently).
+ */
+export async function upsertUserTokenVersionCache(userId: string, tokenVersion: number): Promise<void> {
+  if (
+    !Number.isFinite(tokenVersion) ||
+    !Number.isInteger(tokenVersion) ||
+    tokenVersion < 0 ||
+    tokenVersion > MAX_TOKEN_VERSION_CACHE_VALUE
+  ) {
+    return;
+  }
+
+  let enabled = true;
+  let ttlSeconds = 120;
+  try {
+    const env = getEnv();
+    enabled = env.AUTH_TOKEN_VERSION_CACHE_ENABLED;
+    ttlSeconds = env.AUTH_TOKEN_VERSION_CACHE_TTL_SECONDS;
+  } catch {
+    ttlSeconds = 120;
+  }
+
+  if (!enabled || !isRedisAvailable()) {
+    return;
+  }
+
+  try {
+    const client = getClient();
+    await client.setEx(`${PREFIX.USER_TOKEN_VERSION}${userId}`, ttlSeconds, String(tokenVersion));
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    getLogger().warn({
+      msg: '[TokenService] Failed to upsert user tokenVersion cache',
+      userId,
+      err: { message: errMsg },
+    });
+  }
+}
+
+/**
+ * Resolve current `tokenVersion` for JWT comparison: Redis short-TTL cache
+ * (when enabled + Redis available) with Mongo read-through.
+ * Returns `null` if the user does not exist (same as middleware prior behavior).
+ */
+export async function getUserTokenVersionForAuth(userId: string): Promise<number | null> {
+  let enabled = true;
+  let ttlSeconds = 120;
+  try {
+    const env = getEnv();
+    enabled = env.AUTH_TOKEN_VERSION_CACHE_ENABLED;
+    ttlSeconds = env.AUTH_TOKEN_VERSION_CACHE_TTL_SECONDS;
+  } catch {
+    ttlSeconds = 120;
+  }
+
+  if (enabled && isRedisAvailable()) {
+    try {
+      const client = getClient();
+      const raw = await client.get(`${PREFIX.USER_TOKEN_VERSION}${userId}`);
+      if (raw !== null && raw !== '') {
+        const parsed = Number.parseInt(raw, 10);
+        if (
+          Number.isFinite(parsed) &&
+          Number.isInteger(parsed) &&
+          parsed >= 0 &&
+          parsed <= MAX_TOKEN_VERSION_CACHE_VALUE
+        ) {
+          return parsed;
+        }
+      }
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      getLogger().warn({
+        msg: '[TokenService] tokenVersion cache read failed — falling back to Mongo',
+        userId,
+        err: { message: errMsg },
+      });
+    }
+  }
+
+  const userDoc = await User.findById(userId).select('tokenVersion').lean<{ tokenVersion?: number } | null>();
+  if (!userDoc) {
+    return null;
+  }
+
+  const tv = userDoc.tokenVersion ?? 0;
+
+  if (enabled && isRedisAvailable()) {
+    try {
+      const client = getClient();
+      await client.setEx(`${PREFIX.USER_TOKEN_VERSION}${userId}`, ttlSeconds, String(tv));
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      getLogger().warn({
+        msg: '[TokenService] tokenVersion cache write failed',
+        userId,
+        err: { message: errMsg },
+      });
+    }
+  }
+
+  return tv;
+}
+
+// ============================================================================
 // REFRESH TOKEN MANAGEMENT
 // ============================================================================
 
@@ -236,7 +389,7 @@ export async function storeRefreshToken(
     const sessionKey = `${PREFIX.SESSION}${userId}`;
 
     // OPTIMIZATION: Use pipeline to batch operations (reduces from 4+ calls to 1)
-    if (client.pipeline) {
+    if (hasPipeline(client)) {
       const pipeline = client.pipeline();
       pipeline.setEx(refreshKey, CONFIG.REFRESH_TOKEN_TTL, JSON.stringify(data));
       pipeline.setEx(refreshIndexKey, CONFIG.REFRESH_TOKEN_TTL, userId);
@@ -477,7 +630,7 @@ export async function rotateRefreshToken(
     };
 
     // OPTIMIZATION: Use pipeline for atomic operations
-    if (client.pipeline) {
+    if (hasPipeline(client)) {
       // Store new token, add to session set, then delete old token and
       // leave a reuse-detection tombstone for the old hash.
       const pipeline = client.pipeline();
@@ -642,7 +795,7 @@ export async function revokeRefreshToken(userId: string, refreshToken: string): 
     const sessionKey = `${PREFIX.SESSION}${userId}`;
 
     // OPTIMIZATION: Batch operations
-    if (client.pipeline) {
+    if (hasPipeline(client)) {
       const pipeline = client.pipeline();
       pipeline.del(key);
       pipeline.del(indexKey);
@@ -685,7 +838,7 @@ export async function revokeAllRefreshTokensDetailed(userId: string): Promise<Re
     const sessions = await client.sMembers(sessionKey);
 
     // OPTIMIZATION: Batch delete all tokens
-    if (client.pipeline && sessions.length > 0) {
+    if (hasPipeline(client) && sessions.length > 0) {
       const pipeline = client.pipeline();
       for (const tokenHash of sessions) {
         pipeline.del(`${PREFIX.REFRESH}${userId}:${tokenHash}`);
@@ -956,7 +1109,7 @@ export async function clearFailedLogins(email: string): Promise<void> {
     const lockTimeKey = `${PREFIX.LOCKOUT_TIME}${email.toLowerCase()}`;
 
     // OPTIMIZATION: Batch delete
-    if (client.pipeline) {
+    if (hasPipeline(client)) {
       const pipeline = client.pipeline();
       pipeline.del(lockKey);
       pipeline.del(lockTimeKey);
@@ -994,7 +1147,7 @@ export async function isAccountLocked(email: string): Promise<LockoutStatus> {
     let lockTime: string | null;
     let attemptsStr: string | null;
     
-    if (client.pipeline) {
+    if (hasPipeline(client)) {
       const pipeline = client.pipeline();
       pipeline.get(lockTimeKey);
       pipeline.get(lockKey);
@@ -1017,7 +1170,7 @@ export async function isAccountLocked(email: string): Promise<LockoutStatus> {
         };
       }
       // Lock expired, clear it (batch)
-      if (client.pipeline) {
+    if (hasPipeline(client)) {
         const pipeline = client.pipeline();
         pipeline.del(lockTimeKey);
         pipeline.del(lockKey);

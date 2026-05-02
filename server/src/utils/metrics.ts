@@ -12,7 +12,8 @@ const requestDurationSumMs = new Map<HistogramKey, number>();
 const requestDurationCount = new Map<HistogramKey, number>();
 const appCounter = new Map<CounterKey, number>();
 
-function toRouteLabel(pathValue: string): string {
+/** Exported for cache / diagnostics middleware route normalization (low cardinality). */
+export function normalizeRouteForMetrics(pathValue: string): string {
   // Normalize high-cardinality IDs in URLs to keep metrics cardinality safe.
   return pathValue
     .replace(/[0-9a-f]{24}/gi, ':id')
@@ -35,6 +36,21 @@ export function incrementAppCounter(name: string, labels?: Record<string, string
   appCounter.set(key, (appCounter.get(key) ?? 0) + 1);
 }
 
+/** In-process counter snapshot for diagnostics (`app_events_total` source map). */
+export function snapshotAppCounters(): Record<string, number> {
+  return Object.fromEntries(appCounter.entries());
+}
+
+/** Upper-bound histogram label aligned with HTTP request duration buckets in this module. */
+export function httpLatencyBucketLabel(durationMs: number): string {
+  for (const b of LATENCY_BUCKETS_MS) {
+    if (durationMs <= b) {
+      return `le_${b}ms`;
+    }
+  }
+  return 'le_inf';
+}
+
 function observeLatency(key: HistogramKey, durationMs: number): void {
   const buckets = requestDurationBuckets.get(key) ?? Array(LATENCY_BUCKETS_MS.length).fill(0);
   for (let i = 0; i < LATENCY_BUCKETS_MS.length; i += 1) {
@@ -54,7 +70,7 @@ export function metricsMiddleware(req: Request, res: Response, next: NextFunctio
     const durationMs = Number(end - start) / 1_000_000;
     const method = req.method;
     const status = String(res.statusCode);
-    const route = toRouteLabel(req.path || req.originalUrl || 'unknown');
+    const route = normalizeRouteForMetrics(req.path || req.originalUrl || 'unknown');
 
     incrementCount(`method=${method},route=${route},status=${status}`);
     observeLatency(`method=${method},route=${route}`, durationMs);

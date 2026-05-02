@@ -10,7 +10,7 @@ const envSchema = z.object({
   MONGO_URI: z.string().min(1, 'MONGO_URI is required and cannot be empty'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters long for security'),
   NODE_ENV: z.enum(['development', 'production', 'test'], {
-    errorMap: () => ({ message: 'NODE_ENV must be one of: development, production, test' })
+    message: 'NODE_ENV must be one of: development, production, test'
   }),
   
   // Optional variables with defaults
@@ -40,7 +40,13 @@ const envSchema = z.object({
   
   // Sentry error tracking (optional)
   SENTRY_DSN: z.string().url('SENTRY_DSN must be a valid URL').optional(),
-  SENTRY_ENABLE_DEV: z.string().transform((val) => val === 'true').optional().default('false'),
+  SENTRY_RELEASE: z.string().min(1).optional(),
+  SENTRY_ENVIRONMENT: z.string().min(1).optional(),
+  SENTRY_ENABLE_DEV: z.string().transform((val) => val === 'true').optional().default(false),
+
+  // Metrics endpoint toggle (optional)
+  METRICS_ENABLED: z.string().transform((val) => val === 'true').optional().default(false),
+  METRICS_AUTH_TOKEN: z.string().min(1).optional(),
   
   // Cloudinary configuration (required for media uploads)
   CLOUDINARY_CLOUD_NAME: z.string().min(1, 'CLOUDINARY_CLOUD_NAME is required').optional(),
@@ -50,7 +56,7 @@ const envSchema = z.object({
   // Email (Resend) – optional; when set, verification and password-reset emails are sent
   RESEND_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(1).optional(),
-  ENABLE_EMAIL_VERIFICATION: z.string().transform((val) => val === 'true').optional().default('false'),
+  ENABLE_EMAIL_VERIFICATION: z.string().transform((val) => val === 'true').optional().default(false),
 
   // Redis configuration (optional)
   REDIS_URL: z.string().url('REDIS_URL must be a valid URL').optional(),
@@ -61,7 +67,7 @@ const envSchema = z.object({
   // blacklisted tokens cannot be bypassed during a Redis outage at the cost
   // of denying all authenticated traffic until Redis recovers. Defaults to
   // false (fail-open) so dev and single-node deploys stay available.
-  STRICT_TOKEN_REVOCATION: z.string().transform((val) => val === 'true').optional().default('false'),
+  STRICT_TOKEN_REVOCATION: z.string().transform((val) => val === 'true').optional().default(false),
 
   // When true, a JWT is rejected (401 SESSION_REVOKED) if its embedded
   // `tokenVersion` does not match the user's current `tokenVersion` in the
@@ -74,6 +80,11 @@ const envSchema = z.object({
   // observe-only (false) so local/dev rollout remains safer.
   ENFORCE_TOKEN_VERSION: z.string().transform((val) => val === 'true').optional(),
 
+  /** Set to "false" to bypass Redis mirror of Mongo `User.tokenVersion` in auth (debug). Default: enabled. */
+  AUTH_TOKEN_VERSION_CACHE_ENABLED: z.string().optional(),
+  /** Cache TTL for tokenVersion mirror (seconds), 10–600. Default 120. */
+  AUTH_TOKEN_VERSION_CACHE_TTL_SECONDS: z.string().optional(),
+
   // Web Push / VAPID (optional – notifications disabled if not set)
   VAPID_PUBLIC_KEY: z.string().min(1).optional(),
   VAPID_PRIVATE_KEY: z.string().min(1).optional(),
@@ -84,7 +95,14 @@ const envSchema = z.object({
  * Validated environment variables
  * Access this instead of process.env directly
  */
-export type ValidatedEnv = z.infer<typeof envSchema>;
+export type ValidatedEnv = Omit<
+  z.infer<typeof envSchema>,
+  'ENFORCE_TOKEN_VERSION' | 'AUTH_TOKEN_VERSION_CACHE_ENABLED' | 'AUTH_TOKEN_VERSION_CACHE_TTL_SECONDS'
+> & {
+  ENFORCE_TOKEN_VERSION: boolean;
+  AUTH_TOKEN_VERSION_CACHE_ENABLED: boolean;
+  AUTH_TOKEN_VERSION_CACHE_TTL_SECONDS: number;
+};
 
 let validatedEnv: ValidatedEnv | null = null;
 
@@ -103,7 +121,7 @@ export function validateEnv(): ValidatedEnv {
 
   if (!result.success) {
     // Format errors for human readability
-    const errors = result.error.errors.map(err => {
+    const errors = result.error.issues.map((err) => {
       const path = err.path.join('.');
       return `  • ${path}: ${err.message}`;
     });
@@ -153,9 +171,21 @@ export function validateEnv(): ValidatedEnv {
     result.data.ENFORCE_TOKEN_VERSION ??
     (result.data.NODE_ENV === 'production');
 
+  const ttlRaw = result.data.AUTH_TOKEN_VERSION_CACHE_TTL_SECONDS?.trim();
+  let authTokenVersionCacheTtlSec = 120;
+  if (ttlRaw) {
+    const n = Number.parseInt(ttlRaw, 10);
+    if (Number.isFinite(n)) {
+      authTokenVersionCacheTtlSec = Math.min(600, Math.max(10, n));
+    }
+  }
+
+  const base = result.data;
   validatedEnv = {
-    ...result.data,
+    ...base,
     ENFORCE_TOKEN_VERSION: enforceTokenVersion,
+    AUTH_TOKEN_VERSION_CACHE_ENABLED: base.AUTH_TOKEN_VERSION_CACHE_ENABLED !== 'false',
+    AUTH_TOKEN_VERSION_CACHE_TTL_SECONDS: authTokenVersionCacheTtlSec,
   };
   return validatedEnv;
 }

@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt.js';
 import { createRequestLogger } from '../utils/logger.js';
-import { isTokenBlacklisted } from '../services/tokenService.js';
-import { User } from '../models/User.js';
+import { getUserTokenVersionForAuth, isTokenBlacklisted } from '../services/tokenService.js';
 import { getEnv } from '../config/envValidation.js';
 
 /**
@@ -68,16 +67,13 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
 
     const decoded = verifyToken(token);
 
-    // tokenVersion check (PR5): a bumped tokenVersion immediately invalidates
-    // every live access token for the user. The check costs one read per
-    // authenticated request — acceptable for an observe-only rollout, can
-    // be Redis-cached later. Behind ENFORCE_TOKEN_VERSION (default false)
-    // so a bug in the comparison can't lock everyone out at deploy time.
+    // tokenVersion check (PR5): a bumped tokenVersion invalidates stale JWTs.
+    // Mongo read is amortized via Redis short-TTL mirror (`getUserTokenVersionForAuth`).
+    // ENFORCE_TOKEN_VERSION gates hard rejection (production default enforced in validateEnv).
     try {
-      const userDoc = await User.findById(decoded.userId).select('tokenVersion');
-      if (userDoc) {
+      const userTv = await getUserTokenVersionForAuth(decoded.userId);
+      if (userTv !== null) {
         const tokenTv = decoded.tokenVersion ?? 0;
-        const userTv = userDoc.tokenVersion ?? 0;
         const enforce = getEnv().ENFORCE_TOKEN_VERSION;
         if (tokenTv !== userTv) {
           if (enforce) {

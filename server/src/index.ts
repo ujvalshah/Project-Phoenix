@@ -34,6 +34,13 @@ const __dirname = path.dirname(__filename);
 const logger = getLogger();
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { slowRequestMiddleware } from './middleware/slowRequest.js';
+import {
+  metricsMiddleware,
+  isMetricsEnabled,
+  hasMetricsToken,
+  isAuthorizedMetricsRequest,
+  renderPrometheusMetrics,
+} from './utils/metrics.js';
 
 // Database
 import { connectDB, isMongoConnected } from './utils/db.js';
@@ -68,6 +75,7 @@ import adminLegalRouter from './routes/adminLegal.js';
 import contactRouter from './routes/contact.js';
 import searchRouter from './routes/search.js';
 import { ogMiddleware } from './middleware/ogMiddleware.js';
+import { publicReadCacheObserveMiddleware } from './middleware/publicReadCacheObserveMiddleware.js';
 import { authenticateToken as clearDbAuth } from './middleware/authenticateToken.js';
 import { requireAdminRole as clearDbAdmin } from './middleware/requireAdminRole.js';
 
@@ -235,6 +243,14 @@ app.use((req, res, next) => {
 // Request ID Middleware - MUST be early to ensure all logs have request ID
 app.use(requestIdMiddleware);
 
+// Observability for `x-public-read-cache` (response finish — logs + incrementAppCounter)
+app.use(publicReadCacheObserveMiddleware);
+
+// Request metrics middleware (disabled by default; enable with METRICS_ENABLED=true)
+if (isMetricsEnabled()) {
+  app.use(metricsMiddleware);
+}
+
 // Sentry Request Handler - MUST be before routes (only if Sentry is enabled)
 
 
@@ -316,6 +332,7 @@ app.use('/api/notifications', notificationsRouter);
 import { getDisclaimerConfig } from './services/disclaimerConfigService.js';
 import { getHomeMicroHeaderConfig } from './services/homeMicroHeaderConfigService.js';
 import { getMarketPulseMicroHeaderConfig } from './services/marketPulseMicroHeaderConfigService.js';
+import { fetchOnboardingBundleCached } from './config/publicReadCache.js';
 app.get('/api/config/disclaimer', async (_req, res) => {
   try {
     const config = await getDisclaimerConfig();
@@ -348,14 +365,14 @@ app.get('/api/config/market-pulse-micro-header', async (_req, res) => {
 // Homepage micro-headers for anonymous visitors (SEO H1 lines).
 app.get('/api/config/onboarding-bundle', async (_req, res) => {
   try {
-    const [homeMicroHeader, marketPulseMicroHeader] = await Promise.all([
-      getHomeMicroHeaderConfig(),
-      getMarketPulseMicroHeaderConfig(),
-    ]);
-    return res.json({
-      homeMicroHeader,
-      marketPulseMicroHeader,
+    const bundle = await fetchOnboardingBundleCached(async () => {
+      const [homeMicroHeader, marketPulseMicroHeader] = await Promise.all([
+        getHomeMicroHeaderConfig(),
+        getMarketPulseMicroHeaderConfig(),
+      ]);
+      return { homeMicroHeader, marketPulseMicroHeader };
     });
+    return res.json(bundle);
   } catch {
     return res.status(500).json({ message: 'Failed to get onboarding bundle' });
   }
@@ -455,6 +472,20 @@ app.get('/api/health', async (req, res) => {
     });
   }
 });
+
+// Prometheus-compatible metrics endpoint (opt-in via METRICS_ENABLED=true)
+if (isMetricsEnabled()) {
+  app.get('/api/metrics', (req, res) => {
+    if (!isAuthorizedMetricsRequest(req)) {
+      return res.status(401).json({ message: 'Unauthorized metrics access' });
+    }
+    if (hasMetricsToken()) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4');
+    return res.status(200).send(renderPrometheusMetrics());
+  });
+}
 
 // Clear Database Endpoint (development only, admin-authenticated)
 // SECURITY: Never register in production; require auth + admin role even in dev

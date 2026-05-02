@@ -10,12 +10,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
 
-// Extend Express Request to include request ID
-declare global {
-  namespace Express {
-    interface Request {
-      id?: string;
-    }
+// Extend Express Request to include request ID.
+declare module 'express-serve-static-core' {
+  interface Request {
+    id?: string;
   }
 }
 

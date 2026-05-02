@@ -34,6 +34,7 @@ import {
   checkRefreshTokenReuse,
   isSessionFingerprintMismatch,
   RedisUnavailableError,
+  upsertUserTokenVersionCache,
 } from '../services/tokenService.js';
 import { z } from 'zod';
 import {
@@ -1284,6 +1285,7 @@ export const resetPassword = async (req: Request, res: Response) => {
     user.auth.updatedAt = new Date().toISOString();
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
+    await upsertUserTokenVersionCache(user._id.toString(), user.tokenVersion ?? 0);
 
     // Revoke all refresh tokens (force re-login on all devices)
     const revokeResult = await revokeAllRefreshTokensDetailed(user._id.toString());

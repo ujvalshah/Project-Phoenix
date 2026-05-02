@@ -31,13 +31,22 @@ function normalizePage(page: Record<string, unknown>) {
 export const getLegalPages = async (req: Request, res: Response) => {
   try {
     const cacheKey = buildApiCacheKey(LEGAL_PAGES_CACHE_NAMESPACE, ['all']);
-    const payload = await getOrSetCachedJson(cacheKey, LEGAL_PAGES_CACHE_TTL_SECONDS, async () => {
-      const pages = await LegalPage.find()
-        .select('-content')
-        .sort({ order: 1 })
-        .lean();
-      return pages.map(normalizePage);
-    });
+    const payload = await getOrSetCachedJson(
+      cacheKey,
+      LEGAL_PAGES_CACHE_TTL_SECONDS,
+      async () => {
+        const pages = await LegalPage.find()
+          .select('-content')
+          .sort({ order: 1 })
+          .lean();
+        return pages.map(normalizePage);
+      },
+      {
+        route: 'GET /api/legal',
+        namespace: LEGAL_PAGES_CACHE_NAMESPACE,
+        requestId: String(req.id ?? ''),
+      },
+    );
     res.json(payload);
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
@@ -70,6 +79,11 @@ export const getLegalPageBySlug = async (req: Request, res: Response) => {
           ...normalizePage(page),
           content: page.content,
         };
+      },
+      {
+        route: 'GET /api/legal/:slug',
+        namespace: LEGAL_PAGES_CACHE_NAMESPACE,
+        requestId: String(req.id ?? ''),
       },
     );
 

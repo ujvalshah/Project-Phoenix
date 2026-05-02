@@ -4,6 +4,7 @@
  */
 
 import { Resend } from 'resend';
+import { getLogger } from '../utils/logger.js';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM || 'Nuggets <onboarding@resend.dev>';
@@ -12,6 +13,14 @@ let resendClient: Resend | null = null;
 if (RESEND_API_KEY) {
   resendClient = new Resend(RESEND_API_KEY);
 }
+let missingResendWarningLogged = false;
+
+function logMissingResendOnce(reason: string): void {
+  if (missingResendWarningLogged) return;
+  if (process.env.NODE_ENV !== 'development' || RESEND_API_KEY) return;
+  missingResendWarningLogged = true;
+  getLogger().warn({ reason }, '[emailService] RESEND_API_KEY not set; email delivery disabled');
+}
 
 /**
  * Send a verification email with a link to verify the user's email.
@@ -19,11 +28,7 @@ if (RESEND_API_KEY) {
  */
 export async function sendVerificationEmail(to: string, verificationUrl: string): Promise<void> {
   if (!resendClient) {
-    // Avoid spamming logs; only log at debug or when env suggests email was intended
-    if (process.env.NODE_ENV === 'development' && !RESEND_API_KEY) {
-      // eslint-disable-next-line no-console
-      console.warn('[emailService] RESEND_API_KEY not set; skipping verification email. Set it to enable email verification.');
-    }
+    logMissingResendOnce('verification_email');
     return;
   }
 
@@ -52,10 +57,7 @@ export async function sendVerificationEmail(to: string, verificationUrl: string)
  */
 export async function sendAccountExistsEmail(to: string, loginUrl: string): Promise<void> {
   if (!resendClient) {
-    if (process.env.NODE_ENV === 'development' && !RESEND_API_KEY) {
-      // eslint-disable-next-line no-console
-      console.warn('[emailService] RESEND_API_KEY not set; skipping account-exists email.');
-    }
+    logMissingResendOnce('account_exists_email');
     return;
   }
 
@@ -84,10 +86,7 @@ export async function sendEmailChangedNoticeEmail(to: string, params: {
   supportUrl?: string;
 }): Promise<void> {
   if (!resendClient) {
-    if (process.env.NODE_ENV === 'development' && !RESEND_API_KEY) {
-      // eslint-disable-next-line no-console
-      console.warn('[emailService] RESEND_API_KEY not set; skipping email-changed notice.');
-    }
+    logMissingResendOnce('email_changed_notice');
     return;
   }
 
@@ -110,10 +109,7 @@ export async function sendEmailChangedNoticeEmail(to: string, params: {
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
   if (!resendClient) {
-    if (process.env.NODE_ENV === 'development' && !RESEND_API_KEY) {
-      // eslint-disable-next-line no-console
-      console.warn('[emailService] RESEND_API_KEY not set; skipping password reset email.');
-    }
+    logMissingResendOnce('password_reset_email');
     return;
   }
 

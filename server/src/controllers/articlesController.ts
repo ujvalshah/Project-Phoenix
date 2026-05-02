@@ -7,7 +7,7 @@ import { createArticleSchema, updateArticleSchema } from '../utils/validation.js
 import { validateDimensionTagIds } from '../utils/validateDimensionTagIds.js';
 import { cleanupCollectionEntries } from '../utils/collectionHelpers.js';
 import { resolveTagNamesToIds } from '../utils/tagHelpers.js';
-import { createRequestLogger } from '../utils/logger.js';
+import { createRequestLogger, getLogger } from '../utils/logger.js';
 import { escapeRegExp, createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { z } from 'zod';
 import { verifyToken } from '../utils/jwt.js';
@@ -26,6 +26,24 @@ import {
   sendPayloadTooLargeError,
   sendInternalError
 } from '../utils/errorResponse.js';
+import {
+  buildApiCacheKey,
+  getOrSetCachedJson,
+  peekCachedParsedJson,
+  persistApiResponseJsonCache,
+} from '../services/apiResponseCacheService.js';
+import {
+  ARTICLES_LIST_CACHE_NS,
+  ARTICLES_LIST_CACHE_TTL_SECONDS,
+  ARTICLES_DETAIL_CACHE_NS,
+  ARTICLES_DETAIL_CACHE_TTL_SECONDS,
+  describeArticlesListRedisBypassReason,
+  invalidateRedisArticleDerivedReadCaches,
+  logPublicReadCacheBypass,
+  shouldUseArticlesListRedisCache,
+  stableSerializeForArticlesCache,
+} from '../config/publicReadCache.js';
+import { PUBLIC_READ_RESPONSE_CACHE_HEADER } from '../middleware/publicReadRedisCache.js';
 
 // ── Lightweight in-memory query cache (LRU, TTL 60s) ────────────────────────
 const SEARCH_CACHE_TTL_MS = 60_000;
@@ -203,10 +221,13 @@ async function resolveCategoryIds(categoryNames: string[]): Promise<string[]> {
       .map(canonical => tagMap.get(canonical))
       .filter((id): id is string => id !== undefined);
 
-    console.log(`[Articles] Resolved ${categoryNames.length} category names to ${categoryIds.length} IDs`);
+    getLogger().debug(
+      { inputCount: categoryNames.length, resolvedCount: categoryIds.length },
+      '[Articles] Resolved category names to IDs',
+    );
     return categoryIds;
   } catch (error: any) {
-    console.error('[Articles] Error resolving category IDs:', error);
+    getLogger().error({ err: error }, '[Articles] Error resolving category IDs');
     return []; // Fail gracefully - categoryIds is optional
   }
 }
@@ -266,7 +287,9 @@ export const getArticles = async (req: Request, res: Response) => {
               ],
             }
       )
-        .select('_id entries type parentId')
+        // `entries` already includes parent + child articleIds in current data model;
+        // avoid extra child-collection fan-out query on hot feed path.
+        .select('_id entries type')
         .lean();
 
       if (!collection || collection.type !== 'public') {
@@ -274,22 +297,7 @@ export const getArticles = async (req: Request, res: Response) => {
         return res.json({ data: [], total: 0, page, limit, hasMore: false });
       }
 
-      const selectedCollectionId = String((collection as any)._id);
-      const allEntries = [...(collection.entries || [])];
-
-      // Parent collections in the filter UI represent an "All in parent" scope.
-      // Include child entries to support legacy parent data where entries were not backfilled.
-      if (!collection.parentId) {
-        const childCollections = await Collection.find({
-          type: 'public',
-          parentId: selectedCollectionId,
-        })
-          .select('entries')
-          .lean();
-        childCollections.forEach((child) => {
-          allEntries.push(...(child.entries || []));
-        });
-      }
+      const allEntries = collection.entries || [];
 
       const articleIds = Array.from(
         new Set(
@@ -614,8 +622,8 @@ export const getArticles = async (req: Request, res: Response) => {
         ? { score: { $meta: 'textScore' }, [defaultDateField]: -1, _id: -1 }
         : (sortMap[sort as string] || { [defaultDateField]: -1, _id: -1 }); // Default: latest first
     
-    // Build a stable cache key from the fully-constructed query + sort + pagination
-    const cacheKey = JSON.stringify({
+    // Stable cache fingerprint (RegExp/ObjectId-safe) for in-process LRU + Redis public feed cache keys.
+    const cachePayloadShape: Record<string, unknown> = {
       query,
       sort: sortOrder,
       skip,
@@ -625,18 +633,10 @@ export const getArticles = async (req: Request, res: Response) => {
       hybrid: hybridSearchContext
         ? { trimmedQ: hybridSearchContext.trimmedQ, tagCount: hybridSearchContext.matchingTagIds.length }
         : null,
-    });
-    const cached = getCachedResult(cacheKey);
-    if (cached) {
-      return res.json({
-        data: cached.data,
-        total: cached.total,
-        page,
-        limit,
-        hasMore: page * limit < cached.total,
-      });
-    }
+    };
+    const stableProcessCacheKey = stableSerializeForArticlesCache(cachePayloadShape);
 
+    const loadArticlesListingData = async (): Promise<{ data: unknown; total: number }> => {
     if (hybridSearchContext) {
       const relevanceConditions: Record<string, unknown>[] = [
         { $text: { $search: hybridSearchContext.trimmedQ } },
@@ -658,18 +658,41 @@ export const getArticles = async (req: Request, res: Response) => {
       const fallbackSort = sortMap[sort as string] || { [defaultDateField]: -1, _id: -1 };
       const fetchWindow = skip + limit;
 
-      const [relevanceIds, fallbackIds, relevanceDocs, fallbackDocs] = await Promise.all([
-        Article.find(relevanceQuery).distinct('_id'),
-        Article.find(fallbackQuery).distinct('_id'),
-        Article.find(relevanceQuery, { score: { $meta: 'textScore' } })
-          .sort(relevanceSort)
-          .limit(fetchWindow)
-          .lean(),
-        Article.find(fallbackQuery)
-          .sort(fallbackSort)
-          .limit(fetchWindow)
-          .lean(),
+      const [hybridFacet] = await Article.aggregate<{
+        relevanceDocs: any[];
+        fallbackDocs: any[];
+        relevanceIds: Array<{ _id: null; ids: unknown[] }>;
+        fallbackIds: Array<{ _id: null; ids: unknown[] }>;
+      }>([
+        {
+          $facet: {
+            relevanceDocs: [
+              { $match: relevanceQuery },
+              { $addFields: { score: { $meta: 'textScore' } } },
+              { $sort: relevanceSort },
+              { $limit: fetchWindow },
+            ],
+            fallbackDocs: [
+              { $match: fallbackQuery },
+              { $sort: fallbackSort },
+              { $limit: fetchWindow },
+            ],
+            relevanceIds: [
+              { $match: relevanceQuery },
+              { $group: { _id: null, ids: { $addToSet: '$_id' } } },
+            ],
+            fallbackIds: [
+              { $match: fallbackQuery },
+              { $group: { _id: null, ids: { $addToSet: '$_id' } } },
+            ],
+          },
+        },
       ]);
+
+      const relevanceDocs = hybridFacet?.relevanceDocs ?? [];
+      const fallbackDocs = hybridFacet?.fallbackDocs ?? [];
+      const relevanceIds = hybridFacet?.relevanceIds?.[0]?.ids ?? [];
+      const fallbackIds = hybridFacet?.fallbackIds?.[0]?.ids ?? [];
 
       const merged: any[] = [];
       const seenIds = new Set<string>();
@@ -689,14 +712,7 @@ export const getArticles = async (req: Request, res: Response) => {
         ...fallbackIds.map((id) => String(id)),
       ]).size;
 
-      setCachedResult(cacheKey, normalizedData, total);
-      return res.json({
-        data: normalizedData,
-        total,
-        page,
-        limit,
-        hasMore: page * limit < total,
-      });
+      return { data: normalizedData, total };
     }
 
     const [articles, total] = await Promise.all([
@@ -708,62 +724,148 @@ export const getArticles = async (req: Request, res: Response) => {
         .skip(skip)
         .limit(limit)
         .lean(), // Use lean() for read-only queries
-      Article.countDocuments(query)
+      Article.countDocuments(query),
     ]);
 
     const normalizedData = await normalizeArticleDocs(articles);
-    setCachedResult(cacheKey, normalizedData, total);
+    return { data: normalizedData, total };
+    };
 
-    res.json({
-      data: normalizedData,
-      total,
+    const redisEligible = shouldUseArticlesListRedisCache(req, currentUserId);
+
+    if (!redisEligible) {
+      const br = describeArticlesListRedisBypassReason(req, currentUserId);
+      logPublicReadCacheBypass({
+        route: req.path ?? '/api/articles',
+        namespace: ARTICLES_LIST_CACHE_NS,
+        reasonCode: br.reasonCode,
+        detail: br.detail,
+        requestId: String(req.id ?? ''),
+      });
+    }
+
+    if (redisEligible) {
+      const redisKey = buildApiCacheKey(ARTICLES_LIST_CACHE_NS, ['list', stableProcessCacheKey]);
+      const body = await getOrSetCachedJson(
+        redisKey,
+        ARTICLES_LIST_CACHE_TTL_SECONDS,
+        async () => {
+        const chunk = await loadArticlesListingData();
+        return {
+          data: chunk.data,
+          total: chunk.total,
+          page,
+          limit,
+          hasMore: page * limit < chunk.total,
+        };
+        },
+        {
+          route: 'GET /api/articles',
+          namespace: ARTICLES_LIST_CACHE_NS,
+          requestId: String(req.id ?? ''),
+        },
+      );
+      return res.json(body);
+    }
+
+    const cached = getCachedResult(stableProcessCacheKey);
+    if (cached) {
+      return res.json({
+        data: cached.data,
+        total: cached.total,
+        page,
+        limit,
+        hasMore: page * limit < cached.total,
+      });
+    }
+
+    const chunk = await loadArticlesListingData();
+    setCachedResult(stableProcessCacheKey, chunk.data, chunk.total);
+    return res.json({
+      data: chunk.data,
+      total: chunk.total,
       page,
       limit,
-      hasMore: page * limit < total
+      hasMore: page * limit < chunk.total,
     });
   } catch (error: any) {
-    console.error('[Articles] Get articles error:', error);
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({ err: error }, '[Articles] Get articles error');
     sendInternalError(res);
   }
 };
 
 export const getArticleById = async (req: Request, res: Response) => {
   try {
+    const rawId = typeof req.params.id === 'string' ? req.params.id : '';
+    const detailObserve = {
+      route: 'GET /api/articles/:id',
+      namespace: ARTICLES_DETAIL_CACHE_NS,
+      requestId: String(req.id ?? ''),
+    };
+    const detailKey =
+      rawId.length > 0 ? buildApiCacheKey(ARTICLES_DETAIL_CACHE_NS, [rawId]) : null;
+
+    if (detailKey) {
+      const cachedBody = await peekCachedParsedJson<unknown>(detailKey, detailObserve);
+      if (cachedBody !== null) {
+        res.setHeader(PUBLIC_READ_RESPONSE_CACHE_HEADER, 'HIT');
+        return res.json(cachedBody);
+      }
+    }
+
     const article = await Article.findById(req.params.id).lean();
-    if (!article) return sendNotFoundError(res, 'Article not found');
-    
+    if (!article) {
+      res.setHeader(PUBLIC_READ_RESPONSE_CACHE_HEADER, 'BYPASS');
+      return sendNotFoundError(res, 'Article not found');
+    }
+
     // PRIVACY CHECK: Verify user has access to this article
     const { userId: currentUserId, role: currentUserRole } = getOptionalUserContext(req);
     const isPrivate = article.visibility === 'private';
     const isDraft = article.status === 'draft';
     const isOwner = article.authorId === currentUserId;
     const isAdmin = typeof currentUserRole === 'string' && currentUserRole.toLowerCase() === 'admin';
-    
+
     // Drafts are internal-only (owner/admin), regardless of intended visibility.
     if (isDraft && !isOwner && !isAdmin) {
+      res.setHeader(PUBLIC_READ_RESPONSE_CACHE_HEADER, 'BYPASS');
       return sendForbiddenError(res, 'This nugget is still in draft');
     }
-    
+
     // If article is private and user is not the owner, deny access
     if (isPrivate && !isOwner && !isAdmin) {
+      res.setHeader(PUBLIC_READ_RESPONSE_CACHE_HEADER, 'BYPASS');
       return sendForbiddenError(res, 'This article is private');
     }
-    
+
     // If article is private and no user is authenticated, deny access
     if (isPrivate && !currentUserId) {
+      res.setHeader(PUBLIC_READ_RESPONSE_CACHE_HEADER, 'BYPASS');
       return sendUnauthorizedError(res, 'Authentication required to view private articles');
     }
-    
-    res.json(await normalizeArticleDoc(article));
+
+    const payload = await normalizeArticleDoc(article);
+    const canShareCachedDetail = !isDraft && !isPrivate;
+
+    if (detailKey && canShareCachedDetail) {
+      await persistApiResponseJsonCache(detailKey, ARTICLES_DETAIL_CACHE_TTL_SECONDS, payload, detailObserve);
+    }
+
+    res.setHeader(PUBLIC_READ_RESPONSE_CACHE_HEADER, canShareCachedDetail ? 'MISS' : 'BYPASS');
+    return res.json(payload);
   } catch (error: any) {
-    console.error('[Articles] Get article by ID error:', error);
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({ err: error }, '[Articles] Get article by ID error');
     sendInternalError(res);
   }
 };
 
 export const createArticle = async (req: Request, res: Response) => {
   invalidateSearchCache();
+  void invalidateRedisArticleDerivedReadCaches();
   try {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
     // Validate input
     const validationResult = createArticleSchema.safeParse(req.body);
     if (!validationResult.success) {
@@ -778,23 +880,19 @@ export const createArticle = async (req: Request, res: Response) => {
     const data = validationResult.data;
 
     // CRITICAL FIX: Deduplicate images array to prevent duplicates
-    // Also log for debugging image creation flow
     if (data.images && Array.isArray(data.images)) {
-      console.log(`[Articles] Create: Received ${data.images.length} images in payload`);
       const imageMap = new Map<string, string>();
       for (const img of data.images) {
         if (img && typeof img === 'string' && img.trim()) {
           const normalized = img.toLowerCase().trim();
           if (!imageMap.has(normalized)) {
             imageMap.set(normalized, img); // Keep original casing
-          } else {
-            console.log(`[Articles] Create: Duplicate image detected and removed: ${img}`);
           }
         }
       }
       const deduplicated = Array.from(imageMap.values());
       if (deduplicated.length !== data.images.length) {
-        console.log(`[Articles] Create: Deduplicated ${data.images.length} → ${deduplicated.length} images`);
+        requestLogger.debug({ before: data.images.length, after: deduplicated.length }, '[Articles] Deduplicated image URLs on create');
       }
       data.images = deduplicated;
     }
@@ -802,10 +900,10 @@ export const createArticle = async (req: Request, res: Response) => {
     // Log payload size for debugging (especially for images)
     const payloadSize = JSON.stringify(data).length;
     if (payloadSize > 1000000) { // > 1MB
-      console.warn(`[Articles] Large payload detected: ${(payloadSize / 1024 / 1024).toFixed(2)}MB`);
+      requestLogger.warn({ payloadMb: Number((payloadSize / 1024 / 1024).toFixed(2)) }, '[Articles] Large payload detected');
       if (data.images && data.images.length > 0) {
         const imagesSize = data.images.reduce((sum: number, img: string) => sum + (img?.length || 0), 0);
-        console.warn(`[Articles] Images total size: ${(imagesSize / 1024 / 1024).toFixed(2)}MB`);
+        requestLogger.warn({ imagesPayloadMb: Number((imagesSize / 1024 / 1024).toFixed(2)) }, '[Articles] Large images payload detected');
       }
     }
 
@@ -890,14 +988,12 @@ export const createArticle = async (req: Request, res: Response) => {
 
     res.status(201).json(await normalizeArticleDoc(newArticle));
   } catch (error: any) {
-    console.error('[Articles] Create article error:', error);
-    console.error('[Articles] Error name:', error.name);
-    console.error('[Articles] Error message:', error.message);
-    console.error('[Articles] Error stack:', error.stack);
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({ err: error }, '[Articles] Create article error');
     
     // Log more details for debugging
     if (error.name === 'ValidationError') {
-      console.error('[Articles] Mongoose validation errors:', error.errors);
+      requestLogger.warn({ errors: error.errors }, '[Articles] Mongoose validation errors');
       const errors = Object.keys(error.errors).map(key => ({
         path: key,
         message: error.errors[key].message
@@ -907,7 +1003,7 @@ export const createArticle = async (req: Request, res: Response) => {
     
     // Check for BSON size limit (MongoDB document size limit is 16MB)
     if (error.message && error.message.includes('BSON')) {
-      console.error('[Articles] Document size limit exceeded');
+      requestLogger.warn({ err: error }, '[Articles] Document size limit exceeded');
       return sendPayloadTooLargeError(res, 'Payload too large. Please reduce image sizes or use fewer images.');
     }
     
@@ -917,7 +1013,9 @@ export const createArticle = async (req: Request, res: Response) => {
 
 export const updateArticle = async (req: Request, res: Response) => {
   invalidateSearchCache();
+  void invalidateRedisArticleDerivedReadCaches();
   try {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
     // Get current user from authentication middleware
     const currentUserId = (req as any).user?.userId;
     if (!currentUserId) {
@@ -971,9 +1069,6 @@ export const updateArticle = async (req: Request, res: Response) => {
     // CRITICAL FIX: Deduplicate images array to prevent duplicates
     // Also check against existing images to prevent re-adding duplicates
     if (validationResult.data.images && Array.isArray(validationResult.data.images)) {
-      console.log(`[Articles] Update: Received ${validationResult.data.images.length} images in payload`);
-      console.log(`[Articles] Update: Existing article has ${(existingArticle.images || []).length} images`);
-      
       // Get existing images (normalized for comparison)
       const existingImagesSet = new Set(
         (existingArticle.images || []).map((img: string) => 
@@ -990,7 +1085,6 @@ export const updateArticle = async (req: Request, res: Response) => {
           
           // Check if this image already exists in the article
           if (existingImagesSet.has(normalized)) {
-            console.log(`[Articles] Update: Image already exists in article, keeping: ${img}`);
             // Keep it - it's an existing image that should remain
             if (!imageMap.has(normalized)) {
               imageMap.set(normalized, img);
@@ -1001,14 +1095,17 @@ export const updateArticle = async (req: Request, res: Response) => {
           } else {
             // Duplicate in the payload itself
             duplicatesRemoved++;
-            console.log(`[Articles] Update: Duplicate image in payload, removed: ${img}`);
           }
         }
       }
       
       const deduplicated = Array.from(imageMap.values());
       if (deduplicated.length !== validationResult.data.images.length || duplicatesRemoved > 0) {
-        console.log(`[Articles] Update: Deduplicated ${validationResult.data.images.length} → ${deduplicated.length} images (removed ${duplicatesRemoved} duplicates)`);
+        requestLogger.debug({
+          before: validationResult.data.images.length,
+          after: deduplicated.length,
+          duplicatesRemoved,
+        }, '[Articles] Deduplicated image URLs on update');
       }
       validationResult.data.images = deduplicated;
     }
@@ -1020,9 +1117,7 @@ export const updateArticle = async (req: Request, res: Response) => {
       existingArticle.media?.previewMetadata?.title &&
       updates.media?.previewMetadata?.title
     ) {
-      console.debug(
-        `[Articles] Ignoring YouTube title update for article ${req.params.id} - backend title already exists`
-      );
+      requestLogger.debug({ articleId: req.params.id }, '[Articles] Ignoring YouTube title update because backend title already exists');
       // Remove title fields from update to preserve existing backend data
       if (updates.media.previewMetadata) {
         delete updates.media.previewMetadata.title;
@@ -1171,7 +1266,7 @@ export const updateArticle = async (req: Request, res: Response) => {
         mongoUpdate['media.previewMetadata.description'] = previewMetadata.description;
       }
       
-      console.debug(`[Articles] Using dot notation for media.previewMetadata update on article ${req.params.id}`);
+      requestLogger.debug({ articleId: req.params.id }, '[Articles] Using dot notation for media.previewMetadata update');
     }
 
     const article = await Article.findByIdAndUpdate(
@@ -1189,14 +1284,17 @@ export const updateArticle = async (req: Request, res: Response) => {
 
     res.json(await normalizeArticleDoc(article));
   } catch (error: any) {
-    console.error('[Articles] Update article error:', error);
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({ err: error }, '[Articles] Update article error');
     sendInternalError(res);
   }
 };
 
 export const deleteArticle = async (req: Request, res: Response) => {
   invalidateSearchCache();
+  void invalidateRedisArticleDerivedReadCaches();
   try {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
     const articleId = req.params.id;
     
     // Delete the article first
@@ -1207,7 +1305,7 @@ export const deleteArticle = async (req: Request, res: Response) => {
     // This maintains referential integrity
     const collectionsUpdated = await cleanupCollectionEntries(articleId);
     if (collectionsUpdated > 0) {
-      console.log(`[Articles] Cleaned up article ${articleId} from ${collectionsUpdated} collection(s)`);
+      requestLogger.info({ articleId, collectionsUpdated }, '[Articles] Cleaned up article from collections');
     }
     
     // Mark associated media as orphaned (MongoDB-first cleanup)
@@ -1215,16 +1313,17 @@ export const deleteArticle = async (req: Request, res: Response) => {
       const { markMediaAsOrphaned } = await import('../services/mediaCleanupService.js');
       const orphanedCount = await markMediaAsOrphaned('nugget', articleId);
       if (orphanedCount > 0) {
-        console.log(`[Articles] Marked ${orphanedCount} media files as orphaned for article ${articleId}`);
+        requestLogger.info({ articleId, orphanedCount }, '[Articles] Marked media files as orphaned');
       }
     } catch (mediaError: any) {
       // Log but don't fail article deletion if media cleanup fails
-      console.error(`[Articles] Failed to mark media as orphaned:`, mediaError.message);
+      requestLogger.warn({ articleId, err: mediaError }, '[Articles] Failed to mark media as orphaned');
     }
     
     res.status(204).send();
   } catch (error: any) {
-    console.error('[Articles] Delete article error:', error);
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({ err: error }, '[Articles] Delete article error');
     sendInternalError(res);
   }
 };
@@ -1253,6 +1352,7 @@ function normalizeImageUrlForCompare(url: string): string {
  */
 export const deleteArticleImage = async (req: Request, res: Response) => {
   try {
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
     const currentUserId = (req as any).user?.userId;
     if (!currentUserId) {
       return sendUnauthorizedError(res, 'Authentication required');
@@ -1298,12 +1398,12 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
           // If media type is image and URL matches, clear the entire media object
           updatedMedia = null;
           mediaUpdated = true;
-          console.log(`[Articles] Delete image: Removing image from media.url (clearing media object)`);
+          requestLogger.debug({ articleId: id }, '[Articles] Delete image: removed media.url by clearing media object');
         } else {
           // If media type is not image, just clear the URL (preserve other metadata)
           updatedMedia.url = '';
           mediaUpdated = true;
-          console.log(`[Articles] Delete image: Clearing image URL from media.url`);
+          requestLogger.debug({ articleId: id }, '[Articles] Delete image: cleared media.url');
         }
       }
       
@@ -1317,7 +1417,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
             imageUrl: undefined
           };
           mediaUpdated = true;
-          console.log(`[Articles] Delete image: Removing image from media.previewMetadata.imageUrl`);
+          requestLogger.debug({ articleId: id }, '[Articles] Delete image: removed media.previewMetadata.imageUrl');
         }
       }
     }
@@ -1333,7 +1433,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
         // Remove primaryMedia if it matches the image to delete
         updatedPrimaryMedia = null;
         primaryMediaUpdated = true;
-        console.log(`[Articles] Delete image: Removing image from primaryMedia`);
+        requestLogger.debug({ articleId: id }, '[Articles] Delete image: removed primaryMedia image');
       }
     }
     
@@ -1358,7 +1458,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
           position: index,
           order: index,
         }));
-        console.log(`[Articles] Delete image: Removed ${beforeCount - updatedSupportingMedia.length} image(s) from supportingMedia`);
+        requestLogger.debug({ articleId: id, removedCount: beforeCount - updatedSupportingMedia.length }, '[Articles] Delete image: removed images from supportingMedia');
       }
     }
 
@@ -1367,24 +1467,24 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
     const imageRemoved = imageRemovedFromArray || mediaUpdated || primaryMediaUpdated || supportingMediaUpdated;
     
     if (!imageRemoved) {
-      console.log(`[Articles] Delete image: Image not found in article.`, {
+      requestLogger.info({
         currentImages: currentImages,
         mediaUrl: article.media?.url,
         mediaImageUrl: article.media?.previewMetadata?.imageUrl,
         primaryMediaUrl: article.primaryMedia?.url,
         supportingMediaCount: article.supportingMedia?.length || 0
-      });
+      }, '[Articles] Delete image: image not found in article');
       return sendNotFoundError(res, 'Image not found in article');
     }
 
-    console.log(`[Articles] Delete image: Removing image from article.`, {
+    requestLogger.info({
       imagesBefore: currentImages.length,
       imagesAfter: updatedImages.length,
       mediaUpdated: mediaUpdated,
       primaryMediaUpdated: primaryMediaUpdated,
       supportingMediaUpdated: supportingMediaUpdated,
       removedFromArray: imageRemovedFromArray
-    });
+    }, '[Articles] Delete image: removing image from article');
 
     // Also check and remove from mediaIds if this is a Cloudinary URL
     let updatedMediaIds = article.mediaIds || [];
@@ -1407,7 +1507,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
           if (updatedMediaIds.includes(mediaIdString)) {
             updatedMediaIds = updatedMediaIds.filter((id: string) => id !== mediaIdString);
             removedMediaId = mediaIdString;
-            console.log(`[Articles] Delete image: Removed mediaId ${mediaIdString} from mediaIds array`);
+            requestLogger.debug({ articleId: id, mediaId: mediaIdString }, '[Articles] Delete image: removed mediaId from mediaIds array');
           }
         }
       }
@@ -1431,7 +1531,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
 
     // If the image URL is a Cloudinary URL, try to find and delete the media record
     // Extract public_id from Cloudinary URL if possible
-    console.log(`[Articles] Delete image: ${imageUrl}`);
+    requestLogger.debug({ articleId: id, imageUrl }, '[Articles] Delete image request');
     try {
       if (imageUrl.includes('cloudinary.com') || imageUrl.includes('res.cloudinary.com')) {
         // Try to extract public_id from URL
@@ -1439,7 +1539,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
         const urlMatch = imageUrl.match(/\/v\d+\/(.+?)(?:\.[^.]+)?$/);
         if (urlMatch && urlMatch[1]) {
           const publicId = urlMatch[1].replace(/\.[^.]+$/, ''); // Remove extension
-          console.log(`[Articles] Extracted publicId from Cloudinary URL: ${publicId}`);
+          requestLogger.debug({ articleId: id, publicId }, '[Articles] Extracted publicId from Cloudinary URL');
           
           // Find media record by publicId
           const { Media } = await import('../models/Media.js');
@@ -1450,7 +1550,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
           });
 
           if (mediaRecord) {
-            console.log(`[Articles] Found media record for deletion: ${mediaRecord._id}`);
+            requestLogger.debug({ articleId: id, mediaId: mediaRecord._id.toString() }, '[Articles] Found media record for deletion');
             
             // CRITICAL: Check if this Media is used by other articles before deleting from Cloudinary
             const { Article } = await import('../models/Article.js');
@@ -1466,37 +1566,37 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
             const isSharedAcrossNuggets = otherArticlesUsingMedia.length > 0;
             
             if (isSharedAcrossNuggets) {
-              console.log(`[Articles] Media ${mediaRecord._id} is used by ${otherArticlesUsingMedia.length} other article(s). Not deleting from Cloudinary.`);
+              requestLogger.info({ articleId: id, mediaId: mediaRecord._id.toString(), sharedCount: otherArticlesUsingMedia.length }, '[Articles] Media shared across nuggets; skipping Cloudinary delete');
               // Don't delete from Cloudinary if shared, but still remove from this article
             } else {
-              console.log(`[Articles] Media ${mediaRecord._id} is only used by this article. Safe to delete from Cloudinary.`);
+              requestLogger.info({ articleId: id, mediaId: mediaRecord._id.toString() }, '[Articles] Media only used by this article; safe to delete from Cloudinary');
               
               // Mark media as orphaned (soft delete)
               mediaRecord.status = 'orphaned';
               await mediaRecord.save();
-              console.log(`[Articles] Media record marked as orphaned: ${mediaRecord._id}`);
+              requestLogger.info({ articleId: id, mediaId: mediaRecord._id.toString() }, '[Articles] Media record marked orphaned');
 
               // Best-effort Cloudinary deletion (only if not shared)
               const { deleteFromCloudinary } = await import('../services/cloudinaryService.js');
               const deleted = await deleteFromCloudinary(publicId, mediaRecord.cloudinary.resourceType);
               if (deleted) {
-                console.log(`[Articles] Cloudinary asset deleted successfully: ${publicId}`);
+                requestLogger.info({ articleId: id, publicId }, '[Articles] Cloudinary asset deleted successfully');
               } else {
-                console.warn(`[Articles] Cloudinary deletion failed for: ${publicId} (but MongoDB record marked as orphaned)`);
+                requestLogger.warn({ articleId: id, publicId }, '[Articles] Cloudinary deletion failed; MongoDB record marked orphaned');
               }
             }
           } else {
-            console.log(`[Articles] No media record found for publicId: ${publicId} (may be external URL)`);
+            requestLogger.debug({ articleId: id, publicId }, '[Articles] No media record found for publicId');
           }
         } else {
-          console.log(`[Articles] Could not extract publicId from Cloudinary URL: ${imageUrl}`);
+          requestLogger.debug({ articleId: id, imageUrl }, '[Articles] Could not extract publicId from Cloudinary URL');
         }
       } else {
-        console.log(`[Articles] Image URL is not a Cloudinary URL (external image): ${imageUrl}`);
+        requestLogger.debug({ articleId: id, imageUrl }, '[Articles] Image URL is not Cloudinary');
       }
     } catch (mediaError: any) {
       // Log but don't fail if media cleanup fails
-      console.warn(`[Articles] Failed to cleanup media for image ${imageUrl}:`, mediaError.message);
+      requestLogger.warn({ articleId: id, imageUrl, err: mediaError }, '[Articles] Failed to cleanup media for image');
     }
 
     res.json({
@@ -1505,7 +1605,8 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
       images: updatedImages
     });
   } catch (error: any) {
-    console.error('[Articles] Delete image error:', error);
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({ err: error }, '[Articles] Delete image error');
     sendInternalError(res);
   }
 };
@@ -1548,7 +1649,8 @@ export const getMyArticleCounts = async (req: Request, res: Response) => {
       published: publishedCount,
     });
   } catch (error: any) {
-    console.error('[Articles] Get my article counts error:', error);
+    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    requestLogger.error({ err: error }, '[Articles] Get my article counts error');
     sendInternalError(res);
   }
 };

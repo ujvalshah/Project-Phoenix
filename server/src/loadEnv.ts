@@ -13,8 +13,6 @@ const __dirname = path.dirname(__filename);
 const rootPath = path.resolve(__dirname, '../../');
 dotenv.config({ path: path.join(rootPath, '.env') });
 
-console.log('[Env] Environment variables loaded from .env');
-
 
 
 

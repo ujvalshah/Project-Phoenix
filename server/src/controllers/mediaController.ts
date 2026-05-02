@@ -75,6 +75,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
     if (!userId) {
       return sendUnauthorizedError(res, 'Authentication required');
     }
+    const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
 
     const file = req.file;
     if (!file) {
@@ -171,13 +172,14 @@ export const uploadMedia = async (req: Request, res: Response) => {
     // Upload to Cloudinary
     let cloudinaryResult;
     try {
-      console.log(`[Media] Uploading ${resourceType} to Cloudinary:`, {
+      requestLogger.info({
         fileName: file.originalname,
         size: file.size,
         mimeType: file.mimetype,
         folder,
-        purpose
-      });
+        purpose,
+        resourceType,
+      }, '[Media] Uploading to Cloudinary');
       
       const uploadOptions: UploadOptions = {
         folder,
@@ -188,22 +190,15 @@ export const uploadMedia = async (req: Request, res: Response) => {
 
       cloudinaryResult = await uploadToCloudinary(file.buffer, uploadOptions);
       
-      console.log(`[Media] Cloudinary upload successful:`, {
+      requestLogger.info({
         publicId: cloudinaryResult.publicId,
         secureUrl: cloudinaryResult.secureUrl,
         width: cloudinaryResult.width,
-        height: cloudinaryResult.height
-      });
+        height: cloudinaryResult.height,
+      }, '[Media] Cloudinary upload successful');
     } catch (cloudinaryError: any) {
       // Audit Phase-1 Fix: Use structured logging and Sentry capture
-      const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
-      requestLogger.error({
-        msg: '[Media] Cloudinary upload failed',
-        error: {
-          message: cloudinaryError.message,
-          stack: cloudinaryError.stack,
-        },
-      });
+      requestLogger.error({ err: cloudinaryError }, '[Media] Cloudinary upload failed');
       captureException(cloudinaryError instanceof Error ? cloudinaryError : new Error(String(cloudinaryError)), {
         requestId: req.id,
         route: req.path,
@@ -222,7 +217,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
     });
 
     if (existingMedia) {
-      console.log(`[Media] Media with publicId ${cloudinaryResult.publicId} already exists, returning existing record`);
+      requestLogger.info({ publicId: cloudinaryResult.publicId }, '[Media] Duplicate media publicId found, returning existing record');
       
       // ROLLBACK: Delete the duplicate Cloudinary asset (best effort)
       await deleteFromCloudinary(cloudinaryResult.publicId, cloudinaryResult.resourceType);
@@ -273,21 +268,13 @@ export const uploadMedia = async (req: Request, res: Response) => {
         };
       }
 
-      console.log(`[Media] Creating MongoDB record for publicId: ${cloudinaryResult.publicId}`);
+      requestLogger.info({ publicId: cloudinaryResult.publicId }, '[Media] Creating MongoDB record');
       mediaDoc = await Media.create(mediaData);
-      console.log(`[Media] MongoDB record created successfully: ${mediaDoc._id}`);
+      requestLogger.info({ mediaId: mediaDoc._id.toString(), publicId: cloudinaryResult.publicId }, '[Media] MongoDB record created');
     } catch (mongoError: any) {
       // ROLLBACK: Delete from Cloudinary if MongoDB insert fails
       // Audit Phase-1 Fix: Use structured logging and Sentry capture
-      const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
-      requestLogger.error({
-        msg: '[Media] MongoDB insert failed, rolling back Cloudinary upload',
-        error: {
-          message: mongoError.message,
-          stack: mongoError.stack,
-        },
-        publicId: cloudinaryResult.publicId,
-      });
+      requestLogger.error({ err: mongoError, publicId: cloudinaryResult.publicId }, '[Media] MongoDB insert failed, rolling back Cloudinary upload');
       captureException(mongoError instanceof Error ? mongoError : new Error(String(mongoError)), {
         requestId: req.id,
         route: req.path,
@@ -297,7 +284,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
       
       // Check for duplicate publicId error
       if (mongoError.code === 11000) {
-        console.log('[Media] Duplicate publicId detected (unique constraint violation)');
+        requestLogger.warn({ publicId: cloudinaryResult.publicId }, '[Media] Duplicate publicId detected during insert');
         // Try to find existing media
         const existing = await Media.findOne({ 'cloudinary.publicId': cloudinaryResult.publicId });
         if (existing) {
@@ -334,13 +321,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
-    requestLogger.error({
-      msg: '[Media] Upload error',
-      error: {
-        message: error.message,
-        stack: error.stack,
-      },
-    });
+    requestLogger.error({ err: error }, '[Media] Upload error');
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     sendInternalError(res);
   }
@@ -458,7 +439,11 @@ export const deleteMedia = async (req: Request, res: Response) => {
     );
 
     if (!deleted) {
-      console.warn(`[Media] Cloudinary deletion failed for ${media.cloudinary.publicId}, but MongoDB record marked as deleted`);
+      const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+      requestLogger.warn(
+        { publicId: media.cloudinary.publicId, mediaId: media._id.toString() },
+        '[Media] Cloudinary deletion failed, MongoDB record already marked deleted',
+      );
     }
 
     res.json({

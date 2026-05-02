@@ -17,6 +17,7 @@
 
 import { Tag } from '../models/Tag.js';
 import { normalizeDoc } from '../utils/db.js';
+import { getLogger } from '../utils/logger.js';
 
 /**
  * Normalize tag name:
@@ -63,8 +64,8 @@ export async function createOrResolveTag(
   // Normalize input
   const { rawName, canonicalName } = normalizeTagName(name);
   
-  // Temporary logging as requested
-  console.info('[TagCreate] canonicalized →', { input: name, canonicalName });
+  const logger = getLogger().child({ service: 'tagCreationService' });
+  logger.debug({ input: name, canonicalName }, '[TagCreate] Canonicalized');
   
   // Look up existing tag by canonicalName (case-insensitive)
   // Check all statuses - we'll handle inactive tags by reactivating them
@@ -82,24 +83,24 @@ export async function createOrResolveTag(
       }
       await existingTag.save();
       
-      console.info('[TagCreate] Reactivated existing tag', {
+      logger.info({
         id: existingTag._id.toString(),
         canonicalName,
         oldStatus,
         newStatus: existingTag.status
-      });
+      }, '[TagCreate] Reactivated existing tag');
     } else if (existingTag.rawName !== rawName) {
       // Active tag exists but with different casing - update rawName to preserve user's input
       const oldRawName = existingTag.rawName;
       existingTag.rawName = rawName;
       await existingTag.save();
       
-      console.info('[TagCreate] Updated casing of existing tag', {
+      logger.info({
         id: existingTag._id.toString(),
         canonicalName,
         oldRawName,
         newRawName: rawName
-      });
+      }, '[TagCreate] Updated casing of existing tag');
     }
     
     return normalizeDoc(existingTag);
@@ -119,11 +120,11 @@ export async function createOrResolveTag(
     
     await newTag.save();
     
-    console.info('[TagCreate] Created new tag', {
+    logger.info({
       id: newTag._id.toString(),
       rawName,
       canonicalName
-    });
+    }, '[TagCreate] Created new tag');
     
     return normalizeDoc(newTag);
   } catch (error: any) {
@@ -132,10 +133,10 @@ export async function createOrResolveTag(
       // Tag was created by another request - fetch and return it
       const raceConditionTag = await Tag.findOne({ canonicalName });
       if (raceConditionTag) {
-        console.info('[TagCreate] Race condition handled - tag created by another request', {
+        logger.info({
           id: raceConditionTag._id.toString(),
           canonicalName
-        });
+        }, '[TagCreate] Race condition handled');
         return normalizeDoc(raceConditionTag);
       }
     }
@@ -170,10 +171,11 @@ export async function createOrResolveTags(
       results.set(canonicalName, tag);
     } catch (error: any) {
       // Log error but continue with other tags
-      console.error('[TagCreate] Error creating tag:', {
+      const logger = getLogger().child({ service: 'tagCreationService' });
+      logger.error({
         name,
-        error: error.message
-      });
+        err: error,
+      }, '[TagCreate] Error creating tag');
     }
   });
   

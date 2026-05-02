@@ -8,8 +8,56 @@ import { authenticateToken } from '../middleware/authenticateToken.js';
 import { diagnoseRedisTokenStorage, verifyRefreshTokenExists } from '../utils/redisDiagnostics.js';
 import { getRedisClientOrFallback, isRedisAvailable } from '../utils/redisClient.js';
 import { createRequestLogger } from '../utils/logger.js';
+import { snapshotAppCounters } from '../utils/metrics.js';
+import { countApiResponseCacheRedisKeysByPrefix } from '../utils/cacheRedisKeyStats.js';
 
 const router = Router();
+
+/**
+ * GET /api/diagnostics/cache-stats
+ * API response Redis key counts + in-process counters (hits/misses, public-read observations).
+ */
+router.get('/cache-stats', authenticateToken, async (req: Request, res: Response) => {
+  const logger = createRequestLogger((req as unknown as { id?: string }).id || 'unknown', (req as unknown as { user?: { userId?: string } }).user?.userId, req.path);
+
+  try {
+    const allCounters = snapshotAppCounters();
+    const cacheCounters: Record<string, number> = {};
+    for (const [k, v] of Object.entries(allCounters)) {
+      if (k.includes('api_response_cache') || k.includes('public_read_cache')) {
+        cacheCounters[k] = v;
+      }
+    }
+
+    let redisCounts: Record<string, number>;
+    let scanMethod: 'scan' | 'keys' | 'unavailable';
+
+    try {
+      const scanned = await countApiResponseCacheRedisKeysByPrefix();
+      redisCounts = scanned.byPrefix;
+      scanMethod = scanned.method;
+    } catch (scanError: unknown) {
+      const msg = scanError instanceof Error ? scanError.message : String(scanError);
+      logger.warn({ msg: '[Diagnostics] Redis cache key scan failed', error: msg });
+      redisCounts = {};
+      scanMethod = 'unavailable';
+    }
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      redis: {
+        tierAvailable: isRedisAvailable(),
+        keyCountsByNamespacePrefix: redisCounts,
+        scanMethod,
+      },
+      counters: cacheCounters,
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error({ msg: '[Diagnostics] cache-stats failed', err: { message: msg } });
+    res.status(500).json({ error: 'cache-stats failed', message: msg });
+  }
+});
 
 /**
  * GET /api/diagnostics/redis

@@ -10,7 +10,11 @@ import { captureException } from '../utils/sentry.js';
 import { accessUserMutation } from '../utils/userAccess.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
 import { toPublicUserView } from '../utils/userPublicView.js';
-import { revokeAllRefreshTokensDetailed } from '../services/tokenService.js';
+import {
+  invalidateUserTokenVersionCache,
+  revokeAllRefreshTokensDetailed,
+  upsertUserTokenVersionCache,
+} from '../services/tokenService.js';
 import { sendVerificationEmail, sendEmailChangedNoticeEmail } from '../services/emailService.js';
 import { generateEmailVerificationToken } from '../utils/jwt.js';
 import { getEnv } from '../config/envValidation.js';
@@ -313,6 +317,10 @@ export const updateUser = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
+    if (bumpTokenVersion) {
+      await upsertUserTokenVersionCache(targetUserId, user.tokenVersion ?? 0);
+    }
+
     // A bumped tokenVersion invalidates every live access token for this
     // user. Refresh tokens live in Redis and don't carry tokenVersion, so
     // revoke them too — otherwise the very next /auth/refresh would mint a
@@ -500,6 +508,8 @@ export const deleteUser = async (req: Request, res: Response) => {
 
     const user = await User.findByIdAndDelete(targetUserId);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    await invalidateUserTokenVersionCache(targetUserId);
 
     // Refresh tokens live in Redis keyed by userId. The User document is now
     // gone, but the refresh tokens would still rotate into fresh access

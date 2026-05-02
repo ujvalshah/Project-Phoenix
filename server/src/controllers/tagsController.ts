@@ -593,6 +593,11 @@ export const getTagTaxonomy = async (req: Request, res: Response) => {
         const subtopics = dimensionTags.filter(t => t.dimension === 'subtopic').map(normalize);
         return { formats, domains, subtopics };
       },
+      {
+        route: 'GET /api/categories/taxonomy',
+        namespace: TAG_TAXONOMY_CACHE_NAMESPACE,
+        requestId: String(req.id ?? ''),
+      },
     );
 
     res.json(payload);

@@ -3,6 +3,7 @@ import { Feedback } from '../models/Feedback.js';
 import { normalizeDoc, normalizeDocs } from '../utils/db.js';
 import { z } from 'zod';
 import { createSearchRegex } from '../utils/escapeRegExp.js';
+import { createRequestLogger } from '../utils/logger.js';
 
 // Validation schemas
 const createFeedbackSchema = z.object({
@@ -72,7 +73,8 @@ export const getFeedback = async (req: Request, res: Response) => {
       hasMore: page * limit < total
     });
   } catch (error: any) {
-    console.error('[Feedback] Get feedback error:', error);
+    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    logger.error({ err: error }, '[Feedback] Get feedback error');
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -103,7 +105,8 @@ export const createFeedback = async (req: Request, res: Response) => {
     
     res.status(201).json(normalizeDoc(newFeedback));
   } catch (error: any) {
-    console.error('[Feedback] Create feedback error:', error);
+    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    logger.error({ err: error }, '[Feedback] Create feedback error');
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -137,7 +140,8 @@ export const updateFeedbackStatus = async (req: Request, res: Response) => {
     
     res.json(normalizeDoc(feedback));
   } catch (error: any) {
-    console.error('[Feedback] Update feedback status error:', error);
+    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    logger.error({ err: error }, '[Feedback] Update feedback status error');
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -156,7 +160,8 @@ export const deleteFeedback = async (req: Request, res: Response) => {
     
     res.status(204).send();
   } catch (error: any) {
-    console.error('[Feedback] Delete feedback error:', error);
+    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    logger.error({ err: error }, '[Feedback] Delete feedback error');
     res.status(500).json({ message: 'Internal server error' });
   }
 };

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getLogger } from './logger.js';
 
 /**
  * Validation schemas for request bodies
@@ -337,9 +338,8 @@ export function logCategoryIdsDeprecation(
   requestId: string | undefined,
   userId: string | undefined,
   route: string,
-  categoryIds: any
+  categoryIds: unknown
 ): void {
-  const { getLogger } = require('./logger.js');
   const logger = getLogger();
   logger.warn({
     msg: '[CATEGORY_IDS] Ignored legacy field in request',
@@ -356,11 +356,11 @@ export function logCategoryIdsDeprecation(
  * This ensures categoryIds is stripped before validation (since schemas use .strict())
  */
 export function preprocessArticleRequest(
-  body: any,
+  body: Record<string, unknown> | null | undefined,
   requestId: string | undefined,
   userId: string | undefined,
   route: string
-): any {
+): Record<string, unknown> | null | undefined {
   if (body && 'categoryIds' in body) {
     logCategoryIdsDeprecation(requestId, userId, route, body.categoryIds);
     const { categoryIds, ...rest } = body;
@@ -394,7 +394,7 @@ export function validate(schema: z.ZodSchema) {
     if (!result.success) {
       return res.status(400).json({
         message: 'Validation failed',
-        errors: result.error.errors
+        errors: result.error.issues
       });
     }
     req.body = result.data;

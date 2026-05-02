@@ -8,6 +8,7 @@
 import * as Sentry from '@sentry/node';
 import { httpIntegration, expressIntegration } from '@sentry/node';
 import { getEnv } from '../config/envValidation.js';
+import { getLogger } from './logger.js';
 
 // Track whether Sentry was successfully initialized
 let sentryInitialized = false;
@@ -26,27 +27,34 @@ export function isSentryEnabled(): boolean {
 export function initSentry() {
   const env = getEnv();
   const dsn = env.SENTRY_DSN;
+  let logger: ReturnType<typeof getLogger> | null = null;
+  try {
+    logger = getLogger().child({ module: 'sentry' });
+  } catch {
+    logger = null;
+  }
 
   if (!dsn) {
-    console.warn('[Sentry] DSN not provided, error tracking disabled');
+    logger?.warn({ msg: '[Sentry] DSN not provided, error tracking disabled' });
     sentryInitialized = false;
     return;
   }
 
   // Disable in development unless explicitly enabled
   if (env.NODE_ENV === 'development' && !env.SENTRY_ENABLE_DEV) {
-    console.log('[Sentry] Disabled in development mode');
+    logger?.info({ msg: '[Sentry] Disabled in development mode' });
     sentryInitialized = false;
     return;
   }
 
   Sentry.init({
     dsn,
-    environment: env.NODE_ENV || 'development',
+    environment: env.SENTRY_ENVIRONMENT || env.NODE_ENV || 'development',
+    release: env.SENTRY_RELEASE || undefined,
     tracesSampleRate: env.NODE_ENV === 'production' ? 0.1 : 1.0, // 10% in prod, 100% in dev
     integrations: [
       // Enable HTTP instrumentation
-      httpIntegration({ tracing: true }),
+      httpIntegration(),
       // Enable Express integration
       expressIntegration(),
     ],
@@ -68,7 +76,11 @@ export function initSentry() {
   });
 
   sentryInitialized = true;
-  console.log('[Sentry] Initialized for error tracking');
+  logger?.info({
+    msg: '[Sentry] Initialized for error tracking',
+    environment: env.SENTRY_ENVIRONMENT || env.NODE_ENV || 'development',
+    release: env.SENTRY_RELEASE || 'not-set',
+  });
 }
 
 /**

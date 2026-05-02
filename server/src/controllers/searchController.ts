@@ -6,6 +6,11 @@ import { Tag } from '../models/Tag.js';
 import { createSearchRegex, escapeRegExp } from '../utils/escapeRegExp.js';
 import { sendValidationError, sendInternalError } from '../utils/errorResponse.js';
 import { verifyToken } from '../utils/jwt.js';
+import {
+  SEARCH_SUGGEST_CACHE_NS,
+  SEARCH_SUGGEST_CACHE_TTL_SECONDS,
+} from '../config/publicReadCache.js';
+import { sendJsonViaPublicReadRedisCache } from '../middleware/publicReadRedisCache.js';
 
 const suggestSchema = z.object({
   q: z.string().trim().min(2).max(120),
@@ -37,6 +42,248 @@ const suggestSchema = z.object({
     .transform((value) => (Array.isArray(value) ? value : value ? [value] : [])),
   contentStream: z.enum(['standard', 'pulse']).optional(),
 });
+
+type ParsedSuggestQuery = z.infer<typeof suggestSchema>;
+
+function fingerprintSuggestKey(parsed: ParsedSuggestQuery, userSeg: string): string {
+  const sortStrs = (arr: string[]) => [...arr].map((v) => v.trim()).filter(Boolean).sort();
+  const payload = {
+    q: parsed.q,
+    limit: parsed.limit,
+    categories: sortStrs(parsed.categories),
+    tag: parsed.tag ?? null,
+    collectionId: parsed.collectionId ?? null,
+    favorites: parsed.favorites ?? null,
+    unread: parsed.unread ?? null,
+    formats: sortStrs(parsed.formats),
+    timeRange: parsed.timeRange ?? null,
+    formatTagIds: sortStrs(parsed.formatTagIds),
+    domainTagIds: sortStrs(parsed.domainTagIds),
+    subtopicTagIds: sortStrs(parsed.subtopicTagIds),
+    contentStream: parsed.contentStream ?? null,
+    userSeg,
+  };
+  return JSON.stringify(payload);
+}
+
+async function loadSearchSuggestionsBody(
+  parsed: ParsedSuggestQuery,
+  currentUserId: string | undefined,
+): Promise<{
+  query: string;
+  count: number;
+  suggestions: Array<{
+    id: string;
+    title: string;
+    excerpt: string;
+    publishedAt?: Date;
+    sourceType: string | null;
+    contentStream: string;
+  }>;
+}> {
+  const {
+    q,
+    limit,
+    categories,
+    tag,
+    collectionId,
+    favorites,
+    unread,
+    formats,
+    timeRange,
+    formatTagIds,
+    domainTagIds,
+    subtopicTagIds,
+    contentStream,
+  } = parsed;
+  const regex = createSearchRegex(q);
+  const query: Record<string, unknown> & { $and: Record<string, unknown>[] } = {
+    $and: [
+      {
+        $and: [
+          {
+            $or: [
+              { visibility: 'public' },
+              { visibility: { $exists: false } },
+              { visibility: null },
+            ],
+          },
+          {
+            $or: [
+              { status: 'published' },
+              { status: { $exists: false } },
+              { status: null },
+            ],
+          },
+        ],
+      },
+      {
+        $or: [{ title: regex }, { excerpt: regex }],
+      },
+    ],
+  };
+
+  if (contentStream === 'pulse') {
+    query.$and.push({ contentStream: { $in: ['pulse', 'both'] } });
+  } else if (contentStream === 'standard') {
+    query.$and.push({
+      $or: [
+        { contentStream: { $in: ['standard', 'both'] } },
+        { contentStream: { $exists: false } },
+        { contentStream: null },
+      ],
+    });
+  }
+
+  if (collectionId) {
+    const requestedCollectionKey = collectionId.trim();
+    const isObjectIdLike = /^[a-f0-9]{24}$/i.test(requestedCollectionKey);
+    const collection = await Collection.findOne(
+      isObjectIdLike
+        ? { _id: requestedCollectionKey }
+        : {
+            type: 'public',
+            $or: [
+              { canonicalName: requestedCollectionKey.toLowerCase() },
+              { rawName: new RegExp(`^${escapeRegExp(requestedCollectionKey)}$`, 'i') },
+            ],
+          },
+    )
+      .select('_id entries type parentId')
+      .lean();
+
+    if (!collection || collection.type !== 'public') {
+      return { query: q, count: 0, suggestions: [] };
+    }
+
+    const selectedCollectionId = String((collection as { _id?: { toString(): string } })._id);
+    const allEntries = [...((collection.entries as []) || [])];
+    if (!collection.parentId) {
+      const childCollections = await Collection.find({
+        type: 'public',
+        parentId: selectedCollectionId,
+      })
+        .select('entries')
+        .lean();
+      childCollections.forEach((child) => {
+        allEntries.push(...((child.entries as []) || []));
+      });
+    }
+
+    const articleIds = Array.from(
+      new Set(
+        allEntries
+          .map((entry: { articleId?: string }) => entry.articleId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    );
+    if (articleIds.length === 0) {
+      return { query: q, count: 0, suggestions: [] };
+    }
+    query.$and.push({ _id: { $in: articleIds } });
+  }
+
+  const cleanCategories = (categories || []).map((value) => value.trim()).filter(Boolean);
+  if (cleanCategories.length > 0) {
+    const hasToday = cleanCategories.some((category) => category === 'Today');
+    if (hasToday) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(today);
+      todayEnd.setHours(23, 59, 59, 999);
+      query.$and.push({
+        publishedAt: {
+          $gte: today.toISOString(),
+          $lte: todayEnd.toISOString(),
+        },
+      });
+    }
+
+    const nonTodayCategories = cleanCategories.filter((category) => category !== 'Today');
+    if (nonTodayCategories.length > 0) {
+      query.$and.push({
+        categories: {
+          $in: nonTodayCategories.map(
+            (category) => new RegExp(`^${escapeRegExp(category)}$`, 'i'),
+          ),
+        },
+      });
+    }
+  }
+
+  if (tag) {
+    const tagDoc = await Tag.findOne({
+      canonicalName: tag.toLowerCase(),
+      status: 'active',
+    })
+      .select('_id')
+      .lean();
+    if (!tagDoc) {
+      return { query: q, count: 0, suggestions: [] };
+    }
+    query.$and.push({ tagIds: tagDoc._id });
+  }
+
+  const cleanFormats = (formats || []).map((value) => value.trim()).filter(Boolean);
+  if (cleanFormats.length > 0) {
+    query.$and.push({ source_type: { $in: cleanFormats } });
+  }
+
+  if (timeRange) {
+    const now = new Date();
+    const rangeStart = new Date(
+      now.getTime() - (timeRange === '24h' ? 24 : 7 * 24) * 60 * 60 * 1000,
+    );
+    query.$and.push({ publishedAt: { $gte: rangeStart.toISOString() } });
+  }
+
+  const pushDimensionFilter = (ids: string[] | undefined) => {
+    const cleanIds = (ids || []).map((value) => value.trim()).filter(Boolean);
+    if (cleanIds.length > 0) {
+      query.$and.push({ tagIds: { $in: cleanIds } });
+    }
+  };
+  pushDimensionFilter(formatTagIds);
+  pushDimensionFilter(domainTagIds);
+  pushDimensionFilter(subtopicTagIds);
+
+  if (favorites && currentUserId) {
+    query.$and.push({ [`favorites.${currentUserId}`]: true });
+  }
+  if (unread && currentUserId) {
+    query.$and.push({ [`readBy.${currentUserId}`]: { $ne: true } });
+  }
+
+  const docs = await Article.find(query)
+    .sort({ publishedAt: -1, _id: -1 })
+    .limit(limit)
+    .select('_id title excerpt publishedAt source_type contentStream')
+    .lean();
+
+  type SuggestionDoc = {
+    _id: { toString(): string };
+    title?: string;
+    excerpt?: string;
+    publishedAt?: Date;
+    source_type?: string;
+    contentStream?: string;
+  };
+
+  const suggestions = (docs as SuggestionDoc[]).map((d) => ({
+    id: d._id.toString(),
+    title: d.title || 'Untitled',
+    excerpt: d.excerpt || '',
+    publishedAt: d.publishedAt,
+    sourceType: d.source_type || null,
+    contentStream: d.contentStream || 'standard',
+  }));
+
+  return {
+    query: q,
+    count: suggestions.length,
+    suggestions,
+  };
+}
 
 function getOptionalUserId(req: Request): string | undefined {
   const requestUser = (req as any).user;
@@ -70,210 +317,22 @@ export const getSuggestions = async (req: Request, res: Response) => {
       );
     }
 
-    const {
-      q,
-      limit,
-      categories,
-      tag,
-      collectionId,
-      favorites,
-      unread,
-      formats,
-      timeRange,
-      formatTagIds,
-      domainTagIds,
-      subtopicTagIds,
-      contentStream,
-    } = parsed.data;
-    const regex = createSearchRegex(q);
     const currentUserId = getOptionalUserId(req);
-    const query: Record<string, any> = {
-      $and: [
-        {
-          $and: [
-            {
-              $or: [
-                { visibility: 'public' },
-                { visibility: { $exists: false } },
-                { visibility: null },
-              ],
-            },
-            {
-              $or: [
-                { status: 'published' },
-                { status: { $exists: false } },
-                { status: null },
-              ],
-            },
-          ],
-        },
-        {
-          $or: [{ title: regex }, { excerpt: regex }],
-        },
-      ],
-    };
+    const userSeg =
+      (parsed.data.favorites || parsed.data.unread) && currentUserId
+        ? currentUserId
+        : 'shared';
 
-    if (contentStream === 'pulse') {
-      query.$and.push({ contentStream: { $in: ['pulse', 'both'] } });
-    } else if (contentStream === 'standard') {
-      query.$and.push({
-        $or: [
-          { contentStream: { $in: ['standard', 'both'] } },
-          { contentStream: { $exists: false } },
-          { contentStream: null },
-        ],
-      });
-    }
-
-    if (collectionId) {
-      const requestedCollectionKey = collectionId.trim();
-      const isObjectIdLike = /^[a-f0-9]{24}$/i.test(requestedCollectionKey);
-      const collection = await Collection.findOne(
-        isObjectIdLike
-          ? { _id: requestedCollectionKey }
-          : {
-              type: 'public',
-              $or: [
-                { canonicalName: requestedCollectionKey.toLowerCase() },
-                { rawName: new RegExp(`^${escapeRegExp(requestedCollectionKey)}$`, 'i') },
-              ],
-            },
-      )
-        .select('_id entries type parentId')
-        .lean();
-
-      if (!collection || collection.type !== 'public') {
-        return res.json({ query: q, count: 0, suggestions: [] });
-      }
-
-      const selectedCollectionId = String((collection as any)._id);
-      const allEntries = [...(collection.entries || [])];
-      if (!collection.parentId) {
-        const childCollections = await Collection.find({
-          type: 'public',
-          parentId: selectedCollectionId,
-        })
-          .select('entries')
-          .lean();
-        childCollections.forEach((child) => {
-          allEntries.push(...(child.entries || []));
-        });
-      }
-
-      const articleIds = Array.from(
-        new Set(
-          allEntries
-            .map((entry: { articleId?: string }) => entry.articleId)
-            .filter((id): id is string => typeof id === 'string' && id.length > 0),
-        ),
-      );
-      if (articleIds.length === 0) {
-        return res.json({ query: q, count: 0, suggestions: [] });
-      }
-      query.$and.push({ _id: { $in: articleIds } });
-    }
-
-    const cleanCategories = (categories || []).map((value) => value.trim()).filter(Boolean);
-    if (cleanCategories.length > 0) {
-      const hasToday = cleanCategories.some((category) => category === 'Today');
-      if (hasToday) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(today);
-        todayEnd.setHours(23, 59, 59, 999);
-        query.$and.push({
-          publishedAt: {
-            $gte: today.toISOString(),
-            $lte: todayEnd.toISOString(),
-          },
-        });
-      }
-
-      const nonTodayCategories = cleanCategories.filter((category) => category !== 'Today');
-      if (nonTodayCategories.length > 0) {
-        query.$and.push({
-          categories: {
-            $in: nonTodayCategories.map(
-              (category) => new RegExp(`^${escapeRegExp(category)}$`, 'i'),
-            ),
-          },
-        });
-      }
-    }
-
-    if (tag) {
-      const tagDoc = await Tag.findOne({
-        canonicalName: tag.toLowerCase(),
-        status: 'active',
-      })
-        .select('_id')
-        .lean();
-      if (!tagDoc) {
-        return res.json({ query: q, count: 0, suggestions: [] });
-      }
-      query.$and.push({ tagIds: tagDoc._id });
-    }
-
-    const cleanFormats = (formats || []).map((value) => value.trim()).filter(Boolean);
-    if (cleanFormats.length > 0) {
-      query.$and.push({ source_type: { $in: cleanFormats } });
-    }
-
-    if (timeRange) {
-      const now = new Date();
-      const rangeStart = new Date(
-        now.getTime() - (timeRange === '24h' ? 24 : 7 * 24) * 60 * 60 * 1000,
-      );
-      query.$and.push({ publishedAt: { $gte: rangeStart.toISOString() } });
-    }
-
-    const pushDimensionFilter = (ids: string[] | undefined) => {
-      const cleanIds = (ids || []).map((value) => value.trim()).filter(Boolean);
-      if (cleanIds.length > 0) {
-        query.$and.push({ tagIds: { $in: cleanIds } });
-      }
-    };
-    pushDimensionFilter(formatTagIds);
-    pushDimensionFilter(domainTagIds);
-    pushDimensionFilter(subtopicTagIds);
-
-    if (favorites && currentUserId) {
-      query.$and.push({ [`favorites.${currentUserId}`]: true });
-    }
-    if (unread && currentUserId) {
-      query.$and.push({ [`readBy.${currentUserId}`]: { $ne: true } });
-    }
-
-    const docs = await Article.find(query)
-      .sort({ publishedAt: -1, _id: -1 })
-      .limit(limit)
-      .select('_id title excerpt publishedAt source_type contentStream')
-      .lean();
-
-    type SuggestionDoc = {
-      _id: { toString(): string };
-      title?: string;
-      excerpt?: string;
-      publishedAt?: Date;
-      source_type?: string;
-      contentStream?: string;
-    };
-
-    const suggestions = (docs as SuggestionDoc[]).map((d) => ({
-      id: d._id.toString(),
-      title: d.title || 'Untitled',
-      excerpt: d.excerpt || '',
-      publishedAt: d.publishedAt,
-      sourceType: d.source_type || null,
-      contentStream: d.contentStream || 'standard',
-    }));
-
-    return res.json({
-      query: q,
-      count: suggestions.length,
-      suggestions,
+    await sendJsonViaPublicReadRedisCache({
+      req,
+      res,
+      namespace: SEARCH_SUGGEST_CACHE_NS,
+      ttlSeconds: SEARCH_SUGGEST_CACHE_TTL_SECONDS,
+      routeLabel: 'GET /api/search/suggest',
+      keyParts: [fingerprintSuggestKey(parsed.data, userSeg)],
+      loader: () => loadSearchSuggestionsBody(parsed.data, currentUserId),
     });
-  } catch (error) {
+  } catch {
     return sendInternalError(res);
   }
 };

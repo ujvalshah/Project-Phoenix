@@ -27,10 +27,14 @@ import {
   getMarketPulseMicroHeaderConfig,
   invalidateMarketPulseMicroHeaderCache
 } from '../services/marketPulseMicroHeaderConfigService.js';
+import { invalidateRedisOnboardingBundleCache } from '../config/publicReadCache.js';
 import { AdminRequest } from '../middleware/requireAdminRole.js';
 import { getLogger } from '../utils/logger.js';
 import { auditAdminAction } from '../utils/auditAdminAction.js';
-import { revokeAllRefreshTokensDetailed } from '../services/tokenService.js';
+import {
+  revokeAllRefreshTokensDetailed,
+  upsertUserTokenVersionCache,
+} from '../services/tokenService.js';
 import type { AdminAction } from '../models/AdminAuditLog.js';
 import type { UserStatus } from '../models/User.js';
 
@@ -699,6 +703,7 @@ export async function updateHomeMicroHeaderSettings(req: AdminRequest, res: Resp
     );
 
     invalidateHomeMicroHeaderCache();
+    void invalidateRedisOnboardingBundleCache();
 
     const newValue = {
       title: newDoc.title,
@@ -785,6 +790,7 @@ export async function updateMarketPulseMicroHeaderSettings(req: AdminRequest, re
     );
 
     invalidateMarketPulseMicroHeaderCache();
+    void invalidateRedisOnboardingBundleCache();
 
     const newValue = {
       title: newDoc.title,
@@ -902,7 +908,14 @@ async function applyLifecycle(
       updateOp.$inc = { tokenVersion: 1 };
     }
 
-    await User.findByIdAndUpdate(targetUserId, updateOp, { runValidators: true });
+    const updatedUser = await User.findByIdAndUpdate(targetUserId, updateOp, {
+      runValidators: true,
+      new: true,
+    }).select('tokenVersion');
+
+    if (shouldRevokeSessions && updatedUser) {
+      await upsertUserTokenVersionCache(targetUserId, updatedUser.tokenVersion ?? 0);
+    }
 
     let sessionsRevoked = !shouldRevokeSessions;
     let revocationFailureReason: string | undefined;
@@ -1008,6 +1021,8 @@ export async function revokeUserSessions(req: AdminRequest, res: Response) {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    await upsertUserTokenVersionCache(targetUserId, user.tokenVersion ?? 0);
 
     const revokeResult = await revokeAllRefreshTokensDetailed(targetUserId);
     const sessionsRevoked = revokeResult.ok;

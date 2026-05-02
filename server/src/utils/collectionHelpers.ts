@@ -1,4 +1,5 @@
 import { Collection } from '../models/Collection.js';
+import { getLogger } from './logger.js';
 
 /**
  * Remove article references from all collections when an article is deleted.
@@ -65,7 +66,7 @@ export async function cleanupCollectionEntries(articleId: string): Promise<numbe
   } catch (error: any) {
     // Log error but don't throw - deletion should succeed even if cleanup fails
     // This prevents cascading failures
-    console.error(`[CollectionHelpers] Failed to cleanup entries for article ${articleId}:`, error);
+    getLogger().error({ err: error, articleId }, '[CollectionHelpers] Failed to cleanup collection entries for article');
     return 0;
   }
 }
@@ -105,7 +106,7 @@ export async function updateValidEntriesCount(
     
     return validCount;
   } catch (error: any) {
-    console.error(`[CollectionHelpers] Failed to update validEntriesCount for collection ${collectionId}:`, error);
+    getLogger().error({ err: error, collectionId }, '[CollectionHelpers] Failed to update validEntriesCount');
     return 0;
   }
 }

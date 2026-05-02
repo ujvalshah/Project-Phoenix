@@ -82,7 +82,7 @@ export async function connectDB(): Promise<void> {
   const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
   
   if (!MONGO_URI) {
-    console.error('[DB] MONGO_URI or MONGODB_URI is not defined in environment variables');
+    getLogger().error({ msg: '[DB] MONGO_URI or MONGODB_URI is not defined in environment variables' });
     throw new Error('MONGO_URI or MONGODB_URI environment variable is required');
   }
 
@@ -186,7 +186,7 @@ function transformArticle(doc: any): any {
     // Extract _id first
     const id = plainDoc._id?.toString() || plainDoc.id || '';
     if (!id) {
-      console.warn('[transformArticle] Article missing ID:', plainDoc);
+      getLogger().warn({ article: plainDoc }, '[transformArticle] Article missing ID');
       return null;
     }
     
@@ -197,7 +197,7 @@ function transformArticle(doc: any): any {
     const authorName = rest.authorName || 'Unknown';
     
     if (!authorId || !authorName) {
-      console.warn('[transformArticle] Article missing author data:', { id, authorId, authorName });
+      getLogger().warn({ id, authorId, authorName }, '[transformArticle] Article missing author data');
     }
     
     // Build frontend-compatible article with safe defaults
@@ -255,7 +255,7 @@ function transformArticle(doc: any): any {
     
     return article;
   } catch (error) {
-    console.error('[transformArticle] Error transforming article:', error);
+    getLogger().error({ err: error }, '[transformArticle] Error transforming article');
     return null;
   }
 }

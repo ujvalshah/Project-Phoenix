@@ -16,6 +16,21 @@ import {
   canCreateCollectionOfType,
   canInspectArticleCollectionMembership,
 } from '../utils/editorialCollectionPolicy.js';
+import { buildApiCacheKey, getOrSetCachedJson } from '../services/apiResponseCacheService.js';
+import {
+  COLLECTION_ARTICLES_CACHE_NS,
+  COLLECTION_ARTICLES_CACHE_TTL_SECONDS,
+  COLLECTIONS_LIST_CACHE_NS,
+  COLLECTIONS_LIST_CACHE_TTL_SECONDS,
+  invalidateRedisCollectionReadCaches,
+  logPublicReadCacheBypass,
+  shouldRedisCacheCollectionArticles,
+  shouldRedisCacheCollectionsList,
+} from '../config/publicReadCache.js';
+
+function scheduleInvalidateCollectionReadCaches(): void {
+  void invalidateRedisCollectionReadCaches();
+}
 
 /**
  * Editorial collections API (/api/collections): public collections are admin-managed only.
@@ -177,25 +192,61 @@ export const getCollections = async (req: Request, res: Response) => {
           entries: 0,
         };
 
-    // Get collections with pagination and sorting
-    const [collections, total] = await Promise.all([
-      Collection.find(query)
-        .select(projection)
-        .sort(sortObj)
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Collection.countDocuments(query)
+    const buildCollectionsPayload = async () => {
+      const [collections, total] = await Promise.all([
+        Collection.find(query)
+          .select(projection)
+          .sort(sortObj)
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Collection.countDocuments(query),
+      ]);
+      return {
+        data: normalizeDocs(collections),
+        total,
+        page,
+        limit,
+        hasMore: page * limit < total,
+      };
+    };
+
+    if (!shouldRedisCacheCollectionsList(req)) {
+      logPublicReadCacheBypass({
+        route: req.path ?? '/api/collections',
+        namespace: COLLECTIONS_LIST_CACHE_NS,
+        reasonCode: 'private_collection_list',
+        detail: 'query.type=private — listing is user/auth-specific',
+        requestId: String(req.id ?? ''),
+      });
+      return res.json(await buildCollectionsPayload());
+    }
+
+    const cacheKey = buildApiCacheKey(COLLECTIONS_LIST_CACHE_NS, [
+      String(page),
+      String(limit),
+      type ?? '',
+      searchQuery ?? '',
+      creatorId ?? '',
+      String(includeCount),
+      String(summaryOnly),
+      String(includeEntries),
+      parentId ?? '',
+      String(rootOnly),
+      sortField ?? '',
+      sortDirection ?? '',
     ]);
-    
-    // Return paginated response
-    res.json({
-      data: normalizeDocs(collections),
-      total,
-      page,
-      limit,
-      hasMore: page * limit < total
-    });
+    const payload = await getOrSetCachedJson(
+      cacheKey,
+      COLLECTIONS_LIST_CACHE_TTL_SECONDS,
+      buildCollectionsPayload,
+      {
+        route: 'GET /api/collections',
+        namespace: COLLECTIONS_LIST_CACHE_NS,
+        requestId: String(req.id ?? ''),
+      },
+    );
+    return res.json(payload);
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -395,6 +446,7 @@ export const createCollection = async (req: Request, res: Response) => {
       entries: []
     });
     
+    scheduleInvalidateCollectionReadCaches();
     res.status(201).json(normalizeDoc(newCollection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -554,6 +606,7 @@ export const updateCollection = async (req: Request, res: Response) => {
     );
     
     if (!updatedCollection) return res.status(404).json({ message: 'Collection not found' });
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -643,6 +696,7 @@ export const deleteCollection = async (req: Request, res: Response) => {
     }
 
     await Collection.findByIdAndDelete(req.params.id);
+    scheduleInvalidateCollectionReadCaches();
     res.status(204).send();
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -710,6 +764,7 @@ export const addEntry = async (req: Request, res: Response) => {
         }
       }
       // Entry already exists, return the collection as-is
+      scheduleInvalidateCollectionReadCaches();
       return res.json(normalizeDoc(existingCollection));
     }
 
@@ -742,6 +797,7 @@ export const addEntry = async (req: Request, res: Response) => {
       updatedCollection.validEntriesCount = Math.max(0, updatedCollection.entries.length);
     }
 
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -814,6 +870,7 @@ export const removeEntry = async (req: Request, res: Response) => {
       updatedCollection.validEntriesCount = Math.max(0, updatedCollection.entries.length);
     }
 
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -962,6 +1019,7 @@ export const addBatchEntries = async (req: Request, res: Response) => {
       }
     }
 
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
   } catch (error: any) {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -1052,6 +1110,7 @@ export const removeBatchEntries = async (req: Request, res: Response) => {
       updatedCollection.validEntriesCount = Math.max(0, updatedCollection.entries.length);
     }
 
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
   } catch (error: any) {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -1098,6 +1157,7 @@ export const flagEntry = async (req: Request, res: Response) => {
       entry.flaggedBy.push(currentUserId);
       collection.updatedAt = new Date().toISOString();
       await collection.save();
+      scheduleInvalidateCollectionReadCaches();
     }
 
     res.json(normalizeDoc(collection));
@@ -1148,6 +1208,7 @@ export const followCollection = async (req: Request, res: Response) => {
       return res.json(normalizeDoc(existingCollection));
     }
 
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(collection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -1207,6 +1268,7 @@ export const unfollowCollection = async (req: Request, res: Response) => {
       await collection.save();
     }
 
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(collection));
   } catch (error: any) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
@@ -1305,6 +1367,7 @@ export const setFeatured = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Collection not found' });
     }
 
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(collection));
   } catch (error: unknown) {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
@@ -1354,6 +1417,7 @@ export const reorderFeatured = async (req: Request, res: Response) => {
       .select('rawName canonicalName description isFeatured featuredOrder validEntriesCount')
       .lean();
 
+    scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDocs(collections));
   } catch (error: unknown) {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as unknown as { user?: { userId?: string } })?.user?.userId, req.path);
@@ -1475,18 +1539,56 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     };
     const sortOrder = sortMap[sort as string] || { publishedAt: -1, _id: -1 };
 
-    const [articles, total] = await Promise.all([
-      Article.find(articleQuery).sort(sortOrder).skip(skip).limit(limit).lean(),
-      Article.countDocuments(articleQuery),
-    ]);
+    const useRedisPub = shouldRedisCacheCollectionArticles(collection.type, userRole, q);
 
-    res.json({
-      data: await normalizeArticleDocs(articles),
-      total,
-      page,
-      limit,
-      hasMore: page * limit < total,
+    const buildCollectionArticlesPayload = async () => {
+      const [articles, totalArticles] = await Promise.all([
+        Article.find(articleQuery).sort(sortOrder).skip(skip).limit(limit).lean(),
+        Article.countDocuments(articleQuery),
+      ]);
+      return {
+        data: await normalizeArticleDocs(articles),
+        total: totalArticles,
+        page,
+        limit,
+        hasMore: page * limit < totalArticles,
+      };
+    };
+
+    if (useRedisPub) {
+      const cacheKey = buildApiCacheKey(COLLECTION_ARTICLES_CACHE_NS, [
+        collectionId,
+        String(page),
+        String(limit),
+        typeof sort === 'string' ? sort : '',
+      ]);
+      const payload = await getOrSetCachedJson(
+        cacheKey,
+        COLLECTION_ARTICLES_CACHE_TTL_SECONDS,
+        buildCollectionArticlesPayload,
+        {
+          route: `${req.method ?? 'GET'} ${req.path ?? '/api/collections/:id/articles'}`,
+          namespace: COLLECTION_ARTICLES_CACHE_NS,
+          requestId: String(req.id ?? ''),
+        },
+      );
+      return res.json(payload);
+    }
+
+    logPublicReadCacheBypass({
+      route: req.path ?? '/api/collections/:id/articles',
+      namespace: COLLECTION_ARTICLES_CACHE_NS,
+      reasonCode:
+        collection.type !== 'public'
+          ? 'non_public_collection'
+          : isAdmin
+            ? 'admin_session'
+            : typeof q === 'string' && q.trim().length > 0
+              ? 'inline_search_q'
+              : 'unknown',
+      requestId: String(req.id ?? ''),
     });
+    return res.json(await buildCollectionArticlesPayload());
   } catch (error: unknown) {
     const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
     requestLogger.error({

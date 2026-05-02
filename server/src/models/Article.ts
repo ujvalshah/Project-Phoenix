@@ -243,7 +243,8 @@ const ArticleSchema = new Schema<IArticle>({
   // categoryIds: { type: [String] }, // Deprecated - kept in DB schema only for backward compatibility
   publishedAt: { type: String, required: false, default: null },
   status: { type: String, enum: ['draft', 'published'], default: 'published' },
-  tagIds: [{ type: Schema.Types.ObjectId, ref: 'Tag', index: true }],
+  // Indexes: explicit `ArticleSchema.index({ tagIds: 1 })` below (avoid duplicate with `index: true` here).
+  tagIds: [{ type: Schema.Types.ObjectId, ref: 'Tag' }],
   readTime: { type: Number }, // Optional read time
   visibility: { type: String, enum: ['public', 'private'], default: 'public' },
   
@@ -351,17 +352,8 @@ async function logContentTruncation(
       stackTrace: stackTrace.split('\n').slice(2, 10).join('\n'), // First 8 lines of stack (skip Error and logContentTruncation)
     });
   } catch (error) {
-    // Fallback to console if logger not available
-    console.error('[CONTENT_TRUNCATION_DETECTED] Failed to log truncation:', error);
-    console.warn('[CONTENT_TRUNCATION_DETECTED]', {
-      articleId,
-      oldContentLength: oldContent.length,
-      newContentLength: newContent.length,
-      newContent,
-      source_type,
-      mediaType,
-      context,
-    });
+    // Best effort only; avoid noisy fallback logging in model hooks.
+    void error;
   }
 }
 
@@ -423,8 +415,12 @@ ArticleSchema.pre('save', async function() {
       );
     }
   } catch (error) {
-    // Don't block save if logging fails
-    console.error('[Article Model] Error in pre-save content truncation check:', error);
+    try {
+      const { getLogger } = await import('../utils/logger.js');
+      getLogger().error({ err: error }, '[Article Model] Error in pre-save content truncation check');
+    } catch {
+      // Best effort logging only.
+    }
   }
 });
 
@@ -466,7 +462,12 @@ ArticleSchema.pre('updateOne', async function() {
       );
     }
   } catch (error) {
-    console.error('[Article Model] Error in pre-updateOne content truncation check:', error);
+    try {
+      const { getLogger } = await import('../utils/logger.js');
+      getLogger().error({ err: error }, '[Article Model] Error in pre-updateOne content truncation check');
+    } catch {
+      // Best effort logging only.
+    }
   }
 });
 
@@ -508,7 +509,12 @@ ArticleSchema.pre('findOneAndUpdate', async function() {
       );
     }
   } catch (error) {
-    console.error('[Article Model] Error in pre-findOneAndUpdate content truncation check:', error);
+    try {
+      const { getLogger } = await import('../utils/logger.js');
+      getLogger().error({ err: error }, '[Article Model] Error in pre-findOneAndUpdate content truncation check');
+    } catch {
+      // Best effort logging only.
+    }
   }
 });
 

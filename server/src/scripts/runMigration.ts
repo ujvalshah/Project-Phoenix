@@ -7,7 +7,7 @@
 
 import '../loadEnv.js';
 import { validateEnv } from '../config/envValidation.js';
-import { initLogger } from '../utils/logger.js';
+import { initLogger, getLogger } from '../utils/logger.js';
 import { connectDB } from '../utils/db.js';
 import { migrateCanonicalNames } from '../utils/migrateCanonicalNames.js';
 
@@ -18,18 +18,24 @@ async function main() {
     
     // Initialize logger (required by connectDB)
     initLogger();
+    const logger = getLogger().child({ script: 'runMigration' });
     
-    console.log('Connecting to database...');
+    logger.info({ phase: 'connect_db' }, 'Connecting to database');
     await connectDB();
-    console.log('Database connected.');
+    logger.info({ phase: 'connect_db' }, 'Database connected');
     
-    console.log('Running migration...');
+    logger.info({ phase: 'migrate' }, 'Running canonicalName migration');
     await migrateCanonicalNames();
     
-    console.log('Migration completed successfully!');
+    logger.info({ phase: 'complete' }, 'Migration completed successfully');
     process.exit(0);
   } catch (error) {
-    console.error('Migration failed:', error);
+    try {
+      getLogger().error({ err: error, script: 'runMigration' }, 'Migration failed');
+    } catch {
+      // Bootstrap-level fallback before logger availability.
+      console.error('Migration failed:', error);
+    }
     process.exit(1);
   }
 }
