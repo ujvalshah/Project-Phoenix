@@ -11,8 +11,10 @@ lerna-debug.log*
 lighthouse-*.json
 
 node_modules
-dist
-dist-ssr
+# Only ignore Vite output at repo root — a bare `dist` rule also ignores `server/dist/`
+# (compiled Express), which some hosts prune as an untracked ignored path.
+/dist
+/dist-ssr
 *.local
 
 # Environment variables
