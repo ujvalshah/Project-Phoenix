@@ -1,4 +1,4 @@
-import React, { useState, useCallback, memo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, memo, useEffect, useLayoutEffect, useRef } from 'react';
 import { Bookmark, BookmarkCheck, Trash2, FolderOpen, Loader2 } from 'lucide-react';
 import { useToggleBookmark } from '@/hooks/useBookmarks';
 import { useToast } from '@/hooks/useToast';
@@ -9,6 +9,7 @@ import { bookmarkService } from '@/services/bookmarkService';
 import { twMerge } from 'tailwind-merge';
 import { CollectionSelector } from './CollectionSelector';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
+import { recordBookmarkMount, recordBookmarkRender } from '@/utils/devFeedCloseAnalysis';
 
 /**
  * BookmarkButton Component
@@ -59,6 +60,10 @@ function BookmarkButtonInner({
   onToggle,
   onChangeCollection
 }: BookmarkButtonProps) {
+  if (import.meta.env.DEV) {
+    recordBookmarkRender();
+  }
+
   const toast = useToast();
   const { withAuth } = useRequireAuth();
   const { user } = useAuthSelector(
@@ -67,6 +72,12 @@ function BookmarkButtonInner({
   );
   const [isAnimating, setIsAnimating] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useLayoutEffect(() => {
+    if (import.meta.env.DEV) {
+      recordBookmarkMount();
+    }
+  }, []);
 
   // Initialize from localStorage for instant state (no API call)
   const [isBookmarked, setIsBookmarked] = useState(() =>

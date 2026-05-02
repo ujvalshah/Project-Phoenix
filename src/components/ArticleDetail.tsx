@@ -240,13 +240,12 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const { primaryMedia, supportingMedia } = classifiedMedia;
 
   const mediaSessionKey = `${article.id}:${drawerMediaItems.length}`;
-  const [prevMediaSessionKey, setPrevMediaSessionKey] = useState(mediaSessionKey);
-  if (mediaSessionKey !== prevMediaSessionKey) {
-    setPrevMediaSessionKey(mediaSessionKey);
+
+  useEffect(() => {
     setDrawerMediaIndex(0);
     setInlineVideoStartTime(null);
     setIsMediaCarouselInView(true);
-  }
+  }, [mediaSessionKey]);
 
   const currentDrawerMedia = drawerMediaItems[drawerMediaIndex] || null;
 

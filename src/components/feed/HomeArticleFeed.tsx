@@ -16,6 +16,7 @@ import { useHomeGridColumnCount } from '@/hooks/useHomeGridColumnCount';
 import {
   HOME_FEED_INFINITE_SCROLL_ROOT_MARGIN_PX,
 } from '@/utils/homeGridVirtualization';
+import { beginFeedCloseAnalysisWindow } from '@/utils/devFeedCloseAnalysis';
 
 export interface HomeArticleFeedProps {
   articles: Article[];
@@ -45,6 +46,14 @@ export interface HomeArticleFeedProps {
   searchHighlightQuery?: string;
   /** TanStack window virtualizer overscan in row units (grid mode only). */
   overscanRows?: number;
+}
+
+/** Bring a grid card into view without `virtualizer.scrollToIndex` (avoids TanStack scroll retry loops during layout/close). */
+function scrollGridCardIntoView(articleId: string): void {
+  const el = document.querySelector(`[data-article-id="${CSS.escape(articleId)}"]`);
+  if (el) {
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
 }
 
 const InfiniteScrollTrigger: React.FC<{
@@ -135,14 +144,25 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
   const hasInitializedRef = useRef(articles.length > 0 && !isLoading);
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const setSearchParamsRef = useRef(setSearchParams);
   const expandedIdFromUrl = searchParams.get('expanded');
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [expandedArticleId, setExpandedArticleId] = useState<string | null>(null);
   const isUpdatingFromUrlRef = useRef(false);
 
+  const drawerOpenRef = useRef(drawerOpen);
+  const expandedArticleIdRef = useRef(expandedArticleId);
+  /** Last drawer/expanded snapshot used to skip redundant virtualizer scrolls (same id + still open). */
+  const prevExpandedScrollTargetRef = useRef<{ drawer: boolean; id: string | null }>({
+    drawer: false,
+    id: null,
+  });
+
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const isMultiColumnGrid = viewMode === 'grid' && isDesktop;
+  const isMultiColumnGridRef = useRef(isMultiColumnGrid);
+  const onArticleClickRef = useRef(onArticleClick);
 
   const prepareCacheRef = useRef<Map<string, { source: Article; prepared: Article }>>(new Map());
   const displayArticles = useMemo(() => {
@@ -176,6 +196,14 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
     return out;
   }, [articles]);
 
+  const displayArticlesRef = useRef<Article[]>(displayArticles);
+  drawerOpenRef.current = drawerOpen;
+  expandedArticleIdRef.current = expandedArticleId;
+  displayArticlesRef.current = displayArticles;
+  isMultiColumnGridRef.current = isMultiColumnGrid;
+  onArticleClickRef.current = onArticleClick;
+  setSearchParamsRef.current = setSearchParams;
+
   const gridColumnCount = useHomeGridColumnCount();
   const homeGridVirtualApiRef = useRef<HomeGridVirtualizedApi | null>(null);
   const virtualListAnchorRef = useRef<HTMLDivElement>(null);
@@ -198,15 +226,32 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
   }, [displayArticles.length, gridColumnCount]);
 
   useEffect(() => {
-    if (!isMultiColumnGrid) return;
-    if (!drawerOpen || !expandedArticleId) return;
-    const idx = displayArticles.findIndex((a) => a.id === expandedArticleId);
-    if (idx < 0) return;
-    const id = requestAnimationFrame(() => {
-      homeGridVirtualApiRef.current?.scrollToFlatArticleIndex(idx);
+    if (!isMultiColumnGrid) {
+      prevExpandedScrollTargetRef.current = { drawer: false, id: null };
+      return;
+    }
+    if (!drawerOpen || !expandedArticleId) {
+      prevExpandedScrollTargetRef.current = { drawer: drawerOpen, id: expandedArticleId };
+      return;
+    }
+
+    const prev = prevExpandedScrollTargetRef.current;
+    const shouldScroll =
+      (!prev.drawer && drawerOpen) ||
+      (Boolean(prev.id) && prev.id !== expandedArticleId);
+
+    prevExpandedScrollTargetRef.current = { drawer: drawerOpen, id: expandedArticleId };
+
+    if (!shouldScroll) return;
+
+    const targetId = expandedArticleId;
+    const rafId = requestAnimationFrame(() => {
+      if (!drawerOpenRef.current || expandedArticleIdRef.current !== targetId) return;
+      if (displayArticlesRef.current.findIndex((a) => a.id === targetId) < 0) return;
+      scrollGridCardIntoView(targetId);
     });
-    return () => cancelAnimationFrame(id);
-  }, [isMultiColumnGrid, drawerOpen, expandedArticleId, displayArticles]);
+    return () => cancelAnimationFrame(rafId);
+  }, [isMultiColumnGrid, drawerOpen, expandedArticleId]);
 
   useEffect(() => {
     if (!isMultiColumnGrid) {
@@ -237,7 +282,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
           setDrawerOpen(false);
           setExpandedArticleId(null);
         }
-        setSearchParams((prev) => {
+        setSearchParamsRef.current((prev) => {
           const newParams = new URLSearchParams(prev);
           newParams.delete('expanded');
           return newParams;
@@ -249,7 +294,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
         setExpandedArticleId(null);
       }
     }
-  }, [expandedIdFromUrl, displayArticles, isMultiColumnGrid, setSearchParams]);
+  }, [expandedIdFromUrl, displayArticles, isMultiColumnGrid]);
 
   useEffect(() => {
     if (!isMultiColumnGrid) return;
@@ -322,13 +367,13 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
 
   const handleCardClick = useCallback(
     (article: Article) => {
-      if (isMultiColumnGrid) {
+      if (isMultiColumnGridRef.current) {
         isUpdatingFromUrlRef.current = true;
 
         setExpandedArticleId(article.id);
         setDrawerOpen(true);
 
-        setSearchParams((prev) => {
+        setSearchParamsRef.current((prev) => {
           const newParams = new URLSearchParams(prev);
           newParams.set('expanded', article.id);
           return newParams;
@@ -338,10 +383,10 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
           isUpdatingFromUrlRef.current = false;
         }, 100);
       } else {
-        onArticleClick(article);
+        onArticleClickRef.current(article);
       }
     },
-    [isMultiColumnGrid, onArticleClick, setSearchParams],
+    [],
   );
 
   const handleYouTubeTimestampClick = useCallback(
@@ -353,11 +398,15 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
     (e?: React.MouseEvent) => {
       e?.stopPropagation();
 
+      if (import.meta.env.DEV) {
+        beginFeedCloseAnalysisWindow();
+      }
+
       isUpdatingFromUrlRef.current = true;
 
       setDrawerOpen(false);
 
-      setSearchParams((prev) => {
+      setSearchParamsRef.current((prev) => {
         const newParams = new URLSearchParams(prev);
         newParams.delete('expanded');
         return newParams;
@@ -369,7 +418,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
 
       setExpandedArticleId(null);
     },
-    [setSearchParams],
+    [],
   );
 
   const handleNavigateToCard = useCallback(
@@ -384,7 +433,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
 
         setExpandedArticleId(newArticle.id);
 
-        setSearchParams((prev) => {
+        setSearchParamsRef.current((prev) => {
           const newParams = new URLSearchParams(prev);
           newParams.set('expanded', newArticle.id);
           return newParams;
@@ -394,14 +443,12 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
           isUpdatingFromUrlRef.current = false;
         }, 100);
 
-        homeGridVirtualApiRef.current?.scrollToFlatArticleIndex(newIndex);
-        const cardElement = document.querySelector(`[data-article-id="${newArticle.id}"]`);
-        if (cardElement) {
-          cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
+        requestAnimationFrame(() => {
+          scrollGridCardIntoView(newArticle.id);
+        });
       }
     },
-    [currentIndex, displayArticles, setSearchParams],
+    [currentIndex, displayArticles],
   );
 
   if (error && !isLoading) {

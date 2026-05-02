@@ -8,17 +8,22 @@
   box-sizing: border-box;
 }
 
+/* Clip horizontal bleed without creating an extra scrollport (avoids double vertical scrollbars with nested overflow). */
+html {
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
   padding: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   width: 100%;
 }
 
 #root {
   min-height: 100vh;
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Custom scrollbar styles */

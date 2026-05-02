@@ -4,6 +4,9 @@ import { Article } from '@/types';
 import { getOverlayHost } from '@/utils/overlayHosts';
 import { ArticleDetailLazy, ArticleDetailPanelFallback } from '@/components/ArticleDetailLazy';
 
+/** Must match Tailwind `duration-*` on backdrop and panel exit transitions (ms). */
+const CLOSE_EXIT_MS = 200;
+
 interface ArticleDrawerProps {
   isOpen: boolean;
   onClose: (e?: React.MouseEvent) => void;
@@ -40,6 +43,8 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
   const [isClosing, setIsClosing] = useState(false);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const scrollPositionRef = useRef<number>(0);
+  const bodyScrollLockedRef = useRef(false);
+  const closeTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -48,60 +53,89 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
     });
   }, [isOpen]);
 
-  // Lock body scroll when drawer is open - keep scrollbar visible to prevent layout shift
-  // This is simpler, more performant, and eliminates layout shift completely
+  // Lock body scroll only while open; restore exactly once in cleanup when leaving open.
   useEffect(() => {
-    if (isOpen) {
-      // Store current scroll position
-      scrollPositionRef.current = window.scrollY;
-      
-      // Store previous focus for restoration
-      previousFocusRef.current = document.activeElement as HTMLElement;
-      
-      // Prevent scrolling but keep scrollbar visible to avoid layout shift
-      // Using position: fixed prevents scrolling, overflow-y: scroll keeps scrollbar visible
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${scrollPositionRef.current}px`;
-      document.body.style.width = '100%';
-      document.body.style.overflowY = 'scroll'; // Keep scrollbar visible
-    } else {
-      // Restore scroll position and remove fixed positioning
-      const scrollY = scrollPositionRef.current;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflowY = '';
-      
-      // Restore scroll position after a brief delay to ensure styles are applied
-      setTimeout(() => {
-        window.scrollTo(0, scrollY);
-      }, 0);
-    }
+    if (!isOpen) return;
+
+    scrollPositionRef.current = window.scrollY;
+    previousFocusRef.current = document.activeElement as HTMLElement;
+
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollPositionRef.current}px`;
+    document.body.style.width = '100%';
+    // Match global `overflow-x: clip` + reserve scrollbar gutter while background scroll is disabled.
+    document.body.style.overflowX = 'clip';
+    document.body.style.overflowY = 'scroll';
+    bodyScrollLockedRef.current = true;
+
     return () => {
-      // Cleanup: restore scroll position and remove fixed positioning
+      if (!bodyScrollLockedRef.current) return;
+      bodyScrollLockedRef.current = false;
       const scrollY = scrollPositionRef.current;
       document.body.style.position = '';
       document.body.style.top = '';
       document.body.style.width = '';
+      document.body.style.overflowX = '';
       document.body.style.overflowY = '';
-      setTimeout(() => {
+      window.requestAnimationFrame(() => {
         window.scrollTo(0, scrollY);
-      }, 0);
+      });
     };
   }, [isOpen]);
 
-  // Restore focus on close
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const handleClose = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+
     setIsClosing(true);
-    setTimeout(() => {
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const delayMs = prefersReducedMotion ? 0 : CLOSE_EXIT_MS;
+
+    if (import.meta.env.DEV) {
+      try {
+        performance.mark('drawer:close:start');
+      } catch {
+        /* ignore */
+      }
+    }
+
+    closeTimeoutRef.current = window.setTimeout(() => {
+      closeTimeoutRef.current = null;
+
+      if (import.meta.env.DEV) {
+        try {
+          performance.mark('drawer:close:parentOnClose');
+          performance.measure('drawer:close:untilParent', 'drawer:close:start', 'drawer:close:parentOnClose');
+        } catch {
+          /* ignore */
+        }
+      }
+
       onClose(e);
       setIsClosing(false);
-      // Restore focus to previous element
-      if (previousFocusRef.current) {
-        previousFocusRef.current.focus();
-      }
-    }, 200); // Match animation duration
+
+      requestAnimationFrame(() => {
+        const el = previousFocusRef.current;
+        if (el && document.body.contains(el)) {
+          el.focus();
+        }
+      });
+    }, delayMs);
   }, [onClose]);
 
   // Keyboard handlers
@@ -177,7 +211,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
       <div
         className={`
           absolute inset-0 bg-black/40 backdrop-blur-sm
-          transition-opacity duration-300
+          transition-opacity duration-200 ease-out motion-reduce:transition-none
           ${isClosing ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'}
         `}
         onClick={handleClose}
@@ -191,7 +225,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
           pointer-events-auto relative w-full sm:w-[400px] lg:w-[500px] h-full
           bg-white dark:bg-slate-950 shadow-2xl
           flex flex-col border-l border-slate-200 dark:border-slate-800
-          transform transition-transform duration-300 ease-out
+          transform transition-transform duration-200 ease-out motion-reduce:transition-none
           ${isClosing ? 'translate-x-full' : 'translate-x-0'}
         `}
         onClick={(e) => e.stopPropagation()}

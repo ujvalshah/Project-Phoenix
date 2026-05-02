@@ -199,32 +199,19 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     // Pattern: (MM:SS) or (H:MM:SS) - matches timestamps in parentheses
     // Only convert if onYouTubeTimestampClick is provided
     if (onYouTubeTimestampClick) {
-      if (import.meta.env.DEV) {
-        console.log('[MarkdownRenderer] Processing content for timestamps:', {
-          contentLength: processed.length,
-          hasTimestampPattern: /\(\d{2}:\d{2}\)/.test(processed),
-        });
-      }
-      
       // Match timestamps like (00:36), (05:20), (1:23:45)
-      // Use two separate patterns for clarity
-      
       // Pattern 1: (H:MM:SS) format - 3 parts with colons
-      const beforePattern1 = processed;
       processed = processed.replace(
         /(^|[^[])\s*\((\d{1,2}):(\d{2}):(\d{2})\)/g,
         (match, prefix, hours, minutes, seconds) => {
           const totalSeconds = parseInt(hours, 10) * 3600 + parseInt(minutes, 10) * 60 + parseInt(seconds, 10);
-          if (import.meta.env.DEV) {
-            console.log('[MarkdownRenderer] Pattern 1 match:', { match, hours, minutes, seconds, totalSeconds });
-          }
           if (totalSeconds > 0) {
             return `${prefix}[${match.trim()}](${`youtube-timestamp:${totalSeconds}`})`;
           }
           return match;
         }
       );
-      
+
       // Pattern 2: (MM:SS) format - 2 parts, both 2 digits (most common)
       processed = processed.replace(
         /(^|[^[])\s*\((\d{2}):(\d{2})\)/g,
@@ -234,22 +221,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             return match;
           }
           const totalSeconds = parseInt(minutes, 10) * 60 + parseInt(seconds, 10);
-          if (import.meta.env.DEV) {
-            console.log('[MarkdownRenderer] Pattern 2 match:', { match, minutes, seconds, totalSeconds });
-          }
           if (totalSeconds > 0) {
             return `${prefix}[${match.trim()}](${`youtube-timestamp:${totalSeconds}`})`;
           }
           return match;
         }
       );
-      
-      if (import.meta.env.DEV && beforePattern1 !== processed) {
-        console.log('[MarkdownRenderer] Content after timestamp processing:', {
-          original: beforePattern1.substring(0, 200),
-          processed: processed.substring(0, 200),
-        });
-      }
     }
     
     return processed;
@@ -295,14 +272,6 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         // Handle plain text timestamp links (converted from "(MM:SS)" format)
         if (href?.startsWith('youtube-timestamp:') && onYouTubeTimestampClick) {
           const timestamp = parseInt(href.slice('youtube-timestamp:'.length), 10);
-          if (import.meta.env.DEV) {
-            console.log('[MarkdownRenderer] Plain text timestamp link detected:', {
-              href,
-              timestamp,
-              isValid: !isNaN(timestamp) && timestamp > 0,
-              children: typeof children === 'string' ? children : 'ReactNode',
-            });
-          }
           if (!isNaN(timestamp) && timestamp > 0) {
             return (
               <button
@@ -310,9 +279,6 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (import.meta.env.DEV) {
-                    console.log('[MarkdownRenderer] Plain text timestamp clicked:', { timestamp });
-                  }
                   highlightTimestamp(href);
                   // Pass empty videoId - handler will get it from article context
                   onYouTubeTimestampClick('', timestamp, '');

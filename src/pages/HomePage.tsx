@@ -248,6 +248,10 @@ export const HomePage: React.FC<HomePageProps> = ({
     contentStream,
   });
 
+  /** Keeps latest flattened feed for click telemetry without changing `handleArticleGridClick` identity on every infinite-query append. */
+  const articlesForModalClickRef = useRef<Article[]>([]);
+  articlesForModalClickRef.current = articles;
+
   useEffect(() => {
     performance.mark('home:feed:query-state');
   }, [isLoadingArticles, isFeedRefetching, contentStream]);
@@ -618,7 +622,8 @@ export const HomePage: React.FC<HomePageProps> = ({
   const handleArticleGridClick = useCallback(
     (article: Article) => {
       if (isCommittedSearch) {
-        const rank = articles.findIndex((a) => a.id === article.id) + 1;
+        const rank =
+          articlesForModalClickRef.current.findIndex((a) => a.id === article.id) + 1;
         recordSearchEvent({
           name: 'search_result_clicked',
           payload: {
@@ -631,7 +636,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       }
       setSelectedArticle(article);
     },
-    [isCommittedSearch, committedQuery, articles],
+    [isCommittedSearch, committedQuery],
   );
 
   const handleArticleTagClick = useCallback(

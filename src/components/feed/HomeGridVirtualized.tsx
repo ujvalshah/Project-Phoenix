@@ -12,6 +12,7 @@ import {
   gridRowGapPx,
   HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS,
 } from '@/utils/homeGridVirtualization';
+import { recordMeasureEffect } from '@/utils/devFeedCloseAnalysis';
 
 export type HomeGridVirtualizedApi = {
   scrollToFlatArticleIndex: (flatIndex: number) => void;
@@ -155,6 +156,9 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
 
   useLayoutEffect(() => {
     virtualizer.measure();
+    if (import.meta.env.DEV) {
+      recordMeasureEffect();
+    }
   }, [virtualizer, baseEstimate, rows.length]);
 
   return (

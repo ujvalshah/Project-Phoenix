@@ -19,6 +19,7 @@ import {
   type MasonrySourceLink,
 } from '@/utils/masonryMediaHelper';
 import { getAllImageUrls } from '@/utils/mediaClassifier';
+import { recordNewsCardMemoMismatch, recordNewsCardRender } from '@/utils/devFeedCloseAnalysis';
 
 interface NewsCardProps {
   article: Article;
@@ -44,25 +45,39 @@ interface NewsCardProps {
   priorityThumbnail?: boolean;
 }
 
+/** TEMP dev: first unequal prop name for memo mismatch logging (delete with devFeedCloseAnalysis). */
+function getFirstNewsCardPropsMismatch(
+  prev: NewsCardProps,
+  next: NewsCardProps,
+): keyof NewsCardProps | null {
+  if (prev.article !== next.article) return 'article';
+  if (prev.skipArticlePrepare !== next.skipArticlePrepare) return 'skipArticlePrepare';
+  if (prev.viewMode !== next.viewMode) return 'viewMode';
+  if (prev.onCategoryClick !== next.onCategoryClick) return 'onCategoryClick';
+  if (prev.onClick !== next.onClick) return 'onClick';
+  if (prev.expanded !== next.expanded) return 'expanded';
+  if (prev.onToggleExpand !== next.onToggleExpand) return 'onToggleExpand';
+  if (prev.currentUserId !== next.currentUserId) return 'currentUserId';
+  if (prev.isPreview !== next.isPreview) return 'isPreview';
+  if (prev.selectionMode !== next.selectionMode) return 'selectionMode';
+  if (prev.isSelected !== next.isSelected) return 'isSelected';
+  if (prev.onSelect !== next.onSelect) return 'onSelect';
+  if (prev.onTagClick !== next.onTagClick) return 'onTagClick';
+  if (prev.disableInlineExpansion !== next.disableInlineExpansion) return 'disableInlineExpansion';
+  if (prev.searchHighlightQuery !== next.searchHighlightQuery) return 'searchHighlightQuery';
+  if (prev.priorityThumbnail !== next.priorityThumbnail) return 'priorityThumbnail';
+  return null;
+}
+
 function areNewsCardPropsEqual(prev: NewsCardProps, next: NewsCardProps): boolean {
-  return (
-    prev.article === next.article &&
-    prev.skipArticlePrepare === next.skipArticlePrepare &&
-    prev.viewMode === next.viewMode &&
-    prev.onCategoryClick === next.onCategoryClick &&
-    prev.onClick === next.onClick &&
-    prev.expanded === next.expanded &&
-    prev.onToggleExpand === next.onToggleExpand &&
-    prev.currentUserId === next.currentUserId &&
-    prev.isPreview === next.isPreview &&
-    prev.selectionMode === next.selectionMode &&
-    prev.isSelected === next.isSelected &&
-    prev.onSelect === next.onSelect &&
-    prev.onTagClick === next.onTagClick &&
-    prev.disableInlineExpansion === next.disableInlineExpansion &&
-    prev.searchHighlightQuery === next.searchHighlightQuery &&
-    prev.priorityThumbnail === next.priorityThumbnail
-  );
+  const mismatch = getFirstNewsCardPropsMismatch(prev, next);
+  if (mismatch !== null) {
+    if (import.meta.env.DEV) {
+      recordNewsCardMemoMismatch(String(mismatch));
+    }
+    return false;
+  }
+  return true;
 }
 
 const NewsCardInner = forwardRef<HTMLDivElement, NewsCardProps>(
@@ -85,6 +100,10 @@ const NewsCardInner = forwardRef<HTMLDivElement, NewsCardProps>(
     },
     ref,
   ) => {
+    if (import.meta.env.DEV) {
+      recordNewsCardRender();
+    }
+
     const toast = useToast();
     const { currentUser } = useAuthSelector(
       (a) => ({ currentUser: a.user }),
