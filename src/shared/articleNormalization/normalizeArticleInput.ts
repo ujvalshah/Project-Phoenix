@@ -116,6 +116,9 @@ export interface ArticleInputData {
   // Metadata override flag: true when user explicitly edits caption/title
   // This allows intentional overrides of YouTube titles and other metadata
   allowMetadataOverride?: boolean;
+
+  /** When non-empty after trim, use as card excerpt instead of generateExcerpt(content, title). */
+  excerptOverride?: string;
 }
 
 /**
@@ -955,13 +958,17 @@ export async function normalizeArticleInput(
     isAdmin,
     existingImages = [],
     existingMediaIds = [],
+    excerptOverride,
   } = input;
 
   // Calculate readTime (same for both modes)
   const readTime = calculateReadTime(content);
 
-  // Generate excerpt (same for both modes)
-  const excerpt = generateExcerpt(content, title);
+  // Generate excerpt (same for both modes), unless shell supplied a non-empty override
+  const excerpt =
+    excerptOverride !== undefined && excerptOverride.trim() !== ''
+      ? excerptOverride.trim()
+      : generateExcerpt(content, title);
 
   // Normalize tags
   const tags = normalizeTags(inputTags);

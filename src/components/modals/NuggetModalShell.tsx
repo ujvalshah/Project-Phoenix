@@ -2,6 +2,7 @@ import React from 'react';
 import { Globe, Lock, X } from 'lucide-react';
 import { ModalShell } from '@/components/UI/ModalShell';
 import { FormFooter } from '@/components/CreateNuggetModal/FormFooter';
+import type { ShellDraft } from '@/components/modals/shellDraft';
 
 export function NuggetComposerBodySkeleton(): React.ReactElement {
   return (
@@ -23,12 +24,10 @@ export type NuggetModalShellProps = {
   panelRef: React.RefObject<HTMLDivElement | null>;
   mode: 'create' | 'edit';
   duplicateSubtitle?: string;
-  shellTitle: string;
-  onShellTitleChange: (v: string) => void;
+  /** Shell summary — chrome edits derive from this only (no full Article). */
+  shellDraft: ShellDraft;
+  onShellDraftPatch: (patch: Partial<Pick<ShellDraft, 'title' | 'excerpt' | 'visibility'>>) => void;
   onShellTitleBlur: () => void;
-  shellVisibility: 'public' | 'private';
-  onVisibilityPublic: () => void;
-  onVisibilityPrivate: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSubmit: (intent: 'draft' | 'publish') => void;
@@ -53,12 +52,9 @@ export function NuggetModalShell({
   panelRef,
   mode,
   duplicateSubtitle,
-  shellTitle,
-  onShellTitleChange,
+  shellDraft,
+  onShellDraftPatch,
   onShellTitleBlur,
-  shellVisibility,
-  onVisibilityPublic,
-  onVisibilityPrivate,
   fileInputRef,
   onSubmit,
   isSubmitting,
@@ -81,19 +77,38 @@ export function NuggetModalShell({
         className="relative w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-4xl bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 fade-in duration-200 border border-slate-200 dark:border-slate-800 overflow-hidden"
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-20 shrink-0">
-          <div className="min-w-0">
-            <h2 id="modal-title" className="text-sm font-bold text-slate-900 dark:text-white">
-              {mode === 'edit' ? 'Edit Nugget' : 'Create Nugget'}
-            </h2>
-            {duplicateSubtitle ? (
-              <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">{duplicateSubtitle}</p>
+          <div className="min-w-0 flex flex-1 items-start gap-3">
+            {shellDraft.coverImageUrl ? (
+              <div className="hidden shrink-0 sm:block">
+                <img
+                  src={shellDraft.coverImageUrl}
+                  alt=""
+                  className="h-12 w-12 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+                />
+              </div>
             ) : null}
+            <div className="min-w-0">
+              <h2 id="modal-title" className="text-sm font-bold text-slate-900 dark:text-white">
+                {mode === 'edit' ? 'Edit Nugget' : 'Create Nugget'}
+              </h2>
+              {duplicateSubtitle ? (
+                <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">{duplicateSubtitle}</p>
+              ) : null}
+              {mode === 'edit' ? (
+                <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                  Status:{' '}
+                  <span className="text-slate-700 dark:text-slate-300">
+                    {shellDraft.status === 'draft' ? 'Draft' : 'Published'}
+                  </span>
+                </p>
+              ) : null}
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="p-1 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+            className="p-1 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors shrink-0"
           >
             <X size={18} />
           </button>
@@ -108,8 +123,8 @@ export function NuggetModalShell({
               <input
                 id="title-input"
                 type="text"
-                value={shellTitle}
-                onChange={(e) => onShellTitleChange(e.target.value)}
+                value={shellDraft.title}
+                onChange={(e) => onShellDraftPatch({ title: e.target.value })}
                 onBlur={onShellTitleBlur}
                 placeholder="Enter a title for your nugget..."
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-slate-900 dark:text-white placeholder-slate-500"
@@ -123,12 +138,20 @@ export function NuggetModalShell({
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Excerpt</span>
+              <label htmlFor="excerpt-input" className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                Excerpt (Optional)
+              </label>
               <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                Card excerpt is generated from the body when you save. Inline excerpt editing may arrive in a later
-                release.
+                Short card summary. Leave empty to auto-generate from the body when you save.
               </p>
-              <div className="h-16 w-full rounded-lg bg-slate-200/60 dark:bg-slate-800/60 animate-pulse" />
+              <textarea
+                id="excerpt-input"
+                value={shellDraft.excerpt}
+                onChange={(e) => onShellDraftPatch({ excerpt: e.target.value })}
+                placeholder="Optional excerpt for cards and search previews..."
+                rows={3}
+                className="w-full resize-y min-h-[4rem] px-3 py-2.5 text-sm border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-slate-900 dark:text-white placeholder-slate-500"
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -136,9 +159,9 @@ export function NuggetModalShell({
               <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 w-fit">
                 <button
                   type="button"
-                  onClick={onVisibilityPublic}
+                  onClick={() => onShellDraftPatch({ visibility: 'public' })}
                   className={`px-3 py-1.5 text-[10px] font-bold rounded-md flex items-center gap-1.5 transition-all ${
-                    shellVisibility === 'public'
+                    shellDraft.visibility === 'public'
                       ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white'
                       : 'text-slate-500'
                   }`}
@@ -147,9 +170,9 @@ export function NuggetModalShell({
                 </button>
                 <button
                   type="button"
-                  onClick={onVisibilityPrivate}
+                  onClick={() => onShellDraftPatch({ visibility: 'private' })}
                   className={`px-3 py-1.5 text-[10px] font-bold rounded-md flex items-center gap-1.5 transition-all ${
-                    shellVisibility === 'private'
+                    shellDraft.visibility === 'private'
                       ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white'
                       : 'text-slate-500'
                   }`}

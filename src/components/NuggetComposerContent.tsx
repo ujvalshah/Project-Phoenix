@@ -93,6 +93,8 @@ export type NuggetComposerContentProps = CreateNuggetModalProps & {
   onShellTitleChange: (value: string) => void;
   shellVisibility: 'public' | 'private';
   onShellVisibilityChange: (value: 'public' | 'private') => void;
+  /** Card excerpt from shell; empty => normalize generates from body/title */
+  shellExcerpt: string;
   shellFileInputRef: React.RefObject<HTMLInputElement | null>;
   onFooterMetaChange: (meta: {
     canSubmit: boolean;
@@ -149,6 +151,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       onShellTitleChange,
       shellVisibility,
       onShellVisibilityChange,
+      shellExcerpt,
       shellFileInputRef,
       onFooterMetaChange,
       onComposerReady,
@@ -1704,6 +1707,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
                     explicitlyDeletedImages,
                     // Metadata override flag: true when user explicitly edits caption/title
                     allowMetadataOverride,
+                    excerptOverride: shellExcerpt.trim() !== '' ? shellExcerpt : undefined,
                 },
                 {
                     mode: 'edit',
@@ -2016,6 +2020,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
                 masonryMediaItems: currentMasonryItems, // Use fresh data from imageManager
                 customCreatedAt,
                 isAdmin,
+                excerptOverride: shellExcerpt.trim() !== '' ? shellExcerpt : undefined,
             },
             {
                 mode: 'create',

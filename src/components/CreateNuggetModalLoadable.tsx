@@ -3,7 +3,6 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,6 +15,10 @@ import { loadCreateNuggetModalModule } from './createNuggetModalChunk';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
 import { NuggetModalShell, NuggetComposerBodySkeleton } from '@/components/modals/NuggetModalShell';
 import { getNuggetModalCtpBudgetWarnMs } from '@/utils/nuggetModalPerfConfig';
+import {
+  shellDraftFromModalProps,
+  type ShellDraft,
+} from '@/components/modals/shellDraft';
 
 const NuggetComposerLazy = lazy(() =>
   loadCreateNuggetModalModule().then((m) => ({ default: m.default })),
@@ -43,19 +46,16 @@ const modalErrorFallback = (onClose: () => void) => (
   </div>
 );
 
-export function CreateNuggetModalLoadable({ fallback: _fallback, ...props }: CreateNuggetModalLoadableProps) {
-  if (!props.isOpen) {
-    return null;
-  }
-
+function CreateNuggetModalLoadableInner({ fallback: _fallback, ...props }: CreateNuggetModalLoadableProps) {
   const { isOpen, onClose, mode = 'create', initialData, prefillData } = props;
 
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<NuggetComposerHandle | null>(null);
 
-  const [shellTitle, setShellTitle] = useState('');
-  const [shellVisibility, setShellVisibility] = useState<'public' | 'private'>('public');
+  const [shellDraft, setShellDraft] = useState<ShellDraft>(() =>
+    shellDraftFromModalProps({ mode, initialData, prefillData }),
+  );
   const [composerReady, setComposerReady] = useState(false);
   const [footerMeta, setFooterMeta] = useState({
     canSubmit: false,
@@ -79,15 +79,6 @@ export function CreateNuggetModalLoadable({ fallback: _fallback, ...props }: Cre
   const onComposerReady = useCallback(() => {
     setComposerReady(true);
   }, []);
-
-  useLayoutEffect(() => {
-    if (!isOpen) return;
-    setComposerReady(false);
-    const t = initialData?.title ?? prefillData?.title ?? '';
-    const v = (initialData?.visibility ?? prefillData?.visibility ?? 'public') as 'public' | 'private';
-    setShellTitle(t);
-    setShellVisibility(v);
-  }, [isOpen, initialData?.id, prefillData?.id, mode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -134,8 +125,7 @@ export function CreateNuggetModalLoadable({ fallback: _fallback, ...props }: Cre
     };
   }, [isOpen]);
 
-  const currentLifecycleStatus: 'draft' | 'published' =
-    initialData?.status === 'draft' ? 'draft' : 'published';
+  const currentLifecycleStatus = shellDraft.status;
 
   const primaryLabel =
     mode === 'edit'
@@ -156,23 +146,18 @@ export function CreateNuggetModalLoadable({ fallback: _fallback, ...props }: Cre
     return `Duplicating from: ${prefillData.title?.trim() || 'Untitled'}`;
   }, [mode, prefillData]);
 
-  const handleShellTitleChange = useCallback((v: string) => {
-    setShellTitle(v);
-    requestAnimationFrame(() => composerRef.current?.notifyTitleEditedByUser?.());
+  const onShellDraftPatch = useCallback((patch: Partial<Pick<ShellDraft, 'title' | 'excerpt' | 'visibility'>>) => {
+    setShellDraft((prev) => ({ ...prev, ...patch }));
+    if (patch.title !== undefined) {
+      requestAnimationFrame(() => composerRef.current?.notifyTitleEditedByUser?.());
+    }
+    if (patch.visibility !== undefined) {
+      requestAnimationFrame(() => composerRef.current?.onUserChangedVisibility?.());
+    }
   }, []);
 
   const handleShellTitleBlur = useCallback(() => {
     requestAnimationFrame(() => composerRef.current?.onShellTitleBlur?.());
-  }, []);
-
-  const onVisibilityPublic = useCallback(() => {
-    setShellVisibility('public');
-    requestAnimationFrame(() => composerRef.current?.onUserChangedVisibility?.());
-  }, []);
-
-  const onVisibilityPrivate = useCallback(() => {
-    setShellVisibility('private');
-    requestAnimationFrame(() => composerRef.current?.onUserChangedVisibility?.());
   }, []);
 
   const handleFileSelect = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -184,6 +169,14 @@ export function CreateNuggetModalLoadable({ fallback: _fallback, ...props }: Cre
     else composerRef.current?.submitPublish();
   }, []);
 
+  const setShellTitleFromComposer = useCallback((value: string) => {
+    setShellDraft((prev) => ({ ...prev, title: value }));
+  }, []);
+
+  const setShellVisibilityFromComposer = useCallback((value: 'public' | 'private') => {
+    setShellDraft((prev) => ({ ...prev, visibility: value }));
+  }, []);
+
   return (
     <ErrorBoundary fallback={modalErrorFallback(onClose)}>
       <NuggetModalShell
@@ -192,12 +185,9 @@ export function CreateNuggetModalLoadable({ fallback: _fallback, ...props }: Cre
         panelRef={panelRef}
         mode={mode}
         duplicateSubtitle={duplicateSubtitle}
-        shellTitle={shellTitle}
-        onShellTitleChange={handleShellTitleChange}
+        shellDraft={shellDraft}
+        onShellDraftPatch={onShellDraftPatch}
         onShellTitleBlur={handleShellTitleBlur}
-        shellVisibility={shellVisibility}
-        onVisibilityPublic={onVisibilityPublic}
-        onVisibilityPrivate={onVisibilityPrivate}
         fileInputRef={fileInputRef}
         onFileSelect={handleFileSelect}
         onSubmit={handleSubmit}
@@ -213,10 +203,11 @@ export function CreateNuggetModalLoadable({ fallback: _fallback, ...props }: Cre
           <NuggetComposerLazy
             ref={composerRef}
             {...props}
-            shellTitle={shellTitle}
-            onShellTitleChange={setShellTitle}
-            shellVisibility={shellVisibility}
-            onShellVisibilityChange={setShellVisibility}
+            shellTitle={shellDraft.title}
+            onShellTitleChange={setShellTitleFromComposer}
+            shellVisibility={shellDraft.visibility}
+            onShellVisibilityChange={setShellVisibilityFromComposer}
+            shellExcerpt={shellDraft.excerpt}
             shellFileInputRef={fileInputRef}
             onFooterMetaChange={onFooterMetaChange}
             onComposerReady={onComposerReady}
@@ -226,4 +217,11 @@ export function CreateNuggetModalLoadable({ fallback: _fallback, ...props }: Cre
       </NuggetModalShell>
     </ErrorBoundary>
   );
+}
+
+export function CreateNuggetModalLoadable(props: CreateNuggetModalLoadableProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <CreateNuggetModalLoadableInner {...props} />;
 }

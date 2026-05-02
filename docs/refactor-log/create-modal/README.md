@@ -27,11 +27,48 @@
 
 **ShellDraft note:** Title + visibility are orchestrated from `CreateNuggetModalLoadable` today, still hydrated from full `initialData` / `prefillData` and composer init. Narrow `ShellDraft` types belong in Phase 2 per `01-data-contract.md`.
 
+## Phase 2 — `ShellDraft` + `ContentDraft` boundary (done)
+
+**Goal:** Shell paints from a **minimal summary type** only; full `Article` remains the integration fallback for `NuggetComposerContent` (image manager, normalize, save) until `AdvancedDetail` split.
+
+**Types & mappers**
+
+- `src/components/modals/shellDraft.ts` — `ShellDraft` (id, title, excerpt, status, visibility, optional `coverImageUrl`), `ContentDraft` (content, tags, tagIds), `shellDraftFromModalProps`, `articleToShellDraft`, `articleToContentDraft`, `emptyShellDraft`.
+
+**Flow**
+
+- `CreateNuggetModalLoadable` maps `initialData` / `prefillData` → `ShellDraft` on each mount (inner unmounts when the modal closes, so shell state resets without a sync `useEffect`). **`ContentDraft`** + `articleToContentDraft` live in `shellDraft.ts` for the deferred tier; the lazy composer still receives full **`initialData` / `prefillData`** in Phase 2 until an AdvancedDetail-only open path exists.
+- `NuggetModalShell` accepts **`shellDraft` + `onShellDraftPatch`** only for chrome fields (no `Article` prop). Excerpt is a real optional field; empty excerpt on save still uses `generateExcerpt` in `normalizeArticleInput` unless `excerptOverride` is non-empty.
+- `NuggetComposerContent` still receives **full `initialData` / `prefillData`** and **`shellExcerpt`** for `excerptOverride` on normalize.
+
+**Before / after (data flow)**
+
+```mermaid
+flowchart TB
+  subgraph before["Before Phase 2"]
+    A1[Article in props] --> L1[Loadable]
+    L1 --> S1[Shell props pieced from Article fields]
+    L1 --> C1[lazy Composer + full Article]
+  end
+
+  subgraph after["After Phase 2"]
+    A2[Article in props fallback] --> M[shellDraftFromModalProps]
+    M --> SD[ShellDraft]
+    A2 --> M2[articleToContentDraft typed tier]
+    M2 --> CD[ContentDraft contract]
+    SD --> NS[NuggetModalShell]
+    NS -->|title visibility excerpt status| UserChrome[Instant chrome]
+    A2 --> NC[NuggetComposerContent lazy]
+    CD -.->|future hydrate| NC
+    NC -->|full Article today| UserDeep[Deferred body + media]
+  end
+```
+
 ## Next tasks (ordered)
 
 1. Reduce duplicated warning (title shell + editor panel) if UX feels noisy.
-2. **`ShellDraft` types** + cache-first open; composer fetch `AdvancedDetail` behind defer.
-3. Admin path: shell-first + drawer loading without blocking chrome (explicitly out of Phase 1).
+2. **AdvancedDetail** inside deferred islands; shell opens from list cache `ShellDraft` only (no full `Article` in loadable props).
+3. **Admin path:** shell-first from row summary while `getArticleById` completes (explicitly out of Phase 1).
 4. Optional: Playwright timing budgets once shell metrics are stable.
 
 ## Bundle snapshot (after Phase 1, `npm run build`)
@@ -46,4 +83,4 @@ Raw bytes from one local Vite 7 build (hashes will differ per build):
 
 **Before (prior single load):** one `CreateNuggetModal-*.js` chunk (~similar total to shell+composer combined, but **full** modal including chrome had to download before any paint).
 
-Risks for ShellDraft extraction: **dual sources** for title/visibility (Loadable `useLayoutEffect` vs composer `startTransition` init), keeping collection-reset semantics on visibility, and preserving `articleKeys` cache updates on save without widening props to full `Article` in the shell tree.
+Risks for ShellDraft extraction: **dual sources** for title/visibility/excerpt (Loadable `shellDraft` vs composer init from `initialData`) — kept aligned by resetting shell from props on open and driving normalize `excerptOverride` from `shellExcerpt`. **Phase 2 admin risk:** admin still awaits full article before modal; unifying with **shell-first + `AdvancedDetail` fetch** may surface race windows between row summary and server detail (see Phase 2 **Next tasks**).

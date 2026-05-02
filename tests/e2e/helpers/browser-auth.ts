@@ -38,27 +38,48 @@ export async function establishBrowserAuthSession(
 ): Promise<boolean> {
   await gotoHomeWithRetry(page);
   await page.waitForLoadState('domcontentloaded');
-  const ok = await page.evaluate(
-    async ({
-      mail,
-      pass,
-    }: {
-      mail: string;
-      pass: string;
-    }) => {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email: mail, password: pass }),
-      });
-      return res.ok;
-    },
-    { mail: email, pass: password },
-  );
-  if (!ok) {
+
+  /** Same locator as `openCreateModal` — stable on xl+ desktop header (after login). */
+  const createBtn = page.locator('header').getByTestId('create-nugget-button');
+
+  const maxAttempts = 6;
+  let loginOk = false;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const result = await page.evaluate(
+      async ({
+        mail,
+        pass,
+      }: {
+        mail: string;
+        pass: string;
+      }) => {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email: mail, password: pass }),
+        });
+        return { ok: res.ok, status: res.status };
+      },
+      { mail: email, pass: password },
+    );
+
+    if (result.ok) {
+      loginOk = true;
+      break;
+    }
+    const retryable = result.status === 429 || result.status === 503;
+    if (retryable && attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, 3000 + attempt * 2000));
+      continue;
+    }
     return false;
   }
+
+  if (!loginOk) {
+    return false;
+  }
+
   let reloaded = false;
   for (let i = 0; i < 5; i++) {
     try {
@@ -74,7 +95,6 @@ export async function establishBrowserAuthSession(
   }
   await page.waitForLoadState('domcontentloaded');
   /** Cookie session must hydrate before Header exposes Create — avoids modal opens against logged-out shell */
-  const createBtn = page.getByRole('button', { name: /^create nugget$/i }).first();
   await createBtn.waitFor({ state: 'visible', timeout: 45_000 });
   return true;
 }
