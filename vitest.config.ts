@@ -29,8 +29,6 @@ export default defineConfig({
       'src/__tests__/utils/mockArticles.ts',
       'src/__tests__/utils/testSetup.ts',
       'server/src/__tests__/helpers/**',
-      // QUARANTINE: @/components/Feed no longer exists at this path — restore when feed test targets current module
-      'src/__tests__/components/Feed.test.tsx',
       // QUARANTINE: require Mongo + integration env — run with server test job when DB available
       'server/src/__tests__/feedbackController.test.ts',
       'server/src/__tests__/privacy.test.ts',
@@ -51,13 +49,14 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.spec.ts'
       ],
-      // Minimum coverage thresholds (adjust as test coverage grows)
-      // thresholds: {
-      //   statements: 50,
-      //   branches: 50,
-      //   functions: 50,
-      //   lines: 50
-      // }
+      // Conservative baseline thresholds to prevent accidental regressions
+      // without making CI unusably strict for a large in-flight codebase.
+      thresholds: {
+        statements: 15,
+        branches: 10,
+        functions: 15,
+        lines: 15
+      }
     },
     
     // Timeouts

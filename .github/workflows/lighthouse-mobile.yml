@@ -1,0 +1,167 @@
+# Mobile Lighthouse on production build (`vite preview`). TASK-030: median-of-3 lab metrics +
+# Core-Web-Vitals-aligned budgets. Navigation-mode Lighthouse has no field INP — we use
+# `max-potential-fid` as the lab proxy when `interaction-to-next-paint` is absent (see step log).
+#
+# Phase 0 baseline (Windows, lighthouse@12, throttling-method=provided, 2026-05-02): LCP ~603ms,
+# FCP ~209ms, CLS ~0.054, TBT ~39ms, max-potential-fid ~89ms (medians of 3 runs).
+
+name: Lighthouse mobile (preview)
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      intentional_budget_failure:
+        description: >
+          Set true to force an assertion failure (verify TASK-035 gate: LCP/CLS/INP-lab vs env budgets).
+          Re-run with false before merging any workflow change. Normal runs on healthy main should pass.
+        type: boolean
+        default: false
+
+concurrency:
+  group: lighthouse-mobile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LH_MAX_LCP_MS: '2500'
+  LH_MAX_CLS: '0.1'
+  LH_MAX_INP_LAB_MS: '200'
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Production build (client)
+        run: npm run build
+
+      - name: Start preview, run Lighthouse x3, assert budgets (median)
+        env:
+          INTENTIONAL_FAIL: ${{ github.event.inputs.intentional_budget_failure == 'true' }}
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 3000 &
+          PREVIEW_PID=$!
+          trap 'kill "$PREVIEW_PID" 2>/dev/null || true' EXIT
+
+          npx --yes wait-on@7 http://127.0.0.1:3000 -t 120000
+
+          for i in 0 1 2; do
+            npx --yes lighthouse@12 http://127.0.0.1:3000/ \
+              --only-categories=performance \
+              --output=json \
+              --output-path="lighthouse-mobile-run-${i}.json" \
+              --form-factor=mobile \
+              --screenEmulation.mobile \
+              --quiet \
+              --disable-full-page-screenshot \
+              --max-wait-for-load=90000 \
+              --throttling-method=provided \
+              --chrome-flags="--headless=new --no-sandbox --disable-gpu"
+          done
+
+          node <<'NODE'
+          const fs = require('fs');
+
+          const intentional = process.env.INTENTIONAL_FAIL === 'true';
+          const maxLcp = intentional ? 100 : Number(process.env.LH_MAX_LCP_MS || 800);
+          const maxCls = intentional ? 1e-6 : Number(process.env.LH_MAX_CLS || 0.07);
+          const maxInpLab = intentional ? 1 : Number(process.env.LH_MAX_INP_LAB_MS || 120);
+
+          function median(arr) {
+            const s = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(s.length / 2);
+            return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+          }
+
+          function readMetric(report, id) {
+            const a = report.audits[id];
+            return typeof a?.numericValue === 'number' && !Number.isNaN(a.numericValue)
+              ? a.numericValue
+              : null;
+          }
+
+          /** Navigation Lighthouse often omits INP; max-potential-fid is the documented lab proxy signal. */
+          function inpLabMs(report) {
+            const inp = readMetric(report, 'interaction-to-next-paint');
+            if (inp != null) return { ms: inp, source: 'interaction-to-next-paint' };
+            const mpfid = readMetric(report, 'max-potential-fid');
+            if (mpfid != null) return { ms: mpfid, source: 'max-potential-fid' };
+            return { ms: null, source: 'none' };
+          }
+
+          const runs = [0, 1, 2].map((i) =>
+            JSON.parse(fs.readFileSync(`lighthouse-mobile-run-${i}.json`, 'utf8')),
+          );
+
+          const lcps = runs.map((r) => readMetric(r, 'largest-contentful-paint')).filter((v) => v != null);
+          const fcps = runs.map((r) => readMetric(r, 'first-contentful-paint')).filter((v) => v != null);
+          const clss = runs.map((r) => readMetric(r, 'cumulative-layout-shift')).filter((v) => v != null);
+          const tbts = runs.map((r) => readMetric(r, 'total-blocking-time')).filter((v) => v != null);
+          const inpInfos = runs.map((r) => inpLabMs(r));
+
+          const mLcp = median(lcps);
+          const mFcp = fcps.length ? median(fcps) : null;
+          const mCls = median(clss);
+          const mTbt = tbts.length ? median(tbts) : null;
+          const inpVals = inpInfos.map((x) => x.ms).filter((v) => v != null);
+          const mInpLab = inpVals.length ? median(inpVals) : null;
+          const inpSource = inpInfos.find((x) => x.source !== 'none')?.source || 'none';
+
+          const summary = {
+            intentional_budget_failure: intentional,
+            median_ms: { LCP: mLcp, FCP: mFcp, TBT: mTbt },
+            median_INP_lab_ms: mInpLab,
+            INP_lab_source: inpSource,
+            median_CLS: mCls,
+            budgets: { max_LCP_ms: maxLcp, max_CLS: maxCls, max_INP_lab_ms: maxInpLab },
+          };
+          console.log('--- Lighthouse CI summary (medians of 3 runs) ---');
+          console.log(JSON.stringify(summary, null, 2));
+
+          let failed = false;
+          const eps = 1e-9;
+
+          if (mLcp > maxLcp + eps) {
+            console.error(`FAIL: LCP median ${mLcp.toFixed(0)}ms > ${maxLcp}ms`);
+            failed = true;
+          }
+          if (mCls > maxCls + eps) {
+            console.error(`FAIL: CLS median ${mCls} > ${maxCls}`);
+            failed = true;
+          }
+          if (mInpLab == null) {
+            console.error('FAIL: No INP lab proxy (interaction-to-next-paint / max-potential-fid) in reports');
+            failed = true;
+          } else if (mInpLab > maxInpLab + eps) {
+            console.error(
+              `FAIL: INP lab (${inpSource}) median ${mInpLab.toFixed(0)}ms > ${maxInpLab}ms`,
+            );
+            failed = true;
+          }
+
+          if (failed) process.exit(1);
+          console.log('OK: All Lighthouse budgets satisfied.');
+          NODE
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-mobile-ci-runs
+          path: lighthouse-mobile-run-*.json

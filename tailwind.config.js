@@ -36,15 +36,10 @@ export default {
             transform: 'translateY(0)'
           },
         },
-        'fade-in': {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
       },
       animation: {
         shimmer: 'shimmer 2s infinite linear',
         'fade-in-up': 'fade-in-up 0.4s ease-out forwards',
-        'fade-in': 'fade-in 0.3s ease-out forwards',
       },
       transitionDelay: {
         '75': '75ms',

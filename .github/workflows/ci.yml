@@ -29,7 +29,23 @@ jobs:
   quality:
     name: 🔍 Lint & Type Check
     runs-on: ubuntu-latest
-    
+
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+
+    env:
+      CI: true
+      NODE_ENV: development
+      MONGO_URI: mongodb://127.0.0.1:27017/nuggets_e2e_ci
+      JWT_SECRET: ci-playwright-jwt-secret-key-min-32-chars!!
+      ENABLE_EMAIL_VERIFICATION: 'false'
+      TEST_USER_EMAIL: ci-e2e@example.com
+      TEST_USER_PASSWORD: TestPassword123!
+      E2E_AUTH_RELAXED_LIMITS: '1'
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -43,12 +59,24 @@ jobs:
       - name: 📚 Install dependencies
         run: npm ci
 
-      - name: 🔍 Run ESLint
-        run: npm run lint
+      - name: 🔍 Run ESLint (client)
+        run: npm run lint:client
         continue-on-error: false
 
-      - name: 📝 Type check
-        run: npx tsc --noEmit
+      - name: 🔍 Run ESLint (server)
+        run: npm run lint:server
+
+      - name: 📝 Type check (client)
+        run: npm run typecheck:client
+
+      - name: 📝 Type check (server)
+        run: npm run typecheck:server
+
+      - name: 🎭 Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: 🎭 E2E smoke (perf guards — CI expects 2 passing tests with live API)
+        run: npm run test:e2e:smoke
 
   # ============================================
   # SECURITY SCANNING
@@ -101,6 +129,9 @@ jobs:
 
       - name: 🏗️ Build & verify (bundle size budgets)
         run: npm run build:verify
+
+      - name: 🏗️ Build server (TypeScript -> JS)
+        run: npm run build:server
 
       - name: 📤 Upload build artifacts
         uses: actions/upload-artifact@v4

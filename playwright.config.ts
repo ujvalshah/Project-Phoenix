@@ -17,10 +17,10 @@ export default defineConfig({
   fullyParallel: false,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 1,
-  /* Limit workers to avoid rate limiting on login API */
-  workers: process.env.CI ? 1 : 2,
+  /** Single retry absorbs cold-cache modal chunk variance without triplicating CI runtime */
+  retries: 1,
+  /** Single worker keeps smoke sequential and avoids cross-test server contention */
+  workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Global timeout for each test */
@@ -57,14 +57,19 @@ export default defineConfig({
     // },
   ],
 
-  /* Auto-start frontend server before running tests */
+  /* Auto-start API + Vite; wait for Mongo-backed `/api/health` (not bare Vite HTML). */
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
+    command: 'npm run dev:all',
+    url: 'http://localhost:3000/api/health',
     reuseExistingServer: !process.env.CI, // Reuse existing server in local dev, don't in CI
-    timeout: 120 * 1000, // 2 minutes timeout for server startup
+    timeout: 240 * 1000,
     stdout: 'pipe',
     stderr: 'pipe',
+    env: {
+      ...process.env,
+      /** Lets Playwright global-setup + establishBrowserAuthSession login without 429 storm */
+      E2E_AUTH_RELAXED_LIMITS: '1',
+    },
   },
 });
 

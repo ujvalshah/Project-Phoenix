@@ -20,6 +20,9 @@ COPY . .
 # Build frontend
 RUN npm run build
 
+# Build backend (TypeScript -> JavaScript)
+RUN npm run build:server
+
 # Verify build output exists
 RUN test -d dist && echo "✓ Frontend build successful"
 
@@ -48,9 +51,8 @@ RUN npm ci --only=production --prefer-offline --no-audit --no-fund && \
 # Copy built frontend from stage 1
 COPY --from=frontend-build /app/dist ./dist
 
-# Copy server source (TypeScript compiled at runtime via tsx)
-COPY server ./server
-COPY tsconfig.json ./
+# Copy compiled server output
+COPY --from=frontend-build /app/server/dist ./server/dist
 
 # Copy env.example for reference
 COPY env.example ./
@@ -73,9 +75,8 @@ USER appuser
 # This ensures graceful shutdown works correctly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start server
-# Using tsx for TypeScript execution
-CMD ["node", "--import", "tsx", "server/src/index.ts"]
+# Start compiled server
+CMD ["node", "server/dist/index.js"]
 
 
 
