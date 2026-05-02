@@ -151,9 +151,9 @@ The server will:
 1. Create a new Web Service on [Render](https://render.com)
 2. Connect your repo
 3. Build command: `npm install && npm run build` (builds the SPA and compiles `server/dist/`)
-4. Start command: `npm run start` (runs `node server/dist/index.js`)
+4. Start command: `npm run start` (runs the compiled server via `scripts/run-production-server.mjs`)
 
-If the app exits with **Cannot find module `.../server/dist/index.js`**, open the **build** log (not only deploy): it must show `vite build` and `tsc` finishing. The **Build command** must not be empty (use the command in step 3). This repo ignores only the repo-root `/dist` (Vite output), not `server/dist`, so compiled server output is not mistaken for a gitignored folder.
+If the app exits with **Cannot find module `.../server/dist/index.js`**, open the **build** log (not only deploy): it must show `vite build` and `tsc` finishing. The **Build command** must not be empty (use the command in step 3). Set **Root Directory** to the repository root (leave blank); if it is set to `src`, relative paths like `server/dist/index.js` resolve under `src/server/...` and the bundle is not found. The `start` script uses `scripts/run-production-server.mjs` so the server path is resolved from the repo root even when cwd is wrong. This repo ignores only the repo-root `/dist` (Vite output), not `server/dist`, so compiled server output is not mistaken for a gitignored folder.
 
 ### Vercel + Separate Backend
 
@@ -173,7 +173,7 @@ For split deployment (frontend on Vercel, backend elsewhere):
 | `npm run dev:all` | Run frontend + backend concurrently |
 | `npm run build` | Build frontend (`dist/`) and server (`server/dist/`) for production |
 | `npm run build:server` | Compile Express TypeScript only (also run as part of `npm run build`) |
-| `npm run start` | Run compiled production server (`server/dist/index.js`) |
+| `npm run start` | Run compiled production server (via `scripts/run-production-server.mjs` → `server/dist/index.js`) |
 | `npm run preview` | Preview production build locally |
 | `npm run promote-admin` | Promote a user to admin role |
 | `npm run list-users` | List all users in database |
