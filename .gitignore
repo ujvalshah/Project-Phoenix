@@ -101,3 +101,10 @@ test-results/
 playwright-report/
 reports/
 scripts/validate/output/
+
+# Local tool / audit drops (regenerated; do not commit)
+eslint-errors.json
+lighthouse-report*.html
+# Stray emit next to `nugget.ts` if tsc is run without project outDir
+src/types/nugget.js
+src/types/nugget.js.map
