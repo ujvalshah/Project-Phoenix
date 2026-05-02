@@ -64,12 +64,46 @@ flowchart TB
   end
 ```
 
+## Phase 3 — `ContentDraft`-first composer hydration (done)
+
+**Goal:** Prefer the narrow **`ContentDraft`** slice for initial **body + dimension tag ids**; keep **full `Article`** for media, URLs, layout, collections, and save/normalize until `AdvancedDetail` is fetched independently.
+
+**Current transitional source order (precedence)**
+
+| Layer | Source of truth | Used for |
+|--------|-----------------|----------|
+| Shell | **`ShellDraft`** (from loadable) | Title, excerpt, visibility, status chrome, cover thumb |
+| Composer “light” | **`ContentDraft`** (from loadable, or derived via `articleToContentDraft` fallback) | Initial `content`, `dimensionTagIds` (with Article fallback if draft body/tags empty) |
+| Composer “heavy” | **Full `Article`** (`initialData` / `duplicatePrefillArticle`) | `useImageManager`, URL/link preview, external links, layout visibility, stream, disclaimer, collections, submit payloads |
+
+**Implementation notes**
+
+- `CreateNuggetModalLoadable` passes **`contentDraft={articleToContentDraft(...)}`** into the lazy composer.
+- First-time form init **does not** call `onShellTitleChange` / `onShellVisibilityChange` from article rows (shell is already aligned from `ShellDraft`).
+- **`imageManager.syncFromArticle`** runs inside a **nested `startTransition`** after lighter state is set so React can commit shell + text fields first.
+- **Phase 3 admin:** still out of scope (no shell-first admin).
+
+**Tests:** `src/components/modals/__tests__/shellDraft.test.ts` — mapper contracts.
+
 ## Next tasks (ordered)
 
 1. Reduce duplicated warning (title shell + editor panel) if UX feels noisy.
-2. **AdvancedDetail** inside deferred islands; shell opens from list cache `ShellDraft` only (no full `Article` in loadable props).
-3. **Admin path:** shell-first from row summary while `getArticleById` completes (explicitly out of Phase 1).
+2. **AdvancedDetail** fetch inside deferred islands; optional open with only `ShellDraft` + `ContentDraft` in props (drop `Article` from loadable when cache/summary APIs exist).
+3. **Admin path:** shell-first from admin table row `ShellDraft` while `getArticleById` loads **AdvancedDetail** (see blockers below).
 4. Optional: Playwright timing budgets once shell metrics are stable.
+
+### Remaining blockers before admin shell-first open
+
+- **Row → `ShellDraft` mapping:** admin table must expose the same summary fields as `ShellDraft` (or an API returns them without full media graph).
+- **`AdvancedDetail` merge:** when `getArticleById` (or equivalent) returns full article, merge into composer without resetting user shell edits unless explicit refresh.
+- **Auth / permissions:** admin-only fields (`customCreatedAt`, moderation) stay on **AdvancedDetail** path only.
+- **Error UX:** load failure on detail should keep shell open with inline errors in deferred panels (`01-data-contract.md`).
+
+### Dual-source risks (Phase 3)
+
+- **`content` / `tagIds`:** `ContentDraft` vs `Article` — transitional fallback when draft slice is empty; prefer keeping loadable as single producer of `ContentDraft` from the same `Article` used for heavy hydration to avoid drift.
+- **Shell vs article:** title/visibility/excerpt remain edited in shell; composer must not re-push article title/visibility on init (guarded in Phase 3).
+- **`resolvedContentDraft` identity:** effect depends on memoized draft; spurious object churn from parents could theoretically retrigger init — `initializationKey` limits reruns to the article id.
 
 ## Bundle snapshot (after Phase 1, `npm run build`)
 
@@ -83,4 +117,4 @@ Raw bytes from one local Vite 7 build (hashes will differ per build):
 
 **Before (prior single load):** one `CreateNuggetModal-*.js` chunk (~similar total to shell+composer combined, but **full** modal including chrome had to download before any paint).
 
-Risks for ShellDraft extraction: **dual sources** for title/visibility/excerpt (Loadable `shellDraft` vs composer init from `initialData`) — kept aligned by resetting shell from props on open and driving normalize `excerptOverride` from `shellExcerpt`. **Phase 2 admin risk:** admin still awaits full article before modal; unifying with **shell-first + `AdvancedDetail` fetch** may surface race windows between row summary and server detail (see Phase 2 **Next tasks**).
+Risks for ShellDraft / ContentDraft: see **Phase 3** dual-source notes; shell init no longer overwrites title/visibility from article on composer mount.

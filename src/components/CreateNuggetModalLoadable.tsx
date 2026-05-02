@@ -16,8 +16,10 @@ import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
 import { NuggetModalShell, NuggetComposerBodySkeleton } from '@/components/modals/NuggetModalShell';
 import { getNuggetModalCtpBudgetWarnMs } from '@/utils/nuggetModalPerfConfig';
 import {
+  articleToContentDraft,
   shellDraftFromModalProps,
   type ShellDraft,
+  type ContentDraft,
 } from '@/components/modals/shellDraft';
 
 const NuggetComposerLazy = lazy(() =>
@@ -79,6 +81,15 @@ function CreateNuggetModalLoadableInner({ fallback: _fallback, ...props }: Creat
   const onComposerReady = useCallback(() => {
     setComposerReady(true);
   }, []);
+
+  /** Preferred slice for composer text/tags hydration (Phase 3); matches modal props source. */
+  const contentDraft: ContentDraft = useMemo(
+    () =>
+      articleToContentDraft(
+        mode === 'edit' ? initialData : prefillData ?? undefined,
+      ),
+    [mode, initialData, prefillData],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -208,6 +219,7 @@ function CreateNuggetModalLoadableInner({ fallback: _fallback, ...props }: Creat
             shellVisibility={shellDraft.visibility}
             onShellVisibilityChange={setShellVisibilityFromComposer}
             shellExcerpt={shellDraft.excerpt}
+            contentDraft={contentDraft}
             shellFileInputRef={fileInputRef}
             onFooterMetaChange={onFooterMetaChange}
             onComposerReady={onComposerReady}

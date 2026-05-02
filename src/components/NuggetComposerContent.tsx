@@ -51,6 +51,8 @@ import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } fr
 import { useAllCollections } from '@/hooks/useNuggetFormData';
 import { useDisclaimerConfig } from '@/hooks/useDisclaimerConfig';
 import { NuggetContentEditorPanel } from './CreateNuggetModal/NuggetContentEditorPanel';
+import type { ContentDraft } from '@/components/modals/shellDraft';
+import { articleToContentDraft } from '@/components/modals/shellDraft';
 
 const UnifiedMediaManagerLazy = lazy(() =>
   import('./CreateNuggetModal/UnifiedMediaManager').then((m) => ({ default: m.UnifiedMediaManager })),
@@ -95,6 +97,10 @@ export type NuggetComposerContentProps = CreateNuggetModalProps & {
   onShellVisibilityChange: (value: 'public' | 'private') => void;
   /** Card excerpt from shell; empty => normalize generates from body/title */
   shellExcerpt: string;
+  /**
+   * Summary slice for body/tags initial hydration (Phase 3). When omitted, derived from Article props.
+   */
+  contentDraft?: ContentDraft;
   shellFileInputRef: React.RefObject<HTMLInputElement | null>;
   onFooterMetaChange: (meta: {
     canSubmit: boolean;
@@ -152,6 +158,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       shellVisibility,
       onShellVisibilityChange,
       shellExcerpt,
+      contentDraft: contentDraftProp,
       shellFileInputRef,
       onFooterMetaChange,
       onComposerReady,
@@ -179,6 +186,15 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
   );
   const duplicatePrefillArticle = duplicatePrefillPayload?.article;
   const duplicatePrefillUrls = duplicatePrefillPayload?.sourceUrls || [];
+
+  const resolvedContentDraft = useMemo<ContentDraft>(
+    () =>
+      contentDraftProp ??
+      articleToContentDraft(
+        mode === 'edit' ? initialData : duplicatePrefillArticle ?? prefillData,
+      ),
+    [contentDraftProp, mode, initialData, duplicatePrefillArticle, prefillData],
+  );
 
   // Unified image management hook (Phase 9: Legacy code removed)
   const imageManager = useImageManager(mode, initialData, duplicatePrefillArticle);
@@ -342,11 +358,19 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       const initializationKey = articleToInitialize?.id || null;
 
       if (articleToInitialize && initializationKey && initializedFromDataRef.current !== initializationKey) {
-        onShellTitleChange(articleToInitialize.title || '');
         setIsTitleUserEdited(!!articleToInitialize.title); // PHASE 6: Mark as edited if title exists
         setSuggestedTitle(null); // PHASE 3: Clear suggestion in edit mode
-        setContent(articleToInitialize.content || '');
-        setDimensionTagIds(articleToInitialize.tagIds || []);
+        /** Phase 3: ContentDraft-first; Article fallback only if draft body empty (transitional). */
+        setContent(
+          resolvedContentDraft.content !== ''
+            ? resolvedContentDraft.content
+            : (articleToInitialize.content || ''),
+        );
+        setDimensionTagIds(
+          resolvedContentDraft.tagIds.length > 0
+            ? [...resolvedContentDraft.tagIds]
+            : [...(articleToInitialize.tagIds ?? [])],
+        );
         // Initialize customCreatedAt if article has isCustomCreatedAt flag (admin only)
         if (mode === 'edit' && isAdmin && (articleToInitialize as any).isCustomCreatedAt && articleToInitialize.publishedAt) {
           // Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
@@ -358,7 +382,6 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
           const minutes = String(date.getMinutes()).padStart(2, '0');
           setCustomCreatedAt(`${year}-${month}-${day}T${hours}:${minutes}`);
         }
-        onShellVisibilityChange(articleToInitialize.visibility || 'public');
         setContentStream(clampEditorContentStream(articleToInitialize.contentStream));
         // Initialize externalLinks and layoutVisibility from initialData
         setExternalLinks(articleToInitialize.externalLinks || []);
@@ -419,8 +442,10 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
         // Editorial collections load via getCollectionsContainingArticle + editArticleCollections.
         // MediaIds are preserved from initialData and will be included in update
         
-        // Sync imageManager with article data (Phase 9: Legacy code removed)
-        imageManager.syncFromArticle(articleToInitialize);
+        // Phase 3: defer heavy image graph hydration so shell + ContentDraft fields can commit first.
+        startTransition(() => {
+          imageManager.syncFromArticle(articleToInitialize);
+        });
         
         initializedFromDataRef.current = initializationKey;
       } else if (mode === 'create') {
@@ -428,7 +453,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
         initializedFromDataRef.current = null;
       }
     });
-  }, [isOpen, mode, initialData, duplicatePrefillArticle, duplicatePrefillUrls, isAdmin]);
+  }, [isOpen, mode, initialData, duplicatePrefillArticle, duplicatePrefillUrls, isAdmin, resolvedContentDraft]);
 
   // Load editorial collection membership when editing (runs after init effect sets visibility)
   useEffect(() => {
