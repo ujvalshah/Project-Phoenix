@@ -115,7 +115,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ### Build for Production
 
 ```bash
-# Build frontend
+# Build Vite client (dist/) and compile the Express app (server/dist/)
 npm run build
 
 # Verify build succeeded
@@ -125,8 +125,10 @@ node scripts/verify-build.js
 ### Start Production Server
 
 ```bash
-NODE_ENV=production node --import tsx server/src/index.ts
+NODE_ENV=production npm run start
 ```
+
+This runs the compiled server (`server/dist/index.js`). For local development with TypeScript directly, use `npm run dev:server` or `npm run start:tsx`.
 
 The server will:
 - Serve the built React app from `dist/`
@@ -148,8 +150,10 @@ The server will:
 
 1. Create a new Web Service on [Render](https://render.com)
 2. Connect your repo
-3. Build command: `npm install && npm run build`
-4. Start command: `node --import tsx server/src/index.ts`
+3. Build command: `npm install && npm run build` (builds the SPA and compiles `server/dist/`)
+4. Start command: `npm run start` (runs `node server/dist/index.js`)
+
+If the app exits with **Cannot find module `.../server/dist/index.js`**, open the **build** log (not only deploy): it must show `vite build` and `tsc` finishing. The **Build command** must not be empty (use the command in step 3). This repo ignores only the repo-root `/dist` (Vite output), not `server/dist`, so compiled server output is not mistaken for a gitignored folder.
 
 ### Vercel + Separate Backend
 
@@ -167,7 +171,9 @@ For split deployment (frontend on Vercel, backend elsewhere):
 | `npm run dev` | Start Vite dev server (frontend only) |
 | `npm run dev:server` | Start Express server with hot reload |
 | `npm run dev:all` | Run frontend + backend concurrently |
-| `npm run build` | Build frontend for production |
+| `npm run build` | Build frontend (`dist/`) and server (`server/dist/`) for production |
+| `npm run build:server` | Compile Express TypeScript only (also run as part of `npm run build`) |
+| `npm run start` | Run compiled production server (`server/dist/index.js`) |
 | `npm run preview` | Preview production build locally |
 | `npm run promote-admin` | Promote a user to admin role |
 | `npm run list-users` | List all users in database |
