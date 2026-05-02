@@ -30,16 +30,12 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   const isConfirmDisabled = confirmString ? inputValue !== confirmString : false;
 
   const handleConfirm = async () => {
-    console.log('[ConfirmActionModal] handleConfirm called', { isConfirmDisabled, onConfirm: typeof onConfirm });
     if (isConfirmDisabled) {
-      console.log('[ConfirmActionModal] Early return - confirm disabled');
       return;
     }
     setIsProcessing(true);
     try {
-      console.log('[ConfirmActionModal] Calling onConfirm...');
       await onConfirm();
-      console.log('[ConfirmActionModal] onConfirm completed successfully');
       onClose();
     } catch (error) {
       console.error('[ConfirmActionModal] onConfirm threw error:', error);
@@ -70,7 +66,13 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
         {confirmString && (
           <div className="mb-6">
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-              Type <span className="text-slate-900 dark:text-white select-all">"{confirmString}"</span> to confirm
+              Type{' '}
+              <span className="text-slate-900 dark:text-white select-all">
+                {'\u201C'}
+                {confirmString}
+                {'\u201D'}
+              </span>{' '}
+              to confirm
             </label>
             <input 
               className="w-full px-4 py-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-red-500 transition-colors font-mono text-sm"

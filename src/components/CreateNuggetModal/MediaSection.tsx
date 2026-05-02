@@ -2,7 +2,7 @@ import React from 'react';
 import { X, Check, Star } from 'lucide-react';
 import { Image } from '@/components/Image';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
-import type { MediaType } from '@/types';
+import type { MediaType, PreviewMetadata } from '@/types';
 
 /**
  * Media item representation for the MediaSection
@@ -145,7 +145,10 @@ export const MediaSection: React.FC<MediaSectionProps> = ({
                       type: item.type,
                       url: item.url,
                       thumbnail_url: item.thumbnail,
-                      previewMetadata: item.previewMetadata as Record<string, unknown>,
+                      previewMetadata: ({
+                        url: item.url,
+                        ...(item.previewMetadata ?? {}),
+                      }) as PreviewMetadata,
                     }}
                     onClick={() => {}}
                   />
@@ -295,7 +298,7 @@ export const MediaSection: React.FC<MediaSectionProps> = ({
           <p>{masonryEnabledItems.length} item{masonryEnabledItems.length > 1 ? 's' : ''} will appear in Masonry view</p>
         )}
         {masonryEnabledItems.length === 0 && (
-          <p className="text-amber-600 dark:text-amber-400">No items selected for Masonry - nugget won't appear in Masonry layout</p>
+          <p className="text-amber-600 dark:text-amber-400">No items selected for Masonry - nugget won&apos;t appear in Masonry layout</p>
         )}
       </div>
     </div>

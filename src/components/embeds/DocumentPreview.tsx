@@ -14,6 +14,7 @@
 import React from 'react';
 import { FileText, File, Download, ExternalLink } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { Image } from '@/components/Image';
 
 export type DocumentType = 'pdf' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'ppt' | 'pptx' | 'txt' | 'zip';
 
@@ -26,6 +27,8 @@ interface DocumentPreviewProps {
   className?: string;
   onClick?: (e: React.MouseEvent) => void;
   showDownloadButton?: boolean;
+  /** Above-fold card / masonry: eager OG/PDF thumbnail for LCP */
+  imageLoadPriority?: 'normal' | 'high';
 }
 
 // Icon background colors by document type (light backgrounds with colored icons)
@@ -127,7 +130,9 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   className,
   onClick,
   showDownloadButton = false,
+  imageLoadPriority = 'normal',
 }) => {
+  const priorityLoad = imageLoadPriority === 'high';
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onClick) {
@@ -176,7 +181,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          handleClick(e as any);
+          handleClick(e as unknown as React.MouseEvent);
         }
       }}
     >
@@ -185,11 +190,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         <>
           {/* Thumbnail as primary visual */}
           <div className="absolute inset-0">
-            <img
+            <Image
               src={thumbnailUrl}
               alt={displayFilename}
               className="w-full h-full object-cover"
-              aria-hidden="false"
+              loading={priorityLoad ? 'eager' : 'lazy'}
+              fetchPriority={priorityLoad ? 'high' : undefined}
             />
           </div>
           

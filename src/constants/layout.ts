@@ -46,10 +46,9 @@ export const LAYOUT = {
 } as const;
 
 /**
- * Grid layout widths (for ResponsiveLayoutShell and HomePage feed view)
- * 
- * STABILITY RULE: These are applied via width utilities on children,
- * NOT via arbitrary grid-cols-[...] templates.
+ * Grid layout widths for home feed / sidebar-style surfaces (applied on children via width utilities).
+ *
+ * STABILITY RULE: Apply via width utilities on children, NOT arbitrary grid-cols-[...] templates.
  */
 export const GRID_WIDTHS = {
   /** Sidebar width on desktop */

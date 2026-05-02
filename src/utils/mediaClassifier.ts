@@ -17,9 +17,14 @@
  * ============================================================================
  */
 
-import type { Article, PrimaryMedia, SupportingMediaItem, MediaType, NuggetMedia } from '@/types';
+import type { CardArticleMediaSource, PrimaryMedia, SupportingMediaItem, MediaType, NuggetMedia } from '@/types';
 import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 import { isImageUrl } from '@/utils/urlUtils';
+
+function shouldLogClassifierDiag(): boolean {
+  if (typeof process !== 'undefined' && process.env.VITEST === 'true') return false;
+  return typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
+}
 
 /**
  * Media type priority for primary media selection
@@ -166,7 +171,7 @@ function convertToSupportingMedia(media: NuggetMedia): SupportingMediaItem {
  * - Within same type, first occurrence wins
  * 
  */
-export function classifyArticleMedia(article: Article): {
+export function classifyArticleMedia(article: CardArticleMediaSource): {
   primaryMedia: PrimaryMedia | null;
   supportingMedia: SupportingMediaItem[];
 } {
@@ -379,7 +384,7 @@ function isVisibleInGrid(media: { showInGrid?: boolean } | null | undefined): bo
  * If primary media is hidden from the grid (showInGrid: false), the card uses the
  * first grid-visible image URL instead (so masonry-only primaries don't block thumbnails).
  */
-export function getThumbnailUrl(article: Article): string | null {
+export function getThumbnailUrl(article: CardArticleMediaSource): string | null {
   if (article.primaryMedia) {
     const thumb = resolvePrimaryMediaThumbnail(article.primaryMedia);
     if (isVisibleInGrid(article.primaryMedia)) {
@@ -406,7 +411,7 @@ export interface GetAllImageUrlsOptions {
  * Get count of supporting media items
  * Used to display "+N sources" indicator in cards
  */
-export function getSupportingMediaCount(article: Article): number {
+export function getSupportingMediaCount(article: CardArticleMediaSource): number {
   if (article.supportingMedia) {
     return article.supportingMedia.length;
   }
@@ -418,7 +423,7 @@ export function getSupportingMediaCount(article: Article): number {
 /**
  * Check if article has any media at all
  */
-export function hasAnyMedia(article: Article): boolean {
+export function hasAnyMedia(article: CardArticleMediaSource): boolean {
   if (article.primaryMedia || (article.supportingMedia && article.supportingMedia.length > 0)) {
     return true;
   }
@@ -448,7 +453,7 @@ export function hasAnyMedia(article: Article): boolean {
  * 
  * @returns Array of image URLs (may be empty)
  */
-export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptions): string[] {
+export function getAllImageUrls(article: CardArticleMediaSource, options?: GetAllImageUrlsOptions): string[] {
   const gridOnly = options?.gridOnly === true;
   const imageUrls: string[] = [];
   const seenUrls = new Set<string>(); // Deduplicate URLs
@@ -483,7 +488,7 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
   }
 
   // DEBUG: Log supportingMedia types to diagnose ordering issue
-  if (import.meta.env.DEV && article.supportingMedia && article.supportingMedia.length > 0) {
+  if (shouldLogClassifierDiag() && article.supportingMedia && article.supportingMedia.length > 0) {
     console.log('[getAllImageUrls] supportingMedia analysis:', {
       articleId: article.id?.slice(-8),
       count: article.supportingMedia.length,
@@ -599,7 +604,7 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
 
   // PHASE 2B: Log duplicates detected for debugging (DEV only — this fires per
   // card on every render and was previously running in production).
-  if (import.meta.env.DEV && duplicatesDetected.length > 0) {
+  if (shouldLogClassifierDiag() && duplicatesDetected.length > 0) {
     console.log('[getAllImageUrls] Duplicates filtered out:', {
       articleId: article.id,
       duplicatesCount: duplicatesDetected.length,
@@ -609,7 +614,7 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
   }
 
   // DEBUG: Log final order and sources
-  if (import.meta.env.DEV && imageUrls.length > 0) {
+  if (shouldLogClassifierDiag() && imageUrls.length > 0) {
     console.log('[getAllImageUrls] FINAL ORDER:', {
       articleId: article.id?.slice(-8),
       count: imageUrls.length,
@@ -625,7 +630,7 @@ export function getAllImageUrls(article: Article, options?: GetAllImageUrlsOptio
 /**
  * Image URLs that should appear on grid cards (respects per-item showInGrid).
  */
-export function getGridImageUrls(article: Article): string[] {
+export function getGridImageUrls(article: CardArticleMediaSource): string[] {
   return getAllImageUrls(article, { gridOnly: true });
 }
 
@@ -653,7 +658,7 @@ export function getGridImageUrls(article: Article): string[] {
  * 
  * @returns Array of persisted image URLs (may be empty)
  */
-export function getPersistedImageUrls(article: Article): string[] {
+export function getPersistedImageUrls(article: CardArticleMediaSource): string[] {
   const imageUrls: string[] = [];
   const seenUrls = new Set<string>(); // Deduplicate URLs
   

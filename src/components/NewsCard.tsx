@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from 'react';
+import { forwardRef, memo, Suspense, useMemo } from 'react';
 import { Article } from '@/types';
 import { useNewsCard } from '@/hooks/useNewsCard';
 import { GridVariant } from './card/variants/GridVariant';
@@ -8,13 +8,16 @@ import { CollectionPopover } from './CollectionPopover';
 import { ReportModal, ReportPayload } from './ReportModal';
 import { ArticleModal } from './ArticleModal';
 import { ImageLightbox } from './ImageLightbox';
-import { ArticleDetail } from './ArticleDetail';
+import { ArticleDetailLazy, ArticleDetailSidebarFallback } from '@/components/ArticleDetailLazy';
 import { CreateNuggetModalLoadable } from './CreateNuggetModalLoadable';
 import { LinkPreviewModal } from './LinkPreviewModal';
 import { useToast } from '@/hooks/useToast';
 import { adminModerationService } from '@/admin/services/adminModerationService';
 import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
-import { buildLightboxSourceLinksForImageUrls } from '@/utils/masonryMediaHelper';
+import {
+  buildLightboxSourceLinksForImageUrls,
+  type MasonrySourceLink,
+} from '@/utils/masonryMediaHelper';
 import { getAllImageUrls } from '@/utils/mediaClassifier';
 
 interface NewsCardProps {
@@ -34,12 +37,35 @@ interface NewsCardProps {
   isSelected?: boolean;
   onSelect?: (id: string) => void;
   // Drawer Props
-  disableInlineExpansion?: boolean; // Disable inline expansion for desktop multi-column grid
+  disableInlineExpansion?: boolean;
   /** Committed search query for title highlighting on results cards */
   searchHighlightQuery?: string;
+  /** First-viewport grid tile — LCP-oriented thumbnail scheduling (ArticleGrid). */
+  priorityThumbnail?: boolean;
 }
 
-export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
+function areNewsCardPropsEqual(prev: NewsCardProps, next: NewsCardProps): boolean {
+  return (
+    prev.article === next.article &&
+    prev.skipArticlePrepare === next.skipArticlePrepare &&
+    prev.viewMode === next.viewMode &&
+    prev.onCategoryClick === next.onCategoryClick &&
+    prev.onClick === next.onClick &&
+    prev.expanded === next.expanded &&
+    prev.onToggleExpand === next.onToggleExpand &&
+    prev.currentUserId === next.currentUserId &&
+    prev.isPreview === next.isPreview &&
+    prev.selectionMode === next.selectionMode &&
+    prev.isSelected === next.isSelected &&
+    prev.onSelect === next.onSelect &&
+    prev.onTagClick === next.onTagClick &&
+    prev.disableInlineExpansion === next.disableInlineExpansion &&
+    prev.searchHighlightQuery === next.searchHighlightQuery &&
+    prev.priorityThumbnail === next.priorityThumbnail
+  );
+}
+
+const NewsCardInner = forwardRef<HTMLDivElement, NewsCardProps>(
   (
     {
       article,
@@ -55,8 +81,9 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
       onSelect,
       disableInlineExpansion = false,
       searchHighlightQuery,
+      priorityThumbnail = false,
     },
-    ref
+    ref,
   ) => {
     const toast = useToast();
     const { currentUser } = useAuthSelector(
@@ -64,7 +91,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
       shallowEqualAuth,
     );
 
-    // Call the logic hook
     const hookResult = useNewsCard({
       article,
       skipArticlePrepare,
@@ -78,14 +104,24 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
     const { logic, modals, refs, article: originalArticle, isOwner, isAdmin } = hookResult;
 
     const { lightboxImageUrls, lightboxSourceLinksPerImage } = useMemo(() => {
+      if (!modals.showLightbox) {
+        return {
+          lightboxImageUrls: [] as string[],
+          lightboxSourceLinksPerImage: [] as Array<MasonrySourceLink | null>,
+        };
+      }
       const urls = getAllImageUrls(originalArticle);
       return {
         lightboxImageUrls: urls,
         lightboxSourceLinksPerImage: buildLightboxSourceLinksForImageUrls(originalArticle, urls),
       };
-    }, [originalArticle]);
+    }, [modals.showLightbox, originalArticle]);
 
-    // Switch on viewMode to render the appropriate variant
+    const gridSelectionHandler = useMemo(
+      () => (onSelect ? () => onSelect(article.id) : undefined),
+      [onSelect, article.id],
+    );
+
     let variant;
     switch (viewMode) {
       case 'grid':
@@ -100,9 +136,10 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             isPreview={isPreview}
             selectionMode={selectionMode}
             isSelected={isSelected}
-            onSelect={onSelect ? () => onSelect(article.id) : undefined}
+            onSelect={gridSelectionHandler}
             disableInlineExpansion={disableInlineExpansion}
             searchHighlightQuery={searchHighlightQuery}
+            priorityThumbnail={priorityThumbnail}
           />
         );
         break;
@@ -117,6 +154,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             isAdmin={isAdmin}
             isPreview={isPreview}
             searchHighlightQuery={searchHighlightQuery}
+            priorityThumbnail={priorityThumbnail}
           />
         );
         break;
@@ -131,6 +169,7 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             isAdmin={isAdmin}
             isPreview={isPreview}
             searchHighlightQuery={searchHighlightQuery}
+            priorityThumbnail={priorityThumbnail}
           />
         );
         break;
@@ -144,77 +183,88 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             isOwner={isOwner}
             isAdmin={isAdmin}
             isPreview={isPreview}
+            priorityThumbnail={priorityThumbnail}
           />
         );
     }
 
     return (
       <>
-        <div 
-          ref={ref} 
-          id={logic.cardElementId || undefined}
-          className="h-full"
-        >
+        <div ref={ref} id={logic.cardElementId || undefined} className="h-full">
           {variant}
         </div>
 
-        {/* Modals rendered by Controller */}
-        <CollectionPopover
-          isOpen={modals.showCollection}
-          onClose={() => modals.setShowCollection(false)}
-          articleId={originalArticle.id}
-          mode={modals.collectionMode}
-          anchorRect={modals.collectionAnchor}
-        />
-        <ReportModal
-          isOpen={modals.showReport}
-          onClose={() => modals.setShowReport(false)}
-          onSubmit={async (payload: ReportPayload) => {
-            try {
-              // FIX #6: Normalize optional fields (trim strings, pass undefined when empty)
-              const normalizedComment = payload.comment?.trim() || undefined;
+        {/* Modals: mount only when open — avoids N× hook/DOM subtrees across the feed (INP/memory). */}
+        {modals.showCollection && (
+          <CollectionPopover
+            isOpen
+            onClose={() => modals.setShowCollection(false)}
+            articleId={originalArticle.id}
+            mode={modals.collectionMode}
+            anchorRect={modals.collectionAnchor}
+          />
+        )}
+        {modals.showReport && (
+          <ReportModal
+            isOpen
+            onClose={() => modals.setShowReport(false)}
+            onSubmit={async (payload: ReportPayload) => {
+              try {
+                const normalizedComment = payload.comment?.trim() || undefined;
 
-              await adminModerationService.submitReport(
-                payload.articleId,
-                'nugget',
-                payload.reason,
-                normalizedComment,
-                currentUser ? {
-                  id: currentUser.id,
-                  name: currentUser.name
-                } : undefined,
-                originalArticle.author ? {
-                  id: originalArticle.author.id,
-                  name: originalArticle.author.name
-                } : undefined
-              );
-              toast.success('Report submitted successfully');
-            } catch (error: any) {
-              console.error('Failed to submit report:', error);
-              
-              // FIX #3: Error handling specificity based on HTTP status
-              // Provides better UX by differentiating error types
-              let errorMessage: string;
-              const status = error?.response?.status;
-              
-              if (status === 400) {
-                errorMessage = 'Invalid report data. Please check your input.';
-              } else if (status === 429) {
-                errorMessage = 'Too many reports. Please wait a moment before trying again.';
-              } else if (status === 403) {
-                errorMessage = 'You do not have permission to submit this report.';
-              } else if (status >= 500) {
-                errorMessage = 'Server error. Please try again later.';
-              } else {
-                errorMessage = 'Failed to submit report. Please try again.';
+                await adminModerationService.submitReport(
+                  payload.articleId,
+                  'nugget',
+                  payload.reason,
+                  normalizedComment,
+                  currentUser
+                    ? {
+                        id: currentUser.id,
+                        name: currentUser.name,
+                      }
+                    : undefined,
+                  originalArticle.author
+                    ? {
+                        id: originalArticle.author.id,
+                        name: originalArticle.author.name,
+                      }
+                    : undefined,
+                );
+                toast.success('Report submitted successfully');
+              } catch (error: unknown) {
+                console.error('Failed to submit report:', error);
+
+                let errorMessage: string;
+                const status =
+                  error &&
+                  typeof error === 'object' &&
+                  'response' in error &&
+                  error.response &&
+                  typeof error.response === 'object' &&
+                  'status' in error.response &&
+                  typeof (error.response as { status?: unknown }).status === 'number'
+                    ? (error.response as { status: number }).status
+                    : undefined;
+
+                if (status === 400) {
+                  errorMessage = 'Invalid report data. Please check your input.';
+                } else if (status === 429) {
+                  errorMessage = 'Too many reports. Please wait a moment before trying again.';
+                } else if (status === 403) {
+                  errorMessage = 'You do not have permission to submit this report.';
+                } else if (status !== undefined && status >= 500) {
+                  errorMessage = 'Server error. Please try again later.';
+                } else {
+                  errorMessage = 'Failed to submit report. Please try again.';
+                }
+
+                toast.error(errorMessage);
+                throw error;
               }
-              
-              toast.error(errorMessage);
-              throw error; // Re-throw so ReportModal can handle it
-            }
-          }}
-          articleId={originalArticle.id}
-        />
+            }}
+            articleId={originalArticle.id}
+          />
+        )}
         {modals.showFullModal && (
           <ArticleModal
             isOpen={modals.showFullModal}
@@ -223,29 +273,29 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             onYouTubeTimestampClick={hookResult.logic.handlers.onYouTubeTimestampClick}
           />
         )}
-        <ImageLightbox
-          isOpen={modals.showLightbox}
-          onClose={(e) => {
-            // Stop event bubbling from image tiles so closing the carousel
-            // does not trigger the masonry tile drawer click handler.
-            e?.stopPropagation?.();
-            modals.setShowLightbox(false);
-          }}
-          images={lightboxImageUrls}
-          initialIndex={modals.lightboxInitialIndex || 0}
-          sourceLinksPerImage={lightboxSourceLinksPerImage}
-          sidebarContent={
-            modals.showLightbox ? (
-              <ArticleDetail
-                article={originalArticle}
-                isModal={false}
-                showHeader={true}
-                onClose={() => modals.setShowLightbox(false)}
-                onYouTubeTimestampClick={hookResult.logic.handlers.onYouTubeTimestampClick}
-              />
-            ) : undefined
-          }
-        />
+        {modals.showLightbox && (
+          <ImageLightbox
+            isOpen
+            onClose={(e) => {
+              e?.stopPropagation?.();
+              modals.setShowLightbox(false);
+            }}
+            images={lightboxImageUrls}
+            initialIndex={modals.lightboxInitialIndex || 0}
+            sourceLinksPerImage={lightboxSourceLinksPerImage}
+            sidebarContent={
+              <Suspense fallback={<ArticleDetailSidebarFallback />}>
+                <ArticleDetailLazy
+                  article={originalArticle}
+                  isModal={false}
+                  showHeader={true}
+                  onClose={() => modals.setShowLightbox(false)}
+                  onYouTubeTimestampClick={hookResult.logic.handlers.onYouTubeTimestampClick}
+                />
+              </Suspense>
+            }
+          />
+        )}
         {modals.showEditModal && (
           <CreateNuggetModalLoadable
             isOpen
@@ -262,7 +312,6 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             prefillData={originalArticle}
           />
         )}
-        {/* Link Preview Modal - Progressive disclosure for external links */}
         {modals.showLinkPreview && modals.linkPreviewUrl && (
           <LinkPreviewModal
             isOpen={modals.showLinkPreview}
@@ -275,18 +324,27 @@ export const NewsCard = forwardRef<HTMLDivElement, NewsCardProps>(
             title={originalArticle.media?.previewMetadata?.title}
             description={originalArticle.media?.previewMetadata?.description}
             imageUrl={originalArticle.media?.previewMetadata?.imageUrl}
-            domain={originalArticle.media?.previewMetadata?.url ? (() => {
-              try {
-                return new URL(originalArticle.media.previewMetadata.url).hostname.replace('www.', '');
-              } catch {
-                return undefined;
-              }
-            })() : undefined}
+            domain={
+              originalArticle.media?.previewMetadata?.url
+                ? (() => {
+                    try {
+                      return new URL(originalArticle.media.previewMetadata.url).hostname.replace(
+                        'www.',
+                        '',
+                      );
+                    } catch {
+                      return undefined;
+                    }
+                  })()
+                : undefined
+            }
           />
         )}
       </>
     );
-  }
+  },
 );
 
-NewsCard.displayName = 'NewsCard';
+NewsCardInner.displayName = 'NewsCard';
+
+export const NewsCard = memo(NewsCardInner, areNewsCardPropsEqual);

@@ -25,6 +25,8 @@ interface GridVariantProps {
   onSelect?: () => void;
   disableInlineExpansion?: boolean; // Disable inline expansion for desktop multi-column grid
   searchHighlightQuery?: string;
+  /** First-viewport tile: eager thumbnail + skip entrance handled by parent ArticleGrid */
+  priorityThumbnail?: boolean;
 }
 
 export const GridVariant: React.FC<GridVariantProps> = ({
@@ -40,13 +42,15 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   onSelect,
   disableInlineExpansion = false,
   searchHighlightQuery,
+  priorityThumbnail = false,
 }) => {
   const { data, handlers } = logic;
   const { data: disclaimerConfig } = useDisclaimerConfig();
   const resolvedDisclaimer = useMemo(
     () => resolveDisclaimer(data, disclaimerConfig),
-    [data.showDisclaimer, data.disclaimerText, disclaimerConfig]
+    [data, disclaimerConfig]
   );
+  const thumbnailLoadPriority = priorityThumbnail ? 'high' : 'normal';
   const contentExpandRef = useRef<(() => void) | null>(null);
   const contentCollapseRef = useRef<(() => void) | null>(null);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
@@ -235,6 +239,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 }}
                 className="w-full h-full rounded-lg"
                 isMediaOnly={true}
+                thumbnailLoadPriority={thumbnailLoadPriority}
               />
               
               {/* Optional short caption with compact bottom-band gradient - only render when caption exists */}
@@ -302,6 +307,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                 visibility={data.visibility}
                 onMediaClick={handlers.onMediaClick}
                 className="aspect-video rounded-lg"
+                thumbnailLoadPriority={thumbnailLoadPriority}
               />
               {/* Source Badge Overlay */}
               {!selectionMode && !data.isTextNugget && data.sourceType === 'link' && (

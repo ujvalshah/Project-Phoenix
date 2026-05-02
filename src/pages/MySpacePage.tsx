@@ -25,8 +25,10 @@ import {
   type ContentSort,
   type LibraryViewMode,
 } from '@/components/workspace/ContentToolbar';
-import { NuggetGridCard } from '@/components/workspace/NuggetGridCard';
-import { NuggetListRow } from '@/components/workspace/NuggetListRow';
+import {
+  WorkspaceLibraryGridVirtualized,
+  WorkspaceLibraryListVirtualized,
+} from '@/components/workspace/WorkspaceLibraryVirtualized';
 import { CollectionWorkspaceCard } from '@/components/workspace/CollectionWorkspaceCard';
 import {
   getWorkspaceDisplayName,
@@ -34,6 +36,10 @@ import {
 } from '@/components/workspace/workspaceUserDisplay';
 import { WorkspaceTopSection } from '@/components/workspace/WorkspaceTopSection';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
+import { getPriorityThumbnailCount } from '@/constants/aboveFoldPriority';
+
+/** Matches workspace grid `md:grid-cols-2 xl:grid-cols-3` (desktop worst-case columns). */
+const WORKSPACE_THUMB_GRID_COLUMNS = 3;
 
 interface MySpacePageProps {
   currentUserId: string;
@@ -461,15 +467,49 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     [taxonomy],
   );
 
-  const toggleSelectionMode = () => {
-      const newMode = !selectionMode;
-      setSelectionMode(newMode);
-      if (!newMode) setSelectedIds([]);
-  };
+  const workspacePriorityThumbCount = useMemo(
+    () => getPriorityThumbnailCount(WORKSPACE_THUMB_GRID_COLUMNS),
+    [],
+  );
 
-  const handleSelect = (id: string) => {
-      setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  };
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionMode((prev) => {
+      const newMode = !prev;
+      if (!newMode) setSelectedIds([]);
+      return newMode;
+    });
+  }, []);
+
+  const handleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  }, []);
+
+  const handleEditArticle = useCallback((article: Article) => {
+    setEditingArticle(article);
+  }, []);
+
+  const handleDuplicateArticleCb = useCallback((article: Article) => {
+    toast.info(`Duplicating "${article.title?.trim() || 'Untitled'}"`);
+    setDuplicatingArticle(article);
+  }, [toast]);
+
+  const handleDeleteSingleArticleCb = useCallback(
+    async (article: Article) => {
+      const ok = window.confirm(`Delete "${article.title || 'this nugget'}"? This cannot be undone.`);
+      if (!ok) return;
+      try {
+        await storageService.deleteArticle(article.id);
+        await queryClient.invalidateQueries({ queryKey: myspaceArticlesBaseKey, exact: false });
+        if (isOwner) {
+          await queryClient.invalidateQueries({ queryKey: myspaceCountsKey, exact: true });
+        }
+        toast.success('Nugget deleted');
+      } catch {
+        toast.error('Failed to delete nugget');
+      }
+    },
+    [isOwner, myspaceArticlesBaseKey, myspaceCountsKey, toast],
+  );
 
   const handleBulkDelete = async () => {
       if (selectedIds.length === 0) return;
@@ -643,26 +683,6 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       queryClient.setQueryData<Collection[]>(myspaceCollectionsKey, (prev = []) =>
         prev.map((c) => (c.id === updatedCollection.id ? updatedCollection : c))
       );
-  };
-
-  const handleDeleteSingleArticle = async (article: Article) => {
-    const ok = window.confirm(`Delete "${article.title || 'this nugget'}"? This cannot be undone.`);
-    if (!ok) return;
-    try {
-      await storageService.deleteArticle(article.id);
-      await queryClient.invalidateQueries({ queryKey: myspaceArticlesBaseKey, exact: false });
-      if (isOwner) {
-        await queryClient.invalidateQueries({ queryKey: myspaceCountsKey, exact: true });
-      }
-      toast.success('Nugget deleted');
-    } catch {
-      toast.error('Failed to delete nugget');
-    }
-  };
-
-  const handleDuplicateArticle = (article: Article) => {
-    toast.info(`Duplicating "${article.title?.trim() || 'Untitled'}"`);
-    setDuplicatingArticle(article);
   };
 
   // Early returns for loading and error states
@@ -956,48 +976,42 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                     </p>
                   </div>
                 ) : contentView === 'grid' ? (
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredNuggets.map((item) => (
-                      <NuggetGridCard
-                        key={item.id}
-                        article={item}
-                        selectionMode={selectionMode}
-                        isSelected={selectedIds.includes(item.id)}
-                        onSelect={handleSelect}
-                        onOpen={setSelectedArticle}
-                      />
-                    ))}
-                    <div className="col-span-full">
-                      <InfiniteScrollTrigger
-                        onIntersect={handleLoadMore}
-                        isLoading={infiniteArticlesQuery.isFetchingNextPage}
-                        hasMore={infiniteArticlesQuery.hasNextPage ?? false}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2.5">
-                    {filteredNuggets.map((item) => (
-                      <NuggetListRow
-                        key={item.id}
-                        article={item}
-                        selectionMode={selectionMode}
-                        isSelected={selectedIds.includes(item.id)}
-                        onSelect={handleSelect}
-                        onOpen={setSelectedArticle}
-                        compact={contentView === 'compact'}
-                        canManage={isOwner}
-                        onEdit={(article) => setEditingArticle(article)}
-                        onDuplicate={handleDuplicateArticle}
-                        onDelete={handleDeleteSingleArticle}
-                      />
-                    ))}
+                  <>
+                    <WorkspaceLibraryGridVirtualized
+                      articles={filteredNuggets}
+                      selectionMode={selectionMode}
+                      selectedIds={selectedIds}
+                      onSelect={handleSelect}
+                      onOpen={setSelectedArticle}
+                      priorityThumbnailFlatCount={workspacePriorityThumbCount}
+                    />
                     <InfiniteScrollTrigger
                       onIntersect={handleLoadMore}
                       isLoading={infiniteArticlesQuery.isFetchingNextPage}
                       hasMore={infiniteArticlesQuery.hasNextPage ?? false}
                     />
-                  </div>
+                  </>
+                ) : (
+                  <>
+                    <WorkspaceLibraryListVirtualized
+                      articles={filteredNuggets}
+                      selectionMode={selectionMode}
+                      selectedIds={selectedIds}
+                      onSelect={handleSelect}
+                      onOpen={setSelectedArticle}
+                      compact={contentView === 'compact'}
+                      canManage={isOwner}
+                      onEdit={handleEditArticle}
+                      onDuplicate={handleDuplicateArticleCb}
+                      onDelete={handleDeleteSingleArticleCb}
+                      priorityThumbnailFlatCount={workspacePriorityThumbCount}
+                    />
+                    <InfiniteScrollTrigger
+                      onIntersect={handleLoadMore}
+                      isLoading={infiniteArticlesQuery.isFetchingNextPage}
+                      hasMore={infiniteArticlesQuery.hasNextPage ?? false}
+                    />
+                  </>
                 )}
               </div>
             </section>

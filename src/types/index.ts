@@ -9,7 +9,20 @@ export interface Document {
   size: string;
 }
 
-export type MediaType = 'image' | 'video' | 'document' | 'link' | 'text' | 'youtube';
+/** Primary + legacy/provider-specific values encountered in embeds and older documents */
+export type MediaType =
+  | 'image'
+  | 'video'
+  | 'document'
+  | 'link'
+  | 'text'
+  | 'youtube'
+  | 'pdf'
+  | 'twitter'
+  | 'linkedin'
+  | 'instagram'
+  | 'tiktok'
+  | 'rich';
 
 export interface PreviewMetadata {
   url: string;
@@ -61,6 +74,8 @@ export interface Engagement {
   bookmarks: number;
   shares: number;
   views: number;
+  /** Legacy seed / adapter payloads */
+  likes?: number;
 }
 
 export interface Contributor {
@@ -310,6 +325,29 @@ export interface Article {
   // Contextual
   addedBy?: Contributor; // When inside a collection
 }
+
+/**
+ * Article fields used to derive card thumbnails and primary/supporting media.
+ * Satisfied by {@link Article} and by card view-models (e.g. news-card data) that carry the same media keys.
+ */
+export type CardArticleMediaSource = Pick<Article, 'id'> &
+  Partial<
+    Pick<
+      Article,
+      | 'title'
+      | 'excerpt'
+      | 'content'
+      | 'primaryMedia'
+      | 'supportingMedia'
+      | 'media'
+      | 'images'
+      | 'video'
+      | 'documents'
+      | 'displayImageIndex'
+      | 'layoutVisibility'
+      | 'externalLinks'
+    >
+  >;
 
 // Alias
 export type Nugget = Article;

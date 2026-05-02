@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { Suspense, useMemo, useState } from 'react';
 import { Article } from '@/types';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
 import { Image } from '@/components/Image';
@@ -9,7 +9,9 @@ import {
   MasonryMediaItem,
 } from '@/utils/masonryMediaHelper';
 import { ImageLightbox } from '@/components/ImageLightbox';
-import { ArticleDetail } from '@/components/ArticleDetail';
+import { FEED_CARD_HERO_IMAGE_SIZES } from '@/constants/feedImageLayout';
+import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
+import { ArticleDetailLazy, ArticleDetailSidebarFallback } from '@/components/ArticleDetailLazy';
 import { Maximize2 } from 'lucide-react';
 
 /**
@@ -71,6 +73,8 @@ interface MediaBlockProps {
   prefetchedAllMasonryItems?: MasonryMediaItem[];
   onCategoryClick?: (category: string) => void;
   onArticleClick?: (article: Article) => void; // For opening Article Detail drawer
+  /** Above-the-fold masonry image tiles: improves LCP for image urls */
+  priorityImageLoading?: boolean;
 }
 
 /**
@@ -113,6 +117,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
   prefetchedAllMasonryItems,
   onCategoryClick,
   onArticleClick,
+  priorityImageLoading = false,
 }) => {
   const allMediaItems = useMemo(
     () => prefetchedAllMasonryItems ?? collectMasonryMediaItems(article),
@@ -240,22 +245,32 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
             >
               {item.type === 'image' ? (
                 <div className="relative w-full rounded-lg overflow-hidden">
-                  <>
-                    <div className="hover-overlay absolute inset-0 bg-black pointer-events-none z-10" />
-                    <div className="hover-icon absolute top-3 right-3 z-20 pointer-events-none">
-                      <Maximize2
-                        size={16}
-                        className="text-white drop-shadow-lg"
-                        strokeWidth={2}
-                      />
-                    </div>
-                  </>
+                  {(() => {
+                    const imageResponsive = buildFeedImageResponsiveProps(item.url);
+                    return (
+                      <>
+                        <div className="hover-overlay absolute inset-0 bg-black pointer-events-none z-10" />
+                        <div className="hover-icon absolute top-3 right-3 z-20 pointer-events-none">
+                          <Maximize2
+                            size={16}
+                            className="text-white drop-shadow-lg"
+                            strokeWidth={2}
+                          />
+                        </div>
 
-                  <Image
-                    src={item.url}
-                    alt={imageAlt}
-                    className="w-full h-auto object-contain"
-                  />
+                        <Image
+                          src={imageResponsive.src}
+                          srcSet={imageResponsive.srcSet}
+                          alt={imageAlt}
+                          className="w-full h-auto object-contain"
+                          sizes={FEED_CARD_HERO_IMAGE_SIZES}
+                          decoding="async"
+                          loading={priorityImageLoading ? 'eager' : 'lazy'}
+                          fetchPriority={priorityImageLoading ? 'high' : undefined}
+                        />
+                      </>
+                    );
+                  })()}
 
                   {nonYouTubeTitle ? (
                     <MasonryNonYouTubeTitleScrim
@@ -278,6 +293,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
                   </>
 
                   <EmbeddedMedia
+                    imageLoadPriority={priorityImageLoading ? 'high' : 'normal'}
                     media={{
                       type: item.type,
                       url: item.url,
@@ -318,12 +334,14 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
           initialIndex={lightboxIndex}
           sourceLinksPerImage={lightboxSourceLinks}
           sidebarContent={
-            <ArticleDetail
-              article={article}
-              isModal={false}
-              showHeader={true}
-              onClose={handleCarouselClose}
-            />
+            <Suspense fallback={<ArticleDetailSidebarFallback />}>
+              <ArticleDetailLazy
+                article={article}
+                isModal={false}
+                showHeader={true}
+                onClose={handleCarouselClose}
+              />
+            </Suspense>
           }
         />
       )}

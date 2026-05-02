@@ -350,8 +350,7 @@ const MenuDropdown: React.FC<MenuDropdownProps> = ({
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    // Focus first item when menu opens
-    setFocusedIndex(0);
+    queueMicrotask(() => setFocusedIndex(0));
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);

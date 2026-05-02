@@ -274,8 +274,10 @@ export function useAuthSelector<T>(
 
   const selectorRef = useRef(selector);
   const isEqualRef = useRef(isEqual);
-  selectorRef.current = selector;
-  isEqualRef.current = isEqual;
+  useLayoutEffect(() => {
+    selectorRef.current = selector;
+    isEqualRef.current = isEqual;
+  }, [selector, isEqual]);
 
   const selectionRef = useRef<{ value: T } | null>(null);
 

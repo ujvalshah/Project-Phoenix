@@ -171,3 +171,4 @@ export const ImageGrid: React.FC<ImageGridProps> = React.memo(({
   );
 });
 
+ImageGrid.displayName = 'ImageGrid';

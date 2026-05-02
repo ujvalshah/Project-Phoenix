@@ -125,7 +125,7 @@ class AdminCollectionsService {
       payload.parentId = updates.parentId;
     }
     
-    await apiClient.put(`/collections/${id}`, payload, 'adminCollectionsService.updateCollection');
+    await apiClient.put(`/collections/${id}`, payload, undefined, 'adminCollectionsService.updateCollection');
   }
 
   async createCollection(input: {

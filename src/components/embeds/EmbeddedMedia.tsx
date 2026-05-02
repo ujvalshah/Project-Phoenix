@@ -7,6 +7,8 @@ import { ExternalLink } from 'lucide-react';
 interface EmbeddedMediaProps {
   media: NuggetMedia;
   onClick?: (e: React.MouseEvent) => void;
+  /** Above-the-fold / masonry priority: improves LCP for preview images (YouTube thumbs, OG images). */
+  imageLoadPriority?: 'normal' | 'high';
 }
 
 // Map MediaType to DocumentType
@@ -56,8 +58,13 @@ function extractFilename(url: string): string {
   }
 }
 
-export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) => {
+export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({
+  media,
+  onClick,
+  imageLoadPriority = 'normal',
+}) => {
   const { url, type } = media;
+  const priorityLoad = imageLoadPriority === 'high';
   
   // Extract filename from URL or use title (needed for type detection)
   // For Google Drive, the title usually contains the filename with extension
@@ -110,6 +117,7 @@ export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) 
         thumbnailUrl={media.previewMetadata?.imageUrl} // Optional PDF thumbnail
         onClick={onClick}
         showDownloadButton={true}
+        imageLoadPriority={imageLoadPriority}
       />
     );
   }
@@ -142,6 +150,8 @@ export const EmbeddedMedia: React.FC<EmbeddedMediaProps> = ({ media, onClick }) 
         <Image 
           src={imageUrl} 
           alt={media.previewMetadata?.title || 'Preview'} 
+          loading={priorityLoad ? 'eager' : 'lazy'}
+          fetchPriority={priorityLoad ? 'high' : undefined}
           className={`w-full h-full ${objectFit} transition-transform duration-500 hover:scale-105 cursor-pointer`}
         />
         

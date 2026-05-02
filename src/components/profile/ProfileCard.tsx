@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { User } from '@/types';
+import type { User } from '@/types/user';
+import type { User as LegacyApiUserFields } from '@/types';
 import { MapPin, Link as LinkIcon, Twitter, Linkedin, Github, Camera, Save, Edit3, Calendar, Loader2, Youtube } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { storageService } from '@/services/storageService';
@@ -132,10 +133,10 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, isOwner, nuggetC
         ...(formData.youtube && { youtube: formData.youtube }),
         ...(formData.instagram && { instagram: formData.instagram }),
         ...(formData.facebook && { facebook: formData.facebook }),
-      } as Partial<User>);
+      } as Partial<LegacyApiUserFields>);
       
       if (updatedUser) {
-        onUpdate(updatedUser);
+        onUpdate(updatedUser as unknown as User);
         setIsEditing(false);
         toast.success("Profile updated");
       }
@@ -329,32 +330,32 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, isOwner, nuggetC
         ) : (
             <div className="flex gap-3 pt-1">
                 {user.profile.website && (
-                    <a href={user.profile.website} target="_blank" rel="noopener" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-colors">
+                    <a href={user.profile.website} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-colors">
                         <LinkIcon size={18} />
                     </a>
                 )}
                 {user.profile.twitter && (
-                    <a href={`https://twitter.com/${user.profile.twitter}`} target="_blank" rel="noopener" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
+                    <a href={`https://twitter.com/${user.profile.twitter}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
                         <Twitter size={18} />
                     </a>
                 )}
                 {user.profile.linkedin && (
-                    <a href={`https://linkedin.com/in/${user.profile.linkedin}`} target="_blank" rel="noopener" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
+                    <a href={`https://linkedin.com/in/${user.profile.linkedin}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
                         <Linkedin size={18} />
                     </a>
                 )}
                 {user.profile.youtube && (
-                    <a href={user.profile.youtube.startsWith('http') ? user.profile.youtube : `https://youtube.com/${user.profile.youtube}`} target="_blank" rel="noopener" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+                    <a href={user.profile.youtube.startsWith('http') ? user.profile.youtube : `https://youtube.com/${user.profile.youtube}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
                         <Youtube size={18} />
                     </a>
                 )}
                 {user.profile.instagram && (
-                    <a href={user.profile.instagram.startsWith('http') ? user.profile.instagram : `https://instagram.com/${user.profile.instagram}`} target="_blank" rel="noopener" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-900/10 transition-colors">
+                    <a href={user.profile.instagram.startsWith('http') ? user.profile.instagram : `https://instagram.com/${user.profile.instagram}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-900/10 transition-colors">
                         <InstagramIcon size={18} />
                     </a>
                 )}
                 {user.profile.facebook && (
-                    <a href={user.profile.facebook.startsWith('http') ? user.profile.facebook : `https://facebook.com/${user.profile.facebook}`} target="_blank" rel="noopener" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
+                    <a href={user.profile.facebook.startsWith('http') ? user.profile.facebook : `https://facebook.com/${user.profile.facebook}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
                         <FacebookIcon size={18} />
                     </a>
                 )}

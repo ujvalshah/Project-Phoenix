@@ -28,11 +28,11 @@ export const ForgotPasswordPage: React.FC = () => {
         <CheckCircle2 className="w-16 h-16 text-green-500 mb-4" />
         <h1 className="text-2xl font-bold mb-2">Check your email</h1>
         <p className="text-slate-500 mb-6 max-w-md">
-          If an account exists with <strong>{email}</strong>, we've sent a password reset link.
+          If an account exists with <strong>{email}</strong>, we&apos;ve sent a password reset link.
           The link expires in 1 hour.
         </p>
         <p className="text-sm text-slate-400 mb-6">
-          Didn't receive the email? Check your spam folder or try again.
+          Didn&apos;t receive the email? Check your spam folder or try again.
         </p>
         <div className="flex gap-4">
           <button
@@ -68,7 +68,7 @@ export const ForgotPasswordPage: React.FC = () => {
 
         <h1 className="text-2xl font-bold mb-2">Forgot your password?</h1>
         <p className="text-slate-500 mb-6">
-          Enter your email address and we'll send you a link to reset your password.
+          Enter your email address and we&apos;ll send you a link to reset your password.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

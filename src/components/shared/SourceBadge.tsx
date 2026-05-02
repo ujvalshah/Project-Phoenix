@@ -149,34 +149,33 @@ export const SourceBadge: React.FC<SourceBadgeProps> = ({
 
   // Fetch YouTube channel thumbnail when URL is detected
   useEffect(() => {
-    if (isYouTube && url && !customDomain) {
-      // Only fetch if it's YouTube and no custom domain override
-      let cancelled = false;
-      setIsImageLoading(true);
-      
-      fetchYouTubeChannelThumbnail(url)
-        .then((thumbnail) => {
-          if (!cancelled) {
-            if (thumbnail) {
-              setYoutubeChannelThumbnail(thumbnail);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (isYouTube && url && !customDomain) {
+        setIsImageLoading(true);
+        fetchYouTubeChannelThumbnail(url)
+          .then((thumbnail) => {
+            if (!cancelled) {
+              if (thumbnail) {
+                setYoutubeChannelThumbnail(thumbnail);
+              }
+              setIsImageLoading(false);
             }
-            setIsImageLoading(false);
-          }
-        })
-        .catch((error) => {
-          // Silently fail - will fallback to YouTube favicon
-          if (!cancelled) {
-            setIsImageLoading(false);
-          }
-        });
-
-      return () => {
-        cancelled = true;
-      };
-    } else {
-      setYoutubeChannelThumbnail(null);
-      setIsImageLoading(false);
-    }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setIsImageLoading(false);
+            }
+          });
+      } else {
+        setYoutubeChannelThumbnail(null);
+        setIsImageLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [isYouTube, url, customDomain]);
 
   // Build favicon URL using Google S2 API (fallback for non-YouTube or when channel thumbnail fails)

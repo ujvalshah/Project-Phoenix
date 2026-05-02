@@ -16,6 +16,7 @@ import { ArticleDrawer } from './ArticleDrawer';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { useHomeGridColumnCount } from '@/hooks/useHomeGridColumnCount';
+import { getPriorityThumbnailCount } from '@/constants/aboveFoldPriority';
 
 interface ArticleGridProps {
   articles: Article[];
@@ -101,6 +102,45 @@ const InfiniteScrollTrigger: React.FC<{
       )}
     </div>
   );
+};
+
+const LOCAL_RENDER_INITIAL = 80;
+const LOCAL_RENDER_BATCH = 40;
+
+const LocalRenderBatchTrigger: React.FC<{
+  hasHiddenItems: boolean;
+  onRevealMore: () => void;
+}> = ({ hasHiddenItems, onRevealMore }) => {
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const callbackRef = useRef(onRevealMore);
+
+  useEffect(() => {
+    callbackRef.current = onRevealMore;
+  }, [onRevealMore]);
+
+  useEffect(() => {
+    if (!hasHiddenItems) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting) {
+          callbackRef.current();
+        }
+      },
+      {
+        rootMargin: '200px',
+        threshold: 0,
+      }
+    );
+    const currentTrigger = triggerRef.current;
+    if (currentTrigger) {
+      observer.observe(currentTrigger);
+    }
+    return () => observer.disconnect();
+  }, [hasHiddenItems]);
+
+  if (!hasHiddenItems) return null;
+  return <div ref={triggerRef} className="h-6 w-full col-span-full" aria-hidden="true" />;
 };
 
 export const ArticleGrid: React.FC<ArticleGridProps> = ({
@@ -193,6 +233,10 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   }, [articles]);
 
   const gridColumnCount = useHomeGridColumnCount();
+  const priorityThumbnailCount = useMemo(
+    () => getPriorityThumbnailCount(gridColumnCount),
+    [gridColumnCount],
+  );
   // Phase A safety rail: virtualize only in single-column layout.
   // Multi-column desktop keeps the proven non-virtualized grid because row-banding
   // introduces visible dead-space artifacts with mixed-height cards.
@@ -203,6 +247,7 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   const homeGridVirtualApiRef = useRef<HomeGridVirtualizedApi | null>(null);
   const virtualListAnchorRef = useRef<HTMLDivElement>(null);
   const [virtualListScrollMargin, setVirtualListScrollMargin] = useState(0);
+  const [localRenderCount, setLocalRenderCount] = useState(LOCAL_RENDER_INITIAL);
   const virtualizeHomeGridRef = useRef(virtualizeHomeGrid);
   virtualizeHomeGridRef.current = virtualizeHomeGrid;
 
@@ -223,6 +268,14 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
       window.removeEventListener('load', compute);
     };
   }, [virtualizeHomeGrid, displayArticles.length, gridColumnCount]);
+
+  useEffect(() => {
+    if (virtualizeHomeGrid) return;
+    setLocalRenderCount((prev) => {
+      const next = Math.max(prev, LOCAL_RENDER_INITIAL);
+      return Math.min(next, Math.max(LOCAL_RENDER_INITIAL, displayArticles.length));
+    });
+  }, [displayArticles.length, virtualizeHomeGrid]);
 
   useEffect(() => {
     if (!virtualizeHomeGrid || !isMultiColumnGrid) return;
@@ -374,6 +427,10 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
       onLoadMore();
     }
   }, [isFetchingNextPage, hasNextPage, onLoadMore]);
+
+  const revealMoreLocalCards = useCallback(() => {
+    setLocalRenderCount((prev) => Math.min(displayArticles.length, prev + LOCAL_RENDER_BATCH));
+  }, [displayArticles.length]);
   
   // Drawer handlers
   const handleCardClick = useCallback((article: Article) => {
@@ -539,6 +596,12 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
   }
 
   // Render grid (normal-flow CSS grid — variable row heights are reliable).
+  const gridArticles = virtualizeHomeGrid
+    ? displayArticles
+    : displayArticles.slice(0, localRenderCount);
+  const hasHiddenGridArticles =
+    !virtualizeHomeGrid && gridArticles.length < displayArticles.length;
+
   return (
     <div className="relative">
       {/* Feed refetch overlay (filters, search commit, stream, manual refresh, …) */}
@@ -580,9 +643,12 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto items-stretch mx-auto w-full">
-          {displayArticles.map((article, index) => {
+          {gridArticles.map((article, index) => {
+            const isPriorityTile = index < priorityThumbnailCount;
+            const useEntranceAnimation =
+              shouldAnimate && !isPriorityTile && index <= staggerCapIndex;
             const delay =
-              index <= staggerCapIndex && shouldAnimate ? Math.min(index * 50, 750) : 0;
+              useEntranceAnimation ? Math.min(index * 50, 750) : 0;
             return (
               <ErrorBoundary
                 key={article.id}
@@ -596,11 +662,11 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
                 <div
                   className={`
                   h-full
-                  ${shouldAnimate ? 'animate-fade-in-up' : ''}
+                  ${useEntranceAnimation ? 'animate-fade-in-up' : ''}
                   motion-reduce:animate-none motion-reduce:opacity-100
                 `}
                   style={{
-                    animationDelay: shouldAnimate ? `${delay}ms` : '0ms',
+                    animationDelay: useEntranceAnimation ? `${delay}ms` : '0ms',
                   }}
                 >
                   <NewsCard
@@ -617,11 +683,16 @@ export const ArticleGrid: React.FC<ArticleGridProps> = ({
                     onSelect={onSelect ? () => onSelect(article.id) : undefined}
                     disableInlineExpansion={isMultiColumnGrid}
                     searchHighlightQuery={searchHighlightQuery}
+                    priorityThumbnail={isPriorityTile}
                   />
                 </div>
               </ErrorBoundary>
             );
           })}
+          <LocalRenderBatchTrigger
+            hasHiddenItems={hasHiddenGridArticles}
+            onRevealMore={revealMoreLocalCards}
+          />
         </div>
       )}
 

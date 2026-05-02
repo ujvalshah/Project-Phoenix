@@ -12,10 +12,6 @@
  * - Derived state computed via useMemo (not stored separately)
  * - Consistent URL normalization using normalizeImageUrl()
  * - Proper lifecycle management for add/delete operations
- *
- * FEATURE FLAG:
- * - Controlled by FEATURE_FLAGS.USE_IMAGE_MANAGER
- * - Can be disabled to fall back to legacy behavior
  */
 
 import { useState, useMemo, useCallback, useRef } from 'react';
@@ -24,7 +20,6 @@ import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 import { getAllImageUrls } from '@/utils/mediaClassifier';
 import type { MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { normalizeMediaOrder } from '@/utils/mediaOrder';
-import { isFeatureEnabled } from '@/constants/featureFlags';
 
 /**
  * Represents a single image in the unified state
@@ -210,7 +205,7 @@ function articleToImageItems(article: Article): ImageItem[] {
   ) => {
     const normalizedUrl = normalizeImageUrl(url);
     if (seenUrls.has(normalizedUrl)) {
-      if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+      if (import.meta.env.DEV) {
         console.log('[useImageManager] Skipping duplicate:', { url, normalizedUrl, source });
       }
       return;
@@ -235,14 +230,15 @@ function articleToImageItems(article: Article): ImageItem[] {
   };
 
   // 1. Primary media (explicit primaryMedia takes precedence)
-  if (hasExplicitPrimary) {
-    addItem(article.primaryMedia.url, 'primary', 'primaryMedia', {
-      showInMasonry: article.primaryMedia.showInMasonry ?? true,
-      showInGrid: article.primaryMedia.showInGrid ?? true,
-      masonryTitle: article.primaryMedia.masonryTitle,
-      type: article.primaryMedia.type,
-      thumbnail: article.primaryMedia.thumbnail,
-      previewMetadata: article.primaryMedia.previewMetadata,
+  if (hasExplicitPrimary && article.primaryMedia) {
+    const pm = article.primaryMedia;
+    addItem(pm.url, 'primary', 'primaryMedia', {
+      showInMasonry: pm.showInMasonry ?? true,
+      showInGrid: pm.showInGrid ?? true,
+      masonryTitle: pm.masonryTitle,
+      type: pm.type,
+      thumbnail: pm.thumbnail,
+      previewMetadata: pm.previewMetadata,
     });
   } else if (article.media?.url) {
     // Fallback for legacy nuggets: treat media as primary when primaryMedia is absent.
@@ -422,7 +418,7 @@ export function useImageManager(
         (img) => img.normalizedUrl === normalizedUrl && img.status === 'active'
       );
       if (exists) {
-        if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+        if (import.meta.env.DEV) {
           console.log('[useImageManager] addImage: Duplicate skipped', { url, normalizedUrl });
         }
         return prev;
@@ -430,7 +426,7 @@ export function useImageManager(
 
       // Check if explicitly deleted
       if (prev.explicitlyDeleted.has(normalizedUrl)) {
-        if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+        if (import.meta.env.DEV) {
           console.log('[useImageManager] addImage: Explicitly deleted, skipping', { url });
         }
         return prev;
@@ -453,7 +449,7 @@ export function useImageManager(
         previewMetadata: options?.previewMetadata,
       };
 
-      if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+      if (import.meta.env.DEV) {
         console.log('[useImageManager] addImage:', { url, source, newImage });
       }
 
@@ -486,7 +482,7 @@ export function useImageManager(
       const newExplicitlyDeleted = new Set(prev.explicitlyDeleted);
       newExplicitlyDeleted.add(normalizedUrl);
 
-      if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+      if (import.meta.env.DEV) {
         console.log('[useImageManager] deleteImage: Optimistic delete', { url, normalizedUrl });
       }
 
@@ -517,7 +513,7 @@ export function useImageManager(
       const newPending = new Set(prev.pendingDeletions);
       newPending.delete(normalizedUrl);
 
-      if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+      if (import.meta.env.DEV) {
         console.log('[useImageManager] confirmDeletion:', { url, normalizedUrl });
       }
 
@@ -549,7 +545,7 @@ export function useImageManager(
       const newExplicitlyDeleted = new Set(prev.explicitlyDeleted);
       newExplicitlyDeleted.delete(normalizedUrl);
 
-      if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+      if (import.meta.env.DEV) {
         console.log('[useImageManager] rollbackDeletion:', { url, normalizedUrl });
       }
 
@@ -637,7 +633,7 @@ export function useImageManager(
 
       // If images are unchanged and already initialized, return prev state (no update)
       if (imagesUnchanged && prev.isInitialized) {
-        if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+        if (import.meta.env.DEV) {
           console.log('[useImageManager] syncFromArticle: No changes detected, skipping update', {
             articleId: article.id,
             imageCount: filteredImages.length,
@@ -646,7 +642,7 @@ export function useImageManager(
         return prev; // No state update = no re-render
       }
 
-      if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+      if (import.meta.env.DEV) {
         console.log('[useImageManager] syncFromArticle:', {
           articleId: article.id,
           totalImages: newImages.length,
@@ -682,7 +678,7 @@ export function useImageManager(
         order: idx,
       }));
 
-      if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
+      if (import.meta.env.DEV) {
         console.log('[useImageManager] reorderImages:', {
           sourceIndex,
           destinationIndex,

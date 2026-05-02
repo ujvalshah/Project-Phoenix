@@ -91,6 +91,12 @@ export function detectDuplicateImages(images: string[]): {
  * - Preserves original casing of first occurrence
  * - Prevents storing exact duplicates
  */
+/** Skip verbose dedup logs during Vitest runs (keeps CI output readable). */
+function shouldLogImageDedupDiag(): boolean {
+  if (typeof process !== 'undefined' && process.env.VITEST === 'true') return false;
+  return typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
+}
+
 export function dedupeImagesForCreate(images: string[]): {
   deduplicated: string[];
   removed: string[];
@@ -121,10 +127,12 @@ export function dedupeImagesForCreate(images: string[]): {
   const deduplicated = Array.from(imageMap.values());
   const afterCount = deduplicated.length;
 
-  if (beforeCount !== afterCount) {
-    console.log(`[IMAGE_DEDUP] mode=create, action=removed, reason=duplicate, before=${beforeCount}, after=${afterCount}, removed=${removed.length}`);
-  } else if (deduplicated.length > 0) {
-    console.log(`[IMAGE_DEDUP] mode=create, action=preserved, reason=none, before=${beforeCount}, after=${afterCount}`);
+  if (shouldLogImageDedupDiag()) {
+    if (beforeCount !== afterCount) {
+      console.log(`[IMAGE_DEDUP] mode=create, action=removed, reason=duplicate, before=${beforeCount}, after=${afterCount}, removed=${removed.length}`);
+    } else if (deduplicated.length > 0) {
+      console.log(`[IMAGE_DEDUP] mode=create, action=preserved, reason=none, before=${beforeCount}, after=${afterCount}`);
+    }
   }
 
   return { deduplicated, removed, logs };
@@ -222,10 +230,12 @@ export function dedupeImagesForEdit(
   const deduplicated = Array.from(imageMap.values());
   const afterCount = deduplicated.length;
 
-  if (removed.length > 0 || beforeCount !== afterCount) {
-    console.log(`[IMAGE_DEDUP] mode=edit, action=${removed.length > 0 ? 'removed' : 'preserved'}, reason=duplicate, before=${beforeCount}, after=${afterCount}, removed=${removed.length}`);
-  } else if (deduplicated.length > 0) {
-    console.log(`[IMAGE_DEDUP] mode=edit, action=preserved, reason=none, before=${beforeCount}, after=${afterCount}`);
+  if (shouldLogImageDedupDiag()) {
+    if (removed.length > 0 || beforeCount !== afterCount) {
+      console.log(`[IMAGE_DEDUP] mode=edit, action=${removed.length > 0 ? 'removed' : 'preserved'}, reason=duplicate, before=${beforeCount}, after=${afterCount}, removed=${removed.length}`);
+    } else if (deduplicated.length > 0) {
+      console.log(`[IMAGE_DEDUP] mode=edit, action=preserved, reason=none, before=${beforeCount}, after=${afterCount}`);
+    }
   }
 
   return {

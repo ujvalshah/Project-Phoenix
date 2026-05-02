@@ -177,10 +177,10 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
         e.preventDefault();
         setFocusedIndex(prev => (prev > 0 ? prev - 1 : totalOptions - 1));
         break;
-      case 'Enter':
+      case 'Enter': {
         e.preventDefault();
         const trimmedSearch = searchValue.trim();
-        
+
         // If a dropdown item is highlighted, select it
         if (focusedIndex >= 0 && focusedIndex < filteredOptions.length) {
           const option = filteredOptions[focusedIndex];
@@ -223,6 +223,7 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
           }
         }
         break;
+      }
       case 'Escape':
         e.preventDefault();
         e.stopPropagation();
@@ -518,7 +519,7 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
                   focusedIndex === filteredOptions.length ? 'ring-2 ring-primary-500' : ''
                 }`}
               >
-                Create "{searchValue}"
+                {`Create \u201C${searchValue}\u201D`}
               </button>
             )}
           </div>

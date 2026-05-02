@@ -270,7 +270,7 @@ describe('SelectableDropdown', () => {
 
       fireEvent.click(screen.getByRole('combobox'));
 
-      expect(screen.getByText('Create "NewTag"')).toBeInTheDocument();
+      expect(screen.getByText('Create \u201cNewTag\u201d')).toBeInTheDocument();
     });
 
     it('calls onCreateNew when clicking create option', () => {
@@ -284,7 +284,7 @@ describe('SelectableDropdown', () => {
       );
 
       fireEvent.click(screen.getByRole('combobox'));
-      fireEvent.click(screen.getByText('Create "NewTag"'));
+      fireEvent.click(screen.getByText('Create \u201cNewTag\u201d'));
 
       expect(onCreateNew).toHaveBeenCalledWith('NewTag');
     });

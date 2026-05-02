@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
 import { Search, X } from 'lucide-react';
 
 export interface SearchInputHandle {
@@ -88,10 +88,11 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
 
   // Stable reference to the latest onSearch to avoid re-creating the debounce callback
   const onSearchRef = useRef(onSearch);
-  onSearchRef.current = onSearch;
-
   const onChangeImmediateRef = useRef(onChangeImmediate);
-  onChangeImmediateRef.current = onChangeImmediate;
+  useLayoutEffect(() => {
+    onSearchRef.current = onSearch;
+    onChangeImmediateRef.current = onChangeImmediate;
+  }, [onSearch, onChangeImmediate]);
 
   // External reset: when the parent bumps `resetSignal`, mirror `externalValue`
   // into local state and cancel any in-flight debounce. This is how filter
@@ -102,8 +103,10 @@ export const SearchInput = React.memo(forwardRef<SearchInputHandle, SearchInputP
     if (prevResetSignalRef.current === resetSignal) return;
     prevResetSignalRef.current = resetSignal;
     const next = externalValue ?? '';
-    setLocalValue(next);
-    lastEmittedRef.current = next.trim();
+    queueMicrotask(() => {
+      setLocalValue(next);
+      lastEmittedRef.current = next.trim();
+    });
     clearTimeout(debounceRef.current);
   }, [resetSignal, externalValue]);
 

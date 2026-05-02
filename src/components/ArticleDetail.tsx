@@ -45,7 +45,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Article } from '@/types';
+import { Article, MediaType, PreviewMetadata } from '@/types';
 import { Clock, ExternalLink, ChevronLeft, ChevronRight, ArrowUp } from 'lucide-react';
 import { formatDate, formatReadTime } from '@/utils/formatters';
 import { AddToCollectionModal } from './AddToCollectionModal';
@@ -54,7 +54,8 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { EmbeddedMedia } from './embeds/EmbeddedMedia';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useAuth } from '@/hooks/useAuth';
-import { ReportModal } from './ReportModal';
+import { ReportModal, type ReportPayload } from './ReportModal';
+import { adminModerationService } from '@/admin/services/adminModerationService';
 import { CreateNuggetModalLoadable } from './CreateNuggetModalLoadable';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
@@ -65,7 +66,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
 import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
 
-interface ArticleDetailProps {
+export interface ArticleDetailProps {
   article: Article;
   onClose?: () => void;
   isModal?: boolean;
@@ -90,27 +91,6 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   onToggleVisibility,
   onYouTubeTimestampClick,
 }) => {
-  // Early return if article is not available
-  if (!article) {
-    // eslint-disable-next-line no-console
-    console.warn('[ArticleDetail] Article is not available');
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-slate-600 dark:text-slate-400 mb-4">Article not available</p>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
-            >
-              Close
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -128,7 +108,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const { data: disclaimerConfig } = useDisclaimerConfig();
   const resolvedDisclaimer = useMemo(
     () => resolveDisclaimer(article, disclaimerConfig),
-    [article.showDisclaimer, article.disclaimerText, disclaimerConfig]
+    [article, disclaimerConfig]
   );
   
   const shouldShowHeader = showHeader ?? isModal;
@@ -202,15 +182,16 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
     return null;
   }, [article]);
 
-  // Classify media into primary and supporting (safe with null checks)
-  const { primaryMedia, supportingMedia } = classifyArticleMedia(article);
+  const classifiedMedia = useMemo(() => classifyArticleMedia(article), [article]);
+
   const drawerMediaItems = useMemo(() => {
+    const { primaryMedia, supportingMedia } = classifiedMedia;
     const items: Array<{
       type: string;
       url: string;
       thumbnail: string | undefined;
       aspect_ratio: string | undefined;
-      previewMetadata: any;
+      previewMetadata: PreviewMetadata | undefined;
     }> = [];
 
     // images[] preserves user drag/drop order — use it as canonical source first
@@ -254,7 +235,19 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
       seen.add(key);
       return true;
     });
-  }, [primaryMedia, supportingMedia, article?.images]);
+  }, [classifiedMedia, article.images]);
+
+  const { primaryMedia, supportingMedia } = classifiedMedia;
+
+  const mediaSessionKey = `${article.id}:${drawerMediaItems.length}`;
+  const [prevMediaSessionKey, setPrevMediaSessionKey] = useState(mediaSessionKey);
+  if (mediaSessionKey !== prevMediaSessionKey) {
+    setPrevMediaSessionKey(mediaSessionKey);
+    setDrawerMediaIndex(0);
+    setInlineVideoStartTime(null);
+    setIsMediaCarouselInView(true);
+  }
+
   const currentDrawerMedia = drawerMediaItems[drawerMediaIndex] || null;
 
   const handleAddToCollection = () => {
@@ -268,23 +261,20 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const articleYouTubeUrl = useMemo(() => {
     const ytItem = drawerMediaItems.find((item) => item.type === 'youtube');
     return ytItem?.url || article?.media?.url || article?.video || null;
-  }, [drawerMediaItems, article?.media?.url, article?.video]);
+  }, [drawerMediaItems, article]);
 
   useEffect(() => {
     if (!isModal || !currentDrawerMedia || !mediaCarouselRef.current) {
-      setIsMediaCarouselInView(true);
       return;
     }
 
     if (typeof IntersectionObserver === 'undefined') {
-      setIsMediaCarouselInView(true);
       return;
     }
 
     const mediaContainer = mediaCarouselRef.current;
     const drawerScrollContainer = mediaContainer.closest('#drawer-content') as HTMLElement | null;
     if (!drawerScrollContainer) {
-      setIsMediaCarouselInView(true);
       return;
     }
 
@@ -335,13 +325,15 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
         window.open(originalUrl, '_blank', 'noopener,noreferrer');
       }
     },
-    [isModal, onYouTubeTimestampClick, youtubeCarouselIndex, articleYouTubeUrl, playVideo, article?.id, article?.title]
+    [
+      isModal,
+      onYouTubeTimestampClick,
+      youtubeCarouselIndex,
+      articleYouTubeUrl,
+      playVideo,
+      article,
+    ]
   );
-
-  useEffect(() => {
-    setDrawerMediaIndex(0);
-    setInlineVideoStartTime(null);
-  }, [article?.id, drawerMediaItems.length]);
 
   const goToPreviousMedia = () => {
     if (drawerMediaItems.length <= 1) return;
@@ -538,7 +530,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                                   >
                                       <EmbeddedMedia
                                           media={{
-                                              type: currentDrawerMedia.type,
+                                              type: currentDrawerMedia.type as MediaType,
                                               url: currentDrawerMedia.url,
                                               thumbnail_url: currentDrawerMedia.thumbnail,
                                               aspect_ratio: currentDrawerMedia.aspect_ratio,
@@ -632,7 +624,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
                        >
                            <EmbeddedMedia 
                                media={{
-                                   type: primaryMedia.type,
+                                   type: primaryMedia.type as MediaType,
                                    url: primaryMedia.url,
                                    thumbnail_url: primaryMedia.thumbnail,
                                    aspect_ratio: primaryMedia.aspect_ratio,
@@ -658,8 +650,28 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
       <ReportModal
           isOpen={showReportModal}
           onClose={() => setShowReportModal(false)}
-          targetId={article?.id ?? ''}
-          targetType="nugget"
+          articleId={article.id}
+          onSubmit={async (payload: ReportPayload) => {
+            try {
+              const normalizedComment = payload.comment?.trim() || undefined;
+              await adminModerationService.submitReport(
+                payload.articleId,
+                'nugget',
+                payload.reason,
+                normalizedComment,
+                currentUser
+                  ? { id: currentUser.id, name: currentUser.name }
+                  : undefined,
+                article.author
+                  ? { id: article.author.id, name: article.author.name }
+                  : undefined
+              );
+              toast.success('Report submitted successfully');
+            } catch (err: unknown) {
+              toast.error('Failed to submit report. Please try again.');
+              throw err;
+            }
+          }}
       />
       {showEditModal && (
         <CreateNuggetModalLoadable

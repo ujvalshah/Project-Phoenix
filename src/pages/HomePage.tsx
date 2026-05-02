@@ -7,19 +7,20 @@
  * @see src/LAYOUT_ARCHITECTURE.md for full documentation
  *
  * PURPOSE:
- * - Display articles in multiple view modes (grid, feed, masonry)
+ * - Display articles in grid or masonry view (`App.tsx` passes `viewMode` from Header)
  * - Handle view mode switching via Header buttons
- * - Article clicks open modal overlays (NOT side panel like FeedLayoutPage)
+ * - Article clicks open modal overlays (URL/query driven; drawer on desktop multi-column grid)
  * - Category toolbar filters feed by community collection
  *
  * VIEW MODES:
- * - grid: 4-column ArticleGrid (default)
- * - masonry: Masonry-style ArticleGrid
+ * - grid: window-virtualized grid via `HomeGridVirtualized` inside `HomeArticleFeed`
+ *   (@tanstack/react-virtual `useWindowVirtualizer`; overscan + scroll margin tuned in TASK-020)
+ * - masonry: Masonry layout via `MasonryGrid` inside `HomeArticleFeed` (not window-virtualized)
  *
  * STABILITY RULES:
  * - Use stable grid-cols-{n} classes only (NO arbitrary templates)
  * - Width constraints on children, not grid definitions
- * - This page does NOT use ResponsiveLayoutShell (that's for /feed route)
+ * - Legacy `/feed` URLs redirect to `/` in App routing (single home surface)
  *
  * ============================================================================
  */
@@ -30,7 +31,7 @@ import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
 import { Loader2 } from 'lucide-react';
 import { ArticleModal } from '@/components/ArticleModal';
-import { ArticleGrid } from '@/components/ArticleGrid';
+import { HomeArticleFeed } from '@/components/feed/HomeArticleFeed';
 import { PageStack } from '@/components/layouts/PageStack';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { DesktopFilterSidebar } from '@/components/header/DesktopFilterSidebar';
@@ -52,6 +53,7 @@ import {
   onboardingCopyService,
   ONBOARDING_PUBLIC_QUERY_KEY,
 } from '@/services/onboardingCopyService';
+import { HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS } from '@/utils/homeGridVirtualization';
 
 function mergeMicroHeaderLine(
   defaults: typeof HOME_MICRO_HEADER_COPY | typeof MARKET_PULSE_MICRO_HEADER_COPY,
@@ -80,7 +82,10 @@ const PublicHomeIntro: React.FC<{
   const activeCopy = isPulseStream ? marketPulseCopy : homeCopy;
 
   return (
-    <section className="mx-4 mb-0.5 px-0 pt-0.5 pb-0 lg:mx-6" aria-label="Nuggets homepage intro">
+    <section
+      className="mx-4 mb-0.5 min-h-[4.75rem] px-0 pt-0.5 pb-0 lg:mx-6"
+      aria-label="Nuggets homepage intro"
+    >
       <h1 className="max-w-[62ch] text-[15px] font-medium leading-5 tracking-tight text-slate-950 dark:text-white sm:text-base lg:max-w-none">
         {activeCopy.title}
       </h1>
@@ -599,11 +604,16 @@ export const HomePage: React.FC<HomePageProps> = ({
     touchStartRef.current = 0;
   };
 
-  const toggleTag = useCallback((tag: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(tag) ? prev.filter((c) => c !== tag) : [...prev, tag],
-    );
-  }, [setSelectedCategories]);
+  const toggleTag = useCallback(
+    (tag: string) => {
+      setSelectedCategories(
+        selectedCategories.includes(tag)
+          ? selectedCategories.filter((c: string) => c !== tag)
+          : [...selectedCategories, tag],
+      );
+    },
+    [selectedCategories, setSelectedCategories],
+  );
 
   const handleArticleGridClick = useCallback(
     (article: Article) => {
@@ -694,7 +704,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           {resultSummaryText}
           {!isSmallViewport && sortLabel && safeTotalCount > 0 && ` · Sorted by ${sortLabel.toLowerCase()}`}
         </div>
-        <ArticleGrid
+        <HomeArticleFeed
           articles={articles}
           viewMode={viewMode}
           isLoading={isLoadingArticles}
@@ -709,6 +719,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           onLoadMore={fetchNextPage}
           error={articlesError || null}
           onRetry={refetchArticles}
+          overscanRows={HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS}
         />
       </div>
     </div>

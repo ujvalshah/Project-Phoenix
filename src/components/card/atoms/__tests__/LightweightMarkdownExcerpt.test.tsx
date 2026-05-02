@@ -25,8 +25,18 @@ describe('LightweightMarkdownExcerpt', () => {
     expect(a).toHaveAttribute('target', '_blank');
   });
 
-  it('shows markdown syntax verbatim (no bold parsing)', () => {
-    render(<LightweightMarkdownExcerpt content={'Here is **emphasis**'} />);
-    expect(screen.getByText(/Here is \*\*emphasis\*\*/)).toBeTruthy();
+  it('renders **bold** via slim inline parser (no react-markdown)', () => {
+    const { container } = render(<LightweightMarkdownExcerpt content={'Here is **emphasis**'} />);
+    expect(container.querySelector('strong')).toHaveTextContent('emphasis');
+    expect(screen.getByText(/Here is/)).toBeTruthy();
+  });
+
+  it('renders markdown links and inline code', () => {
+    render(
+      <LightweightMarkdownExcerpt content="[`npm`](https://example.com) run build" />,
+    );
+    const link = screen.getByRole('link');
+    expect(link.getAttribute('href')).toMatch(/^https:\/\/example\.com\/?$/);
+    expect(link.querySelector('code')).toHaveTextContent('npm');
   });
 });

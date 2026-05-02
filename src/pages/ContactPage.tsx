@@ -61,7 +61,7 @@ export const ContactPage: React.FC = () => {
             Contact Us
           </h1>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            Have a question, suggestion, or just want to say hello? We'd love to hear from you.
+            Have a question, suggestion, or just want to say hello? We&apos;d love to hear from you.
           </p>
         </div>
 
@@ -75,7 +75,7 @@ export const ContactPage: React.FC = () => {
               Message Sent!
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-              Thanks for reaching out. We'll get back to you as soon as possible.
+              Thanks for reaching out. We&apos;ll get back to you as soon as possible.
             </p>
             <button
               onClick={handleReset}

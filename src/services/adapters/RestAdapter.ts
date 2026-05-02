@@ -197,20 +197,7 @@ export class RestAdapter implements IAdapter {
       // Content stream routing
       ...(article.contentStream && { contentStream: article.contentStream }),
     };
-    
-    // TEMPORARY DEBUG: Stage 3 - Payload sent to API (RestAdapter)
-    const primaryUrl = article.media?.url || article.primaryMedia?.url || null;
-    console.log('[CONTENT_TRACE] Stage 3 - Payload sent to API (RestAdapter)', {
-      mode: 'create',
-      hasMedia: !!payload.media,
-      source_type: payload.source_type,
-      primaryUrl,
-      contentLength: payload.content?.length || 0,
-      contentPreview: payload.content?.substring(0, 120) || '',
-      mediaType: payload.media?.type,
-      mediaUrl: payload.media?.url,
-    });
-    
+
     // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
     // Frontend is canonical deduplication pass - backend will compute but not mutate
     const imagesHash = await calculateImagesHash(payload.images);

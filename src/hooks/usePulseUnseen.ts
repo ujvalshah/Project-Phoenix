@@ -1,8 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RestAdapter } from '@/services/adapters/RestAdapter';
+import { storageService } from '@/services/storageService';
 import { useAuthSelector } from '@/context/AuthContext';
-
-const adapter = new RestAdapter();
 
 const FEED_BADGE_KEY = ['feeds', 'unseen-counts'] as const;
 type FeedBadgeKey = 'home' | 'market-pulse';
@@ -16,7 +14,7 @@ export function useUnseenFeedCounts() {
   const isAuthenticated = useAuthSelector((a) => a.isAuthenticated);
   return useQuery({
     queryKey: FEED_BADGE_KEY,
-    queryFn: () => adapter.getUnseenFeedCounts(),
+    queryFn: () => storageService.getUnseenFeedCounts(),
     enabled: isAuthenticated,
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
@@ -59,5 +57,5 @@ function useMarkSeen(run: (feed: FeedBadgeKey) => Promise<void>) {
 }
 
 export function useMarkFeedSeen() {
-  return useMarkSeen((feed) => adapter.markFeedSeen(feed));
+  return useMarkSeen((feed) => storageService.markFeedSeen(feed));
 }

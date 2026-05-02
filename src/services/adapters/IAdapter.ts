@@ -50,6 +50,11 @@ export interface IAdapter {
   updateArticle(id: string, updates: Partial<Article>): Promise<Article | null>;
   deleteArticle(id: string): Promise<boolean>;
 
+  /** Home + Market Pulse unseen counts for feed chrome badges */
+  getUnseenFeedCounts(): Promise<{ home: number; marketPulse: number }>;
+  /** Mark home or pulse feed visited (badge reset) */
+  markFeedSeen(feed: 'home' | 'market-pulse'): Promise<void>;
+
   // Users
   getUsers(): Promise<User[]>;
   getUserById(id: string): Promise<PublicUserView | undefined>;

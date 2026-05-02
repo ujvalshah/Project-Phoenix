@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Check, Folder, Lock, Globe, X, Search } from 'lucide-react';
 import { storageService } from '@/services/storageService';
@@ -20,6 +20,19 @@ interface CollectionPopoverProps {
   anchorRect?: DOMRect | null;
 }
 
+function normalizeCollectionResult(result: unknown): Collection[] {
+  if (Array.isArray(result)) return result;
+  if (result && typeof result === 'object' && 'data' in result) {
+    const r = result as { data: unknown };
+    if (Array.isArray(r.data)) return r.data as Collection[];
+  }
+  return [];
+}
+
+function collectionBaseName(collection: Collection): string {
+  return collection.name || '';
+}
+
 export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
   isOpen,
   onClose,
@@ -37,14 +50,88 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
   const { currentUserId, isAuthenticated } = useAuth();
   const { withAuth } = useRequireAuth();
 
-  // Fetch collections once when popover opens
-  useEffect(() => {
+  const [popoverOpenPrev, setPopoverOpenPrev] = useState(isOpen);
+  if (isOpen !== popoverOpenPrev) {
+    setPopoverOpenPrev(isOpen);
     if (isOpen) {
-      loadCollections();
       setSearchQuery('');
-      requestAnimationFrame(() => searchRef.current?.focus());
     }
-  }, [isOpen, mode]);
+  }
+
+  const loadCollections = useCallback(async () => {
+    try {
+      if (mode === 'public') {
+        const [publicResult, featuredResult] = await Promise.all([
+          fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
+            type: 'public',
+            sortField: 'name',
+            sortDirection: 'asc',
+            limit: 100,
+          }),
+          storageService.getFeaturedCollections().catch(() => []),
+        ]);
+
+        const publicCols = normalizeCollectionResult(publicResult);
+        const featuredCols = featuredResult ?? [];
+
+        const merged = new Map<string, Collection>();
+        for (const c of featuredCols) merged.set(c.id, c);
+        for (const c of publicCols) merged.set(c.id, c);
+
+        setCollections(
+          Array.from(merged.values())
+            .filter((c) => c.type === 'public')
+            .sort((a, b) => collectionBaseName(a).localeCompare(collectionBaseName(b)))
+        );
+      } else {
+        const result = await fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
+          type: 'private',
+          sortField: 'name',
+          sortDirection: 'asc',
+          limit: 100,
+        });
+        const cols = normalizeCollectionResult(result);
+        setCollections(cols.filter((c) => c.creatorId === currentUserId && c.type === mode));
+      }
+    } catch {
+      setCollections([]);
+      toast.error('Failed to load collections');
+    }
+  }, [currentUserId, mode, toast]);
+
+  const handleCloseInternal = useCallback(async () => {
+    onClose();
+
+    if (mode === 'private' && collections.length > 0) {
+      const inAny = collections.some((c) => c.entries?.some((e) => e.articleId === articleId));
+      if (!inAny) {
+        const general = collections.find((c) => c.name === 'General' || c.name === 'General Bookmarks');
+        if (general) {
+          try {
+            await storageService.addArticleToCollection(general.id, articleId, currentUserId);
+            toast.success(`Saved to ${general.name}`);
+          } catch {
+            // silent fallback failure
+          }
+        }
+      }
+    }
+  }, [articleId, collections, currentUserId, mode, onClose, toast]);
+
+  // Fetch collections when popover opens (defer work out of the synchronous effect body).
+  useEffect(() => {
+    if (!isOpen) return;
+    const t = window.setTimeout(() => {
+      void loadCollections();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [isOpen, loadCollections, mode]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = requestAnimationFrame(() => searchRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [isOpen]);
 
   // Dismiss on outside click or Escape
   useEffect(() => {
@@ -56,7 +143,10 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
       }
     };
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); void handleCloseInternal(); }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        void handleCloseInternal();
+      }
     };
 
     document.addEventListener('pointerdown', handlePointerDown, true);
@@ -65,7 +155,7 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
       document.removeEventListener('pointerdown', handlePointerDown, true);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isOpen, mode, collections, articleId, currentUserId, onClose]);
+  }, [handleCloseInternal, isOpen]);
 
   // Reposition on scroll/resize
   const [viewportTick, setViewportTick] = useState(0);
@@ -80,13 +170,30 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
     };
   }, [isOpen]);
 
-  // Measure actual popover size after render for accurate placement
+  // Measure popover via ResizeObserver — avoids synchronous setState inside layout effects.
   const [measured, setMeasured] = useState<{ h: number } | null>(null);
-  useLayoutEffect(() => {
-    if (!isOpen) { setMeasured(null); return; }
+  useEffect(() => {
+    if (!isOpen) {
+      const t = window.setTimeout(() => setMeasured(null), 0);
+      return () => window.clearTimeout(t);
+    }
     const el = modalRef.current;
-    if (!el) return;
-    setMeasured({ h: el.offsetHeight });
+    if (!el) {
+      return undefined;
+    }
+    const apply = () => setMeasured({ h: el.offsetHeight });
+    let raf = requestAnimationFrame(() => {
+      apply();
+    });
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(apply);
+    });
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, [isOpen, collections.length, isCreating, searchQuery, viewportTick]);
 
   const style = useMemo<React.CSSProperties>(() => {
@@ -112,7 +219,6 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
     } else {
       top = anchorRect.top - margin - estimatedHeight;
     }
-    // Final clamp: never under the header, never off the bottom.
     top = Math.min(Math.max(top, HEADER_SAFE_INSET + margin), vh - estimatedHeight - margin);
 
     return {
@@ -124,101 +230,23 @@ export const CollectionPopover: React.FC<CollectionPopoverProps> = ({
     };
   }, [anchorRect, viewportTick, measured]);
 
-  // --- Data ---
-
-  const loadCollections = async () => {
-    try {
-      if (mode === 'public') {
-        const [publicResult, featuredResult] = await Promise.all([
-          fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
-            type: 'public',
-            sortField: 'name',
-            sortDirection: 'asc',
-            limit: 100,
-          }),
-          storageService.getFeaturedCollections().catch(() => []),
-        ]);
-
-        const publicCols = normalizeResult(publicResult);
-        const featuredCols = featuredResult ?? [];
-
-        // Merge: featured FIRST, public OVERWRITES — preserves entries data
-        const merged = new Map<string, Collection>();
-        for (const c of featuredCols) merged.set(c.id, c);
-        for (const c of publicCols) merged.set(c.id, c);
-
-        setCollections(
-          Array.from(merged.values())
-            .filter((c) => c.type === 'public')
-            .sort((a, b) => getName(a).localeCompare(getName(b)))
-        );
-      } else {
-        const result = await fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
-          type: 'private',
-          sortField: 'name',
-          sortDirection: 'asc',
-          limit: 100,
-        });
-        const cols = normalizeResult(result);
-        setCollections(cols.filter((c) => c.creatorId === currentUserId && c.type === mode));
-      }
-    } catch {
-      setCollections([]);
-      toast.error('Failed to load collections');
-    }
-  };
-
-  const normalizeResult = (result: unknown): Collection[] => {
-    if (Array.isArray(result)) return result;
-    if (result && typeof result === 'object' && 'data' in result) {
-      const r = result as { data: unknown };
-      if (Array.isArray(r.data)) return r.data as Collection[];
-    }
-    return [];
-  };
-
-  const getName = (c: Collection): string => c.name || '';
-
   const collectionNameById = useMemo(
-    () => new Map(collections.map((collection) => [collection.id, getName(collection)])),
+    () => new Map(collections.map((collection) => [collection.id, collectionBaseName(collection)])),
     [collections]
   );
 
   const getDisplayName = (collection: Collection): string => {
-    const name = getName(collection);
+    const name = collectionBaseName(collection);
     if (!collection.parentId) return name;
     const parentName = collectionNameById.get(collection.parentId) || `Parent ${collection.parentId.slice(0, 6)}`;
     return `${name} (${parentName})`;
   };
 
-  // Client-side search filter
   const filteredCollections = collections.filter((c) => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return true;
-    return getName(c).toLowerCase().includes(q);
+    return collectionBaseName(c).toLowerCase().includes(q);
   });
-
-  const handleCloseInternal = async () => {
-    onClose();
-
-    // Fallback: ensure private-mode nugget is in General collection
-    if (mode === 'private' && collections.length > 0) {
-      const inAny = collections.some((c) => c.entries?.some((e) => e.articleId === articleId));
-      if (!inAny) {
-        const general = collections.find((c) => c.name === 'General' || c.name === 'General Bookmarks');
-        if (general) {
-          try {
-            await storageService.addArticleToCollection(general.id, articleId, currentUserId);
-            toast.success(`Saved to ${general.name}`);
-          } catch {
-            // silent fallback failure
-          }
-        }
-      }
-    }
-  };
-
-  // --- Actions ---
 
   const toggleCollection = async (collectionId: string, isInCollection: boolean, colName: string) => {
     if (!isAuthenticated) { withAuth(() => {})(); return; }

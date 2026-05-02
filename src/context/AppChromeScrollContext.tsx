@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LAYOUT } from '@/constants/layout';
 
 /**
@@ -62,7 +62,9 @@ export const AppChromeScrollProvider: React.FC<{ children: React.ReactNode }> = 
   const upAccumRef = useRef(0);
   const interactionLockRef = useRef(false);
   const prefersReducedMotionRef = useRef(prefersReducedMotion);
-  prefersReducedMotionRef.current = prefersReducedMotion;
+  useLayoutEffect(() => {
+    prefersReducedMotionRef.current = prefersReducedMotion;
+  }, [prefersReducedMotion]);
 
   const setChromeInteractionActive = useCallback((active: boolean) => {
     interactionLockRef.current = active;
@@ -95,7 +97,7 @@ export const AppChromeScrollProvider: React.FC<{ children: React.ReactNode }> = 
     if (!prefersReducedMotion) return;
     downAccumRef.current = 0;
     upAccumRef.current = 0;
-    setHiddenIfChanged(false);
+    queueMicrotask(() => setHiddenIfChanged(false));
   }, [prefersReducedMotion, setHiddenIfChanged]);
 
   useEffect(() => {

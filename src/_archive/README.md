@@ -14,7 +14,7 @@ This folder contains experimental or deprecated components that are **not in act
 
 | File | Original Purpose | Why Archived |
 |------|------------------|--------------|
-| `WorkspaceLayout.tsx` | Experimental 3-pane layout with JS breakpoint detection | Replaced by `ResponsiveLayoutShell` which uses pure CSS breakpoints. The JS-based approach caused hydration issues and was less reliable. |
+| `WorkspaceLayout.tsx` | Experimental 3-pane layout with JS breakpoint detection | Archived in favor of `PageStack` / fixed header patterns; the JS breakpoint approach caused hydration drift. Historical references to `ResponsiveLayoutShell` are obsolete—that component was removed when `/feed` was unified into `HomePage`. |
 
 ## Rules
 

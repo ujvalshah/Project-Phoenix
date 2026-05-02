@@ -1,9 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Copy, ExternalLink, Globe, Lock, Pencil, Trash2 } from 'lucide-react';
 import type { Article } from '@/types';
 import { getThumbnailUrl } from '@/utils/mediaClassifier';
 import { formatDate } from '@/utils/formatters';
 import { getNuggetPrimaryHref, getNuggetSourceLabel } from './articleSourceLabel';
+import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
+import {
+  WORKSPACE_LIST_ROW_IMAGE_SIZES,
+  WORKSPACE_LIST_THUMB_HEIGHT,
+  WORKSPACE_LIST_THUMB_WIDTH,
+} from '@/constants/feedImageLayout';
 
 interface NuggetListRowProps {
   article: Article;
@@ -16,11 +22,12 @@ interface NuggetListRowProps {
   onEdit?: (article: Article) => void;
   onDuplicate?: (article: Article) => void;
   onDelete?: (article: Article) => void;
+  priorityThumbnail?: boolean;
 }
 
 const TAG_CAP = (compact: boolean) => (compact ? 1 : 2);
 
-export const NuggetListRow: React.FC<NuggetListRowProps> = ({
+const NuggetListRowInner: React.FC<NuggetListRowProps> = ({
   article,
   selectionMode,
   isSelected,
@@ -31,19 +38,28 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
   onEdit,
   onDuplicate,
   onDelete,
+  priorityThumbnail = false,
 }) => {
   const [showAllTags, setShowAllTags] = React.useState(false);
   const thumb = getThumbnailUrl(article);
+  const thumbResponsive = useMemo(
+    () => (thumb ? buildFeedImageResponsiveProps(thumb) : null),
+    [thumb],
+  );
   const source = getNuggetSourceLabel(article);
   const href = getNuggetPrimaryHref(article);
   const vis = article.visibility ?? 'private';
   const lifecycleStatus = article.status === 'draft' ? 'draft' : 'published';
-  const tags = Array.from(
-    new Set(
-      (article.tags ?? [])
-        .map((t) => t?.trim())
-        .filter((t): t is string => Boolean(t)),
-    ),
+  const tags = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (article.tags ?? [])
+            .map((t) => t?.trim())
+            .filter((t): t is string => Boolean(t)),
+        ),
+      ),
+    [article.tags],
   );
   const cap = TAG_CAP(compact);
   const extraTags = Math.max(0, tags.length - cap);
@@ -62,6 +78,7 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
   };
 
   const thumbBox = compact ? 'h-11 w-16 shrink-0' : 'h-[3.5rem] w-[6rem] shrink-0';
+  const priorityLoad = priorityThumbnail;
 
   return (
     <article
@@ -81,8 +98,19 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
         onKeyDown={handleKeyDown}
       >
         <div className={`relative overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-900 ${thumbBox}`}>
-          {thumb ? (
-            <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" />
+          {thumb && thumbResponsive ? (
+            <img
+              src={thumbResponsive.src}
+              srcSet={thumbResponsive.srcSet}
+              sizes={WORKSPACE_LIST_ROW_IMAGE_SIZES}
+              width={WORKSPACE_LIST_THUMB_WIDTH}
+              height={WORKSPACE_LIST_THUMB_HEIGHT}
+              alt=""
+              className="h-full w-full object-cover"
+              decoding="async"
+              loading={priorityLoad ? 'eager' : 'lazy'}
+              fetchPriority={priorityLoad ? 'high' : undefined}
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-400">—</div>
           )}
@@ -217,3 +245,23 @@ export const NuggetListRow: React.FC<NuggetListRowProps> = ({
     </article>
   );
 };
+
+function nuggetListRowPropsEqual(prev: NuggetListRowProps, next: NuggetListRowProps): boolean {
+  return (
+    prev.article === next.article &&
+    prev.selectionMode === next.selectionMode &&
+    prev.isSelected === next.isSelected &&
+    prev.compact === next.compact &&
+    prev.canManage === next.canManage &&
+    prev.priorityThumbnail === next.priorityThumbnail &&
+    prev.onSelect === next.onSelect &&
+    prev.onOpen === next.onOpen &&
+    prev.onEdit === next.onEdit &&
+    prev.onDuplicate === next.onDuplicate &&
+    prev.onDelete === next.onDelete
+  );
+}
+
+export const NuggetListRow = React.memo(NuggetListRowInner, nuggetListRowPropsEqual);
+
+NuggetListRow.displayName = 'NuggetListRow';

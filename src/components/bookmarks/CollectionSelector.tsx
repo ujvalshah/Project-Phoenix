@@ -74,7 +74,8 @@ export function CollectionSelector({
 
   // Sync when parent passes fresh membership (e.g. after refetch)
   useEffect(() => {
-    setSelectedIds(new Set(initialCollectionIds));
+    const next = new Set(initialCollectionIds);
+    queueMicrotask(() => setSelectedIds(next));
   }, [initialCollectionIds]);
 
   // Dismiss without persisting (explicit Done saves)

@@ -28,9 +28,11 @@
  * ============================================================================
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Image } from '@/components/Image';
 import { LayoutGrid, ImageOff, RotateCcw } from 'lucide-react';
+import { FEED_CARD_GRID_CELL_IMAGE_SIZES } from '@/constants/feedImageLayout';
+import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
 
 interface CardThumbnailGridProps {
   images: string[];
@@ -42,6 +44,10 @@ interface CardThumbnailGridProps {
   // These props are kept for backward compatibility but no longer used
   showLinkBadge?: boolean;
   linkUrl?: string | null;
+  /** First-viewport card: eager + fetch priority on the primary LCP cell (index 0). */
+  thumbnailLoadPriority?: 'normal' | 'high';
+  /** Responsive `sizes` for each grid cell `<img>` (pair with CDN `srcset` when available). */
+  imageSizes?: string;
 }
 
 /** Phase 3: Cell with loading skeleton, error state with retry, and progressive fade-in */
@@ -53,6 +59,9 @@ interface ThumbnailCellProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
   onClick?: (e: React.MouseEvent) => void;
   children?: React.ReactNode;
+  /** Eager load + high fetch priority for above-the-fold previews */
+  imageLoadPriority?: 'normal' | 'high';
+  sizes?: string;
 }
 
 const ThumbnailCell: React.FC<ThumbnailCellProps> = ({
@@ -63,7 +72,11 @@ const ThumbnailCell: React.FC<ThumbnailCellProps> = ({
   onKeyDown,
   onClick,
   children,
+  imageLoadPriority = 'normal',
+  sizes,
 }) => {
+  const responsive = useMemo(() => buildFeedImageResponsiveProps(src), [src]);
+  const priorityLoad = imageLoadPriority === 'high';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -108,8 +121,13 @@ const ThumbnailCell: React.FC<ThumbnailCellProps> = ({
           )}
           <Image
             key={retryCount}
-            src={src}
+            src={responsive.src}
+            srcSet={responsive.srcSet}
             alt={alt}
+            sizes={sizes}
+            decoding="async"
+            loading={priorityLoad ? 'eager' : 'lazy'}
+            fetchPriority={priorityLoad ? 'high' : undefined}
             onLoad={() => setLoading(false)}
             onError={() => setError(true)}
             className={`w-full h-full object-cover transition-transform duration-300 group-hover/image:scale-[1.02] transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
@@ -131,11 +149,13 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
   showLinkBadge = false,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   linkUrl,
+  thumbnailLoadPriority = 'normal',
+  imageSizes = FEED_CARD_GRID_CELL_IMAGE_SIZES,
 }) => {
-  // We expect at least 2 images for grid display
-  if (!images || images.length < 2) return null;
-
-  const imageCount = images.length;
+  const imageCount = images?.length ?? 0;
+  const primaryCellPriority: 'normal' | 'high' =
+    thumbnailLoadPriority === 'high' ? 'high' : 'normal';
+  const secondaryCellPriority: 'normal' | 'high' = 'normal';
   const baseCellClass =
     'relative overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer group/image min-h-[44px]';
   const hoverOverlay = (
@@ -161,14 +181,18 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
   );
 
   // Phase 3: aspect-ratio-aware columns for 2 images when ratios provided (width/height)
-  const hasTwoAspectRatios =
+  const twoAspectPair =
     imageCount === 2 &&
-    imageAspectRatios?.length >= 2 &&
+    imageAspectRatios?.length !== undefined &&
+    imageAspectRatios.length >= 2 &&
     imageAspectRatios[0] != null &&
-    imageAspectRatios[1] != null;
-  const twoImageGridStyle = hasTwoAspectRatios
+    imageAspectRatios[1] != null
+      ? ([imageAspectRatios[0], imageAspectRatios[1]] as [number, number])
+      : null;
+  const hasTwoAspectRatios = twoAspectPair !== null;
+  const twoImageGridStyle = twoAspectPair
     ? {
-        gridTemplateColumns: `${imageAspectRatios![0] / (imageAspectRatios![0] + imageAspectRatios![1])}fr ${imageAspectRatios![1] / (imageAspectRatios![0] + imageAspectRatios![1])}fr`,
+        gridTemplateColumns: `${twoAspectPair[0] / (twoAspectPair[0] + twoAspectPair[1])}fr ${twoAspectPair[1] / (twoAspectPair[0] + twoAspectPair[1])}fr`,
       }
     : undefined;
 
@@ -177,6 +201,10 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
     e.stopPropagation();
     onGridClick?.(e, imageIndex);
   }, [onGridClick]);
+
+  if (!images || imageCount < 2) {
+    return null;
+  }
 
   // ============================================================================
   // LAYOUT 1: Two Images (side-by-side; Phase 2: stack on mobile; Phase 3: optional aspect-ratio-aware)
@@ -198,6 +226,8 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
             ariaLabel={`View image ${idx + 1} of ${imageCount}`}
             onKeyDown={handleKeyDown}
             onClick={(e) => handleCellClick(e, idx)}
+            imageLoadPriority={idx === 0 ? primaryCellPriority : secondaryCellPriority}
+            sizes={imageSizes}
           >
             {hoverOverlay}
           </ThumbnailCell>
@@ -223,6 +253,8 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
           ariaLabel={`View image 1 of ${imageCount}`}
           onKeyDown={handleKeyDown}
           onClick={(e) => handleCellClick(e, 0)}
+          imageLoadPriority={primaryCellPriority}
+          sizes={imageSizes}
         >
           {hoverOverlay}
         </ThumbnailCell>
@@ -235,6 +267,8 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
             ariaLabel={`View image ${idx + 2} of ${imageCount}`}
             onKeyDown={handleKeyDown}
             onClick={(e) => handleCellClick(e, idx + 1)}
+            imageLoadPriority={secondaryCellPriority}
+            sizes={imageSizes}
           >
             {hoverOverlay}
           </ThumbnailCell>
@@ -264,6 +298,8 @@ export const CardThumbnailGrid: React.FC<CardThumbnailGridProps> = React.memo(({
           ariaLabel={`View image ${idx + 1} of ${imageCount}`}
           onKeyDown={handleKeyDown}
           onClick={(e) => handleCellClick(e, idx)}
+          imageLoadPriority={idx === 0 ? primaryCellPriority : secondaryCellPriority}
+          sizes={imageSizes}
         >
           {hoverOverlay}
           {/* "+N" overlay on 4th cell if more than 4 images (Phase 1: enhanced visibility) */}

@@ -47,9 +47,9 @@ export const SourceSelector: React.FC<SourceSelectorProps> = ({
 
   // Initialize custom input when entering edit mode or when domain changes
   useEffect(() => {
-    if (isEditing || !displayDomain) {
-      setCustomInput(initialDomain || parsedDomain || '');
-    }
+    if (!(isEditing || !displayDomain)) return;
+    const next = initialDomain || parsedDomain || '';
+    queueMicrotask(() => setCustomInput(next));
   }, [isEditing, initialDomain, parsedDomain, displayDomain]);
 
   const handleSave = () => {

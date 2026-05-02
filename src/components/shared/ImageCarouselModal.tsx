@@ -49,11 +49,10 @@ export const ImageCarouselModal: React.FC<ImageCarouselModalProps> = ({
   // Current image index state
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   
-  // Update current index when initialIndex changes (e.g., different image clicked)
+  // Update current index when opening or when initialIndex changes while open
   useEffect(() => {
-    if (isOpen) {
-      setCurrentIndex(initialIndex);
-    }
+    if (!isOpen) return;
+    queueMicrotask(() => setCurrentIndex(initialIndex));
   }, [initialIndex, isOpen]);
   
   // Navigation functions

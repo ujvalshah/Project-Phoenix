@@ -78,13 +78,13 @@ const EditorModal: React.FC<{
   const [content, setContent] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const contentSnapshot = page?.content;
+  const [appliedContentSnapshot, setAppliedContentSnapshot] = useState<string | undefined>(() => undefined);
 
-  useEffect(() => {
-    if (page?.content !== undefined) {
-      setContent(page.content);
-      setHasChanges(false);
-    }
-  }, [page?.content]);
+  if (!hasChanges && contentSnapshot !== undefined && contentSnapshot !== appliedContentSnapshot) {
+    setAppliedContentSnapshot(contentSnapshot);
+    setContent(contentSnapshot);
+  }
 
   const handleSave = () => {
     updateMutation.mutate(
@@ -376,7 +376,7 @@ export const AdminLegalPagesPage: React.FC = () => {
 
       {/* Editor Modal */}
       {editingSlug && (
-        <EditorModal slug={editingSlug} onClose={() => setEditingSlug(null)} />
+        <EditorModal key={editingSlug} slug={editingSlug} onClose={() => setEditingSlug(null)} />
       )}
     </div>
   );

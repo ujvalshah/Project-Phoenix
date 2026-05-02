@@ -53,10 +53,12 @@ export const CardMeta: React.FC<CardMetaProps> = ({
 
   useLayoutEffect(() => {
     if (!showTooltip) {
-      setBubblePos(null);
+      queueMicrotask(() => setBubblePos(null));
       return;
     }
-    updateBubblePosition();
+    queueMicrotask(() => {
+      updateBubblePosition();
+    });
     const opts = { passive: true, capture: true } as const;
     window.addEventListener('scroll', updateBubblePosition, opts);
     window.addEventListener('resize', updateBubblePosition);

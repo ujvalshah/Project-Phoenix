@@ -303,10 +303,15 @@ export const SavedPage: React.FC = () => {
               icon={<Bookmark className="w-12 h-12" />}
               title="Sign in to see your bookmarks"
               description="Save nuggets to read later by clicking the bookmark icon"
-              action={{
-                label: 'Sign In',
-                onClick: () => navigate('/login')
-              }}
+              action={
+                <button
+                  type="button"
+                  className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700"
+                  onClick={() => navigate('/login')}
+                >
+                  Sign In
+                </button>
+              }
             />
           </div>
         }

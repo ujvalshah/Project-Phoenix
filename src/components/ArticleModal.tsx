@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Article } from '@/types';
-import { ArticleDetail } from './ArticleDetail';
+import { ArticleDetailLazy, ArticleDetailPanelFallback } from '@/components/ArticleDetailLazy';
 import { ModalShell } from '@/components/UI/ModalShell';
 
 interface ArticleModalProps {
@@ -38,12 +38,14 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950 relative h-full">
-          <ArticleDetail
-            article={article}
-            isModal={true}
-            onClose={onClose}
-            onYouTubeTimestampClick={onYouTubeTimestampClick}
-          />
+          <Suspense fallback={<ArticleDetailPanelFallback />}>
+            <ArticleDetailLazy
+              article={article}
+              isModal={true}
+              onClose={onClose}
+              onYouTubeTimestampClick={onYouTubeTimestampClick}
+            />
+          </Suspense>
         </div>
       </div>
     </ModalShell>

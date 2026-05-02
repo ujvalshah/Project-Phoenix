@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { collectMasonryMediaItems, type MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { CardSkeleton } from './card/CardSkeleton';
 import { CardError } from './card/CardError';
+import { getPriorityThumbnailCount } from '@/constants/aboveFoldPriority';
 
 /**
  * Expanded masonry entry: one per selected media item
@@ -54,6 +55,10 @@ interface MasonryGridProps {
  * - NO card components
  * - NO card styling
  */
+
+/** Indices beyond this skip staggered fade-in CSS (heavy on long masonry feeds); tiles still paint at full opacity */
+const MASONRY_ENTRANCE_ANIMATION_LAST_GLOBAL_INDEX = 31;
+
 // Infinite Scroll Trigger Component for Masonry
 const InfiniteScrollTrigger: React.FC<{
   onIntersect: () => void;
@@ -134,7 +139,9 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
       return () => clearTimeout(timer);
     } else if (isLoading) {
       // Reset animation state when loading starts
-      setShouldAnimate(false);
+      queueMicrotask(() => {
+        setShouldAnimate(false);
+      });
     }
   }, [isLoading, articles.length]);
 
@@ -178,6 +185,11 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
     defaultColumns: 1, // SSR-safe default (mobile-first, reduces CLS)
     debounceMs: 100,
   });
+
+  const priorityThumbnailCount = useMemo(
+    () => getPriorityThumbnailCount(columnCount),
+    [columnCount],
+  );
 
   // Infinite Scroll Handler
   const handleLoadMore = useCallback(() => {
@@ -237,18 +249,26 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
               // Calculate global index for stagger (across all columns)
               // Formula: column index + (row index * number of columns)
               const globalIndex = colIdx + (entryIdx * columns.length);
+              const isPriorityTile = globalIndex < priorityThumbnailCount;
+              const withinEntranceAnimationBudget =
+                globalIndex <= MASONRY_ENTRANCE_ANIMATION_LAST_GLOBAL_INDEX;
+              const useFadeIn =
+                shouldAnimate &&
+                shouldShowContent &&
+                !isPriorityTile &&
+                withinEntranceAnimationBudget;
               const delay = Math.min(globalIndex * 50, 750);
 
               return (
                 <div
                   key={uniqueKey}
                   className={`
-                    ${shouldAnimate && shouldShowContent ? 'animate-fade-in-up' : ''}
+                    ${useFadeIn ? 'animate-fade-in-up' : ''}
                     ${shouldShowContent ? 'opacity-100' : 'opacity-0'}
                     motion-reduce:animate-none motion-reduce:opacity-100
                   `}
                   style={{
-                    animationDelay: shouldAnimate && shouldShowContent ? `${delay}ms` : '0ms',
+                    animationDelay: useFadeIn ? `${delay}ms` : '0ms',
                   }}
                 >
                   <MasonryAtom
@@ -259,6 +279,7 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
                     onArticleClick={onArticleClick}
                     onCategoryClick={onCategoryClick}
                     currentUserId={currentUserId}
+                    priorityImageLoading={isPriorityTile}
                   />
                 </div>
               );

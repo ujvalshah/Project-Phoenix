@@ -33,6 +33,12 @@ export const ArticleDetailPage: React.FC = () => {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
+  React.useEffect(() => {
+    if (article) {
+      window.dispatchEvent(new CustomEvent('nugget:article-view'));
+    }
+  }, [article]);
+
   // Handle close - navigate back (feed layout feature removed)
   // Using navigate(-1) to go back in history, with fallback to home if no history exists
   const handleClose = () => {
@@ -62,9 +68,7 @@ export const ArticleDetailPage: React.FC = () => {
     );
   }
 
-  // Show loading state
-  // Note: ArticleDetailPage was previously used in nested route within FeedLayoutPage
-  // Feed layout feature removed - component now unused in routing
+  // Show loading state (embedded in drawer/modal contexts; standalone `/feed` routes were removed)
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[200px]">
@@ -94,13 +98,6 @@ export const ArticleDetailPage: React.FC = () => {
       </div>
     );
   }
-
-  // Dispatch article view event for contextual notification prompt
-  React.useEffect(() => {
-    if (article) {
-      window.dispatchEvent(new CustomEvent('nugget:article-view'));
-    }
-  }, [article]);
 
   // Render article detail (no HeaderSpacer - layout handles spacing)
   return (

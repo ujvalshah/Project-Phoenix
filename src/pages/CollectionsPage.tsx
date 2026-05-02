@@ -23,7 +23,7 @@ import { Z_INDEX } from '@/constants/zIndex';
 import { WorkspaceTopSection } from '@/components/workspace/WorkspaceTopSection';
 import { ArticleGrid } from '@/components/ArticleGrid';
 import { ArticleModal } from '@/components/ArticleModal';
-import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
+import { useUnifiedInfiniteArticles } from '@/hooks/useUnifiedInfiniteArticles';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 type ViewMode = 'grid' | 'table';
@@ -283,7 +283,7 @@ const BrowseLanding: React.FC<BrowseLandingProps> = ({
     fetchNextPage,
     error,
     refetch,
-  } = useInfiniteArticles({
+  } = useUnifiedInfiniteArticles({
     searchQuery,
     activeCategory: 'All',
     sortOrder: 'latest',
@@ -347,7 +347,7 @@ const ScopedNuggetFeed: React.FC<ScopedNuggetFeedProps> = ({
     fetchNextPage,
     error,
     refetch,
-  } = useInfiniteArticles({
+  } = useUnifiedInfiniteArticles({
     searchQuery,
     activeCategory: 'All',
     sortOrder,

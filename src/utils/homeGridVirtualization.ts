@@ -4,6 +4,15 @@
 
 const GRID_GAP_PX = 24; // matches gap-6
 
+/**
+ * TanStack Virtual `overscan` in **rows** (not cells). Larger values smooth fast scroll /
+ * compound layouts on long feeds (~100+) at modest memory cost (TASK-020).
+ */
+export const HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS = 5;
+
+/** IntersectionObserver `rootMargin` for infinite scroll — prefetch before sentinel enters view. */
+export const HOME_FEED_INFINITE_SCROLL_ROOT_MARGIN_PX = 520;
+
 /** Split flat items into rows of `columnCount` cells (last row may be shorter). */
 export function chunkIntoGridRows<T>(items: T[], columnCount: number): T[][] {
   if (columnCount < 1) return [];
@@ -15,14 +24,13 @@ export function chunkIntoGridRows<T>(items: T[], columnCount: number): T[][] {
 }
 
 /**
- * Rough row height for a NewsCard tile: 4:3 media + text/meta block.
- * Matches the spirit of {@link estimateCardHeight} in FeedContainer (image + ~132px chrome).
+ * Rough row height for a NewsCard tile: 16:9 media (see CardMedia defaults) + text/meta block.
  */
 export function estimateHomeGridRowHeightPx(containerInnerWidth: number, columnCount: number): number {
   const cols = Math.max(1, columnCount);
   const totalGaps = GRID_GAP_PX * (cols - 1);
   const cellWidth = Math.max(120, (containerInnerWidth - totalGaps) / cols);
-  const imageHeight = cellWidth * (3 / 4);
+  const imageHeight = cellWidth * (9 / 16);
   const textBlock = 140;
   return Math.round(imageHeight + textBlock);
 }

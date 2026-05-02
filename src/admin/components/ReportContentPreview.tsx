@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Article } from '@/types';
 import { apiClient } from '@/services/apiClient';
+import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
 import { Loader2, FileText, User, Layers, ExternalLink } from 'lucide-react';
 import { formatDate } from '@/utils/formatters';
 
@@ -136,14 +137,22 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
   // Render based on target type
   if (targetType === 'nugget') {
     const article = content as Article;
+    const previewUrl = article.media?.previewMetadata?.imageUrl;
+    const previewResponsive = previewUrl ? buildFeedImageResponsiveProps(previewUrl) : null;
     return (
       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg space-y-3">
         <div className="flex items-start gap-3">
-          {article.media?.previewMetadata?.imageUrl && (
-            <img 
-              src={article.media.previewMetadata.imageUrl} 
+          {previewResponsive && (
+            <img
+              src={previewResponsive.src}
+              srcSet={previewResponsive.srcSet}
+              sizes="80px"
+              width={80}
+              height={80}
               alt={article.title}
               className="w-20 h-20 object-cover rounded-lg flex-shrink-0"
+              decoding="async"
+              loading="lazy"
             />
           )}
           <div className="flex-1 min-w-0">

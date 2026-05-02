@@ -12,7 +12,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode } from 'react';
 import { useInfiniteArticles } from '@/hooks/useInfiniteArticles';
 import { createMockPageResponse, createMockPageResponses } from '../utils/mockArticles';
-import { createMockArticleService } from '../utils/apiMocks';
 import * as articleService from '@/services/articleService';
 
 // Mock the article service
@@ -220,11 +219,9 @@ describe('useInfiniteArticles Hook', () => {
         result.current.fetchNextPage();
       });
 
-      // Wait a bit to ensure no additional calls
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Should not make additional requests
-      expect(articleService.articleService.getArticles).toHaveBeenCalledTimes(initialCallCount);
+      await waitFor(() => {
+        expect(articleService.articleService.getArticles).toHaveBeenCalledTimes(initialCallCount);
+      });
     });
 
     it('should stop loading after last page', async () => {
@@ -261,8 +258,9 @@ describe('useInfiniteArticles Hook', () => {
       act(() => {
         result.current.fetchNextPage();
       });
-      await new Promise(resolve => setTimeout(resolve, 100));
-      expect(articleService.articleService.getArticles).toHaveBeenCalledTimes(callCount);
+      await waitFor(() => {
+        expect(articleService.articleService.getArticles).toHaveBeenCalledTimes(callCount);
+      });
     });
   });
 

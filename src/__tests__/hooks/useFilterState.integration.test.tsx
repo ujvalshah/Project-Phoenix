@@ -16,11 +16,13 @@ import { useFilterState } from '@/hooks/useFilterState';
 // ---------------------------------------------------------------------------
 
 function createWrapper(initialRoute = '/') {
-  return ({ children }: { children: ReactNode }) => (
+  const Wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[initialRoute]}>
       {children}
     </MemoryRouter>
   );
+  Wrapper.displayName = 'FilterStateIntegrationTestWrapper';
+  return Wrapper;
 }
 
 beforeEach(() => {

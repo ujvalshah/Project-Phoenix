@@ -16,7 +16,7 @@ export function extractDomain(url: string): string {
     return urlObj.hostname.replace(/^www\./i, '');
   } catch {
     // If URL parsing fails, try to extract domain manually
-    const match = url.match(/https?:\/\/(?:www\.)?([^\/]+)/i);
+    const match = url.match(/https?:\/\/(?:www\.)?([^/]+)/i);
     return match ? match[1] : url;
   }
 }

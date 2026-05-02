@@ -181,6 +181,16 @@ function generateExcerpt(content: string, title: string): string {
  * Functions are imported and used here to maintain backward compatibility.
  */
 
+function isVitestRuntime(): boolean {
+  return typeof process !== 'undefined' && process.env.VITEST === 'true';
+}
+
+/** Verbose normalization traces (Dev-only, skipped under Vitest for readable CI output). */
+function shouldDiagLogNormalizeArticleInput(): boolean {
+  if (isVitestRuntime()) return false;
+  return typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
+}
+
 /**
  * Write audit log entry to markdown file (Node.js only)
  */
@@ -197,6 +207,10 @@ async function writeAuditLogEntry(entry: {
   editModeEvents?: string[];
   createModeEvents?: string[];
 }): Promise<void> {
+  if (isVitestRuntime()) {
+    return;
+  }
+
   const timestamp = new Date().toISOString();
   const logEntry = `
 ## ${timestamp} - ${entry.mode.toUpperCase()} Mode
@@ -605,7 +619,9 @@ async function buildSupportingMediaCreate(
     // Check for duplicate URL
     const normalizedUrl = normalizeUrl(item.url);
     if (addedUrls.has(normalizedUrl)) {
-      console.log('[normalizeArticleInput] CREATE: Skipping duplicate masonry item:', { url: item.url });
+      if (shouldDiagLogNormalizeArticleInput()) {
+        console.log('[normalizeArticleInput] CREATE: Skipping duplicate masonry item:', { url: item.url });
+      }
       return false;
     }
     addedUrls.add(normalizedUrl);
@@ -647,10 +663,12 @@ async function buildSupportingMediaCreate(
 
       // Ensure items marked for Masonry have previewMetadata
       if (enriched.showInMasonry && !enriched.previewMetadata && enriched.url) {
-        console.warn('[normalizeArticleInput] CREATE MODE: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
-          url: enriched.url,
-          type: enriched.type,
-        });
+        if (shouldDiagLogNormalizeArticleInput()) {
+          console.warn('[normalizeArticleInput] CREATE MODE: Item marked for Masonry missing previewMetadata - creating minimal metadata', {
+            url: enriched.url,
+            type: enriched.type,
+          });
+        }
         enriched.previewMetadata = {
           url: enriched.url,
           imageUrl: enriched.type === 'image' ? enriched.url : undefined,
@@ -710,13 +728,15 @@ async function buildSupportingMediaEdit(
     if (media.url) {
       const normalizedUrl = normalizeImageUrl(media.url);
       if (explicitlyDeletedImages?.has(normalizedUrl)) {
-        console.log('[normalizeArticleInput] Skipping explicitly deleted supportingMedia item:', { url: media.url });
+        if (shouldDiagLogNormalizeArticleInput()) {
+          console.log('[normalizeArticleInput] Skipping explicitly deleted supportingMedia item:', { url: media.url });
+        }
         continue;
       }
       if (!addedUrls.has(normalizedUrl)) {
         addedUrls.add(normalizedUrl);
         deduplicatedExisting.push(media);
-      } else {
+      } else if (shouldDiagLogNormalizeArticleInput()) {
         console.log('[normalizeArticleInput] Skipping duplicate in existingSupportingMedia:', { url: media.url });
       }
     }
@@ -745,7 +765,7 @@ async function buildSupportingMediaEdit(
       const correctedType = mediaUrl && isImageUrl(mediaUrl) ? 'image' : enriched.type;
 
       // DEBUG: Log type correction
-      if (correctedType !== enriched.type) {
+      if (correctedType !== enriched.type && shouldDiagLogNormalizeArticleInput()) {
         console.log('[TYPE_CORRECTION] Fixed type:', {
           url: mediaUrl?.slice(-40),
           oldType: enriched.type,
@@ -813,7 +833,9 @@ async function buildSupportingMediaEdit(
 
         // Double-check to prevent race condition duplicates
         if (addedUrls.has(normalizedUrl)) {
-          console.log('[normalizeArticleInput] Skipping duplicate new masonry item:', { url: item.url });
+          if (shouldDiagLogNormalizeArticleInput()) {
+            console.log('[normalizeArticleInput] Skipping duplicate new masonry item:', { url: item.url });
+          }
           return null;
         }
         addedUrls.add(normalizedUrl);
@@ -950,7 +972,7 @@ export async function normalizeArticleInput(
   const hasEmptyTagsError = tags.length === 0;
   
   // Safety logging: Log if EDIT mode would result in empty tags
-  if (mode === 'edit' && hasEmptyTagsError) {
+  if (mode === 'edit' && hasEmptyTagsError && !isVitestRuntime()) {
     const existingTags = input.initialData?.tags || [];
     if (existingTags.length > 0) {
       console.warn('[normalizeArticleInput] EDIT MODE: Tags would become empty after normalization', {
@@ -1035,18 +1057,22 @@ export async function normalizeArticleInput(
   // Safety check: If we lost images unexpectedly, log warning and preserve original
   const expectedMinCount = mode === 'edit' ? existingImages.length : 0;
   if (allImages.length < expectedMinCount) {
-    console.warn('[IMAGE_DEDUP] Fallback: preserved legacy behavior - unexpected image count reduction', {
-      mode,
-      before: imagesBeforeDedup.length,
-      after: allImages.length,
-      expectedMin: expectedMinCount,
-    });
+    if (!isVitestRuntime()) {
+      console.warn('[IMAGE_DEDUP] Fallback: preserved legacy behavior - unexpected image count reduction', {
+        mode,
+        before: imagesBeforeDedup.length,
+        after: allImages.length,
+        expectedMin: expectedMinCount,
+      });
+    }
     // Fallback: Use original images if we lost existing images in EDIT mode
     if (mode === 'edit' && allImages.length < existingImages.length) {
       allImages = [...existingImages, ...allImages.filter(img => 
         !existingImages.some(existing => existing.toLowerCase().trim() === img.toLowerCase().trim())
       )];
-      console.warn('[IMAGE_DEDUP] Fallback: restored existing images to prevent data loss');
+      if (!isVitestRuntime()) {
+        console.warn('[IMAGE_DEDUP] Fallback: restored existing images to prevent data loss');
+      }
     }
   }
 
@@ -1163,12 +1189,12 @@ export async function normalizeArticleInput(
       ...(mode === 'create' && createModeEvents.length > 0 ? { createModeEvents } : {}),
     };
     
-    console.warn('[IMAGE_DEDUP_AUDIT]', auditData);
-    
-    // Write to log file (async, non-blocking)
-    writeAuditLogEntry(auditData).catch(err => {
-      console.warn('[IMAGE_DEDUP_AUDIT] Failed to write log entry:', err);
-    });
+    if (!isVitestRuntime()) {
+      console.warn('[IMAGE_DEDUP_AUDIT]', auditData);
+      writeAuditLogEntry(auditData).catch(err => {
+        console.warn('[IMAGE_DEDUP_AUDIT] Failed to write log entry:', err);
+      });
+    }
   }
 
   // Determine source_type (same for both modes)

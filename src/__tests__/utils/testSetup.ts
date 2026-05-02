@@ -4,6 +4,7 @@
  * Provides mocks for browser APIs used in infinite scroll tests
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
 
 /**
@@ -22,11 +23,10 @@ export function setupIntersectionObserver() {
   const disconnect = vi.fn();
   
   let callback: IntersectionObserverCallback | null = null;
-  let options: IntersectionObserverInit | null = null;
 
-  const MockIntersectionObserver = vi.fn((cb: IntersectionObserverCallback, opts?: IntersectionObserverInit) => {
+  const MockIntersectionObserver = vi.fn((cb: IntersectionObserverCallback, _opts?: IntersectionObserverInit) => {
     callback = cb;
-    options = opts || null;
+    void _opts;
     return {
       observe,
       unobserve,
@@ -73,8 +73,6 @@ export function setupIntersectionObserver() {
  * Provides QueryClient with default options for testing
  */
 export function setupReactQuery() {
-  const { QueryClient, QueryClientProvider } = require('@tanstack/react-query');
-  
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {

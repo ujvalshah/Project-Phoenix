@@ -1,21 +1,46 @@
 
-import React from 'react';
+import React, { lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AdminLayout } from '../admin/layout/AdminLayout';
-import { AdminDashboardPage } from '../admin/pages/AdminDashboardPage';
-import { AdminUsersPage } from '../admin/pages/AdminUsersPage';
-import { AdminNuggetsPage } from '../admin/pages/AdminNuggetsPage';
-import { AdminCollectionsPage } from '../admin/pages/AdminCollectionsPage';
-import { AdminTagsPage } from '../admin/pages/AdminTagsPage';
-import { AdminConfigPage } from '../admin/pages/AdminConfigPage';
-import { AdminModerationPage } from '../admin/pages/AdminModerationPage';
-import { AdminFeedbackPage } from '../admin/pages/AdminFeedbackPage';
-import { AdminDownloadsPage } from '../admin/pages/AdminDownloadsPage';
-import { AdminTaggingPage } from '../admin/pages/AdminTaggingPage';
-import { AdminLegalPagesPage } from '../admin/pages/AdminLegalPagesPage';
-import { AdminContactPage } from '../admin/pages/AdminContactPage';
 import { RequireAdmin } from '../admin/components/RequireAdmin';
 import { ErrorBoundary } from '../components/UI/ErrorBoundary';
+
+const AdminDashboardPage = lazy(() =>
+  import('../admin/pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })),
+);
+const AdminUsersPage = lazy(() =>
+  import('../admin/pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })),
+);
+const AdminNuggetsPage = lazy(() =>
+  import('../admin/pages/AdminNuggetsPage').then((m) => ({ default: m.AdminNuggetsPage })),
+);
+const AdminCollectionsPage = lazy(() =>
+  import('../admin/pages/AdminCollectionsPage').then((m) => ({ default: m.AdminCollectionsPage })),
+);
+const AdminTagsPage = lazy(() =>
+  import('../admin/pages/AdminTagsPage').then((m) => ({ default: m.AdminTagsPage })),
+);
+const AdminConfigPage = lazy(() =>
+  import('../admin/pages/AdminConfigPage').then((m) => ({ default: m.AdminConfigPage })),
+);
+const AdminModerationPage = lazy(() =>
+  import('../admin/pages/AdminModerationPage').then((m) => ({ default: m.AdminModerationPage })),
+);
+const AdminFeedbackPage = lazy(() =>
+  import('../admin/pages/AdminFeedbackPage').then((m) => ({ default: m.AdminFeedbackPage })),
+);
+const AdminDownloadsPage = lazy(() =>
+  import('../admin/pages/AdminDownloadsPage').then((m) => ({ default: m.AdminDownloadsPage })),
+);
+const AdminTaggingPage = lazy(() =>
+  import('../admin/pages/AdminTaggingPage').then((m) => ({ default: m.AdminTaggingPage })),
+);
+const AdminLegalPagesPage = lazy(() =>
+  import('../admin/pages/AdminLegalPagesPage').then((m) => ({ default: m.AdminLegalPagesPage })),
+);
+const AdminContactPage = lazy(() =>
+  import('../admin/pages/AdminContactPage').then((m) => ({ default: m.AdminContactPage })),
+);
 
 export const AdminPanelPage: React.FC = () => {
   return (
@@ -43,5 +68,4 @@ export const AdminPanelPage: React.FC = () => {
   );
 };
 
-// Default export for lazy loading compatibility
 export default AdminPanelPage;

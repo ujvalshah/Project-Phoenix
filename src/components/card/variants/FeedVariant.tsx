@@ -20,6 +20,7 @@ interface FeedVariantProps {
   isAdmin: boolean;
   isPreview?: boolean;
   searchHighlightQuery?: string;
+  priorityThumbnail?: boolean;
 }
 
 export const FeedVariant: React.FC<FeedVariantProps> = ({
@@ -31,13 +32,15 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
   isAdmin,
   isPreview = false,
   searchHighlightQuery,
+  priorityThumbnail = false,
 }) => {
   const { data, handlers } = logic;
   const { data: disclaimerConfig } = useDisclaimerConfig();
   const resolvedDisclaimer = useMemo(
     () => resolveDisclaimer(data, disclaimerConfig),
-    [data.showDisclaimer, data.disclaimerText, disclaimerConfig]
+    [data, disclaimerConfig]
   );
+  const thumbnailLoadPriority = priorityThumbnail ? 'high' : 'normal';
 
   // Warn if cardType is media-only but has long text
   React.useEffect(() => {
@@ -116,6 +119,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
                   handlers.onMediaClick(e);
                 }}
                 className="w-full h-full"
+                thumbnailLoadPriority={thumbnailLoadPriority}
               />
             </div>
           )}
@@ -159,6 +163,7 @@ export const FeedVariant: React.FC<FeedVariantProps> = ({
                   visibility={data.visibility}
                   onMediaClick={handlers.onMediaClick}
                   className="rounded-lg shrink-0"
+                  thumbnailLoadPriority={thumbnailLoadPriority}
                 />
               </div>
             ) : (

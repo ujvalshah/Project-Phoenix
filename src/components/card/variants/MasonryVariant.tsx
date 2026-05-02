@@ -20,6 +20,7 @@ interface MasonryVariantProps {
   isAdmin: boolean;
   isPreview?: boolean;
   searchHighlightQuery?: string;
+  priorityThumbnail?: boolean;
 }
 
 export const MasonryVariant: React.FC<MasonryVariantProps> = ({
@@ -31,13 +32,15 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
   isAdmin,
   isPreview = false,
   searchHighlightQuery,
+  priorityThumbnail = false,
 }) => {
   const { data, handlers } = logic;
   const { data: disclaimerConfig } = useDisclaimerConfig();
   const resolvedDisclaimer = useMemo(
     () => resolveDisclaimer(data, disclaimerConfig),
-    [data.showDisclaimer, data.disclaimerText, disclaimerConfig]
+    [data, disclaimerConfig]
   );
+  const thumbnailLoadPriority = priorityThumbnail ? 'high' : 'normal';
 
   // Warn if cardType is media-only but has long text
   React.useEffect(() => {
@@ -117,6 +120,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
                   handlers.onMediaClick(e);
                 }}
                 className="w-full h-full"
+                thumbnailLoadPriority={thumbnailLoadPriority}
               />
             </div>
           )}
@@ -158,6 +162,7 @@ export const MasonryVariant: React.FC<MasonryVariantProps> = ({
                   visibility={data.visibility}
                   onMediaClick={handlers.onMediaClick}
                   className="w-full rounded-lg"
+                  thumbnailLoadPriority={thumbnailLoadPriority}
                 />
               </div>
             ) : (

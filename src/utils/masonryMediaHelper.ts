@@ -129,7 +129,14 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
 
       // Skip if already included (duplicate of primary or earlier supporting item)
       if (includedUrls.has(normalizedUrl)) {
-        console.log('[masonryMediaHelper] Skipping duplicate supporting media:', { url: media.url, normalizedUrl });
+        if (
+          typeof process !== 'undefined' &&
+          process.env.VITEST !== 'true' &&
+          typeof import.meta !== 'undefined' &&
+          !!import.meta.env?.DEV
+        ) {
+          console.log('[masonryMediaHelper] Skipping duplicate supporting media:', { url: media.url, normalizedUrl });
+        }
         return;
       }
 

@@ -118,12 +118,11 @@ export function useMasonry<T>(
 
   // Client-side column calculation (runs after mount)
   useLayoutEffect(() => {
-    // Mark as client-side
-    setIsClient(true);
-
-    // Calculate initial column count
-    const initialColumns = calculateColumnCount();
-    setColumnCount(initialColumns);
+    queueMicrotask(() => {
+      setIsClient(true);
+      const initialColumns = calculateColumnCount();
+      setColumnCount(initialColumns);
+    });
 
     // Debounced resize handler
     // #5: Use ref for timeout ID to prevent stale closures and ensure cleanup

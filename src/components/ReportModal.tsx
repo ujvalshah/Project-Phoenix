@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { X, Flag, AlertTriangle, Info, ShieldAlert, FileWarning, HelpCircle } from 'lucide-react';
 import { ModalShell } from '@/components/UI/ModalShell';
 
@@ -32,14 +32,14 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSub
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Reset state when opening
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    queueMicrotask(() => {
       setSelectedReason(null);
       setComment('');
       setError(null);
       setIsSubmitting(false);
-    }
+    });
   }, [isOpen]);
 
   const handleSubmit = async () => {

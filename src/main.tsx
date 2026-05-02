@@ -6,12 +6,11 @@ import App from './App';
 import { AuthProvider } from '@/context/AuthContext';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/queryClient';
-import { initSentry } from './utils/sentry';
-
 import { registerServiceWorker } from './utils/serviceWorkerRegistration';
 import { mountOverlayHostStack } from './utils/overlayHosts';
+import { initSentry } from '@/utils/sentry';
 
-// Initialize Sentry early
+// Schedule Sentry bootstrap (SDK loads via async chunk inside initSentry — not bundled in index).
 initSentry();
 
 performance.mark('app:boot:start');
@@ -20,6 +19,19 @@ mountOverlayHostStack();
 const container = document.getElementById('root');
 
 if (container) {
+  const warmHomeChunk = (): void => {
+    void import('@/pages/HomePage');
+  };
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    (
+      window as Window & {
+        requestIdleCallback: (cb: () => void, opts?: { timeout?: number }) => number;
+      }
+    ).requestIdleCallback(warmHomeChunk, { timeout: 1500 });
+  } else if (typeof window !== 'undefined') {
+    globalThis.setTimeout(warmHomeChunk, 0);
+  }
+
   const root = createRoot(container);
   root.render(
     <React.StrictMode>
@@ -44,7 +56,7 @@ if (container) {
       requestIdleCallback: (cb: () => void, opts?: { timeout?: number }) => number;
     }).requestIdleCallback(registerInBackground, { timeout: 2000 });
   } else {
-    window.setTimeout(registerInBackground, 0);
+    globalThis.setTimeout(registerInBackground, 0);
   }
 } else {
   console.error('Failed to find the root element. Application cannot mount.');

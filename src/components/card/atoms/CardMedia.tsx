@@ -17,21 +17,33 @@
  * ============================================================================
  */
 
-import React, { useMemo, useEffect, useState } from 'react';
-import { Article } from '@/types';
+import React, { useMemo, useState } from 'react';
+import type { CardArticleMediaSource } from '@/types';
 import { Image } from '@/components/Image';
-import { Lock, Layers, ExternalLink } from 'lucide-react';
+import { Lock, Layers } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
-import { classifyArticleMedia, getThumbnailUrl, getSupportingMediaCount, getGridImageUrls } from '@/utils/mediaClassifier';
+import {
+  classifyArticleMedia,
+  getThumbnailUrl,
+  getSupportingMediaCount,
+  getGridImageUrls,
+} from '@/utils/mediaClassifier';
+import {
+  FEED_CARD_HERO_IMAGE_SIZES,
+  FEED_CARD_MEDIA_INTRINSIC_HEIGHT,
+  FEED_CARD_MEDIA_INTRINSIC_WIDTH,
+} from '@/constants/feedImageLayout';
+import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
 import { useYouTubeTitle } from '@/hooks/useYouTubeTitle';
 import { CardThumbnailGrid } from './CardThumbnailGrid';
-import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
 interface CardMediaProps {
-  article: Article;
+  article: CardArticleMediaSource;
   visibility: 'public' | 'private' | undefined;
   onMediaClick: (e: React.MouseEvent, imageIndex?: number) => void;
   className?: string;
   isMediaOnly?: boolean; // Flag to indicate this is for a Media-Only card (use object-contain for images)
+  /** First-viewport thumbnails: improves LCP (eager load + fetch priority). See getPriorityThumbnailCount. */
+  thumbnailLoadPriority?: 'normal' | 'high';
 }
 
 export const CardMedia: React.FC<CardMediaProps> = React.memo(({
@@ -40,12 +52,13 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   onMediaClick,
   className,
   isMediaOnly = false,
+  thumbnailLoadPriority = 'normal',
 }) => {
-  // Track image load errors for Media-only cards
-  const [imageError, setImageError] = useState(false);
+  // Track which thumbnail URL failed (Media-only cards). Derived compare avoids reset effects when URL changes.
+  const [failedThumbKey, setFailedThumbKey] = useState('');
   
   // Classify media using deterministic rules
-  const { primaryMedia, supportingMedia } = useMemo(() => 
+  const { primaryMedia } = useMemo(() => 
     classifyArticleMedia(article), 
     [article]
   );
@@ -61,11 +74,15 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
     }
     return url;
   }, [article, gridImageUrls]);
-  
-  // Reset error state when thumbnail URL changes
-  useEffect(() => {
-    setImageError(false);
+
+  const singleThumbnailResponsive = useMemo(() => {
+    if (!thumbnailUrl) return null;
+    return buildFeedImageResponsiveProps(thumbnailUrl);
   }, [thumbnailUrl]);
+
+  const thumbKey = thumbnailUrl ?? '';
+  const showImageError =
+    isMediaOnly && thumbKey !== '' && failedThumbKey === thumbKey;
 
   // Get count of supporting media for indicator
   const supportingCount = useMemo(() => 
@@ -128,6 +145,8 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
     if (primaryMedia && primaryMedia.type !== 'image') return false;
     return true;
   }, [primaryMedia, gridImageUrls.length]);
+
+  const thumbnailIsPriority = thumbnailLoadPriority === 'high';
   
   // PHASE 1: Consistent fixed aspect ratio across all cards (16:9 for uniformity)
   const { aspectRatio, backgroundClass } = useMemo(() => {
@@ -155,8 +174,6 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   
   // Check if className already includes aspect ratio (e.g., aspect-video)
   const hasAspectRatioInClassName = className?.includes('aspect-');
-
-  const isYouTube = primaryMedia?.type === 'youtube' || article.media?.type === 'youtube' || !!article.video;
 
   // Generate ARIA label based on media type
   const getMediaAriaLabel = (): string => {
@@ -224,6 +241,7 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
           onGridClick={onMediaClick}
           showLinkBadge={shouldShowLinkBadge}
           linkUrl={linkUrl}
+          thumbnailLoadPriority={thumbnailLoadPriority}
         />
       ) : (
         /* MODE 2B: Single Thumbnail (YouTube, Image, Document) */
@@ -244,12 +262,17 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
                   
                   This distinction is intentional and type-based (not heuristic).
               */}
-              {thumbnailUrl && !imageError && (
+              {thumbnailUrl && !showImageError && singleThumbnailResponsive && (
                 <div className="w-full h-full flex items-center justify-center cursor-pointer">
                   <Image
-                    src={thumbnailUrl}
+                    src={singleThumbnailResponsive.src}
+                    srcSet={singleThumbnailResponsive.srcSet}
                     alt={article.title || 'Nugget thumbnail'}
-                    loading="lazy"
+                    width={FEED_CARD_MEDIA_INTRINSIC_WIDTH}
+                    height={FEED_CARD_MEDIA_INTRINSIC_HEIGHT}
+                    sizes={FEED_CARD_HERO_IMAGE_SIZES}
+                    loading={thumbnailIsPriority ? 'eager' : 'lazy'}
+                    fetchPriority={thumbnailIsPriority ? 'high' : undefined}
                     decoding="async"
                     className={
                       primaryMedia?.type === 'youtube'
@@ -262,8 +285,8 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
                           "max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-300 group-hover/media:scale-105"
                     }
                     onError={() => {
-                      if (isMediaOnly) {
-                        setImageError(true);
+                      if (isMediaOnly && thumbnailUrl) {
+                        setFailedThumbKey(thumbnailUrl);
                       }
                     }}
                   />
@@ -289,7 +312,7 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
               )}
           
           {/* Error placeholder for Media-only cards when image fails to load */}
-          {isMediaOnly && imageError && (
+          {isMediaOnly && showImageError && (
             <div className="w-full h-full flex items-center justify-center opacity-60 text-sm text-slate-400 dark:text-slate-500">
               Media unavailable
             </div>
@@ -336,3 +359,4 @@ export const CardMedia: React.FC<CardMediaProps> = React.memo(({
   );
 });
 
+CardMedia.displayName = 'CardMedia';

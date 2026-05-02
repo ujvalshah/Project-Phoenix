@@ -1,12 +1,8 @@
-import React, { useEffect, useRef, useState, lazy, Suspense, useCallback } from 'react';
+import React, { useEffect, useRef, useState, Suspense, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Article } from '@/types';
 import { getOverlayHost } from '@/utils/overlayHosts';
-
-// Lazy load ArticleDetail - only loads when drawer opens
-const ArticleDetailLazy = lazy(() => 
-  import('./ArticleDetail').then(module => ({ default: module.ArticleDetail }))
-);
+import { ArticleDetailLazy, ArticleDetailPanelFallback } from '@/components/ArticleDetailLazy';
 
 interface ArticleDrawerProps {
   isOpen: boolean;
@@ -45,6 +41,13 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const scrollPositionRef = useRef<number>(0);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    queueMicrotask(() => {
+      setIsClosing(false);
+    });
+  }, [isOpen]);
+
   // Lock body scroll when drawer is open - keep scrollbar visible to prevent layout shift
   // This is simpler, more performant, and eliminates layout shift completely
   useEffect(() => {
@@ -54,7 +57,6 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
       
       // Store previous focus for restoration
       previousFocusRef.current = document.activeElement as HTMLElement;
-      setIsClosing(false);
       
       // Prevent scrolling but keep scrollbar visible to avoid layout shift
       // Using position: fixed prevents scrolling, overflow-y: scroll keeps scrollbar visible
@@ -200,18 +202,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
           className="flex-1 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950"
         >
           {article && (
-            <Suspense
-              fallback={
-                <div className="flex items-center justify-center h-full min-h-[400px]">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto mb-3" />
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Loading article...
-                    </p>
-                  </div>
-                </div>
-              }
-            >
+            <Suspense fallback={<ArticleDetailPanelFallback />}>
               <ArticleDetailLazy
                 article={article}
                 isModal={true}

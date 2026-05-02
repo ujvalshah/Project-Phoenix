@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Bold,
   Italic,
@@ -126,7 +126,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [localValue, setLocalValue] = useState(value);
   const localValueRef = useRef(localValue);
-  localValueRef.current = localValue;
+  useLayoutEffect(() => {
+    localValueRef.current = localValue;
+  }, [localValue]);
 
   /** When this matches incoming `value`, the update is our own echo from the parent — do not clobber local edits. */
   const lastEmittedToParentRef = useRef<string | null>(null);
@@ -147,8 +149,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
     flushGenerationRef.current += 1;
     parentMicrotaskFlushScheduledRef.current = false;
-    setLocalValue(value);
-    lastEmittedToParentRef.current = null;
+    queueMicrotask(() => {
+      setLocalValue(value);
+      lastEmittedToParentRef.current = null;
+    });
   }, [value]);
 
   const queueDeferredParentFlush = useCallback(() => {

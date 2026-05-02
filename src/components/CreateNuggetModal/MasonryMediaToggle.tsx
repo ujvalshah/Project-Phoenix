@@ -77,7 +77,7 @@ export const MasonryMediaToggle: React.FC<MasonryMediaToggleProps> = ({
       </div>
       {isPrimarySelected && primaryItem && (
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 italic">
-          Primary media is selected by default. You may unselect it if you don't want this nugget to appear in the Masonry layout.
+          Primary media is selected by default. You may unselect it if you don&apos;t want this nugget to appear in the Masonry layout.
         </p>
       )}
       <div className="grid grid-cols-2 gap-3">

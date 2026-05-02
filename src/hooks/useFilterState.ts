@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { isFeatureEnabled } from '@/constants/featureFlags';
 import { SortOrder, TimeRange, ContentStream, SerializableFilterState } from '@/types';
 import { normalizeSearchQuery } from '@/utils/searchQuery';
 
@@ -129,6 +130,14 @@ function persistFilters(f: SerializableFilterState): void {
 // Hook: useFilterState
 // ---------------------------------------------------------------------------
 
+/** Coerce `pulse` to `standard` when the Market Pulse feature flag is disabled (client-only). */
+export function sanitizeContentStreamAgainstPulseFlag(stream: ContentStream): ContentStream {
+  if (!isFeatureEnabled('MARKET_PULSE') && stream === 'pulse') {
+    return 'standard';
+  }
+  return stream;
+}
+
 export interface UseFilterStateReturn {
   // Current state
   searchQuery: string;           // committed query — use for API calls
@@ -212,36 +221,44 @@ export interface UseFilterStateReturn {
 export function useFilterState(): UseFilterStateReturn {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Initialise from URL params > localStorage > defaults
-  const urlFilters = useMemo(() => paramsToFilters(searchParams), []);  // eslint-disable-line react-hooks/exhaustive-deps -- only read URL on mount
-  const persisted = useMemo(() => loadPersistedFilters(), []);
+  // Snapshot URL + persisted filters once on mount (avoids recomputing `initial` on every router update).
+  const [urlFiltersAtMount] = useState(() => paramsToFilters(searchParams));
+  const [persistedFilters] = useState(() => loadPersistedFilters());
 
-  // Merge: URL wins over localStorage wins over defaults
   const initial = useMemo<Required<SerializableFilterState>>(() => ({
-    q: urlFilters.q || DEFAULTS.q,
-    categories: urlFilters.categories && urlFilters.categories.length > 0
-      ? urlFilters.categories
+    q: urlFiltersAtMount.q || DEFAULTS.q,
+    categories: urlFiltersAtMount.categories && urlFiltersAtMount.categories.length > 0
+      ? urlFiltersAtMount.categories
       : DEFAULTS.categories,
-    tag: urlFilters.tag || DEFAULTS.tag,
-    sort: urlFilters.sort ?? normalizePersistedSort(persisted.sort) ?? DEFAULTS.sort,
-    favorites: urlFilters.favorites ?? persisted.favorites ?? DEFAULTS.favorites,
-    unread: urlFilters.unread ?? persisted.unread ?? DEFAULTS.unread,
-    formats: urlFilters.formats && urlFilters.formats.length > 0
-      ? urlFilters.formats
-      : persisted.formats || DEFAULTS.formats,
-    timeRange: urlFilters.timeRange || persisted.timeRange || DEFAULTS.timeRange,
-    collectionId: urlFilters.collectionId || DEFAULTS.collectionId,
-    formatTagIds: urlFilters.formatTagIds && urlFilters.formatTagIds.length > 0
-      ? urlFilters.formatTagIds
+    tag: urlFiltersAtMount.tag || DEFAULTS.tag,
+    sort:
+      urlFiltersAtMount.sort ?? normalizePersistedSort(persistedFilters.sort) ?? DEFAULTS.sort,
+    favorites:
+      urlFiltersAtMount.favorites ?? persistedFilters.favorites ?? DEFAULTS.favorites,
+    unread:
+      urlFiltersAtMount.unread ?? persistedFilters.unread ?? DEFAULTS.unread,
+    formats: urlFiltersAtMount.formats && urlFiltersAtMount.formats.length > 0
+      ? urlFiltersAtMount.formats
+      : persistedFilters.formats || DEFAULTS.formats,
+    timeRange:
+      urlFiltersAtMount.timeRange || persistedFilters.timeRange || DEFAULTS.timeRange,
+    collectionId:
+      urlFiltersAtMount.collectionId || DEFAULTS.collectionId,
+    formatTagIds:
+      urlFiltersAtMount.formatTagIds && urlFiltersAtMount.formatTagIds.length > 0
+      ? urlFiltersAtMount.formatTagIds
       : DEFAULTS.formatTagIds,
-    domainTagIds: urlFilters.domainTagIds && urlFilters.domainTagIds.length > 0
-      ? urlFilters.domainTagIds
+    domainTagIds:
+      urlFiltersAtMount.domainTagIds && urlFiltersAtMount.domainTagIds.length > 0
+      ? urlFiltersAtMount.domainTagIds
       : DEFAULTS.domainTagIds,
-    subtopicTagIds: urlFilters.subtopicTagIds && urlFilters.subtopicTagIds.length > 0
-      ? urlFilters.subtopicTagIds
+    subtopicTagIds:
+      urlFiltersAtMount.subtopicTagIds &&
+      urlFiltersAtMount.subtopicTagIds.length > 0
+      ? urlFiltersAtMount.subtopicTagIds
       : DEFAULTS.subtopicTagIds,
-    contentStream: urlFilters.contentStream || DEFAULTS.contentStream,
-  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+    contentStream: sanitizeContentStreamAgainstPulseFlag(urlFiltersAtMount.contentStream || DEFAULTS.contentStream),
+  }), [persistedFilters, urlFiltersAtMount]);
 
   // ---- State ----
   const [searchInputValue, setSearchInputValueRaw] = useState(initial.q);
@@ -257,7 +274,12 @@ export function useFilterState(): UseFilterStateReturn {
   const [formatTagIds, setFormatTagIds] = useState<string[]>(initial.formatTagIds);
   const [domainTagIds, setDomainTagIds] = useState<string[]>(initial.domainTagIds);
   const [subtopicTagIds, setSubtopicTagIds] = useState<string[]>(initial.subtopicTagIds);
-  const [contentStream, setContentStream] = useState<ContentStream>(initial.contentStream);
+  const [contentStream, setContentStreamRaw] = useState<ContentStream>(initial.contentStream);
+
+  /** When MARKET_PULSE is off, never enter the Pulse stream (ignore deep links and programmatic switches). */
+  const setContentStream = useCallback((stream: ContentStream) => {
+    setContentStreamRaw(sanitizeContentStreamAgainstPulseFlag(stream));
+  }, []);
   const [searchInputResetSignal, setSearchInputResetSignal] = useState(0);
 
   const setSearchInput = useCallback((value: string) => {

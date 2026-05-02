@@ -66,7 +66,9 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
   const [panY, setPanY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  
+  /** Mirrors gesture ref for render (CSS transition) — refs must not drive render output. */
+  const [isTouchPanning, setIsTouchPanning] = useState(false);
+
   // Touch gesture state for mobile
   const touchStateRef = React.useRef<{
     isPinching: boolean;
@@ -96,7 +98,8 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
 
   // Determine initial mode: single image = fullscreen, multiple = carousel
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    queueMicrotask(() => {
       setCurrentIndex(initialIndex);
       // Single image: always fullscreen; Multiple images: start in carousel mode
       setMode(hasMultipleImages ? 'carousel' : 'fullscreen');
@@ -104,14 +107,17 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
       setZoom(1);
       setPanX(0);
       setPanY(0);
-    }
+      setIsTouchPanning(false);
+    });
   }, [isOpen, initialIndex, hasMultipleImages]);
 
   // Reset zoom/pan when image changes
   useEffect(() => {
-    setZoom(1);
-    setPanX(0);
-    setPanY(0);
+    queueMicrotask(() => {
+      setZoom(1);
+      setPanX(0);
+      setPanY(0);
+    });
   }, [currentIndex]);
 
   // Lock body scroll when viewer is open — restore prior overflow for nested overlays
@@ -223,6 +229,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
       
       state.isPinching = true;
       state.isPanning = false;
+      setIsTouchPanning(false);
       state.isSwiping = false;
       state.initialDistance = distance;
       state.initialZoom = zoom;
@@ -266,6 +273,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
         if (zoom > 1) {
           // Single-touch pan gesture (only when zoomed)
           state.isPanning = true;
+          setIsTouchPanning(true);
           state.isPinching = false;
           state.isSwiping = false;
           state.panStart = { x: touch.clientX - panX, y: touch.clientY - panY };
@@ -276,6 +284,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
         } else {
           // Single touch when not zoomed - prepare for swipe navigation
           state.isPanning = false;
+          setIsTouchPanning(false);
           state.isPinching = false;
           state.isSwiping = true;
           state.swipeStart = { x: touch.clientX, y: touch.clientY };
@@ -286,6 +295,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
       } else {
         // In carousel mode or any mode - prepare for swipe navigation
         state.isPanning = false;
+        setIsTouchPanning(false);
         state.isPinching = false;
         state.isSwiping = true;
         state.swipeStart = { x: touch.clientX, y: touch.clientY };
@@ -417,6 +427,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
     if (state.isPanning && e.touches.length === 0) {
       // Touch ended - keep pan position but reset gesture state
       state.isPanning = false;
+      setIsTouchPanning(false);
       state.panStart = null;
       state.lastPan = null;
     }
@@ -431,6 +442,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
     if (e.touches.length === 0) {
       state.isPinching = false;
       state.isPanning = false;
+      setIsTouchPanning(false);
       state.isSwiping = false;
       state.swipeStart = null;
       state.panStart = null;
@@ -655,7 +667,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
                 width: '100%',
                 height: '100%',
                 transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
-                transition: (isDragging || touchStateRef.current.isPanning) ? 'none' : 'transform 0.1s ease-out',
+                transition: (isDragging || isTouchPanning) ? 'none' : 'transform 0.1s ease-out',
                 transformOrigin: 'center center',
               }}
             >

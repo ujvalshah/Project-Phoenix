@@ -38,8 +38,6 @@ class AdminTagsService {
           totalTags: tags.filter(t => t.status !== 'pending').length,
           pending: tags.filter(t => t.status === 'pending').length
         };
-      } catch (error: unknown) {
-        throw error;
       } finally {
         this.inFlightStatsRequest = null;
       }

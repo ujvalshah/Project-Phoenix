@@ -13,11 +13,11 @@ vi.mock('@/context/AuthContext', () => ({
     selector({ isAuthenticated: mocks.isAuthenticated }),
 }));
 
-vi.mock('@/services/adapters/RestAdapter', () => ({
-  RestAdapter: vi.fn().mockImplementation(() => ({
+vi.mock('@/services/storageService', () => ({
+  storageService: {
     getUnseenFeedCounts: mocks.getUnseenFeedCountsMock,
     markFeedSeen: mocks.markFeedSeenMock,
-  })),
+  },
 }));
 
 import {
@@ -27,14 +27,16 @@ import {
   useUnseenFeedCounts,
 } from '@/hooks/usePulseUnseen';
 
-function createWrapper() {
+function createWrapper(): React.ComponentType<{ children: React.ReactNode }> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 
-  return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
+  function TestQueryWrapper({ children }: { children: React.ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  }
+  TestQueryWrapper.displayName = 'TestQueryWrapper';
+  return TestQueryWrapper;
 }
 
 describe('usePulseUnseen hooks', () => {

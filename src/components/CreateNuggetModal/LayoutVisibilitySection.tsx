@@ -112,7 +112,7 @@ export const LayoutVisibilitySection: React.FC<LayoutVisibilitySectionProps> = (
         <div className="flex items-start gap-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
           <AlertTriangle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
           <p className="text-xs text-red-700 dark:text-red-400">
-            No layouts selected. This nugget won't be visible anywhere. Select at least one layout.
+            No layouts selected. This nugget won&apos;t be visible anywhere. Select at least one layout.
           </p>
         </div>
       )}

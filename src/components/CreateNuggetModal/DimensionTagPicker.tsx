@@ -68,21 +68,10 @@ export const DimensionTagPicker: React.FC<DimensionTagPickerProps> = ({
 }) => {
   const { data: taxonomy, isLoading } = useTagTaxonomy();
 
-  if (isLoading) {
-    return (
-      <div className="space-y-2">
-        <div className="h-4 w-32 rounded bg-gray-100 dark:bg-slate-800 animate-pulse" />
-        <div className="h-8 rounded bg-gray-100 dark:bg-slate-800 animate-pulse" />
-      </div>
-    );
-  }
-
-  // Once taxonomy loads, strip any selectedTagIds that no longer exist in the
-  // taxonomy (e.g. deprecated or deleted tags carried over from the article).
-  // This prevents stale IDs from being re-sent on save and failing validation.
+  // Strip selectedTagIds that no longer exist in taxonomy once it loads (must run unconditionally — hooks rule).
   const hasPrunedRef = useRef(false);
   useEffect(() => {
-    if (!taxonomy || hasPrunedRef.current) return;
+    if (isLoading || !taxonomy || hasPrunedRef.current) return;
     hasPrunedRef.current = true;
 
     const validIds = new Set([
@@ -94,7 +83,16 @@ export const DimensionTagPicker: React.FC<DimensionTagPickerProps> = ({
     if (pruned.length !== selectedTagIds.length) {
       onSelectedChange(pruned);
     }
-  }, [taxonomy]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLoading, onSelectedChange, selectedTagIds, taxonomy]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        <div className="h-4 w-32 rounded bg-gray-100 dark:bg-slate-800 animate-pulse" />
+        <div className="h-8 rounded bg-gray-100 dark:bg-slate-800 animate-pulse" />
+      </div>
+    );
+  }
 
   if (!taxonomy || (taxonomy.formats.length === 0 && taxonomy.domains.length === 0 && taxonomy.subtopics.length === 0)) {
     return null;

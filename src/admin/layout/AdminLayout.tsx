@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { AdminSidebar } from '../components/AdminSidebar';
 import { AdminTopbar } from '../components/AdminTopbar';
@@ -10,6 +10,12 @@ export interface AdminHeaderContext {
 }
 
 export const useAdminHeader = () => useOutletContext<AdminHeaderContext>();
+
+const adminOutletFallback = (
+  <div className="flex min-h-[32vh] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+    Loading…
+  </div>
+);
 
 export const AdminLayout: React.FC = () => {
   const location = useLocation();
@@ -46,7 +52,9 @@ export const AdminLayout: React.FC = () => {
         
         <main className="flex-1 p-4 lg:p-8 overflow-x-hidden">
           <div className="max-w-7xl mx-auto">
-            <Outlet context={{ setPageHeader }} />
+            <Suspense fallback={adminOutletFallback}>
+              <Outlet context={{ setPageHeader }} />
+            </Suspense>
           </div>
         </main>
       </div>

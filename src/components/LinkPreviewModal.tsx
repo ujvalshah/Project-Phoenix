@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, ExternalLink, Globe, Lock, AlertCircle } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { ModalShell } from '@/components/UI/ModalShell';
@@ -34,19 +34,20 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [dragOffset, setDragOffset] = useState(0);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    queueMicrotask(() => {
+      setIsClosing(false);
+      setTouchStartY(null);
+      setDragOffset(0);
+    });
+  }, [isOpen]);
+
   // Extract domain from URL if not provided
   const displayDomain = domain || (url ? new URL(url).hostname.replace('www.', '') : '');
   
   // Check if URL is secure (HTTPS)
   const isSecure = url.startsWith('https://');
-
-  // Reset transient state on open (scroll lock + Escape owned by ModalShell)
-  useEffect(() => {
-    if (isOpen) {
-      setIsClosing(false);
-      setDragOffset(0);
-    }
-  }, [isOpen]);
 
   const handleClose = (e?: React.MouseEvent) => {
     e?.stopPropagation();

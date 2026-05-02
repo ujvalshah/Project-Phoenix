@@ -55,6 +55,7 @@ export interface NewsCardHandlers {
   onMediaClick: (e: React.MouseEvent, imageIndex?: number) => void;
   onCategoryClick: (category: string) => void;
   onTagClick?: (tag: string) => void;
+  onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
   onDelete?: () => void;
   onEdit?: () => void;
   onDuplicate?: () => void;
@@ -332,10 +333,10 @@ export const useNewsCard = ({
     title: resolvedTitle,
     excerpt: article.excerpt || article.content || '',
     content: article.content || '',
-    formattedDate: article.publishedAt, // Phase 3: Pass raw ISO string for relative time formatting
-    authorName: article.author.name,
-    authorId: article.author.id,
-    authorAvatarUrl: article.author.avatar_url, // Phase 3: Include avatar URL
+    formattedDate: article.publishedAt ?? article.created_at ?? '',
+    authorName: article.author?.name ?? 'Unknown',
+    authorId: article.author?.id ?? '',
+    authorAvatarUrl: article.author?.avatar_url,
     tags: article.tags || [],
     hasMedia,
     isLink,
@@ -638,6 +639,7 @@ export const useNewsCard = ({
         onToggleTagPopover: handleToggleTagPopover, // Allow tag popover (UI only)
         onCloseTagPopover: handleCloseTagPopover,
         onReadMore: () => setShowFullModal(true), // Allow read more (modal only)
+        onYouTubeTimestampClick: handleYouTubeTimestampClick,
       }
     : {
         onShare: handleShare,
@@ -656,11 +658,11 @@ export const useNewsCard = ({
         onToggleTagPopover: handleToggleTagPopover,
         onCloseTagPopover: handleCloseTagPopover,
         onReadMore: () => setShowFullModal(true),
+        onYouTubeTimestampClick: handleYouTubeTimestampClick,
       };
 
   const handlersWithDetails: NewsCardHandlers & { 
     onOpenDetails?: () => void;
-    onYouTubeTimestampClick?: (videoId: string, timestamp: number, originalUrl: string) => void;
   } = {
     ...handlers,
     onOpenDetails: handleOpenDetails,

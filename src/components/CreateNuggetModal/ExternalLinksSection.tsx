@@ -100,7 +100,9 @@ export const ExternalLinksSection: React.FC<ExternalLinksSectionProps> = ({
       <div className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
         <LinkIcon size={14} />
         <span>Source URL</span>
-        <span className="text-slate-400 dark:text-slate-500 font-normal">(for the "Link" button on your card)</span>
+        <span className="text-slate-400 dark:text-slate-500 font-normal">
+          {( '(for the "Link" button on your card)' )}
+        </span>
       </div>
 
       {/* Add URL Input */}
@@ -226,7 +228,7 @@ export const ExternalLinksSection: React.FC<ExternalLinksSectionProps> = ({
       {/* Helper Text */}
       <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
         {links.length === 0 && (
-          <p>Add external links that will appear as the "Link" button on your card.</p>
+          <p>{( 'Add external links that will appear as the "Link" button on your card.' )}</p>
         )}
         {primaryLink && (
           <p className="flex items-center gap-1">
@@ -236,7 +238,7 @@ export const ExternalLinksSection: React.FC<ExternalLinksSectionProps> = ({
         )}
         {links.length > 0 && !primaryLink && (
           <p className="text-amber-600 dark:text-amber-400">
-            Select a primary link to show the "Link" button on your card.
+            {( 'Select a primary link to show the "Link" button on your card.' )}
           </p>
         )}
       </div>

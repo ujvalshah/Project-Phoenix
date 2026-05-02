@@ -1,7 +1,6 @@
 import React, { startTransition, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Activity, Home, Layers } from 'lucide-react';
-import { twMerge } from 'tailwind-merge';
 import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { isFeatureEnabled } from '@/constants/featureFlags';
@@ -10,7 +9,27 @@ import { Z_INDEX } from '@/constants/zIndex';
 import { usePulseUnseenCount, useStandardUnseenCount } from '@/hooks/usePulseUnseen';
 import { formatNavBadgeCount, hasNavBadge } from '@/utils/navBadge';
 
-const NAV_LABEL_CLASS = 'text-[11px] font-medium leading-tight tracking-[0.01em]';
+const NAV_LABEL_BASE = 'text-[11px] leading-tight tracking-[0.01em]';
+
+const BOTTOM_LINK_BASE =
+  'relative flex min-h-[58px] flex-col items-center justify-center rounded-xl px-2 py-1.5 transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950';
+const BOTTOM_LINK_ACTIVE =
+  'bg-primary-50/90 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300';
+const BOTTOM_LINK_INACTIVE =
+  'text-slate-500 hover:bg-slate-100/80 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/80 dark:hover:text-slate-200';
+
+const BOTTOM_ICON_WRAP = 'mb-0.5 inline-flex items-center justify-center';
+const BOTTOM_ICON_ACTIVE = 'text-primary-600 dark:text-primary-300';
+const BOTTOM_ICON_INACTIVE = 'text-slate-500 dark:text-slate-400';
+
+const BOTTOM_BAR_BASE =
+  'absolute inset-x-8 top-0.5 h-[2px] rounded-full transition-opacity duration-200';
+const BOTTOM_BAR_ACTIVE = 'bg-primary-500 opacity-100 dark:bg-primary-400';
+const BOTTOM_BAR_INACTIVE = 'opacity-0';
+
+const BOTTOM_NAV_SHELL =
+  'fixed bottom-0 left-0 right-0 border-t border-slate-200/80 bg-white/95 pb-[max(env(safe-area-inset-bottom),0px)] shadow-[0_-8px_20px_-16px_rgba(15,23,42,0.35)] backdrop-blur-lg transition-[transform,opacity] duration-300 ease-out dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-black/40 lg:hidden';
+const BOTTOM_NAV_HIDDEN = 'pointer-events-none translate-y-full opacity-0';
 
 // Warm the destination route's chunk before the user commits to navigating, so
 // tap-to-commit doesn't stall behind a Suspense fallback on the first visit.
@@ -48,33 +67,25 @@ const BottomNavItem: React.FC<BottomNavItemProps> = ({
     onClick={onClick}
     onTouchStart={onPreload}
     onPointerDown={onPreload}
-    className={twMerge(
-      'relative flex min-h-[58px] flex-col items-center justify-center rounded-xl px-2 py-1.5 transition-all duration-200 ease-out',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950',
-      active
-        ? 'bg-primary-50/90 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-        : 'text-slate-500 hover:bg-slate-100/80 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/80 dark:hover:text-slate-200',
-    )}
+    className={`${BOTTOM_LINK_BASE} ${active ? BOTTOM_LINK_ACTIVE : BOTTOM_LINK_INACTIVE}`}
     aria-current={active ? 'page' : undefined}
     aria-label={ariaLabel ?? label}
   >
     <span
-      className={twMerge(
-        'mb-0.5 inline-flex items-center justify-center',
-        active ? 'text-primary-600 dark:text-primary-300' : 'text-slate-500 dark:text-slate-400',
-      )}
+      className={`${BOTTOM_ICON_WRAP} ${active ? BOTTOM_ICON_ACTIVE : BOTTOM_ICON_INACTIVE}`}
       aria-hidden
     >
       {icon}
     </span>
-    <span className={twMerge(NAV_LABEL_CLASS, active ? 'font-semibold' : 'font-medium')}>
+    <span
+      className={
+        active ? `${NAV_LABEL_BASE} font-semibold` : `${NAV_LABEL_BASE} font-medium`
+      }
+    >
       {label}
     </span>
     <span
-      className={twMerge(
-        'absolute inset-x-8 top-0.5 h-[2px] rounded-full transition-opacity duration-200',
-        active ? 'bg-primary-500 opacity-100 dark:bg-primary-400' : 'opacity-0',
-      )}
+      className={`${BOTTOM_BAR_BASE} ${active ? BOTTOM_BAR_ACTIVE : BOTTOM_BAR_INACTIVE}`}
       aria-hidden
     />
     {indicator}
@@ -167,13 +178,10 @@ export const MobileBottomNav: React.FC = () => {
       onTouchCancel={() => setChromeInteractionActive(false)}
       onFocusCapture={() => setChromeInteractionActive(true)}
       onBlurCapture={() => setChromeInteractionActive(false)}
-      className={twMerge(
-        'fixed bottom-0 left-0 right-0 border-t border-slate-200/80 bg-white/95 pb-[max(env(safe-area-inset-bottom),0px)] shadow-[0_-8px_20px_-16px_rgba(15,23,42,0.35)] backdrop-blur-lg transition-[transform,opacity] duration-300 ease-out dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-black/40 lg:hidden',
-        chromeHidden && 'pointer-events-none translate-y-full opacity-0',
-      )}
+      className={chromeHidden ? `${BOTTOM_NAV_SHELL} ${BOTTOM_NAV_HIDDEN}` : BOTTOM_NAV_SHELL}
       style={{ zIndex: Z_INDEX.MOBILE_BOTTOM_NAV }}
     >
-      <div className={twMerge('grid min-h-[64px] items-stretch px-2 pb-1 pt-1', gridCols)}>
+      <div className={`grid min-h-[64px] items-stretch px-2 pb-1 pt-1 ${gridCols}`}>
         <BottomNavItem
           to="/"
           label="Nuggets"

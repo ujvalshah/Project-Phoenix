@@ -6,6 +6,22 @@ interface CardSkeletonProps {
   className?: string;
 }
 
+/** Shimmer chunk — module-scoped so it is never recreated during render (`react-hooks/static-components`). */
+function SkeletonBox({ className: boxClassName }: { className?: string }) {
+  return (
+    <div
+      className={twMerge(
+        'bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200',
+        'dark:from-slate-800 dark:via-slate-700 dark:to-slate-800',
+        'bg-[length:200%_100%]',
+        'animate-shimmer',
+        'rounded',
+        boxClassName
+      )}
+    />
+  );
+}
+
 /**
  * CardSkeleton: Loading placeholder that matches actual card structure
  *
@@ -21,20 +37,6 @@ interface CardSkeletonProps {
  * - Shimmer provides activity cue without being distracting
  */
 export const CardSkeleton: React.FC<CardSkeletonProps> = ({ variant, className }) => {
-  // Shared skeleton element with shimmer
-  const SkeletonBox: React.FC<{ className?: string }> = ({ className: boxClassName }) => (
-    <div
-      className={twMerge(
-        'bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200',
-        'dark:from-slate-800 dark:via-slate-700 dark:to-slate-800',
-        'bg-[length:200%_100%]',
-        'animate-shimmer',
-        'rounded',
-        boxClassName
-      )}
-    />
-  );
-
   // Feed variant: Wider card with enhanced spacing
   if (variant === 'feed') {
     return (

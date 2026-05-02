@@ -1,5 +1,7 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import type { Article } from '@/types';
+import { FEED_COLLECTION_ENTRIES_INFINITE_PREFIX } from '@/services/queryKeys/feedPrefixes';
+import { COLLECTION_DETAIL_INVALIDATION_PREFIX } from '@/services/queryKeys/collectionKeys';
 
 type Primitive = string | number | boolean | null;
 type KeyValue = Primitive | Primitive[] | undefined;
@@ -104,6 +106,10 @@ export function patchArticleAcrossCaches(
   queryClient.setQueriesData({ queryKey: articleKeys.infiniteLists(), exact: false }, (oldData) =>
     patchArticleInInfinite(oldData, articleId, updater)
   );
+  queryClient.setQueriesData(
+    { queryKey: FEED_COLLECTION_ENTRIES_INFINITE_PREFIX, exact: false },
+    (oldData) => patchArticleInInfinite(oldData, articleId, updater),
+  );
   queryClient.setQueriesData({ queryKey: ['articles', 'myspace'], exact: false }, (oldData) =>
     patchArticleInInfinite(oldData, articleId, updater)
   );
@@ -113,6 +119,16 @@ export async function invalidateArticleListCaches(queryClient: QueryClient): Pro
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: articleKeys.lists(), exact: false }),
     queryClient.invalidateQueries({ queryKey: articleKeys.infiniteLists(), exact: false }),
+    /** `/collections/:id` membership infinite lists (`feedKeys.collectionEntriesInfinite*`). */
+    queryClient.invalidateQueries({
+      queryKey: FEED_COLLECTION_ENTRIES_INFINITE_PREFIX,
+      exact: false,
+    }),
+    /** Collection document rows (counts, names) touched when membership/order changes materially. */
+    queryClient.invalidateQueries({
+      queryKey: COLLECTION_DETAIL_INVALIDATION_PREFIX,
+      exact: false,
+    }),
     queryClient.invalidateQueries({ queryKey: ['articles', 'myspace'], exact: false }),
     queryClient.invalidateQueries({ queryKey: articleKeys.masonryLists(), exact: false }),
   ]);

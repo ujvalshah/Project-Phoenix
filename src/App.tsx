@@ -1,30 +1,54 @@
 
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Header } from '@/components/Header';
 import { BackToTopButton } from '@/components/UI/BackToTopButton';
 import { ToastContainer } from '@/components/UI/Toast';
 import { ToastProvider } from '@/context/ToastContext';
-import { FeedScrollStateProvider } from '@/context/FeedScrollStateContext';
 import { VideoPlayerProvider } from '@/context/VideoPlayerContext';
 import { MainLayout } from '@/components/layouts/MainLayout';
 import { FilterStateProvider } from '@/context/FilterStateContext';
 import { useAuthSelector } from '@/context/AuthContext';
-import { CreateNuggetModalLoadable } from '@/components/CreateNuggetModalLoadable';
 import { consumePendingNavigation, recordRouteStartMark } from '@/utils/routeProfiling';
-import { AuthModal } from '@/components/auth/AuthModal';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import { AdminRoute } from '@/components/auth/AdminRoute';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
-import { PersistentVideoPlayer } from '@/components/PersistentVideoPlayer';
-import { NotificationPrompt } from '@/components/NotificationPrompt';
-import { LegalFooter } from '@/components/legal/LegalFooter';
+import { DeferredPersistentVideoPlayer } from '@/components/DeferredPersistentVideoPlayer';
 import { AppChromeScrollProvider } from '@/context/AppChromeScrollContext';
 import { FilterResultsProvider } from '@/context/FilterResultsContext';
 import { DesktopFilterSidebarProvider } from '@/context/DesktopFilterSidebarContext';
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav';
 import { PlausibleRouteTracker, PublicRouteSeo } from '@/seo/RouteSeo';
-import { preloadCreateNuggetModalChunk } from '@/components/createNuggetModalChunk';
+import { LAYOUT_CLASSES } from '@/constants/layout';
+import { Z_INDEX } from '@/constants/zIndex';
+
+/** Glass header chrome only — mirrors real Header shell so Suspense deferral avoids layout flicker */
+const HeaderSuspenseFallback: React.FC = () => (
+  <header
+    className={`fixed left-0 right-0 top-0 w-full border-b border-gray-200 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md transition-[transform,opacity] duration-300 ease-out dark:border-slate-800 dark:bg-slate-900/80 ${LAYOUT_CLASSES.HEADER_HEIGHT}`}
+    style={{ zIndex: Z_INDEX.HEADER }}
+    aria-busy="true"
+    aria-label="Loading navigation"
+  />
+);
+
+const HeaderLazy = lazy(() =>
+  import('@/components/Header').then((m) => ({ default: m.Header })),
+);
+const AuthModalLazy = lazy(() =>
+  import('@/components/auth/AuthModal').then((m) => ({ default: m.AuthModal })),
+);
+const CreateNuggetModalLoadableLazy = lazy(() =>
+  import('@/components/CreateNuggetModalLoadable').then((m) => ({
+    default: m.CreateNuggetModalLoadable,
+  })),
+);
+const NotificationPromptLazy = lazy(() =>
+  import('@/components/NotificationPrompt').then((m) => ({
+    default: m.NotificationPrompt,
+  })),
+);
+const LegalFooterLazy = lazy(() =>
+  import('@/components/legal/LegalFooter').then((m) => ({ default: m.LegalFooter })),
+);
 
 // Legacy hash URL redirect handler
 // Redirects old /#/path URLs to clean /path URLs for backwards compatibility
@@ -57,7 +81,9 @@ const AdminPanelPage = lazy(() =>
   import('@/pages/AdminPanelPage').then(module => ({
     default: module.default || module.AdminPanelPage
   })).catch(error => {
-    console.error('Failed to load AdminPanelPage:', error);
+    if (import.meta.env.DEV) {
+      console.error('Failed to load AdminPanelPage:', error);
+    }
     // Return a fallback component
     return {
       default: () => (
@@ -143,24 +169,34 @@ const RouteFallbackSkeleton: React.FC = () => (
   </div>
 );
 
+const createNuggetModalSuspenseFallback = (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 dark:bg-black/40"
+    role="status"
+    aria-label="Loading editor"
+  >
+    <div className="h-9 w-9 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+  </div>
+);
+
 const AppContent: React.FC = () => {
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(() =>
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches,
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('grid');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   // Use Auth hook for user context
   const currentUserId = useAuthSelector((a) => a.user?.id || '');
+  const isAuthModalOpen = useAuthSelector((a) => a.isAuthModalOpen);
   const currentUserIdRef = useRef(currentUserId);
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
-  useEffect(() => {
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) setIsDark(true);
-  }, []);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     const html = document.documentElement;
     if (isDark) html.classList.add('dark');
     else html.classList.remove('dark');
@@ -168,7 +204,9 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     const openCreate = () => {
-      preloadCreateNuggetModalChunk({ userId: currentUserIdRef.current || null });
+      void import('@/components/createNuggetModalChunk.js').then((m) =>
+        m.preloadCreateNuggetModalChunk({ userId: currentUserIdRef.current || null }),
+      );
       setIsCreateOpen(true);
     };
     window.addEventListener('nuggets:open-create-modal', openCreate);
@@ -208,18 +246,22 @@ const AppContent: React.FC = () => {
       */}
       <FilterResultsProvider>
       <AppChromeScrollProvider>
-      <Header
-        isDark={isDark}
-        toggleTheme={() => setIsDark(!isDark)}
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        onCreateNugget={() => {
-          preloadCreateNuggetModalChunk({ userId: currentUserId || null });
-          setIsCreateOpen(true);
-        }}
-      />
+      <Suspense fallback={<HeaderSuspenseFallback />}>
+        <HeaderLazy
+          isDark={isDark}
+          toggleTheme={() => setIsDark(!isDark)}
+          sidebarOpen={sidebarOpen}
+          setSidebarOpen={setSidebarOpen}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          onCreateNugget={() => {
+            void import('@/components/createNuggetModalChunk.js').then((m) =>
+              m.preloadCreateNuggetModalChunk({ userId: currentUserId || null }),
+            );
+            setIsCreateOpen(true);
+          }}
+        />
+      </Suspense>
 
       <MainLayout>
         {/* 
@@ -331,19 +373,26 @@ const AppContent: React.FC = () => {
         
         <BackToTopButton />
         <ToastContainer />
-        <PersistentVideoPlayer />
-        <NotificationPrompt />
-        
+        <DeferredPersistentVideoPlayer />
+        <Suspense fallback={null}>
+          <NotificationPromptLazy />
+        </Suspense>
+
         {isCreateOpen && (
-          <CreateNuggetModalLoadable
-            isOpen
-            onClose={() => setIsCreateOpen(false)}
-          />
+          <Suspense fallback={createNuggetModalSuspenseFallback}>
+            <CreateNuggetModalLoadableLazy isOpen onClose={() => setIsCreateOpen(false)} />
+          </Suspense>
         )}
-        <AuthModal />
+        {isAuthModalOpen && (
+          <Suspense fallback={null}>
+            <AuthModalLazy />
+          </Suspense>
+        )}
       </MainLayout>
       <MobileBottomNav />
-      <LegalFooter />
+      <Suspense fallback={null}>
+        <LegalFooterLazy />
+      </Suspense>
       </AppChromeScrollProvider>
       </FilterResultsProvider>
     </>
@@ -355,13 +404,11 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <ToastProvider>
         <VideoPlayerProvider>
-          <FeedScrollStateProvider>
-            <FilterStateProvider>
-              <DesktopFilterSidebarProvider>
-                <AppContent />
-              </DesktopFilterSidebarProvider>
-            </FilterStateProvider>
-          </FeedScrollStateProvider>
+          <FilterStateProvider>
+            <DesktopFilterSidebarProvider>
+              <AppContent />
+            </DesktopFilterSidebarProvider>
+          </FilterStateProvider>
         </VideoPlayerProvider>
       </ToastProvider>
     </ErrorBoundary>

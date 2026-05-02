@@ -88,34 +88,35 @@ export function useYouTubeTitle(params: UseYouTubeTitleParams | string | null | 
   const attemptedVideoIds = useRef(new Set<string>());
   
   useEffect(() => {
-    if (!url) {
-      setTitle(fallback);
-      return;
-    }
-    
-    // CANONICAL RESOLUTION RULE #1: Backend data is source of truth
-    if (backendTitle) {
-      setTitle(backendTitle);
-      return;
-    }
-    
-    // CANONICAL RESOLUTION RULE #2: Fetch only if backend title missing
-    const videoId = extractYouTubeVideoId(url);
-    if (!videoId) {
-      setTitle(fallback);
-      return;
-    }
-    
-    // Check if we've already attempted this video (prevent duplicate fetches)
-    if (attemptedVideoIds.current.has(videoId)) {
-      return;
-    }
-    
-    // Mark as attempted
-    attemptedVideoIds.current.add(videoId);
-    
-    // Fetch title from YouTube oEmbed API
-    fetchYouTubeMetadata(url).then(metadata => {
+    queueMicrotask(() => {
+      if (!url) {
+        setTitle(fallback);
+        return;
+      }
+
+      // CANONICAL RESOLUTION RULE #1: Backend data is source of truth
+      if (backendTitle) {
+        setTitle(backendTitle);
+        return;
+      }
+
+      // CANONICAL RESOLUTION RULE #2: Fetch only if backend title missing
+      const videoId = extractYouTubeVideoId(url);
+      if (!videoId) {
+        setTitle(fallback);
+        return;
+      }
+
+      // Check if we've already attempted this video (prevent duplicate fetches)
+      if (attemptedVideoIds.current.has(videoId)) {
+        return;
+      }
+
+      // Mark as attempted
+      attemptedVideoIds.current.add(videoId);
+
+      // Fetch title from YouTube oEmbed API
+      fetchYouTubeMetadata(url).then(metadata => {
       if (metadata?.title) {
         // Update local UI immediately
         setTitle(metadata.title);
@@ -138,6 +139,7 @@ export function useYouTubeTitle(params: UseYouTubeTitleParams | string | null | 
     }).catch(() => {
       // Fetch error → show fallback
       setTitle(fallback);
+    });
     });
   }, [url, backendTitle, nuggetId, fallback, onTitlePersisted]);
   

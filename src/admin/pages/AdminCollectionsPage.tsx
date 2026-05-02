@@ -13,8 +13,6 @@ import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-// FeaturedSortableList import removed — toolbar now uses dimension tags (see AdminTagsPage)
-
 export const AdminCollectionsPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
   const [collections, setCollections] = useState<AdminCollection[]>([]);
@@ -710,11 +708,7 @@ export const AdminCollectionsPage: React.FC = () => {
           }
         }}
         onConfirm={async () => {
-          try {
-            await handleDelete();
-          } catch (error) {
-            throw error;
-          }
+          await handleDelete();
         }}
         title="Delete Collection?"
         description="This will permanently delete the collection. The nuggets inside will not be deleted."

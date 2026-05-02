@@ -1,6 +1,12 @@
 
-import React, { useRef } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { ChevronLeft, ChevronRight, Loader2, Search, ArrowUp, ArrowDown } from 'lucide-react';
+
+/** Fixed row body height for window virtualization (`py-2.5` + single-line `text-sm`). */
+const ADMIN_TABLE_VIRTUAL_ROW_HEIGHT_PX = 49;
+/** Avoid virtualizer overhead for tiny lists. */
+const ADMIN_TABLE_VIRTUAL_MIN_ROWS = 24;
 
 export interface Column<T> {
   key: string;
@@ -47,9 +53,9 @@ interface AdminTableProps<T> {
 
   emptyState?: React.ReactNode;
 
-  /** @deprecated No longer used — kept for API compat so callers don't break */
+  /** When true, long tables use `@tanstack/react-virtual` window scrolling with fixed row height. */
   virtualized?: boolean;
-  /** @deprecated No longer used */
+  /** @deprecated Unused — row height is fixed for virtualization */
   virtualHeight?: number;
 }
 
@@ -71,9 +77,54 @@ function AdminTableComponent<T extends { id: string }>({
   expandedRowContent,
   selection,
   emptyState,
+  virtualized = false,
 }: AdminTableProps<T>) {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const tbodyMeasureRef = useRef<HTMLTableSectionElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  const hasActiveExpandedRow = Boolean(expandedRowContent && expandedRowId);
+  const shouldWindowVirtualize =
+    virtualized &&
+    !isLoading &&
+    data.length >= ADMIN_TABLE_VIRTUAL_MIN_ROWS &&
+    !hasActiveExpandedRow;
+
+  useLayoutEffect(() => {
+    if (!shouldWindowVirtualize) return;
+    const el = tbodyMeasureRef.current;
+    if (!el) return;
+    const update = () => {
+      setScrollMargin(el.getBoundingClientRect().top + window.scrollY);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, { passive: true });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update);
+    };
+  }, [shouldWindowVirtualize, columns.length, selection?.enabled, data.length]);
+
+  const virtualizer = useWindowVirtualizer({
+    count: data.length,
+    estimateSize: () => ADMIN_TABLE_VIRTUAL_ROW_HEIGHT_PX,
+    overscan: 10,
+    scrollMargin,
+    enabled: shouldWindowVirtualize,
+    getItemKey: (index) => data[index]?.id ?? index,
+  });
+
+  useLayoutEffect(() => {
+    if (!shouldWindowVirtualize) return;
+    virtualizer.measure();
+  }, [virtualizer, shouldWindowVirtualize, scrollMargin, data.length]);
+
+  const colSpanTotal = columns.length + (selection?.enabled ? 1 : 0);
 
   const handleHeaderClick = (col: Column<T>) => {
     if (!col.sortable || !onSortChange) return;
@@ -115,6 +166,71 @@ function AdminTableComponent<T extends { id: string }>({
 
   const alignClass = (a?: string) =>
     a === 'center' ? 'text-center' : a === 'right' ? 'text-right' : 'text-left';
+
+  const renderRowFragment = (row: T, index: number) => {
+    const isSelected = selection?.selectedIds.includes(row.id) ?? false;
+    const isExpanded = expandedRowId === row.id;
+    return (
+      <React.Fragment key={row.id}>
+        <tr
+          onClick={() => onRowClick?.(row)}
+          tabIndex={onRowClick ? 0 : -1}
+          onKeyDown={(e) => {
+            if (onRowClick && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              onRowClick(row);
+            }
+          }}
+          className={`
+            group border-b border-slate-100 dark:border-slate-800/50 last:border-0
+            ${onRowClick ? 'cursor-pointer' : ''}
+            ${isSelected
+              ? 'bg-primary-50/60 dark:bg-primary-900/10'
+              : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+            }
+          `}
+        >
+          {selection?.enabled && (
+            <td
+              className={`w-10 px-3 py-2 sticky left-0 z-10 ${isSelected ? 'bg-primary-50 dark:bg-primary-900/10' : 'bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50'}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                aria-label={`Select row ${row.id}`}
+                className="rounded border-slate-300 dark:border-slate-600 cursor-pointer"
+                checked={isSelected}
+                onChange={(e) => handleSelectRow(row.id, e.target.checked)}
+              />
+            </td>
+          )}
+          {columns.map((col, colIdx) => (
+            <td
+              key={`${row.id}-${col.key || colIdx}`}
+              className={`
+                px-3 py-2 text-sm whitespace-nowrap
+                ${alignClass(col.align)}
+                ${col.hideOnMobile ? 'hidden md:table-cell' : ''}
+                ${stickyCellClass(col, isSelected)}
+              `}
+            >
+              {col.render ? col.render(row, index) : (row as Record<string, unknown>)[col.key] as React.ReactNode}
+            </td>
+          ))}
+        </tr>
+        {isExpanded && expandedRowContent && (
+          <tr className="border-b border-slate-100 dark:border-slate-800/50">
+            <td
+              colSpan={colSpanTotal}
+              className="px-4 py-3 bg-slate-50/50 dark:bg-slate-800/30"
+            >
+              {expandedRowContent(row)}
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
+    );
+  };
 
   const getPaginationItems = (page: number, totalPages: number): Array<number | '...'> => {
     if (totalPages <= 7) {
@@ -292,7 +408,7 @@ function AdminTableComponent<T extends { id: string }>({
             </thead>
 
             {/* Body */}
-            <tbody>
+            <tbody ref={shouldWindowVirtualize ? tbodyMeasureRef : undefined}>
               {isLoading ? (
                 // Skeleton rows
                 Array.from({ length: 6 }).map((_, idx) => (
@@ -311,7 +427,7 @@ function AdminTableComponent<T extends { id: string }>({
                 ))
               ) : data.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + (selection?.enabled ? 1 : 0)} className="px-6 py-16 text-center">
+                  <td colSpan={colSpanTotal} className="px-6 py-16 text-center">
                     {emptyState || (
                       <div className="text-slate-400">
                         <p className="text-sm font-medium">No records found</p>
@@ -320,71 +436,43 @@ function AdminTableComponent<T extends { id: string }>({
                     )}
                   </td>
                 </tr>
-              ) : (
-                data.map((row, index) => {
-                  const isSelected = selection?.selectedIds.includes(row.id) ?? false;
-                  const isExpanded = expandedRowId === row.id;
+              ) : shouldWindowVirtualize ? (
+                (() => {
+                  const items = virtualizer.getVirtualItems();
+                  const totalSize = virtualizer.getTotalSize();
+                  const topPad = items.length > 0 ? items[0].start : 0;
+                  const bottomPad =
+                    items.length > 0 ? Math.max(0, totalSize - items[items.length - 1].end) : 0;
                   return (
-                    <React.Fragment key={row.id}>
-                      <tr
-                        onClick={() => onRowClick?.(row)}
-                        tabIndex={onRowClick ? 0 : -1}
-                        onKeyDown={(e) => {
-                          if (onRowClick && (e.key === 'Enter' || e.key === ' ')) {
-                            e.preventDefault();
-                            onRowClick(row);
-                          }
-                        }}
-                        className={`
-                          group border-b border-slate-100 dark:border-slate-800/50 last:border-0
-                          ${onRowClick ? 'cursor-pointer' : ''}
-                          ${isSelected
-                            ? 'bg-primary-50/60 dark:bg-primary-900/10'
-                            : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
-                          }
-                        `}
-                      >
-                        {selection?.enabled && (
+                    <>
+                      {topPad > 0 && (
+                        <tr aria-hidden className="pointer-events-none">
                           <td
-                            className={`w-10 px-3 py-2 sticky left-0 z-10 ${isSelected ? 'bg-primary-50 dark:bg-primary-900/10' : 'bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50'}`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              type="checkbox"
-                              aria-label={`Select row ${row.id}`}
-                              className="rounded border-slate-300 dark:border-slate-600 cursor-pointer"
-                              checked={isSelected}
-                              onChange={(e) => handleSelectRow(row.id, e.target.checked)}
-                            />
-                          </td>
-                        )}
-                        {columns.map((col, colIdx) => (
-                          <td
-                            key={`${row.id}-${col.key || colIdx}`}
-                            className={`
-                              px-3 py-2 text-sm whitespace-nowrap
-                              ${alignClass(col.align)}
-                              ${col.hideOnMobile ? 'hidden md:table-cell' : ''}
-                              ${stickyCellClass(col, isSelected)}
-                            `}
-                          >
-                            {col.render ? col.render(row, index) : (row as Record<string, unknown>)[col.key] as React.ReactNode}
-                          </td>
-                        ))}
-                      </tr>
-                      {isExpanded && expandedRowContent && (
-                        <tr className="border-b border-slate-100 dark:border-slate-800/50">
-                          <td
-                            colSpan={columns.length + (selection?.enabled ? 1 : 0)}
-                            className="px-4 py-3 bg-slate-50/50 dark:bg-slate-800/30"
-                          >
-                            {expandedRowContent(row)}
-                          </td>
+                            colSpan={colSpanTotal}
+                            className="p-0 border-0 align-top"
+                            style={{ height: topPad, lineHeight: 0 }}
+                          />
                         </tr>
                       )}
-                    </React.Fragment>
+                      {items.map((vi) => {
+                        const row = data[vi.index];
+                        if (!row) return null;
+                        return renderRowFragment(row, vi.index);
+                      })}
+                      {bottomPad > 0 && (
+                        <tr aria-hidden className="pointer-events-none">
+                          <td
+                            colSpan={colSpanTotal}
+                            className="p-0 border-0 align-top"
+                            style={{ height: bottomPad, lineHeight: 0 }}
+                          />
+                        </tr>
+                      )}
+                    </>
                   );
-                })
+                })()
+              ) : (
+                data.map((row, index) => renderRowFragment(row, index))
               )}
             </tbody>
           </table>

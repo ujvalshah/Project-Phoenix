@@ -67,6 +67,8 @@ export const MOCK_ADMIN_COLLECTIONS: AdminCollection[] = Array.from({ length: 10
   status: 'active',
   createdAt: new Date(Date.now() - Math.random() * 10000000000).toISOString(),
   updatedAt: new Date().toISOString(),
+  isFeatured: false,
+  featuredOrder: i,
 }));
 
 export const MOCK_ADMIN_TAGS: AdminTag[] = [

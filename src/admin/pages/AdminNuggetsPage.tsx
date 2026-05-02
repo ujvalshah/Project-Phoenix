@@ -16,9 +16,14 @@ import { CreateNuggetModalLoadable } from '@/components/CreateNuggetModalLoadabl
 import { storageService } from '@/services/storageService';
 import { Article } from '@/types';
 import { adminCollectionsService } from '../services/adminCollectionsService';
+import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
+import { WORKSPACE_GRID_CARD_IMAGE_SIZES } from '@/constants/feedImageLayout';
+import { getPriorityThumbnailCount } from '@/constants/aboveFoldPriority';
 
 const NUGGETS_VIEW_MODE_STORAGE_KEY = 'admin_nuggets_view_mode';
 const ADMIN_BATCH_ADD_CAP = 200;
+/** Card grid uses `md:grid-cols-2 xl:grid-cols-3` — match feed priority budget. */
+const ADMIN_CARD_GRID_COLUMNS = 3;
 
 function getYouTubeThumbnail(url?: string): string | undefined {
   if (!url) return undefined;
@@ -90,6 +95,11 @@ export const AdminNuggetsPage: React.FC = () => {
   const toast = useToast();
   const { can } = useAdminPermissions();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const adminCardPreviewPriorityCount = useMemo(
+    () => getPriorityThumbnailCount(ADMIN_CARD_GRID_COLUMNS),
+    [],
+  );
 
   useEffect(() => {
     setPageHeader("Content Management", "Review, moderate, and manage nuggets.");
@@ -835,7 +845,9 @@ export const AdminNuggetsPage: React.FC = () => {
     <div className="space-y-4">
       {pendingDelete && (
         <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>Deleted "{pendingDelete.nugget.title || 'nugget'}". Undo?</span>
+          <span>
+            Deleted &ldquo;{pendingDelete.nugget.title || 'nugget'}&rdquo;. Undo?
+          </span>
           <div className="flex gap-2 items-center">
             <button
               onClick={() => {
@@ -988,6 +1000,10 @@ export const AdminNuggetsPage: React.FC = () => {
                   const serial = (currentPage - 1) * pageSize + index + 1;
                   const mediaPreview = nugget.thumbnailUrl || (nugget.isYoutube ? getYouTubeThumbnail(nugget.sourceUrl) : undefined);
                   const canShowPreview = Boolean(mediaPreview) && !failedPreviewById[nugget.id];
+                  const previewResponsive = mediaPreview
+                    ? buildFeedImageResponsiveProps(mediaPreview)
+                    : null;
+                  const priorityPreview = index < adminCardPreviewPriorityCount;
                   return (
                     <article
                       key={nugget.id}
@@ -1017,12 +1033,18 @@ export const AdminNuggetsPage: React.FC = () => {
                       </div>
 
                       <div className="mt-2 relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 h-40">
-                        {canShowPreview ? (
+                        {canShowPreview && previewResponsive ? (
                           <img
-                            src={mediaPreview}
+                            src={previewResponsive.src}
+                            srcSet={previewResponsive.srcSet}
+                            sizes={WORKSPACE_GRID_CARD_IMAGE_SIZES}
+                            width={640}
+                            height={360}
                             alt={nugget.title || 'Nugget preview'}
                             className="w-full h-full object-cover"
-                            loading="lazy"
+                            decoding="async"
+                            loading={priorityPreview ? 'eager' : 'lazy'}
+                            fetchPriority={priorityPreview ? 'high' : undefined}
                             onError={() => {
                               setFailedPreviewById((prev) => ({ ...prev, [nugget.id]: true }));
                             }}

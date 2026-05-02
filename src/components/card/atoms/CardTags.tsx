@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { Tooltip } from '@/components/UI/Tooltip';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { twMerge } from 'tailwind-merge';
@@ -43,7 +43,7 @@ export const TagPill: React.FC<TagPillProps> = ({ label, onClick }) => {
 
 interface CardTagsProps {
   tags: string[];
-  onTagClick: (tag: string) => void;
+  onTagClick?: (tag: string) => void;
   showTagPopover?: boolean;
   onToggleTagPopover?: (e: React.MouseEvent) => void;
   onCloseTagPopover?: () => void;
@@ -61,13 +61,25 @@ export const CardTags: React.FC<CardTagsProps> = ({
   variant = 'default',
 }) => {
   const moreTagsAnchorRef = useRef<HTMLButtonElement>(null);
-
-  if (!tags || tags.length === 0) return null;
+  const prevShowTagPopoverRef = useRef(false);
+  const overflowMenuId = useId();
+  const safeTags = tags ?? [];
+  const hasTags = safeTags.length > 0;
 
   /** Inline cap before +N; chips share one row and truncate — do not raise this without layout review */
   const MAX_INLINE_TAGS = 3;
-  const visibleTags = tags.slice(0, MAX_INLINE_TAGS);
-  const remainingCount = tags.length - MAX_INLINE_TAGS;
+  const visibleTags = safeTags.slice(0, MAX_INLINE_TAGS);
+  const remainingCount = safeTags.length - MAX_INLINE_TAGS;
+  const isOverflowOpen = !!showTagPopover && remainingCount > 0;
+
+  useEffect(() => {
+    if (prevShowTagPopoverRef.current && !isOverflowOpen) {
+      moreTagsAnchorRef.current?.focus({ preventScroll: true });
+    }
+    prevShowTagPopoverRef.current = isOverflowOpen;
+  }, [isOverflowOpen]);
+
+  if (!hasTags) return null;
 
   // Single-row band: nowrap + hidden overflow keeps grid title baselines aligned across cards.
   // Grid/Feed: flat row; default (masonry): amber band — same overflow rules.
@@ -86,7 +98,7 @@ export const CardTags: React.FC<CardTagsProps> = ({
           label={tag}
           onClick={(e) => {
             e.stopPropagation();
-            onTagClick(tag);
+            onTagClick?.(tag);
           }}
         />
       ))}
@@ -105,36 +117,39 @@ export const CardTags: React.FC<CardTagsProps> = ({
             aria-label={`Show ${remainingCount} more tags`}
             aria-expanded={showTagPopover}
             aria-haspopup="menu"
+            aria-controls={isOverflowOpen ? overflowMenuId : undefined}
           >
             +{remainingCount}
           </button>
-          <DropdownPortal
-            isOpen={!!showTagPopover && tags.length > MAX_INLINE_TAGS}
-            anchorRef={moreTagsAnchorRef}
-            align="left"
-            host="popover"
-            offsetY={4}
-            onClickOutside={onCloseTagPopover}
-            className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl p-2 w-40"
-          >
-            <div className="flex flex-col gap-1 max-h-56 overflow-y-auto custom-scrollbar" role="menu">
-              {tags.slice(MAX_INLINE_TAGS).map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  role="menuitem"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onTagClick(tag);
-                    onCloseTagPopover?.();
-                  }}
-                  className="text-left text-xs px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-          </DropdownPortal>
+          {isOverflowOpen && (
+            <DropdownPortal
+              isOpen
+              anchorRef={moreTagsAnchorRef}
+              align="left"
+              host="popover"
+              offsetY={4}
+              onClickOutside={onCloseTagPopover}
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl p-2 w-40"
+            >
+              <div id={overflowMenuId} className="flex flex-col gap-1 max-h-56 overflow-y-auto custom-scrollbar" role="menu">
+                {safeTags.slice(MAX_INLINE_TAGS).map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    role="menuitem"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTagClick?.(tag);
+                      onCloseTagPopover?.();
+                    }}
+                    className="text-left text-xs px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </DropdownPortal>
+          )}
         </div>
       )}
     </div>

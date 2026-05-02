@@ -9,6 +9,8 @@ interface FormFooterProps {
   canSubmit: boolean;
   primaryLabel: string;
   secondaryLabel?: string;
+  /** When true, attach + submit controls are disabled (e.g. composer chunk still loading). */
+  interactionDisabled?: boolean;
 }
 
 export const FormFooter = React.memo(function FormFooter({
@@ -19,10 +21,14 @@ export const FormFooter = React.memo(function FormFooter({
   canSubmit,
   primaryLabel,
   secondaryLabel,
+  interactionDisabled = false,
 }: FormFooterProps) {
   const handleAttachClick = useCallback(() => {
+    if (interactionDisabled) return;
     fileInputRef.current?.click();
-  }, [fileInputRef]);
+  }, [fileInputRef, interactionDisabled]);
+
+  const actionsLocked = interactionDisabled || isSubmitting;
 
   return (
     <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 z-20 shrink-0">
@@ -36,8 +42,10 @@ export const FormFooter = React.memo(function FormFooter({
           onChange={onFileSelect}
         />
         <button
+          type="button"
           onClick={handleAttachClick}
-          className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition-colors text-xs font-bold border border-slate-200 dark:border-slate-700"
+          disabled={interactionDisabled}
+          className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition-colors text-xs font-bold border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-100 dark:disabled:hover:bg-slate-800"
           title="Attach files"
         >
           <Paperclip size={16} />
@@ -51,10 +59,11 @@ export const FormFooter = React.memo(function FormFooter({
       <div className="flex items-center gap-3">
         {secondaryLabel && (
           <button
+            type="button"
             onClick={() => onSubmit('draft')}
-            disabled={isSubmitting || !canSubmit}
+            disabled={actionsLocked || !canSubmit}
             className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
-              isSubmitting || !canSubmit
+              actionsLocked || !canSubmit
                 ? 'border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'
                 : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
@@ -63,10 +72,11 @@ export const FormFooter = React.memo(function FormFooter({
           </button>
         )}
         <button
+          type="button"
           onClick={() => onSubmit('publish')}
-          disabled={isSubmitting || !canSubmit}
+          disabled={actionsLocked || !canSubmit}
           className={`px-6 py-2 rounded-lg text-xs font-bold text-slate-900 transition-all shadow-sm flex items-center gap-2 ${
-            isSubmitting || !canSubmit
+            actionsLocked || !canSubmit
               ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
               : 'bg-primary-500 hover:bg-primary-400 active:scale-95 text-slate-900'
           }`}

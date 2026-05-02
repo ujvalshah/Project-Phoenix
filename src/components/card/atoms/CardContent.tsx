@@ -5,7 +5,7 @@ import { LightweightMarkdownExcerpt } from './LightweightMarkdownExcerpt';
 import { contentHasMarkdownTable } from '@/utils/contentHasMarkdownTable';
 import { CardTitle } from './CardTitle';
 
-/** Full GFM renderer — async chunk so collapsed cards avoid loading react-markdown until expand/table/path needs it */
+/** Full GFM renderer — async chunk so collapsed cards avoid loading react-markdown until expand/table; collapsed body uses `LightweightMarkdownExcerpt` + `slimFeedMarkdown` */
 const MarkdownRendererLazy = lazy(() =>
   import('@/components/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
 );
@@ -514,3 +514,4 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   );
 });
 
+CardContent.displayName = 'CardContent';

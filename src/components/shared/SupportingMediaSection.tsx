@@ -238,7 +238,7 @@ export const SupportingMediaSection: React.FC<SupportingMediaSectionProps> = ({
         onClose={() => setIsModalOpen(false)}
         images={imageUrls}
         initialIndex={modalImageIndex}
-        titles={images.map(img => img.title || img.filename)}
+        titles={images.map((img) => img.title ?? img.filename ?? '')}
       />
     </div>
   );

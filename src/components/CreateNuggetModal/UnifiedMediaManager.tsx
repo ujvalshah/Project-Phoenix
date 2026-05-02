@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { Image } from '@/components/Image';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
-import type { MediaType } from '@/types';
+import type { MediaType, PreviewMetadata } from '@/types';
 
 /**
  * Media item representation for the UnifiedMediaManager
@@ -221,7 +221,10 @@ const SortableMediaItem: React.FC<SortableMediaItemProps> = ({
                 type: item.type,
                 url: item.url,
                 thumbnail_url: item.thumbnail,
-                previewMetadata: item.previewMetadata,
+                previewMetadata: ({
+                  url: item.url,
+                  ...(item.previewMetadata ?? {}),
+                }) as PreviewMetadata,
               }}
               onClick={() => {}}
             />
@@ -449,9 +452,7 @@ const MobileMediaItem: React.FC<MobileMediaItemProps> = ({
 /**
  * UnifiedMediaManager: Single component for all media management
  *
- * Combines functionality from:
- * - MediaSection: Layout visibility controls, card thumbnail selection
- * - MediaCarousel: Drag-to-reorder, order numbers
+ * Combines layout visibility, thumbnail selection, and drag-to-reorder (desktop) / arrow controls (mobile).
  *
  * Features:
  * - Drag-to-reorder (desktop) / Arrow buttons (mobile)
@@ -691,7 +692,7 @@ export const UnifiedMediaManager: React.FC<UnifiedMediaManagerProps> = ({
         )}
         {masonryEnabledItems.length === 0 && (
           <p className="text-amber-600 dark:text-amber-400">
-            No items for Masonry view - nugget won't appear in Masonry layout
+            No items for Masonry view - nugget won&apos;t appear in Masonry layout
           </p>
         )}
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { memo, useState, useRef } from 'react';
 import { Article } from '@/types';
 import { MediaBlock } from './MediaBlock';
 import { TextBlock } from './TextBlock';
@@ -30,6 +30,29 @@ interface MasonryAtomProps {
   onArticleClick: (article: Article) => void;
   onCategoryClick?: (category: string) => void;
   currentUserId?: string;
+  /** First-viewport masonry image: eager + fetch priority */
+  priorityImageLoading?: boolean;
+}
+
+/**
+ * Avoid full-tree re-renders when MasonryGrid’s parent re-renders with the same tile props
+ * (e.g. fetch status, unrelated layout state). Prefer referential equality on `article` from
+ * the query cache; when the server/cache updates articles, refs change and tiles correctly refresh.
+ */
+function masonryAtomPropsAreEqual(
+  prev: MasonryAtomProps,
+  next: MasonryAtomProps,
+): boolean {
+  return (
+    prev.article === next.article &&
+    prev.mediaItemId === next.mediaItemId &&
+    prev.tileMediaItem === next.tileMediaItem &&
+    prev.prefetchedAllMasonryItems === next.prefetchedAllMasonryItems &&
+    prev.priorityImageLoading === next.priorityImageLoading &&
+    prev.currentUserId === next.currentUserId &&
+    prev.onArticleClick === next.onArticleClick &&
+    prev.onCategoryClick === next.onCategoryClick
+  );
 }
 
 /**
@@ -41,7 +64,7 @@ interface MasonryAtomProps {
  * - Transparent hit-box container
  * - Hover-triggered action HUD
  */
-export const MasonryAtom: React.FC<MasonryAtomProps> = ({
+const MasonryAtomInner: React.FC<MasonryAtomProps> = ({
   article,
   mediaItemId,
   tileMediaItem,
@@ -49,6 +72,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
   onArticleClick,
   onCategoryClick,
   currentUserId,
+  priorityImageLoading = false,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -194,6 +218,7 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
               prefetchedAllMasonryItems={prefetchedAllMasonryItems}
               onCategoryClick={onCategoryClick}
               onArticleClick={onArticleClick}
+              priorityImageLoading={priorityImageLoading}
             />
           ) : (
             <TextBlock
@@ -279,4 +304,8 @@ export const MasonryAtom: React.FC<MasonryAtomProps> = ({
     </>
   );
 };
+
+export const MasonryAtom = memo(MasonryAtomInner, masonryAtomPropsAreEqual);
+
+MasonryAtom.displayName = 'MasonryAtom';
 

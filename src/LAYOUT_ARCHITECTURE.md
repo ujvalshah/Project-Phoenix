@@ -4,7 +4,7 @@
 
 ## Overview
 
-This app uses a multi-layout architecture with clear separation of concerns:
+Primary shell: fixed `Header` in [`App.tsx`](App.tsx), then [`MainLayout`](components/layouts/MainLayout.tsx) wrapping routed pages. Legacy hash URLs and **`/feed` paths redirect to `/`** (same home surface).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -15,11 +15,10 @@ This app uses a multi-layout architecture with clear separation of concerns:
 │  │                    MainLayout                                ││
 │  │  ┌─────────────────────────────────────────────────────────┐││
 │  │  │                     Routes                               │││
-│  │  │  /           → HomePage (view mode switching)            │││
-│  │  │  /feed       → FeedLayoutPage (workspace layout)         │││
-│  │  │  /feed/:id   → FeedLayoutPage + ArticleDetailPage        │││
-│  │  │  /collections → CollectionsPage                          │││
-│  │  │  ...etc                                                  │││
+│  │  │  /           → HomePage (`grid` | `masonry` from Header) │││
+│  │  │  /feed, /feed/:id → Navigate to `/`                     │││
+│  │  │  /collections → CollectionsPage                         │││
+│  │  │  ...                                                    │││
 │  │  └─────────────────────────────────────────────────────────┘││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
@@ -29,191 +28,97 @@ This app uses a multi-layout architecture with clear separation of concerns:
 
 ## Route → Layout Mapping
 
-| Route | Component | Layout Type | View Modes |
-|-------|-----------|-------------|------------|
-| `/` | HomePage | PageStack + conditional | grid, feed, masonry, utility |
-| `/feed` | FeedLayoutPage | ResponsiveLayoutShell | N/A (fixed layout) |
-| `/feed/:articleId` | FeedLayoutPage + ArticleDetailPage | ResponsiveLayoutShell | N/A |
-| `/collections` | CollectionsPage | PageStack | N/A |
-| `/collections/:id` | CollectionDetailPage | PageStack | N/A |
-| `/profile/:userId` | MySpacePage | PageStack | N/A |
+| Route | Component | Layout Type | Notes |
+|-------|-----------|-------------|-------|
+| `/` | [`HomePage`](pages/HomePage.tsx) | [`PageStack`](components/layouts/PageStack.tsx) | View mode: **`grid`** or **`masonry`** only (`App.tsx` state) |
+| `/feed`, `/feed/:articleId` | — | — | **`Navigate` to `/`** in [`App.tsx`](App.tsx); no dedicated feed page |
+| `/collections` | [`CollectionsPage`](pages/CollectionsPage.tsx) | `PageStack` | |
+| `/collections/:id` | [`CollectionDetailPage`](pages/CollectionDetailPage.tsx) | `PageStack` | |
+| `/profile/:userId` | [`MySpacePage`](pages/MySpacePage.tsx) | `PageStack` | |
 
 ---
 
 ## Layout Components
 
 ### 1. MainLayout (`src/components/layouts/MainLayout.tsx`)
+
 - **Purpose**: Base wrapper for all routes
 - **Responsibilities**: Background, theme colors, min-height
 - **Does NOT**: Handle header, routing, or responsive behavior
 
-### 2. ResponsiveLayoutShell (`src/components/layouts/ResponsiveLayoutShell.tsx`)
-- **Purpose**: 2/3-column workspace layout for Feed page
-- **Responsibilities**: Grid structure, sidebar/feed/detail slots
-- **Used by**: FeedLayoutPage only
+### 2. PageStack (`src/components/layouts/PageStack.tsx`)
 
-### 3. PageStack (`src/components/layouts/PageStack.tsx`)
 - **Purpose**: Vertical stacking with header spacer
 - **Responsibilities**: Category toolbar slot, main content slot
-- **Used by**: HomePage, CollectionsPage, etc.
+- **Used by**: [`HomePage`](pages/HomePage.tsx), [`CollectionsPage`](pages/CollectionsPage.tsx), and similar stacks
+
+*(Historical `ResponsiveLayoutShell` / `FeedLayoutPage` were removed when `/feed` was unified into home.)*
 
 ---
 
 ## Stability Rules (DO NOT VIOLATE)
 
 ### Rule 1: No Arbitrary Grid Templates
+
 ```tsx
 // ❌ FORBIDDEN - Causes CSS compilation failures
 "grid-cols-[260px_minmax(500px,760px)_1fr]"
-"lg:grid-cols-[220px_minmax(0,1fr)_260px]"
 
 // ✅ REQUIRED - Always use stable classes
 "grid-cols-1"
-"lg:grid-cols-2" 
+"lg:grid-cols-2"
 "xl:grid-cols-3"
 ```
 
 ### Rule 2: Width Constraints on Children
+
 ```tsx
-// ✅ CORRECT - Explicit widths on elements
 <aside className="w-[260px] shrink-0">
 <main className="w-full max-w-[760px]">
-<aside className="w-full max-w-[720px]">
 ```
 
-### Rule 3: Defensive Fallbacks
-```tsx
-// ✅ CORRECT - Content stays readable even if grid fails
-<div className="w-full max-w-[760px] mx-auto">
-  {content}
-</div>
-```
+### Rule 3: Header is Fixed, Not in Layout
 
-### Rule 4: Header is Fixed, Not in Layout
-- Header is rendered in App.tsx, OUTSIDE MainLayout
-- All layouts must account for header height (pt-14 = 56px)
-- Never render Header inside layout components
+- Header is rendered in `App.tsx`, **outside** `MainLayout`.
+- Pages use [`HeaderSpacer`](components/layouts/HeaderSpacer.tsx) / `PageStack` to reserve space.
 
 ---
 
-## Breakpoints
+## View mode (`HomePage` only)
 
-| Name | Tailwind | Pixels | Layout Behavior |
-|------|----------|--------|-----------------|
-| Mobile | default | < 1024px | Single column |
-| Tablet | `lg:` | ≥ 1024px | 2 columns (if sidebar) |
-| Desktop | `xl:` | ≥ 1280px | 3 columns (sidebar + feed + detail) |
-
----
-
-## View Mode System (Home Page Only)
-
-The view mode system ONLY affects HomePage, not FeedLayoutPage.
+[`App.tsx`](App.tsx):
 
 ```tsx
-// In App.tsx
-const [viewMode, setViewMode] = useState<'grid' | 'feed' | 'masonry' | 'utility'>('grid');
-
-// Passed to Header (for buttons) and HomePage (for rendering)
+const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('grid');
 <Header viewMode={viewMode} setViewMode={setViewMode} />
 <HomePage viewMode={viewMode} />
 ```
 
-| View Mode | Component | Description |
-|-----------|-----------|-------------|
-| `grid` | ArticleGrid | 4-column card grid |
-| `feed` | Feed + sidebars | 3-column with topics/collections |
-| `masonry` | ArticleGrid | Masonry-style grid |
-| `utility` | ArticleGrid | Compact utility view |
+| View Mode | Rendering |
+|-----------|-----------|
+| `grid` | [`ArticleGrid`](components/ArticleGrid.tsx) grid path |
+| `masonry` | Masonry path inside `ArticleGrid` |
+
+Optional window virtualization when `HOME_FEED_VIRTUALIZATION` is enabled ([`ArticleGrid.tsx`](components/ArticleGrid.tsx)).
 
 ---
 
-## Common Mistakes to Avoid
-
-### 1. Mixing Layout Responsibilities
-```tsx
-// ❌ BAD - FeedLayoutPage trying to handle view modes
-<FeedLayoutPage viewMode={viewMode} />
-
-// ✅ GOOD - FeedLayoutPage has fixed workspace layout
-<FeedLayoutPage />
-```
-
-### 2. Arbitrary Values in Grid
-```tsx
-// ❌ BAD - Can fail silently
-className="grid-cols-[200px_1fr_300px]"
-
-// ✅ GOOD - Always works
-className="grid-cols-3"
-// With children having: w-[200px], w-full, w-[300px]
-```
-
-### 3. Forgetting Header Offset
-```tsx
-// ❌ BAD - Content hidden behind header
-<div className="min-h-screen">
-
-// ✅ GOOD - Accounts for fixed header
-<div className="min-h-screen pt-14">
-```
-
----
-
-## Testing Checklist
-
-Before merging layout changes:
-
-- [ ] Test at mobile width (< 768px)
-- [ ] Test at tablet width (768px - 1024px)
-- [ ] Test at desktop width (1024px - 1280px)
-- [ ] Test at large width (> 1280px)
-- [ ] Verify view mode switching works on Home page
-- [ ] Verify Feed page layout is stable
-- [ ] Check browser console for CSS/layout errors
-- [ ] Verify no horizontal scrollbar appears
-
----
-
-## File Locations
+## File locations
 
 ```
 src/
 ├── components/
 │   └── layouts/
-│       ├── MainLayout.tsx           # Base app wrapper
-│       ├── ResponsiveLayoutShell.tsx # Workspace grid layout
-│       ├── PageStack.tsx            # Vertical stacking layout
-│       ├── HeaderSpacer.tsx         # Header offset spacer
-│       └── ...
+│       ├── MainLayout.tsx
+│       ├── PageStack.tsx
+│       └── HeaderSpacer.tsx
 ├── pages/
-│   ├── HomePage.tsx                 # View mode switching
-│   ├── FeedLayoutPage.tsx           # Workspace layout wrapper
-│   └── ArticleDetail.tsx            # Detail page (nested in feed)
-├── constants/
-│   └── layout.ts                    # Layout constants (heights, etc.)
-└── LAYOUT_ARCHITECTURE.md           # This file
+│   ├── HomePage.tsx
+│   └── ArticleDetail.tsx   # Drawer/modal/detail contexts
+└── constants/
+    └── layout.ts
 ```
 
 ---
 
-## Emergency Recovery
-
-If layout breaks completely:
-
-1. Check browser console for CSS errors
-2. Verify Tailwind is compiling (check for missing classes in DevTools)
-3. Look for arbitrary grid templates (`grid-cols-[...]`) and replace with stable classes
-4. Ensure all layout components have max-width fallbacks
-5. Check that header offset (pt-14) is present
-
----
-
-*Last updated: December 2025*
-
-
-
-
-
-
-
+*Updated to match routing after `/feed` removal.*

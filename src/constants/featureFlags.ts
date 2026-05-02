@@ -6,12 +6,13 @@
  *
  * Usage:
  * ```typescript
- * import { FEATURE_FLAGS, isFeatureEnabled } from '@/constants/featureFlags';
+ * import { isFeatureEnabled } from '@/constants/featureFlags';
  *
- * if (isFeatureEnabled('LOG_IMAGE_OPERATIONS')) {
- *   // Enable verbose logging
+ * if (isFeatureEnabled('HOME_FEED_VIRTUALIZATION')) {
+ *   // ArticleGrid.tsx: single-column window virtualization only (see flag JSDoc).
  * }
  * ```
+ * Verbose client logging for image workflows uses `import.meta.env.DEV` in `useImageManager`, not a flag.
  * NUGGET_MODAL_* performance values come from @/config/nuggetPerformanceConfig (single env map).
  *
  * Note: USE_IMAGE_MANAGER feature flag was removed in Phase 9.
@@ -22,46 +23,18 @@ import { NUGGET_PERFORMANCE } from '@/config/nuggetPerformanceConfig';
 
 export const FEATURE_FLAGS = {
   /**
-   * LOG_IMAGE_OPERATIONS: Enable verbose logging for image operations
-   *
-   * When enabled:
-   * - Logs all image additions, deletions, and state changes
-   * - Logs duplicate detection with source information
-   * - Useful for debugging image handling issues
-   *
-   * When disabled:
-   * - Silent operation (production mode)
-   */
-  LOG_IMAGE_OPERATIONS: process.env.NODE_ENV === 'development',
-
-  /**
-   * NUGGET_EDITOR_V2: Enable enhanced nugget editor features
-   *
-   * When enabled:
-   * - URL detection aggregates from all sources (primaryMedia, supportingMedia, images)
-   * - Thumbnail selection is fully functional (click to change, clear button)
-   * - Carousel ordering via drag-and-drop (desktop) or arrows (mobile)
-   * - Pre-save validation with warnings and error blocking
-   * - UI field reordering and updated labels
-   *
-   * When disabled:
-   * - Original editor behavior
-   *
-   * Toggle via VITE_NUGGET_EDITOR_V2 environment variable
-   */
-  NUGGET_EDITOR_V2: import.meta.env.VITE_NUGGET_EDITOR_V2 === 'true',
-
-  /**
    * MARKET_PULSE: Enable Market Pulse content stream
    *
    * When enabled:
    * - Stream toggle (Standard / Market Pulse) appears in the header
    * - Content stream selector appears in the nugget editor
    * - Articles can be routed to standard feed, Market Pulse, or both
+   * - Deep links (`?stream=pulse`) activate the Pulse feed client-side
    *
    * When disabled:
-   * - No stream toggle visible — all content shows in the standard feed
-   * - Content stream field hidden in editor (defaults to 'standard')
+   * - No Pulse tab in chrome; editor defaults stream targets to standard only
+   * - Home filter state clamps to the standard feed and strips `stream=pulse` once URL sync runs
+   * - Backend/admin may still expose Pulse data until separately retired
    *
    * Toggle via VITE_FEATURE_MARKET_PULSE environment variable
    */
@@ -90,14 +63,14 @@ export const FEATURE_FLAGS = {
   NUGGET_MODAL_EDITOR_LAZY: NUGGET_PERFORMANCE.editorLazySplit,
 
   /**
-   * HOME_FEED_VIRTUALIZATION: Window-virtualized homepage grid (Phase A).
+   * HOME_FEED_VIRTUALIZATION (VITE_HOME_FEED_VIRTUALIZATION):
    *
-   * When enabled (VITE_HOME_FEED_VIRTUALIZATION=true):
-   * - Grid view uses `useWindowVirtualizer` + row banding only in single-column mode.
-   * - Multi-column desktop grid remains on the legacy non-virtualized renderer for layout fidelity.
-   * - Masonry view is unchanged (still non-virtualized).
+   * **ArticleGrid-only:** Enables `HomeGridVirtualized` in `ArticleGrid.tsx` when
+   * `viewMode === 'grid'` and `gridColumnCount === 1`. Multi-column `ArticleGrid` stays
+   * on the legacy full grid; masonry is unchanged.
    *
-   * Roll out after profiling; default off.
+   * **Does not apply to Home:** `/` renders `HomeArticleFeed`, which **always** virtualizes the
+   * grid via `HomeGridVirtualized`; this flag is not read there.
    */
   HOME_FEED_VIRTUALIZATION: import.meta.env.VITE_HOME_FEED_VIRTUALIZATION === 'true',
 } as const;
@@ -115,13 +88,4 @@ export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
  */
 export function isFeatureEnabled(flag: FeatureFlagKey): boolean {
   return FEATURE_FLAGS[flag] === true;
-}
-
-/**
- * Get all enabled feature flags (for debugging)
- */
-export function getEnabledFeatures(): FeatureFlagKey[] {
-  return (Object.keys(FEATURE_FLAGS) as FeatureFlagKey[]).filter(
-    (key) => FEATURE_FLAGS[key] === true
-  );
 }

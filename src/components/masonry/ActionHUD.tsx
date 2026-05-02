@@ -88,7 +88,9 @@ export const ActionHUD: React.FC<ActionHUDProps> = ({
               align="right"
               offsetY={4}
               onClickOutside={onMenuClose}
-              overlayRootProps={{ 'data-masonry-more-menu': 'true' }}
+              overlayRootProps={
+                { 'data-masonry-more-menu': 'true' } as React.HTMLAttributes<HTMLDivElement>
+              }
               className="motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150"
             >
               <div

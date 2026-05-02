@@ -4,11 +4,13 @@ import type { Article } from '@/types';
 import { NewsCard } from '@/components/NewsCard';
 import { ErrorBoundary } from '@/components/UI/ErrorBoundary';
 import { CardError } from '@/components/card/CardError';
+import { getPriorityThumbnailCount } from '@/constants/aboveFoldPriority';
 import {
   chunkIntoGridRows,
   estimateHomeGridRowHeightPx,
   flatIndexToRowIndex,
   gridRowGapPx,
+  HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS,
 } from '@/utils/homeGridVirtualization';
 
 export type HomeGridVirtualizedApi = {
@@ -34,6 +36,8 @@ interface HomeGridVirtualizedProps {
   scrollMarginTop: number;
   /** Parent exposes imperative scroll for drawer prev/next when the target row is off-screen. */
   apiRef: React.MutableRefObject<HomeGridVirtualizedApi | null>;
+  /** TanStack Virtual `overscan` in row units; defaults {@link HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS}. */
+  overscanRows?: number;
 }
 
 /**
@@ -57,9 +61,45 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
   registerCard,
   scrollMarginTop,
   apiRef,
+  overscanRows,
 }) => {
   const measureParentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
+
+  /** Stable per-row ref callbacks avoid ref churn when the parent virtualizer re-renders. */
+  const registerRefByIdRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
+  const getRegisterRefForArticle = useCallback(
+    (id: string) => {
+      const map = registerRefByIdRef.current;
+      let cb = map.get(id);
+      if (!cb) {
+        cb = (el: HTMLDivElement | null) => registerCard(id, el);
+        map.set(id, cb);
+      }
+      return cb;
+    },
+    [registerCard],
+  );
+
+  /** Stable per-card select closures when `selectionMode` is on. */
+  const selectCbByArticleIdRef = useRef<Map<string, () => void>>(new Map());
+  useLayoutEffect(() => {
+    selectCbByArticleIdRef.current.clear();
+  }, [onSelect]);
+
+  const getSelectCallbackForArticle = useCallback(
+    (id: string) => {
+      if (!onSelect) return undefined;
+      const map = selectCbByArticleIdRef.current;
+      let cb = map.get(id);
+      if (!cb) {
+        cb = () => onSelect(id);
+        map.set(id, cb);
+      }
+      return cb;
+    },
+    [onSelect],
+  );
 
   useLayoutEffect(() => {
     const el = measureParentRef.current;
@@ -78,15 +118,22 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
   );
 
   const rowGap = gridRowGapPx();
+  const priorityThumbnailCount = useMemo(
+    () => getPriorityThumbnailCount(columnCount),
+    [columnCount],
+  );
   const baseEstimate = useMemo(
     () => estimateHomeGridRowHeightPx(containerWidth, columnCount) + rowGap,
     [containerWidth, columnCount, rowGap],
   );
 
+  const overscan =
+    overscanRows !== undefined && overscanRows >= 0 ? overscanRows : HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS;
+
   const virtualizer = useWindowVirtualizer({
     count: rows.length,
     estimateSize: () => baseEstimate,
-    overscan: 2,
+    overscan,
     scrollMargin: scrollMarginTop,
     measureElement: (el) => el?.getBoundingClientRect().height ?? baseEstimate,
   });
@@ -94,7 +141,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
   const scrollToFlatArticleIndex = useCallback(
     (flatIndex: number) => {
       const row = flatIndexToRowIndex(flatIndex, columnCount);
-      virtualizer.scrollToIndex(row, { align: 'nearest' });
+      virtualizer.scrollToIndex(row, { align: 'start' });
     },
     [virtualizer, columnCount],
   );
@@ -148,10 +195,14 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
               >
                 {rowArticles.map((article, colInRow) => {
                   const flatIndex = virtualRow.index * columnCount + colInRow;
+                  const isPriorityTile = flatIndex < priorityThumbnailCount;
                   // Only animate within the first-screen stagger window. Virtualized rows
                   // remount when they re-enter overscan, so applying the fade class past
                   // the cap re-fires on every scroll-back.
-                  const animateThisRow = shouldAnimate && flatIndex <= staggerCapIndex;
+                  const animateThisRow =
+                    shouldAnimate &&
+                    !isPriorityTile &&
+                    flatIndex <= staggerCapIndex;
                   const delay = animateThisRow ? Math.min(flatIndex * 50, 750) : 0;
                   return (
                     <ErrorBoundary
@@ -174,7 +225,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
                         }}
                       >
                         <NewsCard
-                          ref={(el) => registerCard(article.id, el)}
+                          ref={getRegisterRefForArticle(article.id)}
                           article={article}
                           skipArticlePrepare
                           viewMode="grid"
@@ -184,9 +235,10 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
                           onTagClick={onTagClick}
                           selectionMode={selectionMode}
                           isSelected={selectedIds.includes(article.id)}
-                          onSelect={onSelect ? () => onSelect(article.id) : undefined}
+                          onSelect={getSelectCallbackForArticle(article.id)}
                           disableInlineExpansion={disableInlineExpansion}
                           searchHighlightQuery={searchHighlightQuery}
+                          priorityThumbnail={isPriorityTile}
                         />
                       </div>
                     </ErrorBoundary>

@@ -4,6 +4,12 @@ import type { Article } from '@/types';
 import { getThumbnailUrl } from '@/utils/mediaClassifier';
 import { formatDate } from '@/utils/formatters';
 import { getNuggetPrimaryHref, getNuggetSourceLabel } from './articleSourceLabel';
+import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
+import {
+  FEED_CARD_MEDIA_INTRINSIC_HEIGHT,
+  FEED_CARD_MEDIA_INTRINSIC_WIDTH,
+  WORKSPACE_GRID_CARD_IMAGE_SIZES,
+} from '@/constants/feedImageLayout';
 
 interface NuggetGridCardProps {
   article: Article;
@@ -11,19 +17,26 @@ interface NuggetGridCardProps {
   isSelected: boolean;
   onSelect: (id: string) => void;
   onOpen: (article: Article) => void;
+  /** First slots: eager + fetchpriority=high (aligned with feed LCP budget). */
+  priorityThumbnail?: boolean;
 }
 
 const MAX_TAGS = 2;
 
-export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
+const NuggetGridCardInner: React.FC<NuggetGridCardProps> = ({
   article,
   selectionMode,
   isSelected,
   onSelect,
   onOpen,
+  priorityThumbnail = false,
 }) => {
   const [showAllTags, setShowAllTags] = useState(false);
   const thumb = getThumbnailUrl(article);
+  const thumbResponsive = useMemo(
+    () => (thumb ? buildFeedImageResponsiveProps(thumb) : null),
+    [thumb],
+  );
   const source = getNuggetSourceLabel(article);
   const href = getNuggetPrimaryHref(article);
   const vis = article.visibility ?? 'private';
@@ -54,6 +67,8 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
     }
   };
 
+  const priorityLoad = priorityThumbnail;
+
   return (
     <article
       className={[
@@ -72,8 +87,19 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
         className="flex flex-1 flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
       >
         <div className="relative aspect-video w-full overflow-hidden rounded-t-xl bg-slate-100 dark:bg-slate-900">
-          {thumb ? (
-            <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" />
+          {thumb && thumbResponsive ? (
+            <img
+              src={thumbResponsive.src}
+              srcSet={thumbResponsive.srcSet}
+              sizes={WORKSPACE_GRID_CARD_IMAGE_SIZES}
+              width={FEED_CARD_MEDIA_INTRINSIC_WIDTH}
+              height={FEED_CARD_MEDIA_INTRINSIC_HEIGHT}
+              alt=""
+              className="h-full w-full object-cover"
+              decoding="async"
+              loading={priorityLoad ? 'eager' : 'lazy'}
+              fetchPriority={priorityLoad ? 'high' : undefined}
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-[11px] font-medium text-slate-400">
               No preview
@@ -181,3 +207,21 @@ export const NuggetGridCard: React.FC<NuggetGridCardProps> = ({
     </article>
   );
 };
+
+function nuggetGridCardPropsEqual(
+  prev: NuggetGridCardProps,
+  next: NuggetGridCardProps,
+): boolean {
+  return (
+    prev.article === next.article &&
+    prev.selectionMode === next.selectionMode &&
+    prev.isSelected === next.isSelected &&
+    prev.priorityThumbnail === next.priorityThumbnail &&
+    prev.onSelect === next.onSelect &&
+    prev.onOpen === next.onOpen
+  );
+}
+
+export const NuggetGridCard = React.memo(NuggetGridCardInner, nuggetGridCardPropsEqual);
+
+NuggetGridCard.displayName = 'NuggetGridCard';

@@ -238,16 +238,28 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (animState === 'closed' || animState === 'exiting') {
-        setAnimState('entering');
-        const raf1 = requestAnimationFrame(() => {
-          requestAnimationFrame(() => setAnimState('open'));
+        let innerRaf = 0;
+        const outerRaf = requestAnimationFrame(() => {
+          setAnimState('entering');
+          innerRaf = requestAnimationFrame(() => {
+            requestAnimationFrame(() => setAnimState('open'));
+          });
         });
-        return () => cancelAnimationFrame(raf1);
+        return () => {
+          cancelAnimationFrame(outerRaf);
+          cancelAnimationFrame(innerRaf);
+        };
       }
     } else if (animState === 'open' || animState === 'entering') {
-      setAnimState('exiting');
-      const timer = setTimeout(() => setAnimState('closed'), 250);
-      return () => clearTimeout(timer);
+      let closeTimer = 0;
+      const outerRaf = requestAnimationFrame(() => {
+        setAnimState('exiting');
+        closeTimer = window.setTimeout(() => setAnimState('closed'), 250);
+      });
+      return () => {
+        cancelAnimationFrame(outerRaf);
+        window.clearTimeout(closeTimer);
+      };
     }
   }, [isOpen, animState]);
 
@@ -278,8 +290,10 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    setSearchQuery('');
-    setExpandedSections({});
+    queueMicrotask(() => {
+      setSearchQuery('');
+      setExpandedSections({});
+    });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -316,9 +330,9 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
     const isNoResults = typeof resultCount === 'number' && resultCount === 0 && hasActiveFilter;
     if (isNoResults && !announceNoResults) {
       emitFilterAnalytics('no_results_triggered', { tabContext: activeTab, resultCount: 0 });
-      setAnnounceNoResults(true);
+      queueMicrotask(() => setAnnounceNoResults(true));
     } else if (!isNoResults) {
-      setAnnounceNoResults(false);
+      queueMicrotask(() => setAnnounceNoResults(false));
     }
   }, [activeTab, announceNoResults, hasActiveFilter, isOpen, resultCount]);
 
