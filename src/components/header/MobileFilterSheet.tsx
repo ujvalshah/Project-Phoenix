@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Search, X } from 'lucide-react';
 import { useTagTaxonomy } from '@/hooks/useTagTaxonomy';
@@ -9,6 +9,10 @@ import { Collection, TaxonomyTag } from '@/types';
 import type { FilterState } from './filterTypes';
 import { getOverlayHost } from '@/utils/overlayHosts';
 import { buildCollectionFilterGroups } from './collectionFilterUtils';
+import {
+  HEADER_PERF_SURFACES,
+  headerPerfSurfaceReady,
+} from '@/dev/perfMarks';
 
 interface MobileFilterSheetProps {
   isOpen: boolean;
@@ -232,25 +236,36 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
   const hasTopicMatches = formatTags.length > 0 || domainTags.length > 0 || subtopicTags.length > 0;
   const hasCollectionMatches = groupedCollections.length > 0;
 
+  const animStateRef = useRef(animState);
+  animStateRef.current = animState;
+
   // Animation lifecycle: open → entering → open, close → exiting → closed.
   // Reopen while exiting must be handled: closing clears the exit timer, so without
   // the exiting branch we would stick in exiting with an invisible full-screen layer.
+  //
+  // IMPORTANT: depend only on `isOpen`. Including `animState` in the dependency array
+  // re-ran this effect when leaving `closed`, and cleanup cancelled the inner rAF chain
+  // that transitions `entering` → `open`, leaving the sheet stuck at `entering`
+  // (invisible overlay) and breaking first-open perf measurement.
   useEffect(() => {
     if (isOpen) {
-      if (animState === 'closed' || animState === 'exiting') {
-        let innerRaf = 0;
+      const phase = animStateRef.current;
+      if (phase === 'closed' || phase === 'exiting') {
         const outerRaf = requestAnimationFrame(() => {
           setAnimState('entering');
-          innerRaf = requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
             requestAnimationFrame(() => setAnimState('open'));
           });
         });
         return () => {
           cancelAnimationFrame(outerRaf);
-          cancelAnimationFrame(innerRaf);
         };
       }
-    } else if (animState === 'open' || animState === 'entering') {
+      return;
+    }
+
+    const phase = animStateRef.current;
+    if (phase === 'open' || phase === 'entering') {
       let closeTimer = 0;
       const outerRaf = requestAnimationFrame(() => {
         setAnimState('exiting');
@@ -261,6 +276,16 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
         window.clearTimeout(closeTimer);
       };
     }
+  }, [isOpen]);
+
+  const mobileFilterPerfOnceRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!isOpen || animState !== 'open') return;
+    if (mobileFilterPerfOnceRef.current) return;
+    mobileFilterPerfOnceRef.current = true;
+    headerPerfSurfaceReady(HEADER_PERF_SURFACES.MOBILE_FILTER_SHEET, {
+      animState: 'open',
+    });
   }, [isOpen, animState]);
 
   // Cleanup search analytics debounce on unmount

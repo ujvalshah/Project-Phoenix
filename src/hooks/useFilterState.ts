@@ -263,6 +263,8 @@ export function useFilterState(): UseFilterStateReturn {
   // ---- State ----
   const [searchInputValue, setSearchInputValueRaw] = useState(initial.q);
   const [committedQuery, setCommittedQuery] = useState(initial.q);
+  /** Mirrors draft input for arg-less `commitSearch()` without listing `searchInputValue` in deps — keeps `commitSearch` referentially stable so context subscribers (e.g. Header) can bail out on shallow compare while typing. */
+  const searchInputDraftRef = useRef(initial.q);
   const [categories, setCategories] = useState<string[]>(initial.categories);
   const [tag, setTag] = useState<string | null>(initial.tag || null);
   const [sort, setSort] = useState<SortOrder>(initial.sort);
@@ -283,15 +285,19 @@ export function useFilterState(): UseFilterStateReturn {
   const [searchInputResetSignal, setSearchInputResetSignal] = useState(0);
 
   const setSearchInput = useCallback((value: string) => {
-    setSearchInputValueRaw(value.trimStart());
+    const v = value.trimStart();
+    searchInputDraftRef.current = v;
+    setSearchInputValueRaw(v);
   }, []);
 
   const commitSearch = useCallback((value?: string) => {
-    const next = typeof value === 'string' ? value : searchInputValue;
+    const next = typeof value === 'string' ? value : searchInputDraftRef.current;
     const trimmed = normalizeSearchQuery(next);
-    setSearchInputValueRaw(next.trimStart());
+    const display = next.trimStart();
+    searchInputDraftRef.current = display;
+    setSearchInputValueRaw(display);
     setCommittedQuery(trimmed);
-  }, [searchInputValue]);
+  }, []);
 
   // ---- URL sync (write) ----
   // CRITICAL: Must preserve URL params that belong to other components (e.g. "expanded"
@@ -401,6 +407,7 @@ export function useFilterState(): UseFilterStateReturn {
 
   // ---- Resets ----
   const clearAll = useCallback(() => {
+    searchInputDraftRef.current = '';
     setSearchInputValueRaw('');
     setCommittedQuery('');
     setCategories([]);
@@ -416,15 +423,17 @@ export function useFilterState(): UseFilterStateReturn {
     setSubtopicTagIds([]);
     setContentStream('standard');
     setSearchInputResetSignal((n) => n + 1);
-  }, []);
+  }, [setContentStream]);
 
   const clearSearch = useCallback(() => {
+    searchInputDraftRef.current = '';
     setSearchInputValueRaw('');
     setCommittedQuery('');
     setSearchInputResetSignal((n) => n + 1);
   }, []);
 
   const revertSearchDraftToCommitted = useCallback(() => {
+    searchInputDraftRef.current = committedQuery;
     setSearchInputValueRaw(committedQuery);
     setSearchInputResetSignal((n) => n + 1);
   }, [committedQuery]);

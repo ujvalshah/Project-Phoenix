@@ -1,5 +1,24 @@
 /// <reference types="vite/client" />
 
+/** Injected by Vite (`vite.config.ts` define). `true` only when `mode !== 'production'`. */
+declare const __NUGGETS_DEV_PERF_VITALS__: boolean;
+
+/** Injected by Vite (`vite.config.ts` define). Header surface perf marks; `false` in production. */
+declare const __NUGGETS_DEV_PERF_MARKS__: boolean;
+
+/** Dev-only: filled by `src/dev/perfMarks.ts` for local automation (e.g. Playwright perf collection). */
+interface Window {
+  __DEV_PERF_RESULTS__?: Record<
+    string,
+    {
+      duration?: number;
+      status: 'ok' | 'missing' | 'skipped';
+      reason?: string;
+      meta?: Record<string, unknown>;
+    }
+  >;
+}
+
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string; // Optional: API base URL (only for production)
   readonly VITE_FEATURE_MARKET_PULSE?: string; // Feature flag for Market Pulse content stream

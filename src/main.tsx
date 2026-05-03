@@ -9,9 +9,22 @@ import { queryClient } from '@/queryClient';
 import { registerServiceWorker } from './utils/serviceWorkerRegistration';
 import { mountOverlayHostStack } from './utils/overlayHosts';
 import { initSentry } from '@/utils/sentry';
+import {
+  logDevPerfMarksStartup,
+  markPostReactRootForPerf,
+  scheduleInitialIdleSettledFromPostRoot,
+} from './dev/perfMarks';
 
 // Schedule Sentry bootstrap (SDK loads via async chunk inside initSentry — not bundled in index).
 initSentry();
+logDevPerfMarksStartup();
+
+// Gated via Vite `define` so production builds drop this import entirely (see vite.config.ts).
+if (__NUGGETS_DEV_PERF_VITALS__) {
+  void import('./dev/perfVitals').then((m) => {
+    m.startDevPerfVitals();
+  });
+}
 
 performance.mark('app:boot:start');
 mountOverlayHostStack();
@@ -44,6 +57,8 @@ if (container) {
       </BrowserRouter>
     </React.StrictMode>
   );
+  markPostReactRootForPerf();
+  scheduleInitialIdleSettledFromPostRoot();
   performance.mark('app:boot:mounted');
   performance.measure('app:boot:mount', 'app:boot:start', 'app:boot:mounted');
 

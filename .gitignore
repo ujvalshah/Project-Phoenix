@@ -106,6 +106,10 @@ playwright-report/
 reports/
 scripts/validate/output/
 
+# Local perf collector (npm run perf:collect)
+output/perf-results.json
+output/perf-results.csv
+
 # Local tool / audit drops (regenerated; do not commit)
 eslint-errors.json
 lighthouse-report*.html

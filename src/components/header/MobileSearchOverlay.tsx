@@ -13,6 +13,10 @@ import {
   formatSuggestionPublishedLabel,
 } from '@/utils/suggestionDisplay';
 import { normalizeSearchQuery } from '@/utils/searchQuery';
+import {
+  HEADER_PERF_SURFACES,
+  headerPerfSurfaceReady,
+} from '@/dev/perfMarks';
 
 interface MobileSearchOverlayProps {
   isOpen: boolean;
@@ -52,6 +56,16 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
   useLayoutEffect(() => {
     debouncedDraftRef.current = debouncedDraftQuery;
   }, [debouncedDraftQuery]);
+
+  const mobileSearchPerfOnceRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    if (mobileSearchPerfOnceRef.current) return;
+    mobileSearchPerfOnceRef.current = true;
+    headerPerfSurfaceReady(HEADER_PERF_SURFACES.MOBILE_SEARCH_OVERLAY, {
+      phase: 'overlay-is-open-commit',
+    });
+  }, [isOpen]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

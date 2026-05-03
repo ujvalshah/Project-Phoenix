@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useLayoutEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, Suspense, lazy, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { BackToTopButton } from '@/components/UI/BackToTopButton';
 import { ToastContainer } from '@/components/UI/Toast';
@@ -213,6 +213,17 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('nuggets:open-create-modal', openCreate);
   }, []);
 
+  const toggleTheme = useCallback(() => {
+    setIsDark((d) => !d);
+  }, []);
+
+  const onCreateNugget = useCallback(() => {
+    void import('@/components/createNuggetModalChunk.js').then((m) =>
+      m.preloadCreateNuggetModalChunk({ userId: currentUserId || null }),
+    );
+    setIsCreateOpen(true);
+  }, [currentUserId]);
+
   return (
     <>
       {/* Handle legacy hash URLs (e.g., /#/collections → /collections) */}
@@ -249,17 +260,12 @@ const AppContent: React.FC = () => {
       <Suspense fallback={<HeaderSuspenseFallback />}>
         <HeaderLazy
           isDark={isDark}
-          toggleTheme={() => setIsDark(!isDark)}
+          toggleTheme={toggleTheme}
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
           viewMode={viewMode}
           setViewMode={setViewMode}
-          onCreateNugget={() => {
-            void import('@/components/createNuggetModalChunk.js').then((m) =>
-              m.preloadCreateNuggetModalChunk({ userId: currentUserId || null }),
-            );
-            setIsCreateOpen(true);
-          }}
+          onCreateNugget={onCreateNugget}
         />
       </Suspense>
 
