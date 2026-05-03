@@ -56,7 +56,7 @@
     "icons:generate": "node scripts/generate-brand-icons.mjs",
     "typecheck": "npm run typecheck:client",
     "typecheck:all": "npm run typecheck:client && npm run typecheck:server",
-    "typecheck:client": "tsc --noEmit",
+    "typecheck:client": "tsc --noEmit && tsc -p src/components/CreateNuggetModal/tsconfig.json --noEmit",
     "typecheck:server": "tsc -p server/tsconfig.ci.json --noEmit",
     "prepare": "husky || node -e \"process.exit(0)\""
   },
