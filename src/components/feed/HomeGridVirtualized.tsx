@@ -176,7 +176,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
           return (
             <div
               key={virtualRow.key}
-              data-virtual-row={virtualRow.index}
+              data-index={virtualRow.index}
               style={{
                 position: 'absolute',
                 top: 0,

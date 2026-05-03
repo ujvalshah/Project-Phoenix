@@ -57,14 +57,14 @@ test.describe('Home feed smoke', () => {
       );
     }
     try {
-      await page.locator('[data-virtual-row]').first().waitFor({ state: 'attached', timeout: 25_000 });
+      await page.locator('[data-index]').first().waitFor({ state: 'attached', timeout: 25_000 });
     } catch {
       test.skip(
         true,
         'Virtual rows never mounted (home feed error/empty or UI not on grid path).',
       );
     }
-    expect(await page.locator('[data-virtual-row]').count()).toBeGreaterThan(0);
+    expect(await page.locator('[data-index]').count()).toBeGreaterThan(0);
   });
 
   test('anonymous card click opens modal (role=dialog)', async ({ page }) => {
@@ -101,7 +101,7 @@ test.describe('Home feed smoke', () => {
     }
 
     try {
-      await page.locator('[data-virtual-row]').first().waitFor({ state: 'visible', timeout: 45_000 });
+      await page.locator('[data-index]').first().waitFor({ state: 'visible', timeout: 45_000 });
     } catch {
       test.skip(true, 'Virtual grid missing — empty feed or not on grid layout.');
     }
@@ -109,11 +109,11 @@ test.describe('Home feed smoke', () => {
     await page.getByRole('button', { name: 'Masonry View' }).click();
     await page.waitForTimeout(400);
 
-    await expect(page.locator('[data-virtual-row]')).toHaveCount(0);
+    await expect(page.locator('[data-index]')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Grid View' }).click();
     await page.waitForTimeout(400);
 
-    await expect(page.locator('[data-virtual-row]').first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-index]').first()).toBeVisible({ timeout: 20_000 });
   });
 });

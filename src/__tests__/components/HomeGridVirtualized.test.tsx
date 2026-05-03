@@ -162,7 +162,7 @@ describe('HomeGridVirtualized', () => {
         apiRef={apiRef}
       />,
     );
-    const row = container.querySelector('[data-virtual-row="0"]') as HTMLDivElement;
+    const row = container.querySelector('[data-index="0"]') as HTMLDivElement;
     expect(row.style.transform).toBe('translateY(40px)');
   });
 });
