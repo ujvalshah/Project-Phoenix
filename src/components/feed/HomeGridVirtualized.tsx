@@ -253,10 +253,6 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     typeof localStorage !== 'undefined' &&
     localStorage.getItem('NUGGETS_DEV_GRID_ROW_OUTLINE') === '1';
 
-  const devVirtLog =
-    import.meta.env.DEV &&
-    typeof localStorage !== 'undefined' &&
-    localStorage.getItem('NUGGETS_DEV_GRID_VIRT_LOG') === '1';
   const devOutlineCards =
     import.meta.env.DEV &&
     typeof localStorage !== 'undefined' &&
@@ -268,9 +264,13 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
 
   const measureParentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
+  const geometryWidthKey = Math.max(0, Math.round(containerWidth));
   const prevDisplayArticlesRef = useRef<Article[]>([]);
   const prevRowsRef = useRef<Article[][]>([]);
   const prevColumnCountRef = useRef(columnCount);
+  const prevGeometryWidthKeyRef = useRef(geometryWidthKey);
+  const hasInitialVisibleSettleRef = useRef(false);
+  const initialSettleScheduledRef = useRef(false);
 
   /** Stable per-row ref callbacks avoid ref churn when the parent virtualizer re-renders. */
   const registerRefByIdRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
@@ -317,7 +317,11 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
       hasAppendLikeLength &&
       prevArticles[0] === displayArticles[0] &&
       prevArticles[prevLength - 1] === displayArticles[prevLength - 1];
+    const widthChanged = prevGeometryWidthKeyRef.current !== geometryWidthKey;
+    const initialSettleCompleted = hasInitialVisibleSettleRef.current;
     const canIncrementallyAppend =
+      initialSettleCompleted &&
+      !widthChanged &&
       prevColumnCountRef.current === columnCount &&
       appendBoundaryMatches &&
       prevArticles.every((prevArticle, idx) => prevArticle === displayArticles[idx]);
@@ -342,6 +346,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
       prevDisplayArticlesRef.current = displayArticles;
       prevRowsRef.current = nextRows;
       prevColumnCountRef.current = columnCount;
+      prevGeometryWidthKeyRef.current = geometryWidthKey;
       return nextRows;
     }
 
@@ -349,8 +354,9 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     prevDisplayArticlesRef.current = displayArticles;
     prevRowsRef.current = rebuiltRows;
     prevColumnCountRef.current = columnCount;
+    prevGeometryWidthKeyRef.current = geometryWidthKey;
     return rebuiltRows;
-  }, [displayArticles, columnCount]);
+  }, [displayArticles, columnCount, geometryWidthKey]);
 
   const rowGap = gridRowGapPx();
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -378,6 +384,11 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
   virtualizerRef.current = virtualizer;
   const appendSettleTimerRef = useRef<number | null>(null);
   const prevDisplayLengthRef = useRef(displayArticles.length);
+  const prevWidthRemeasureKeyRef = useRef(geometryWidthKey);
+
+  const measureRowElement = useCallback((el: HTMLElement | null) => {
+    virtualizerRef.current.measureElement(el);
+  }, []);
 
   const measureVisibleVirtualRows = useCallback(() => {
     const v = virtualizerRef.current;
@@ -399,6 +410,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
       setContainerWidth(el.getBoundingClientRect().width);
     };
     const scheduleDebouncedMeasure = () => {
+      flushContainerWidth();
       if (measureDebounce != null) window.clearTimeout(measureDebounce);
       measureDebounce = window.setTimeout(() => {
         measureDebounce = null;
@@ -450,6 +462,46 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     }
   }, [virtualizer, baseEstimate]);
 
+  useLayoutEffect(() => {
+    const prevWidth = prevWidthRemeasureKeyRef.current;
+    if (geometryWidthKey <= 0) {
+      prevWidthRemeasureKeyRef.current = geometryWidthKey;
+      return;
+    }
+    if (prevWidth === geometryWidthKey) return;
+    prevWidthRemeasureKeyRef.current = geometryWidthKey;
+
+    const v = virtualizerRef.current;
+    v.measure();
+    requestAnimationFrame(() => {
+      measureVisibleVirtualRows();
+      requestAnimationFrame(() => {
+        measureVisibleVirtualRows();
+      });
+    });
+  }, [geometryWidthKey, measureVisibleVirtualRows]);
+
+  /**
+   * Initial visible-row settle: ensure first visible rows reconcile estimate->measured
+   * before incremental append/fast-reject reconciliation becomes eligible.
+   */
+  useLayoutEffect(() => {
+    if (rows.length === 0) return;
+    if (hasInitialVisibleSettleRef.current || initialSettleScheduledRef.current) return;
+    initialSettleScheduledRef.current = true;
+
+    const v = virtualizerRef.current;
+    v.measure();
+    requestAnimationFrame(() => {
+      measureVisibleVirtualRows();
+      requestAnimationFrame(() => {
+        measureVisibleVirtualRows();
+        hasInitialVisibleSettleRef.current = true;
+        initialSettleScheduledRef.current = false;
+      });
+    });
+  }, [rows.length, measureVisibleVirtualRows]);
+
   /** Append lifecycle: invalidate stale geometry once, then run one bounded settle pass. */
   useEffect(() => {
     const nextLen = displayArticles.length;
@@ -483,43 +535,6 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
       }
     };
   }, []);
-
-  const devLogDebounceRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!devVirtLog) return;
-    if (devLogDebounceRef.current != null) window.clearTimeout(devLogDebounceRef.current);
-    devLogDebounceRef.current = window.setTimeout(() => {
-      devLogDebounceRef.current = null;
-      requestAnimationFrame(() => {
-        const items = virtualizer.getVirtualItems();
-        const visibleRows = items.map((v) => {
-          const node = measureParentRef.current?.querySelector(`[data-index="${v.index}"]`);
-          const measured = node?.getBoundingClientRect().height ?? null;
-          return {
-            row: v.index,
-            measured,
-            deltaPx: measured != null ? Math.round(measured - baseEstimate) : null,
-          };
-        });
-        console.debug('[HomeGridVirtualized]', {
-          scrollMarginTop,
-          estimatePerRowPx: baseEstimate,
-          visibleRows,
-        });
-      });
-    }, 500);
-    return () => {
-      if (devLogDebounceRef.current != null) window.clearTimeout(devLogDebounceRef.current);
-    };
-  }, [
-    devVirtLog,
-    virtualizer,
-    rows.length,
-    containerWidth,
-    scrollMarginTop,
-    baseEstimate,
-    displayArticles.length,
-  ]);
 
   return (
     <div ref={measureParentRef} className="mx-auto w-full">
@@ -556,7 +571,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
               onTagClick={onTagClick}
               getSelectCallbackForArticle={getSelectCallbackForArticle}
               getRegisterRefForArticle={getRegisterRefForArticle}
-              measureElement={virtualizer.measureElement}
+              measureElement={measureRowElement}
               devOutlineRows={devOutlineRows}
               devOutlineCards={devOutlineCards}
               devClipRowShell={devClipRowShell}
