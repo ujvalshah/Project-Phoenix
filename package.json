@@ -16,6 +16,7 @@
     "perf:scorecard-bundle-snapshot": "node scripts/update-scorecard-bundle-snapshot.mjs",
     "perf:collect": "cross-env PERF_COLLECT_RUNS=3 playwright test --config=playwright.perf.config.ts",
     "perf:collect:throttled": "cross-env PERF_COLLECT_CPU_THROTTLE=4 npm run perf:collect",
+    "perf:feed-append": "cross-env PERF_HOME_APPEND_CYCLES=7 playwright test tests/perf/home-feed-append.perf.spec.ts --config=playwright.perf.config.ts",
     "perf:lh-mobile-local": "npx --yes lighthouse@12 http://127.0.0.1:3000/ --only-categories=performance --output=json --output-path=lighthouse-mobile-local-unthrottled.json --form-factor=mobile --screenEmulation.mobile --quiet --disable-full-page-screenshot --max-wait-for-load=90000 --throttling-method=provided --chrome-flags=\"--headless=new --no-sandbox --disable-gpu\"",
     "preview": "vite preview",
     "start": "node scripts/run-production-server.mjs",
