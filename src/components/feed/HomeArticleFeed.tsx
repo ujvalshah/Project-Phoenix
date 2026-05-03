@@ -1,4 +1,12 @@
-import React, { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect } from 'react';
+import React, {
+  useRef,
+  useEffect,
+  useCallback,
+  useState,
+  useMemo,
+  useLayoutEffect,
+  useContext,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Article } from '@/types';
 import { MasonryGrid } from '@/components/MasonryGrid';
@@ -15,8 +23,10 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useHomeGridColumnCount } from '@/hooks/useHomeGridColumnCount';
 import {
   HOME_FEED_INFINITE_SCROLL_ROOT_MARGIN_PX,
+  HOME_GRID_SCROLL_MARGIN_DEBOUNCE_MS,
 } from '@/utils/homeGridVirtualization';
 import { beginFeedCloseAnalysisWindow } from '@/utils/devFeedCloseAnalysis';
+import { DesktopFilterSidebarStateContext } from '@/context/DesktopFilterSidebarContext';
 
 const FEED_APPEND_MARK_START = 'feed-append-start';
 const FEED_APPEND_MARK_END = 'feed-append-end';
@@ -50,6 +60,11 @@ export interface HomeArticleFeedProps {
   searchHighlightQuery?: string;
   /** TanStack window virtualizer overscan in row units (grid mode only). */
   overscanRows?: number;
+  /**
+   * When set (e.g. home column wrapping summary + feed), ResizeObserver keeps
+   * `scrollMargin` fresh when width or above-the-grid height changes.
+   */
+  scrollLayoutRootRef?: React.RefObject<HTMLElement | null>;
 }
 
 /** Bring a grid card into view without `virtualizer.scrollToIndex` (avoids TanStack scroll retry loops during layout/close). */
@@ -138,6 +153,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
   onRetry,
   searchHighlightQuery,
   overscanRows,
+  scrollLayoutRootRef,
 }) => {
   const isFeedRefetching = isFeedRefetchingProp ?? isFilterRefetchingLegacy;
   const { registerCard } = useRowExpansion();
@@ -177,17 +193,25 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
     const prevArticles = prevArticlesRef.current;
     const prevDisplay = prevDisplayArticlesRef.current;
     const prevCache = prepareCacheRef.current;
+    const prevLength = prevArticles.length;
+    const nextLength = articles.length;
+    const hasAppendLikeLength = prevLength > 0 && nextLength >= prevLength;
+    const appendBoundaryMatches =
+      hasAppendLikeLength &&
+      prevArticles[0] === articles[0] &&
+      prevArticles[prevLength - 1] === articles[prevLength - 1];
 
     const canIncrementallyAppend =
-      prevArticles.length > 0 &&
-      articles.length >= prevArticles.length &&
+      appendBoundaryMatches &&
       prevArticles.every((prevArticle, idx) => prevArticle === articles[idx]);
 
     if (canIncrementallyAppend) {
       const nextDisplay = prevDisplay.slice();
-      const nextCache = new Map(prevCache);
-      const nextById = new Map(articleByIdRef.current);
-      const nextIndexById = new Map(articleIndexByIdRef.current);
+      // Incremental append path: mutate lookup maps in-place to avoid O(n) map
+      // cloning on every page append. We still return a new display array ref.
+      const nextCache = prevCache;
+      const nextById = articleByIdRef.current;
+      const nextIndexById = articleIndexByIdRef.current;
 
       for (let i = prevArticles.length; i < articles.length; i += 1) {
         const article = articles[i];
@@ -284,22 +308,81 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
   const homeGridVirtualApiRef = useRef<HomeGridVirtualizedApi | null>(null);
   const virtualListAnchorRef = useRef<HTMLDivElement>(null);
   const [virtualListScrollMargin, setVirtualListScrollMargin] = useState(0);
+  const scrollMarginDebounceRef = useRef<number | null>(null);
 
-  useLayoutEffect(() => {
+  const computeVirtualListScrollMargin = useCallback(() => {
     const el = virtualListAnchorRef.current;
     if (!el) return;
-    const compute = () => {
-      const top = el.getBoundingClientRect().top + window.scrollY;
-      setVirtualListScrollMargin(Math.max(0, Math.round(top)));
-    };
-    compute();
-    window.addEventListener('resize', compute);
-    window.addEventListener('load', compute);
+    const top = el.getBoundingClientRect().top + window.scrollY;
+    setVirtualListScrollMargin(Math.max(0, Math.round(top)));
+  }, []);
+
+  const scheduleVirtualListScrollMargin = useCallback(() => {
+    computeVirtualListScrollMargin();
+    if (scrollMarginDebounceRef.current != null) {
+      window.clearTimeout(scrollMarginDebounceRef.current);
+    }
+    scrollMarginDebounceRef.current = window.setTimeout(() => {
+      scrollMarginDebounceRef.current = null;
+      computeVirtualListScrollMargin();
+    }, HOME_GRID_SCROLL_MARGIN_DEBOUNCE_MS);
+  }, [computeVirtualListScrollMargin]);
+
+  useLayoutEffect(() => {
+    const anchor = virtualListAnchorRef.current;
+    const layoutRoot = scrollLayoutRootRef?.current ?? null;
+
+    scheduleVirtualListScrollMargin();
+
+    const onResize = () => scheduleVirtualListScrollMargin();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('load', onResize);
+
+    const roAnchor =
+      anchor != null ? new ResizeObserver(() => scheduleVirtualListScrollMargin()) : null;
+    if (anchor && roAnchor) roAnchor.observe(anchor);
+
+    const roLayout =
+      layoutRoot != null ? new ResizeObserver(() => scheduleVirtualListScrollMargin()) : null;
+    if (layoutRoot && roLayout) roLayout.observe(layoutRoot);
+
     return () => {
-      window.removeEventListener('resize', compute);
-      window.removeEventListener('load', compute);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('load', onResize);
+      roAnchor?.disconnect();
+      roLayout?.disconnect();
+      if (scrollMarginDebounceRef.current != null) {
+        window.clearTimeout(scrollMarginDebounceRef.current);
+        scrollMarginDebounceRef.current = null;
+      }
     };
-  }, [gridColumnCount]);
+  }, [gridColumnCount, scheduleVirtualListScrollMargin, scrollLayoutRootRef]);
+
+  const desktopFilterSidebarState = useContext(DesktopFilterSidebarStateContext);
+  const prevDesktopSidebarCollapsedRef = useRef<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    if (
+      viewMode !== 'grid' ||
+      scrollLayoutRootRef == null ||
+      desktopFilterSidebarState == null
+    ) {
+      return;
+    }
+    const collapsed = desktopFilterSidebarState.sidebarCollapsed;
+    const prev = prevDesktopSidebarCollapsedRef.current;
+    prevDesktopSidebarCollapsedRef.current = collapsed;
+    if (prev === undefined || prev === collapsed) {
+      return;
+    }
+    // Leading remeasure right when toggle state flips.
+    homeGridVirtualApiRef.current?.remeasure();
+    // Trailing remeasure after sidebar/layout settles.
+    const t = window.setTimeout(() => {
+      homeGridVirtualApiRef.current?.remeasure();
+    }, 520);
+    return () => clearTimeout(t);
+  }, [viewMode, scrollLayoutRootRef, desktopFilterSidebarState]);
 
   useEffect(() => {
     if (!isMultiColumnGrid) {
@@ -323,7 +406,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
     const targetId = expandedArticleId;
     const rafId = requestAnimationFrame(() => {
       if (!drawerOpenRef.current || expandedArticleIdRef.current !== targetId) return;
-      if (displayArticlesRef.current.findIndex((a) => a.id === targetId) < 0) return;
+      if (!articleIndexByIdRef.current.has(targetId)) return;
       scrollGridCardIntoView(targetId);
     });
     return () => cancelAnimationFrame(rafId);

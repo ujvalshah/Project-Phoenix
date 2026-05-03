@@ -304,7 +304,6 @@ export function useUnifiedInfiniteArticles(input: UnifiedFeedInput): UnifiedInfi
   });
 
   const query = !isCollect ? streamQuery : collectionQuery;
-
   const articles = useMemo(() => {
     if (!query.data?.pages?.length) {
       return [];

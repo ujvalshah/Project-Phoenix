@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import type { Article } from '@/types';
 import { NewsCard } from '@/components/NewsCard';
@@ -11,11 +11,14 @@ import {
   flatIndexToRowIndex,
   gridRowGapPx,
   HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS,
+  HOME_GRID_VIRTUAL_MEASURE_DEBOUNCE_MS,
 } from '@/utils/homeGridVirtualization';
 import { recordMeasureEffect } from '@/utils/devFeedCloseAnalysis';
 
 export type HomeGridVirtualizedApi = {
   scrollToFlatArticleIndex: (flatIndex: number) => void;
+  /** Clears measured row sizes so ResizeObserver can repopulate after layout jumps (e.g. desktop filter aside). */
+  remeasure: () => void;
 };
 
 interface VirtualizedRowProps {
@@ -40,6 +43,9 @@ interface VirtualizedRowProps {
   getSelectCallbackForArticle: (id: string) => (() => void) | undefined;
   getRegisterRefForArticle: (id: string) => (el: HTMLDivElement | null) => void;
   measureElement: (el: HTMLElement | null) => void;
+  devOutlineRows?: boolean;
+  devOutlineCards?: boolean;
+  devClipRowShell?: boolean;
 }
 
 const VirtualizedRow = React.memo(function VirtualizedRow({
@@ -64,7 +70,15 @@ const VirtualizedRow = React.memo(function VirtualizedRow({
   getSelectCallbackForArticle,
   getRegisterRefForArticle,
   measureElement,
+  devOutlineRows = false,
+  devOutlineCards = false,
+  devClipRowShell = false,
 }: VirtualizedRowProps) {
+  const rowRootRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    measureElement(rowRootRef.current);
+  }, [measureElement, rowIndex, rowArticles]);
+
   return (
     <div
       data-index={rowIndex}
@@ -76,8 +90,15 @@ const VirtualizedRow = React.memo(function VirtualizedRow({
         // With window virtualizer + scrollMargin, starts are document-based.
         // Convert to container-local coordinates by subtracting scrollMargin.
         transform: `translateY(${rowStart - scrollMarginTop}px)`,
+        ...(devOutlineRows
+          ? { outline: '2px dashed fuchsia', outlineOffset: '-1px' }
+          : undefined),
+        ...(devClipRowShell ? { overflow: 'hidden' } : undefined),
       }}
-      ref={measureElement}
+      ref={(el) => {
+        rowRootRef.current = el;
+        measureElement(el);
+      }}
     >
       <div
         className="grid w-full auto-rows-auto items-stretch"
@@ -117,6 +138,9 @@ const VirtualizedRow = React.memo(function VirtualizedRow({
                 `}
                 style={{
                   animationDelay: animateThisRow ? `${delay}ms` : '0ms',
+                  ...(devOutlineCards
+                    ? { outline: '1px dashed #22d3ee', outlineOffset: '-1px' }
+                    : undefined),
                 }}
               >
                 <NewsCard
@@ -163,6 +187,9 @@ const VirtualizedRow = React.memo(function VirtualizedRow({
   if (prev.getSelectCallbackForArticle !== next.getSelectCallbackForArticle) return false;
   if (prev.getRegisterRefForArticle !== next.getRegisterRefForArticle) return false;
   if (prev.measureElement !== next.measureElement) return false;
+  if (prev.devOutlineRows !== next.devOutlineRows) return false;
+  if (prev.devOutlineCards !== next.devOutlineCards) return false;
+  if (prev.devClipRowShell !== next.devClipRowShell) return false;
 
   if (prev.selectedIdSet !== next.selectedIdSet) {
     for (const article of prev.rowArticles) {
@@ -221,6 +248,24 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
   apiRef,
   overscanRows,
 }) => {
+  const devOutlineRows =
+    import.meta.env.DEV &&
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem('NUGGETS_DEV_GRID_ROW_OUTLINE') === '1';
+
+  const devVirtLog =
+    import.meta.env.DEV &&
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem('NUGGETS_DEV_GRID_VIRT_LOG') === '1';
+  const devOutlineCards =
+    import.meta.env.DEV &&
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem('NUGGETS_DEV_GRID_CARD_OUTLINE') === '1';
+  const devClipRowShell =
+    import.meta.env.DEV &&
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem('NUGGETS_DEV_GRID_ROW_CLIP') === '1';
+
   const measureParentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const prevDisplayArticlesRef = useRef<Article[]>([]);
@@ -262,24 +307,19 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     [onSelect],
   );
 
-  useLayoutEffect(() => {
-    const el = measureParentRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setContainerWidth(el.getBoundingClientRect().width);
-    });
-    ro.observe(el);
-    setContainerWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-
   const rows = useMemo(() => {
     const prevArticles = prevDisplayArticlesRef.current;
     const prevRows = prevRowsRef.current;
+    const prevLength = prevArticles.length;
+    const nextLength = displayArticles.length;
+    const hasAppendLikeLength = prevLength > 0 && nextLength >= prevLength;
+    const appendBoundaryMatches =
+      hasAppendLikeLength &&
+      prevArticles[0] === displayArticles[0] &&
+      prevArticles[prevLength - 1] === displayArticles[prevLength - 1];
     const canIncrementallyAppend =
       prevColumnCountRef.current === columnCount &&
-      prevArticles.length > 0 &&
-      displayArticles.length >= prevArticles.length &&
+      appendBoundaryMatches &&
       prevArticles.every((prevArticle, idx) => prevArticle === displayArticles[idx]);
 
     if (canIncrementallyAppend) {
@@ -334,6 +374,48 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     measureElement: (el) => el?.getBoundingClientRect().height ?? baseEstimate,
   });
 
+  const virtualizerRef = useRef(virtualizer);
+  virtualizerRef.current = virtualizer;
+  const appendSettleTimerRef = useRef<number | null>(null);
+  const prevDisplayLengthRef = useRef(displayArticles.length);
+
+  const measureVisibleVirtualRows = useCallback(() => {
+    const v = virtualizerRef.current;
+    const parent = measureParentRef.current;
+    if (!parent) return;
+    for (const row of v.getVirtualItems()) {
+      const node = parent.querySelector(`[data-index="${row.index}"]`);
+      if (node instanceof HTMLElement) {
+        v.measureElement(node);
+      }
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = measureParentRef.current;
+    if (!el) return;
+    let measureDebounce: number | null = null;
+    const flushContainerWidth = () => {
+      setContainerWidth(el.getBoundingClientRect().width);
+    };
+    const scheduleDebouncedMeasure = () => {
+      if (measureDebounce != null) window.clearTimeout(measureDebounce);
+      measureDebounce = window.setTimeout(() => {
+        measureDebounce = null;
+        flushContainerWidth();
+      }, HOME_GRID_VIRTUAL_MEASURE_DEBOUNCE_MS);
+    };
+    const ro = new ResizeObserver(() => {
+      scheduleDebouncedMeasure();
+    });
+    ro.observe(el);
+    flushContainerWidth();
+    return () => {
+      ro.disconnect();
+      if (measureDebounce != null) window.clearTimeout(measureDebounce);
+    };
+  }, []);
+
   const scrollToFlatArticleIndex = useCallback(
     (flatIndex: number) => {
       const row = flatIndexToRowIndex(flatIndex, columnCount);
@@ -343,7 +425,19 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
   );
 
   useLayoutEffect(() => {
-    apiRef.current = { scrollToFlatArticleIndex };
+    apiRef.current = {
+      scrollToFlatArticleIndex,
+      remeasure: () => {
+        const v = virtualizerRef.current;
+        v.measure();
+        requestAnimationFrame(() => {
+          measureVisibleVirtualRows();
+          requestAnimationFrame(() => {
+            measureVisibleVirtualRows();
+          });
+        });
+      },
+    };
     return () => {
       apiRef.current = null;
     };
@@ -355,6 +449,77 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
       recordMeasureEffect();
     }
   }, [virtualizer, baseEstimate]);
+
+  /** Append lifecycle: invalidate stale geometry once, then run one bounded settle pass. */
+  useEffect(() => {
+    const nextLen = displayArticles.length;
+    const prevLen = prevDisplayLengthRef.current;
+    prevDisplayLengthRef.current = nextLen;
+    if (nextLen <= prevLen || nextLen === 0) return;
+
+    const v = virtualizerRef.current;
+    v.measure();
+    requestAnimationFrame(() => {
+      measureVisibleVirtualRows();
+    });
+
+    if (appendSettleTimerRef.current != null) {
+      window.clearTimeout(appendSettleTimerRef.current);
+    }
+    appendSettleTimerRef.current = window.setTimeout(() => {
+      appendSettleTimerRef.current = null;
+      const now = virtualizerRef.current;
+      now.measure();
+      requestAnimationFrame(() => {
+        measureVisibleVirtualRows();
+      });
+    }, 420);
+  }, [displayArticles.length, measureVisibleVirtualRows]);
+
+  useEffect(() => {
+    return () => {
+      if (appendSettleTimerRef.current != null) {
+        window.clearTimeout(appendSettleTimerRef.current);
+      }
+    };
+  }, []);
+
+  const devLogDebounceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!devVirtLog) return;
+    if (devLogDebounceRef.current != null) window.clearTimeout(devLogDebounceRef.current);
+    devLogDebounceRef.current = window.setTimeout(() => {
+      devLogDebounceRef.current = null;
+      requestAnimationFrame(() => {
+        const items = virtualizer.getVirtualItems();
+        const visibleRows = items.map((v) => {
+          const node = measureParentRef.current?.querySelector(`[data-index="${v.index}"]`);
+          const measured = node?.getBoundingClientRect().height ?? null;
+          return {
+            row: v.index,
+            measured,
+            deltaPx: measured != null ? Math.round(measured - baseEstimate) : null,
+          };
+        });
+        console.debug('[HomeGridVirtualized]', {
+          scrollMarginTop,
+          estimatePerRowPx: baseEstimate,
+          visibleRows,
+        });
+      });
+    }, 500);
+    return () => {
+      if (devLogDebounceRef.current != null) window.clearTimeout(devLogDebounceRef.current);
+    };
+  }, [
+    devVirtLog,
+    virtualizer,
+    rows.length,
+    containerWidth,
+    scrollMarginTop,
+    baseEstimate,
+    displayArticles.length,
+  ]);
 
   return (
     <div ref={measureParentRef} className="mx-auto w-full">
@@ -392,6 +557,9 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
               getSelectCallbackForArticle={getSelectCallbackForArticle}
               getRegisterRefForArticle={getRegisterRefForArticle}
               measureElement={virtualizer.measureElement}
+              devOutlineRows={devOutlineRows}
+              devOutlineCards={devOutlineCards}
+              devClipRowShell={devClipRowShell}
             />
           );
         })}
