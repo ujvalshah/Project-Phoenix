@@ -110,7 +110,8 @@ scripts/validate/output/
 # Local perf collector (npm run perf:collect)
 output/perf-results.json
 output/perf-results.csv
-output/home-feed-append-perf-results.json
+output/home-feed-append-perf-results*.json
+output/forensic/
 
 # Local tool / audit drops (regenerated; do not commit)
 eslint-errors.json
