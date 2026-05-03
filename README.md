@@ -178,6 +178,50 @@ For split deployment (frontend on Vercel, backend elsewhere):
 | `npm run promote-admin` | Promote a user to admin role |
 | `npm run list-users` | List all users in database |
 | `npm run audit` | Run code audit checks |
+| `npm run perf:collect` | Playwright multi-run perf JSON/CSV → `output/` (requires `npm run dev` or `dev:all`; dev perf marks on) |
+| `npm run perf:collect:throttled` | Same as `perf:collect` with optional CPU slowdown (`PERF_COLLECT_CPU_THROTTLE=4`) for sensitivity |
+
+---
+
+## Local performance collection (`output/perf-results.json`)
+
+**Prerequisites:** Vite **development** build (`npm run dev` or `npm run dev:all`). Production bundles set `__NUGGETS_DEV_PERF_MARKS__` to `false`, so no perf marks or `window.__DEV_PERF_RESULTS__` writes run in prod.
+
+**Run:**
+
+```bash
+npm run perf:collect
+# or more runs / custom origin:
+cross-env PERF_COLLECT_RUNS=7 PLAYWRIGHT_WEB_ORIGIN=http://localhost:3000 npm run perf:collect
+```
+
+**Reading `output/perf-results.json`:**
+
+| Field | Meaning |
+|-------|---------|
+| `summary` | Medians/min/max across **all** runs for each metric key (`initial-idle-settled`, `bell-dropdown-first-open`, `nav-drawer-first-open`, `mobile-search-overlay-first-open`, `mobile-filter-sheet-first-open`). |
+| `summaryStableChunk` | Present only when at least one run was **excluded** as cold-cache noise: same shape as `summary`, but **omits** runs where **either** mobile nav **or** mobile search had `meta.ms_trigger_to_chunk` above the threshold (default **2000 ms**, override with `PERF_COLLECT_CHUNK_NOISE_MS`). Use this for steadier “warm chunk” comparisons. Raw data remains in `runs`. |
+| `coldChunkNoise` | When present: `thresholdMs` and `excludedRunIndices` matching the stable summary filter. |
+| `runs[].desktop` / `runs[].mobile` | Per-run metrics; `duration` is trigger→commit for header surfaces. Nav/search may include `meta` (`ms_trigger_to_chunk`, `ms_chunk_to_commit`, `ms_commit_to_interactive`, `ms_trigger_to_interactive`). |
+| `notes` | Collector hints (auth skips, filters applied). |
+
+**Optional environment variables:**
+
+| Variable | Purpose |
+|----------|---------|
+| `PERF_COLLECT_RUNS` | Number of full passes (default 3, max 20). |
+| `PLAYWRIGHT_WEB_ORIGIN` | Dev server URL if not `http://localhost:3000`. |
+| `PERF_COLLECT_CHUNK_NOISE_MS` | Chunk-load cutoff for `summaryStableChunk` (default 2000). Set `999999` to effectively disable filtering. |
+| `PERF_COLLECT_CPU_THROTTLE` | Chromium-only: CDP `Emulation.setCPUThrottlingRate` (e.g. `4` ≈ 4× slowdown). Use `npm run perf:collect:throttled` as a shortcut for `4`. |
+
+**Removing experimental perf instrumentation later**
+
+1. **`src/dev/perfMarks.ts`** — Remove nav/search stage helpers (`navDrawerStageTimes`, `mobileSearchStageTimes`, `mark*ChunkResolved`, `mark*Interactive`, stage `meta` merging in `headerPerfSurfaceReady`), or delete the module if all perf hooks are removed.
+2. **Components** — Remove `perfMarks` imports and calls from `Header.tsx`, `NavigationDrawer.tsx`, `MobileSearchOverlay.tsx`, `HeaderMobileSearchSession.tsx`, `MobileFilterSheet.tsx`, `NotificationBell.tsx`, `NotificationBellDropdown.tsx`; remove chunk callbacks from lazy `import().then`.
+3. **`src/main.tsx`** — Drop `logDevPerfMarksStartup` / idle scheduling if unused.
+4. **`vite.config.ts`** — Remove `__NUGGETS_DEV_PERF_MARKS__` from `define` if no longer referenced (or leave `false` stub).
+5. **`tests/perf/local-perf-collect.spec.ts`** — Delete or narrow if automation is retired.
+6. Re-run `npm run build` and smoke-test header surfaces.
 
 ---
 

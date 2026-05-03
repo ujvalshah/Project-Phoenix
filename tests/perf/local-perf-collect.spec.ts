@@ -1,11 +1,16 @@
 /**
  * Automated local perf collection — reads `window.__DEV_PERF_RESULTS__` from dev builds
- * (`__NUGGETS_DEV_PERF_MARKS__` must be true — default in `vite dev`).
+ * (`__NUGGETS_DEV_PERF_MARKS__` must be true — default in `vite dev`; production builds omit perf writes).
  *
  * Run: npm run perf:collect
  *
  * Multi-run (default 3): set PERF_COLLECT_RUNS (e.g. `cross-env PERF_COLLECT_RUNS=5 npm run perf:collect`).
  * Each run uses fresh browser contexts: desktop (idle + bell + auth) → storageState → mobile (nav, search, filter).
+ *
+ * Optional env:
+ * - PERF_COLLECT_CHUNK_NOISE_MS — exclude runs from `summaryStableChunk` when nav/search `ms_trigger_to_chunk`
+ *   exceeds this (default 2000). Full raw runs remain in `runs`.
+ * - PERF_COLLECT_CPU_THROTTLE — Chromium CDP CPU throttle rate (e.g. `4` ≈ 4× slowdown); unset = none.
  */
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import fs from 'fs';
@@ -79,6 +84,12 @@ type AggregateReport = {
   notes: string[];
   runs: SingleRunReport[];
   summary: Record<string, MetricSummary>;
+  /** Medians excluding runs where nav or search cold-cache chunk load exceeded threshold (see notes). */
+  summaryStableChunk?: Record<string, MetricSummary>;
+  coldChunkNoise?: {
+    thresholdMs: number;
+    excludedRunIndices: number[];
+  };
 };
 
 function ok(duration: number): { duration: number; status: 'ok' } {
@@ -138,6 +149,48 @@ function buildSummary(runs: SingleRunReport[]): Record<string, MetricSummary> {
   }
 
   return summary;
+}
+
+function chunkNoiseThresholdMs(): number {
+  const raw = process.env.PERF_COLLECT_CHUNK_NOISE_MS;
+  const n = raw !== undefined ? Number.parseInt(raw, 10) : 2000;
+  if (!Number.isFinite(n) || n < 1) return 2000;
+  return n;
+}
+
+/** Largest nav/search ms_trigger_to_chunk in meta, if present. */
+function maxChunkTriggerMs(run: SingleRunReport): number | null {
+  const nums: number[] = [];
+  const nav = run.mobile[KEYS.nav];
+  const search = run.mobile[KEYS.search];
+  if (nav?.status === 'ok' && nav.meta && typeof nav.meta.ms_trigger_to_chunk === 'number') {
+    nums.push(nav.meta.ms_trigger_to_chunk);
+  }
+  if (search?.status === 'ok' && search.meta && typeof search.meta.ms_trigger_to_chunk === 'number') {
+    nums.push(search.meta.ms_trigger_to_chunk);
+  }
+  if (nums.length === 0) return null;
+  return Math.max(...nums);
+}
+
+function runExcludedAsColdChunk(run: SingleRunReport, thresholdMs: number): boolean {
+  const max = maxChunkTriggerMs(run);
+  if (max === null) return false;
+  return max > thresholdMs;
+}
+
+/** Chromium CDP — optional CPU slowdown for sensitivity runs (no-op on failure). */
+async function applyCpuThrottleFromEnv(page: Page): Promise<void> {
+  const raw = process.env.PERF_COLLECT_CPU_THROTTLE;
+  if (raw === undefined || raw === '') return;
+  const rate = Number.parseFloat(raw);
+  if (!Number.isFinite(rate) || rate <= 1) return;
+  try {
+    const session = await page.context().newCDPSession(page);
+    await session.send('Emulation.setCPUThrottlingRate', { rate });
+  } catch {
+    // Firefox/WebKit or CDP unavailable
+  }
 }
 
 async function waitForPerfKey(
@@ -209,6 +262,7 @@ async function collectSingleRun(browser: Browser, runIndex: number): Promise<Sin
     viewport: DESKTOP_VIEWPORT,
   });
   const page = await desktopContext.newPage();
+  await applyCpuThrottleFromEnv(page);
   let desktopClosed = false;
 
   try {
@@ -250,13 +304,20 @@ async function collectSingleRun(browser: Browser, runIndex: number): Promise<Sin
       storageState: storage,
     });
     const mp = await mobileContext.newPage();
+    await applyCpuThrottleFromEnv(mp);
 
     try {
       await freshHome(mp);
       await mp.getByRole('button', { name: 'Open Menu' }).click();
-      const nav = await waitForPerfKey(mp, KEYS.nav, 25_000);
+      const nav = await waitForPerfKey(mp, KEYS.nav, 25_000, {
+        requiredMetaKeys: ['ms_trigger_to_interactive'],
+      });
       if (nav) {
-        mobile[KEYS.nav] = ok(nav.duration);
+        mobile[KEYS.nav] = {
+          duration: nav.duration,
+          status: 'ok',
+          ...(nav.meta ? { meta: nav.meta } : {}),
+        };
       } else {
         mobile[KEYS.nav] = missing('not observed within 25s after Open Menu');
       }
@@ -363,6 +424,35 @@ test.describe('local perf collect', () => {
 
     const summary = buildSummary(runs);
 
+    const chunkThreshold = chunkNoiseThresholdMs();
+    const excludedRunIndices: number[] = [];
+    for (const run of runs) {
+      if (runExcludedAsColdChunk(run, chunkThreshold)) {
+        excludedRunIndices.push(run.runIndex);
+      }
+    }
+    const stableRuns = runs.filter((r) => !runExcludedAsColdChunk(r, chunkThreshold));
+    let summaryStableChunk: Record<string, MetricSummary> | undefined;
+    if (excludedRunIndices.length > 0) {
+      if (stableRuns.length > 0) {
+        summaryStableChunk = buildSummary(stableRuns);
+      } else {
+        globalNotes.push(
+          `Cold-cache filter removed all runs from stable summary (threshold ${chunkThreshold} ms). Compare metrics only from raw runs[].`,
+        );
+      }
+      globalNotes.push(
+        `Cold-cache filter: excluded run index(es) ${excludedRunIndices.join(', ')} (nav/search ms_trigger_to_chunk > ${chunkThreshold} ms). summaryStableChunk omits those; runs[] is unchanged.`,
+      );
+    }
+
+    const perfThrottleRaw = process.env.PERF_COLLECT_CPU_THROTTLE;
+    if (perfThrottleRaw !== undefined && perfThrottleRaw !== '') {
+      globalNotes.push(
+        `PERF_COLLECT_CPU_THROTTLE=${perfThrottleRaw} (Chromium CDP Emulation.setCPUThrottlingRate; ignored if CDP unavailable).`,
+      );
+    }
+
     const report: AggregateReport = {
       baseUrl: BASE_URL,
       runCount: runs.length,
@@ -374,6 +464,10 @@ test.describe('local perf collect', () => {
       notes: globalNotes,
       runs,
       summary,
+      ...(summaryStableChunk !== undefined ? { summaryStableChunk } : {}),
+      ...(excludedRunIndices.length > 0
+        ? { coldChunkNoise: { thresholdMs: chunkThreshold, excludedRunIndices } }
+        : {}),
     };
 
     writeOutputs(report);

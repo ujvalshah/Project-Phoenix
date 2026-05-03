@@ -22,6 +22,7 @@ import { getOverlayHost } from '@/utils/overlayHosts';
 import {
   HEADER_PERF_SURFACES,
   headerPerfSurfaceReady,
+  markNavDrawerInteractive,
 } from '@/dev/perfMarks';
 
 export interface NavigationDrawerProps {
@@ -165,14 +166,14 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      let innerRaf = 0;
+      // Single rAF batches mount + visible so the drawer enters one frame earlier than nested rAF
+      // (same CSS transition; less idle time before headerPerfSurfaceReady).
       const outerRaf = requestAnimationFrame(() => {
         setIsMounted(true);
-        innerRaf = requestAnimationFrame(() => setIsVisible(true));
+        setIsVisible(true);
       });
       return () => {
         cancelAnimationFrame(outerRaf);
-        cancelAnimationFrame(innerRaf);
       };
     }
     const rafHide = requestAnimationFrame(() => setIsVisible(false));
@@ -198,6 +199,20 @@ const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
     headerPerfSurfaceReady(HEADER_PERF_SURFACES.NAV_DRAWER, {
       phase: 'mounted-visible-open',
     });
+  }, [drawerVisualOpen]);
+
+  useEffect(() => {
+    if (!drawerVisualOpen) return;
+    let cancelled = false;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        markNavDrawerInteractive();
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [drawerVisualOpen]);
 
   if (!isMounted) return null;

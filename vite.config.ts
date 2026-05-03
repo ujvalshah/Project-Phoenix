@@ -56,7 +56,7 @@ export default defineConfig(({ mode }) => {
       'process.env.REACT_APP_VERSION': JSON.stringify(process.env.npm_package_version),
       /** Strips dev-only dynamic imports (e.g. INP instrumentation) from production bundles. */
       __NUGGETS_DEV_PERF_VITALS__: JSON.stringify(!isProduction),
-      /** Dev-only performance.mark / measure for header surfaces (see src/dev/perfMarks.ts). */
+      /** Dev-only performance.mark / measure — MUST stay false in production builds (perfMarks.ts). */
       __NUGGETS_DEV_PERF_MARKS__: JSON.stringify(!isProduction),
     },
     resolve: {

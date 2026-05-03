@@ -44,11 +44,17 @@ import { normalizeSearchQuery } from '@/utils/searchQuery';
 import {
   HEADER_PERF_SURFACES,
   headerPerfSurfaceTrigger,
+  markNavDrawerChunkResolved,
 } from '@/dev/perfMarks';
 import { prefetchNavigationDrawerChunk } from '@/utils/headerChunkPrefetch';
 
 const LazyMobileFilterSheet = lazy(() => import('./header/MobileFilterSheet'));
-const LazyNavigationDrawer = lazy(() => import('./header/NavigationDrawer'));
+const LazyNavigationDrawer = lazy(() =>
+  import('./header/NavigationDrawer').then((m) => {
+    markNavDrawerChunkResolved();
+    return { default: m.default };
+  }),
+);
 
 /** Yellow “N” tile — matches NavigationDrawer / app favicon treatment */
 const NuggetsLogoMark: React.FC<{ showName?: boolean }> = ({ showName }) => (

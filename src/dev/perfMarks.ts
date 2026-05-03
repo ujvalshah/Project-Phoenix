@@ -1,6 +1,9 @@
 /**
  * Dev-only Performance.mark / measure helpers for header surfaces.
- * Stripped in production via `__NUGGETS_DEV_PERF_MARKS__` (see vite.config.ts).
+ *
+ * Production: `vite.config.ts` sets `__NUGGETS_DEV_PERF_MARKS__` to `false`; `active()` is always false,
+ * so no marks/measures run and `window.__DEV_PERF_RESULTS__` is never written. Remaining code is inert;
+ * minifiers may drop dead branches after constant folding.
  */
 
 declare const __NUGGETS_DEV_PERF_MARKS__: boolean;
@@ -41,16 +44,24 @@ const SURFACE_TO_RESULT_KEY: Record<HeaderPerfSurfaceId, string> = {
 
 function ensureDevPerfResults(): Record<string, DevPerfResultEntry> {
   if (typeof window === 'undefined') return {};
-  const w = window as Window & { __DEV_PERF_RESULTS__?: Record<string, DevPerfResultEntry> };
-  if (!w.__DEV_PERF_RESULTS__) {
-    w.__DEV_PERF_RESULTS__ = {};
+  try {
+    const w = window as Window & { __DEV_PERF_RESULTS__?: Record<string, DevPerfResultEntry> };
+    if (!w.__DEV_PERF_RESULTS__) {
+      w.__DEV_PERF_RESULTS__ = {};
+    }
+    return w.__DEV_PERF_RESULTS__;
+  } catch {
+    return {};
   }
-  return w.__DEV_PERF_RESULTS__;
 }
 
 function storeDevPerfResult(key: string, entry: DevPerfResultEntry): void {
   if (!active() || typeof window === 'undefined') return;
-  ensureDevPerfResults()[key] = entry;
+  try {
+    ensureDevPerfResults()[key] = entry;
+  } catch {
+    // Ignore (e.g. sealed window in exotic environments); dev-only path.
+  }
 }
 
 function active(): boolean {
@@ -84,6 +95,20 @@ let mobileSearchStageTimes:
 /** Session lifetime: first double-rAF “interactive” sample for mobile search. */
 let mobileSearchInteractiveDone = false;
 
+/**
+ * Nav drawer first-open only: same stage model as mobile search (dev-only).
+ */
+let navDrawerStageTimes:
+  | {
+      triggerAt: number;
+      chunkAt?: number;
+      commitAt?: number;
+      interactiveAt?: number;
+    }
+  | undefined;
+
+let navDrawerInteractiveDone = false;
+
 /** First-fire wins for initial-idle-settled (requestIdleCallback vs setTimeout 250). */
 let initialIdleSettledRecorded = false;
 
@@ -95,9 +120,15 @@ function resetMobileSearchStageState(): void {
   mobileSearchStageTimes = undefined;
 }
 
+function resetNavDrawerStageState(): void {
+  navDrawerStageTimes = undefined;
+}
+
 /** DevTools timeline (optional): cleared after interactive to avoid unbounded marks. */
 const MOBILE_SEARCH_MARK_CHUNK = `${PREFIX}:mobile-search-overlay:chunk`;
 const MOBILE_SEARCH_MARK_INTERACTIVE = `${PREFIX}:mobile-search-overlay:interactive`;
+const NAV_DRAWER_MARK_CHUNK = `${PREFIX}:nav-drawer:chunk`;
+const NAV_DRAWER_MARK_INTERACTIVE = `${PREFIX}:nav-drawer:interactive`;
 
 function metaMobileSearchStagesAtCommit(durationMs: number): Record<string, string | number | boolean> {
   const s = mobileSearchStageTimes;
@@ -116,6 +147,82 @@ function metaMobileSearchStagesAtCommit(durationMs: number): Record<string, stri
     meta.ms_trigger_to_chunk_missing = true;
   }
   return meta;
+}
+
+function metaNavDrawerStagesAtCommit(durationMs: number): Record<string, string | number | boolean> {
+  const s = navDrawerStageTimes;
+  const meta: Record<string, string | number | boolean> = {
+    stage_breakdown: 'nav-drawer-v1',
+    ms_trigger_to_commit: durationMs,
+  };
+  if (!s) return meta;
+
+  if (s.chunkAt !== undefined) {
+    meta.ms_trigger_to_chunk = roundMs(s.chunkAt - s.triggerAt);
+    if (s.commitAt !== undefined) {
+      meta.ms_chunk_to_commit = roundMs(s.commitAt - s.chunkAt);
+    }
+  } else {
+    meta.ms_trigger_to_chunk_missing = true;
+  }
+  return meta;
+}
+
+/** Lazy NavigationDrawer `import().then` — chunk evaluated before drawer render. */
+export function markNavDrawerChunkResolved(): void {
+  if (!active()) return;
+  if (firstOpenDone.has('nav-drawer')) return;
+  if (!navDrawerStageTimes) return;
+
+  performance.mark(NAV_DRAWER_MARK_CHUNK);
+  navDrawerStageTimes.chunkAt = performance.now();
+}
+
+/** After first paint following drawer commit (double rAF). */
+export function markNavDrawerInteractive(): void {
+  if (!active()) return;
+  if (navDrawerInteractiveDone) return;
+  if (!firstOpenDone.has('nav-drawer')) return;
+  const s = navDrawerStageTimes;
+  const commitAt = s?.commitAt;
+  const triggerAt = s?.triggerAt;
+  if (commitAt === undefined || triggerAt === undefined) return;
+
+  const key = DEV_PERF_RESULT_KEYS.NAV_DRAWER_FIRST_OPEN;
+  const prev = ensureDevPerfResults()[key];
+  if (!prev || prev.status !== 'ok' || typeof prev.duration !== 'number') {
+    return;
+  }
+
+  navDrawerInteractiveDone = true;
+  performance.mark(NAV_DRAWER_MARK_INTERACTIVE);
+
+  const interactiveAt = performance.now();
+  if (s) s.interactiveAt = interactiveAt;
+
+  const meta: Record<string, string | number | boolean> = {
+    ...(prev.meta ?? {}),
+    ms_commit_to_interactive: roundMs(interactiveAt - commitAt),
+    ms_trigger_to_interactive: roundMs(interactiveAt - triggerAt),
+  };
+
+  storeDevPerfResult(key, { ...prev, meta });
+
+  console.groupCollapsed(
+    `[perf] nav-drawer stages (ms): commit→interactive ${meta.ms_commit_to_interactive} · trigger→interactive ${meta.ms_trigger_to_interactive}`,
+  );
+  console.log({
+    'trigger→chunk': prev.meta?.ms_trigger_to_chunk,
+    'chunk→commit': prev.meta?.ms_chunk_to_commit,
+    'commit→interactive': meta.ms_commit_to_interactive,
+    'trigger→commit (total first-open)': prev.duration,
+  });
+  console.groupEnd();
+
+  performance.clearMarks(NAV_DRAWER_MARK_CHUNK);
+  performance.clearMarks(NAV_DRAWER_MARK_INTERACTIVE);
+
+  resetNavDrawerStageState();
 }
 
 /**
@@ -189,6 +296,9 @@ export function headerPerfSurfaceTrigger(surfaceId: HeaderPerfSurfaceId): void {
   if (surfaceId === 'mobile-search-overlay') {
     mobileSearchStageTimes = { triggerAt: performance.now() };
   }
+  if (surfaceId === 'nav-drawer') {
+    navDrawerStageTimes = { triggerAt: performance.now() };
+  }
   const name = `${PREFIX}:${surfaceId}:trigger`;
   performance.mark(name);
 }
@@ -210,6 +320,10 @@ export function headerPerfSurfaceReady(
     mobileSearchStageTimes.commitAt = performance.now();
   }
 
+  if (surfaceId === 'nav-drawer' && navDrawerStageTimes) {
+    navDrawerStageTimes.commitAt = performance.now();
+  }
+
   const readyName = `${PREFIX}:${surfaceId}:ready`;
   performance.mark(readyName);
 
@@ -221,9 +335,13 @@ export function headerPerfSurfaceReady(
     if (m) {
       const resultKey = SURFACE_TO_RESULT_KEY[surfaceId];
       const msExtra =
-        surfaceId === 'mobile-search-overlay' ? metaMobileSearchStagesAtCommit(Math.round(m.duration)) : {};
-      const mergedMeta =
         surfaceId === 'mobile-search-overlay'
+          ? metaMobileSearchStagesAtCommit(Math.round(m.duration))
+          : surfaceId === 'nav-drawer'
+            ? metaNavDrawerStagesAtCommit(Math.round(m.duration))
+            : {};
+      const mergedMeta =
+        surfaceId === 'mobile-search-overlay' || surfaceId === 'nav-drawer'
           ? { ...(meta ?? {}), ...msExtra }
           : meta && Object.keys(meta).length > 0
             ? meta
