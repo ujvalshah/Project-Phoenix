@@ -5,7 +5,6 @@ import React, {
   useState,
   useMemo,
   useLayoutEffect,
-  useContext,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Article } from '@/types';
@@ -26,7 +25,6 @@ import {
   HOME_GRID_SCROLL_MARGIN_DEBOUNCE_MS,
 } from '@/utils/homeGridVirtualization';
 import { beginFeedCloseAnalysisWindow } from '@/utils/devFeedCloseAnalysis';
-import { DesktopFilterSidebarStateContext } from '@/context/DesktopFilterSidebarContext';
 
 const FEED_APPEND_MARK_START = 'feed-append-start';
 const FEED_APPEND_MARK_END = 'feed-append-end';
@@ -357,32 +355,6 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
       }
     };
   }, [gridColumnCount, scheduleVirtualListScrollMargin, scrollLayoutRootRef]);
-
-  const desktopFilterSidebarState = useContext(DesktopFilterSidebarStateContext);
-  const prevDesktopSidebarCollapsedRef = useRef<boolean | undefined>(undefined);
-
-  useEffect(() => {
-    if (
-      viewMode !== 'grid' ||
-      scrollLayoutRootRef == null ||
-      desktopFilterSidebarState == null
-    ) {
-      return;
-    }
-    const collapsed = desktopFilterSidebarState.sidebarCollapsed;
-    const prev = prevDesktopSidebarCollapsedRef.current;
-    prevDesktopSidebarCollapsedRef.current = collapsed;
-    if (prev === undefined || prev === collapsed) {
-      return;
-    }
-    // Leading remeasure right when toggle state flips.
-    homeGridVirtualApiRef.current?.remeasure();
-    // Trailing remeasure after sidebar/layout settles.
-    const t = window.setTimeout(() => {
-      homeGridVirtualApiRef.current?.remeasure();
-    }, 520);
-    return () => clearTimeout(t);
-  }, [viewMode, scrollLayoutRootRef, desktopFilterSidebarState]);
 
   useEffect(() => {
     if (!isMultiColumnGrid) {
