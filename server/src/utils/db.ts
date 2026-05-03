@@ -6,6 +6,34 @@ const SLOW_QUERY_THRESHOLD_MS = 500; // Log queries slower than 500ms
 let mongooseHooksAttached = false;
 
 /**
+ * `this` in schema query/aggregate timing hooks.
+ * Mongoose sets `model` / `op` at runtime; typings do not expose every internal field.
+ */
+type SlowQueryHookThis = {
+  model?: { collection?: { name?: string } };
+  op?: string | null;
+  _queryStartTime?: number;
+  _queryCollection?: string;
+  _queryOperation?: string;
+};
+
+const SLOW_QUERY_OPS = [
+  'find',
+  'findOne',
+  'findOneAndUpdate',
+  'findOneAndDelete',
+  'count',
+  'countDocuments',
+  'aggregate',
+] as const;
+
+/** Narrow typings accept only a subset of hook names; runtime still registers these string ops. */
+type SchemaWithStringMiddleware = mongoose.Schema & {
+  pre(method: string, fn: (this: SlowQueryHookThis) => void): mongoose.Schema;
+  post(method: string, fn: (this: SlowQueryHookThis) => void): mongoose.Schema;
+};
+
+/**
  * Register Mongoose plugins and connection listeners exactly once after a successful connect.
  * (Previously lived only on the retry-exhaustion path — which never threw, so failed boots
  * could still proceed and surface as 500s on first query.)
@@ -15,27 +43,25 @@ function attachMongooseHooksOnce(): void {
   mongooseHooksAttached = true;
 
   mongoose.plugin((schema: mongoose.Schema) => {
-    schema.pre(
-      ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'count', 'countDocuments', 'aggregate'],
-      function () {
+    const s = schema as SchemaWithStringMiddleware;
+    for (const op of SLOW_QUERY_OPS) {
+      s.pre(op, function (this: SlowQueryHookThis) {
         const startTime = Date.now();
         const collectionName = this.model?.collection?.name || 'unknown';
         const operation = this.op || 'unknown';
-        (this as { _queryStartTime?: number; _queryCollection?: string; _queryOperation?: string })._queryStartTime =
-          startTime;
-        (this as { _queryCollection?: string })._queryCollection = collectionName;
-        (this as { _queryOperation?: string })._queryOperation = operation;
-      },
-    );
+        this._queryStartTime = startTime;
+        this._queryCollection = collectionName;
+        this._queryOperation = operation;
+      });
+    }
 
-    schema.post(
-      ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'count', 'countDocuments', 'aggregate'],
-      function () {
-        const startTime = (this as { _queryStartTime?: number })._queryStartTime;
+    for (const op of SLOW_QUERY_OPS) {
+      s.post(op, function (this: SlowQueryHookThis) {
+        const startTime = this._queryStartTime;
         if (startTime) {
           const duration = Date.now() - startTime;
-          const collectionName = (this as { _queryCollection?: string })._queryCollection || 'unknown';
-          const operation = (this as { _queryOperation?: string })._queryOperation || 'unknown';
+          const collectionName = this._queryCollection || 'unknown';
+          const operation = this._queryOperation || 'unknown';
           if (duration >= SLOW_QUERY_THRESHOLD_MS) {
             const logger = getLogger();
             logger.warn({
@@ -46,8 +72,8 @@ function attachMongooseHooksOnce(): void {
             });
           }
         }
-      },
-    );
+      });
+    }
   });
 
   mongoose.connection.on('error', (err: Error) => {

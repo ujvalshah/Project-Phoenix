@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { LegalPage } from '../models/LegalPage.js';
+import { LegalPage, type ILegalPage } from '../models/LegalPage.js';
 import { updateLegalPageSchema } from '../utils/validation.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
@@ -8,8 +8,24 @@ import { buildApiCacheKey, getOrSetCachedJson, invalidateApiResponseCachePrefix 
 const LEGAL_PAGES_CACHE_NAMESPACE = 'legal:pages:v1';
 const LEGAL_PAGES_CACHE_TTL_SECONDS = 120;
 
+/** Fields returned for metadata-only legal endpoints (matches lean admin/list payloads). */
+type LegalPageMeta = Pick<
+  ILegalPage,
+  | 'slug'
+  | 'title'
+  | 'enabled'
+  | 'noindex'
+  | 'lastUpdated'
+  | 'effectiveDate'
+  | 'showInFooter'
+  | 'description'
+  | 'order'
+>;
+
+type RequestWithOptionalUserId = Request & { userId?: string };
+
 /** Normalize a LegalPage document to a clean JSON shape (without content) */
-function normalizePage(page: Record<string, unknown>) {
+function normalizePage(page: LegalPageMeta) {
   return {
     slug: page.slug,
     title: page.title,
@@ -116,7 +132,7 @@ export const updateLegalPage = async (req: Request, res: Response) => {
     if (!validationResult.success) {
       return res.status(400).json({
         message: 'Validation failed',
-        errors: validationResult.error.errors,
+        errors: validationResult.error.issues,
       });
     }
 
@@ -139,7 +155,7 @@ export const updateLegalPage = async (req: Request, res: Response) => {
     const err = error instanceof Error ? error : new Error(String(error));
     const requestLogger = createRequestLogger(
       req.id || 'unknown',
-      (req as Record<string, unknown>).userId as string | undefined,
+      (req as RequestWithOptionalUserId).userId,
       req.path
     );
     requestLogger.error({

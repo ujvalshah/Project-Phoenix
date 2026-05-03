@@ -4,6 +4,7 @@
  * Global test configuration and mocks
  */
 
+import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 import { mountOverlayHostStack } from '@/utils/overlayHosts';
 
@@ -26,15 +27,6 @@ if (typeof document !== 'undefined') {
     }
   }
   mountOverlayHostStack();
-}
-
-// Only import jest-dom if in jsdom environment
-try {
-  if (typeof window !== 'undefined') {
-    await import('@testing-library/jest-dom');
-  }
-} catch {
-  // Ignore if @testing-library/jest-dom is not available or in node environment
 }
 
 // Mock window.matchMedia (used by some UI libraries) - only if window exists

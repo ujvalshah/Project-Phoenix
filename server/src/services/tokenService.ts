@@ -974,7 +974,7 @@ export async function getUserSessions(userId: string): Promise<Omit<RefreshToken
     const sessions: Omit<RefreshTokenData, 'tokenHash'>[] = [];
 
     // OPTIMIZATION: Batch get operations if pipeline available
-    if (client.pipeline && sessionHashes.length > 0) {
+    if (hasPipeline(client) && sessionHashes.length > 0) {
       const pipeline = client.pipeline();
       for (const hash of sessionHashes) {
         pipeline.get(`${PREFIX.REFRESH}${userId}:${hash}`);
@@ -1051,7 +1051,7 @@ export async function recordFailedLogin(email: string): Promise<LockoutStatus> {
         };
       }
       // Lock expired, clear it (batch operation)
-      if (client.pipeline) {
+      if (hasPipeline(client)) {
         const pipeline = client.pipeline();
         pipeline.del(lockTimeKey);
         pipeline.del(lockKey);
