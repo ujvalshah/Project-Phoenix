@@ -184,7 +184,6 @@ const AppContent: React.FC = () => {
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-color-scheme: dark)').matches,
   );
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('grid');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -258,11 +257,14 @@ const AppContent: React.FC = () => {
       <FilterResultsProvider>
       <AppChromeScrollProvider>
       <Suspense fallback={<HeaderSuspenseFallback />}>
+        {/*
+          Perf guardrail: keep drawer open/close state local to Header.
+          Lifting it into AppContent previously caused app-wide commits on
+          burger/cross clicks and regressed sidebar interaction latency.
+        */}
         <HeaderLazy
           isDark={isDark}
           toggleTheme={toggleTheme}
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
           viewMode={viewMode}
           setViewMode={setViewMode}
           onCreateNugget={onCreateNugget}

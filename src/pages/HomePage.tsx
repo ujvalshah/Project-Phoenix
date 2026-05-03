@@ -36,7 +36,7 @@ import { PageStack } from '@/components/layouts/PageStack';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { DesktopFilterSidebar } from '@/components/header/DesktopFilterSidebar';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
+import { useDesktopFilterSidebarActions } from '@/context/DesktopFilterSidebarContext';
 import { CategoryToolbar, type ActiveFilterChip } from '@/components/CategoryToolbar';
 import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -157,7 +157,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const { setResultCount } = useFilterResults();
   const isLg = useMediaQuery('(min-width: 1024px)');
   const isSmallViewport = useMediaQuery('(max-width: 640px)');
-  const { setInlineDesktopFiltersActive } = useDesktopFilterSidebar();
+  const { setInlineDesktopFiltersActive } = useDesktopFilterSidebarActions();
 
   const { currentUserId, isAuthenticated } = useAuthSelector(
     (a) => ({

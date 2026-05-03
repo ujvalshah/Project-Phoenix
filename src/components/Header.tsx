@@ -21,7 +21,10 @@ import { Link, useLocation } from 'react-router-dom';
 import { Avatar } from './shared/Avatar';
 import { FilterPopover } from './header/FilterPopover';
 import { useFilterPanelHandlers } from '@/hooks/useFilterPanelHandlers';
-import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
+import {
+  useDesktopFilterSidebarActions,
+  useDesktopFilterSidebarState,
+} from '@/context/DesktopFilterSidebarContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useToast } from '@/hooks/useToast';
 import { Loader2 } from 'lucide-react';
@@ -76,8 +79,6 @@ const NuggetsLogoMark: React.FC<{ showName?: boolean }> = ({ showName }) => (
 interface HeaderProps {
   isDark: boolean;
   toggleTheme: () => void;
-  sidebarOpen: boolean;
-  setSidebarOpen: (o: boolean) => void;
   viewMode: 'grid' | 'masonry';
   setViewMode: (mode: 'grid' | 'masonry') => void;
   onCreateNugget: () => void;
@@ -107,13 +108,14 @@ const UserMenuLegalLinks: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
 const HeaderComponent: React.FC<HeaderProps> = ({
   onCreateNugget,
-  sidebarOpen,
-  setSidebarOpen,
   viewMode,
   setViewMode,
   isDark,
   toggleTheme,
 }) => {
+  // Perf guardrail: keep navigation drawer state local to Header so
+  // burger/cross clicks do not invalidate AppContent + feed subtree.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   // Consume filter state from context — no prop drilling required
   const filters = useFilterSelector(
     (s) => ({
@@ -161,9 +163,12 @@ const HeaderComponent: React.FC<HeaderProps> = ({
   const {
     isInlineDesktopFiltersActive,
     sidebarCollapsed,
+  } = useDesktopFilterSidebarState();
+
+  const {
     setSidebarCollapsed,
     toggleSidebarCollapsed,
-  } = useDesktopFilterSidebar();
+  } = useDesktopFilterSidebarActions();
 
   
   // Dropdown anchor refs - DropdownPortal handles positioning

@@ -1,7 +1,10 @@
 import React from 'react';
 import { Filter } from 'lucide-react';
 import { useFilterResults } from '@/context/FilterResultsContext';
-import { useDesktopFilterSidebar } from '@/context/DesktopFilterSidebarContext';
+import {
+  useDesktopFilterSidebarActions,
+  useDesktopFilterSidebarState,
+} from '@/context/DesktopFilterSidebarContext';
 import { useFilterPanelHandlers } from '@/hooks/useFilterPanelHandlers';
 import { shallowEqual, useFilterSelector } from '@/context/FilterStateContext';
 import { FilterPanel } from './FilterPanel';
@@ -13,7 +16,8 @@ import { FilterPanel } from './FilterPanel';
 export const DesktopFilterSidebar: React.FC = () => {
   const { filterState, handleFilterChange, handleFilterClear } = useFilterPanelHandlers();
   const { resultCount } = useFilterResults();
-  const { sidebarCollapsed, toggleSidebarCollapsed, setSidebarCollapsed } = useDesktopFilterSidebar();
+  const { sidebarCollapsed } = useDesktopFilterSidebarState();
+  const { toggleSidebarCollapsed, setSidebarCollapsed } = useDesktopFilterSidebarActions();
   const { hasActiveFilters, activeFilterCount } = useFilterSelector(
     (s) => ({
       hasActiveFilters: s.hasActiveFilters,
@@ -32,12 +36,7 @@ export const DesktopFilterSidebar: React.FC = () => {
   return (
     <aside
       data-state={state}
-      style={{
-        transitionProperty: 'width',
-        transitionDuration: `${SIDEBAR_MS}ms`,
-        transitionTimingFunction: SIDEBAR_EASE,
-      }}
-      className="sticky top-16 z-0 hidden h-[calc(100vh-4rem)] min-h-0 shrink-0 flex-col self-start overflow-hidden border-r border-slate-200/80 bg-white will-change-[width] motion-reduce:transition-none data-[state=collapsed]:w-[52px] data-[state=expanded]:w-64 dark:border-slate-800 dark:bg-slate-950 lg:flex xl:data-[state=expanded]:w-72"
+      className="sticky top-16 z-0 hidden h-[calc(100vh-4rem)] min-h-0 shrink-0 flex-col self-start overflow-hidden border-r border-slate-200/80 bg-white data-[state=collapsed]:w-[52px] data-[state=expanded]:w-64 dark:border-slate-800 dark:bg-slate-950 lg:flex xl:data-[state=expanded]:w-72"
       aria-label={sidebarCollapsed ? 'Filters collapsed' : 'Filters'}
     >
       {/* Collapsed rail — always mounted; opacity cross-fades with the panel.
@@ -76,11 +75,11 @@ export const DesktopFilterSidebar: React.FC = () => {
         id="desktop-filter-panel"
         data-state={state}
         style={{
-          transitionProperty: 'opacity',
+          transitionProperty: 'transform, opacity',
           transitionDuration: `${SIDEBAR_MS}ms`,
           transitionTimingFunction: SIDEBAR_EASE,
         }}
-        className="flex h-full w-64 min-h-0 shrink-0 flex-col overflow-hidden will-change-[opacity] motion-reduce:transition-none data-[state=collapsed]:pointer-events-none data-[state=collapsed]:opacity-0 data-[state=expanded]:pointer-events-auto data-[state=expanded]:opacity-100 xl:w-72"
+        className="flex h-full w-64 min-h-0 shrink-0 flex-col overflow-hidden will-change-[transform,opacity] motion-reduce:transition-none data-[state=collapsed]:pointer-events-none data-[state=collapsed]:opacity-0 data-[state=collapsed]:-translate-x-3 data-[state=expanded]:pointer-events-auto data-[state=expanded]:translate-x-0 data-[state=expanded]:opacity-100 xl:w-72"
         aria-hidden={sidebarCollapsed}
       >
         <FilterPanel

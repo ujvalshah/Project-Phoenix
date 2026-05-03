@@ -18,6 +18,10 @@ import {
 } from '@/utils/homeGridVirtualization';
 import { beginFeedCloseAnalysisWindow } from '@/utils/devFeedCloseAnalysis';
 
+const FEED_APPEND_MARK_START = 'feed-append-start';
+const FEED_APPEND_MARK_END = 'feed-append-end';
+const FEED_APPEND_MEASURE_DURATION = 'feed-append-duration';
+
 export interface HomeArticleFeedProps {
   articles: Article[];
   viewMode: 'grid' | 'masonry';
@@ -40,7 +44,7 @@ export interface HomeArticleFeedProps {
   onTagClick?: (tag: string) => void;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
-  onLoadMore?: () => void;
+  onLoadMore?: () => void | Promise<unknown>;
   error?: Error | null;
   onRetry?: () => void;
   searchHighlightQuery?: string;
@@ -165,35 +169,107 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
   const onArticleClickRef = useRef(onArticleClick);
 
   const prepareCacheRef = useRef<Map<string, { source: Article; prepared: Article }>>(new Map());
+  const prevArticlesRef = useRef<Article[]>([]);
+  const prevDisplayArticlesRef = useRef<Article[]>([]);
+  const articleByIdRef = useRef<Map<string, Article>>(new Map());
+  const articleIndexByIdRef = useRef<Map<string, number>>(new Map());
   const displayArticles = useMemo(() => {
+    const prevArticles = prevArticlesRef.current;
+    const prevDisplay = prevDisplayArticlesRef.current;
     const prevCache = prepareCacheRef.current;
-    const nextCache = new Map<string, { source: Article; prepared: Article }>();
-    const out: Article[] = [];
-    for (const a of articles) {
-      if (!a || typeof a.id !== 'string') {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('[HomeArticleFeed] Skipping invalid article:', a);
+
+    const canIncrementallyAppend =
+      prevArticles.length > 0 &&
+      articles.length >= prevArticles.length &&
+      prevArticles.every((prevArticle, idx) => prevArticle === articles[idx]);
+
+    if (canIncrementallyAppend) {
+      const nextDisplay = prevDisplay.slice();
+      const nextCache = new Map(prevCache);
+      const nextById = new Map(articleByIdRef.current);
+      const nextIndexById = new Map(articleIndexByIdRef.current);
+
+      for (let i = prevArticles.length; i < articles.length; i += 1) {
+        const article = articles[i];
+        if (!article || typeof article.id !== 'string') {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[HomeArticleFeed] Skipping invalid article:', article);
+          }
+          continue;
         }
-        continue;
-      }
-      const cached = prevCache.get(a.id);
-      if (cached && cached.source === a) {
-        nextCache.set(a.id, cached);
-        out.push(cached.prepared);
-        continue;
-      }
-      const p = prepareArticleForNewsCard(a);
-      if (!p) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('[HomeArticleFeed] Skipping invalid article:', a);
+
+        const cached = nextCache.get(article.id);
+        if (cached && cached.source === article) {
+          nextDisplay.push(cached.prepared);
+          nextById.set(cached.prepared.id, cached.prepared);
+          nextIndexById.set(cached.prepared.id, nextDisplay.length - 1);
+          continue;
         }
-        continue;
+
+        const prepared = prepareArticleForNewsCard(article);
+        if (!prepared) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[HomeArticleFeed] Skipping invalid article:', article);
+          }
+          continue;
+        }
+
+        nextCache.set(article.id, { source: article, prepared });
+        nextDisplay.push(prepared);
+        nextById.set(prepared.id, prepared);
+        nextIndexById.set(prepared.id, nextDisplay.length - 1);
       }
-      nextCache.set(a.id, { source: a, prepared: p });
-      out.push(p);
+
+      prepareCacheRef.current = nextCache;
+      prevArticlesRef.current = articles;
+      prevDisplayArticlesRef.current = nextDisplay;
+      articleByIdRef.current = nextById;
+      articleIndexByIdRef.current = nextIndexById;
+      return nextDisplay;
     }
+
+    const nextCache = new Map<string, { source: Article; prepared: Article }>();
+    const nextDisplay: Article[] = [];
+    const nextById = new Map<string, Article>();
+    const nextIndexById = new Map<string, number>();
+
+    for (const article of articles) {
+      if (!article || typeof article.id !== 'string') {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[HomeArticleFeed] Skipping invalid article:', article);
+        }
+        continue;
+      }
+
+      const cached = prevCache.get(article.id);
+      if (cached && cached.source === article) {
+        nextCache.set(article.id, cached);
+        nextDisplay.push(cached.prepared);
+        nextById.set(cached.prepared.id, cached.prepared);
+        nextIndexById.set(cached.prepared.id, nextDisplay.length - 1);
+        continue;
+      }
+
+      const prepared = prepareArticleForNewsCard(article);
+      if (!prepared) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[HomeArticleFeed] Skipping invalid article:', article);
+        }
+        continue;
+      }
+
+      nextCache.set(article.id, { source: article, prepared });
+      nextDisplay.push(prepared);
+      nextById.set(prepared.id, prepared);
+      nextIndexById.set(prepared.id, nextDisplay.length - 1);
+    }
+
     prepareCacheRef.current = nextCache;
-    return out;
+    prevArticlesRef.current = articles;
+    prevDisplayArticlesRef.current = nextDisplay;
+    articleByIdRef.current = nextById;
+    articleIndexByIdRef.current = nextIndexById;
+    return nextDisplay;
   }, [articles]);
 
   const displayArticlesRef = useRef<Article[]>(displayArticles);
@@ -223,7 +299,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
       window.removeEventListener('resize', compute);
       window.removeEventListener('load', compute);
     };
-  }, [displayArticles.length, gridColumnCount]);
+  }, [gridColumnCount]);
 
   useEffect(() => {
     if (!isMultiColumnGrid) {
@@ -267,7 +343,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
     }
 
     if (expandedIdFromUrl) {
-      const article = displayArticles.find((a) => a.id === expandedIdFromUrl);
+      const article = articleByIdRef.current.get(expandedIdFromUrl);
       if (article) {
         if (expandedArticleId !== expandedIdFromUrl || !drawerOpen) {
           isUpdatingFromUrlRef.current = true;
@@ -294,7 +370,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
         setExpandedArticleId(null);
       }
     }
-  }, [expandedIdFromUrl, displayArticles, isMultiColumnGrid]);
+  }, [expandedIdFromUrl, displayArticles.length, isMultiColumnGrid, drawerOpen, expandedArticleId]);
 
   useEffect(() => {
     if (!isMultiColumnGrid) return;
@@ -304,7 +380,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
       const expandedId = params.get('expanded');
 
       if (expandedId) {
-        const article = displayArticles.find((a) => a.id === expandedId);
+        const article = articleByIdRef.current.get(expandedId);
         if (article) {
           setExpandedArticleId(expandedId);
           setDrawerOpen(true);
@@ -320,14 +396,14 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [displayArticles, isMultiColumnGrid]);
+  }, [isMultiColumnGrid]);
 
   const expandedArticle = expandedArticleId
-    ? (displayArticles.find((a) => a.id === expandedArticleId) ?? null)
+    ? (articleByIdRef.current.get(expandedArticleId) ?? null)
     : null;
 
   const currentIndex = expandedArticleId
-    ? displayArticles.findIndex((a) => a.id === expandedArticleId)
+    ? (articleIndexByIdRef.current.get(expandedArticleId) ?? -1)
     : -1;
   const canNavigatePrev = currentIndex > 0;
   const canNavigateNext = currentIndex >= 0 && currentIndex < displayArticles.length - 1;
@@ -359,11 +435,50 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
     void import('@/components/ArticleDetail');
   }, [isMultiColumnGrid, displayArticles.length]);
 
+  const isLoadMoreLockedRef = useRef(false);
+  const appendPerfPendingRef = useRef(false);
+  const appendPerfStartCountRef = useRef(0);
   const handleLoadMore = useCallback(() => {
-    if (!isFetchingNextPage && hasNextPage && onLoadMore) {
-      onLoadMore();
+    if (isLoadMoreLockedRef.current || isFetchingNextPage || !hasNextPage || !onLoadMore) return;
+    isLoadMoreLockedRef.current = true;
+    if (__NUGGETS_DEV_PERF_MARKS__) {
+      appendPerfPendingRef.current = true;
+      appendPerfStartCountRef.current = displayArticlesRef.current.length;
+      performance.mark(FEED_APPEND_MARK_START);
     }
+    void Promise.resolve()
+      .then(() => onLoadMore())
+      .finally(() => {
+        isLoadMoreLockedRef.current = false;
+      });
   }, [isFetchingNextPage, hasNextPage, onLoadMore]);
+
+  useEffect(() => {
+    if (!__NUGGETS_DEV_PERF_MARKS__) return;
+    if (!appendPerfPendingRef.current) return;
+    if (isFetchingNextPage) return;
+
+    appendPerfPendingRef.current = false;
+    const appendedCount = displayArticles.length - appendPerfStartCountRef.current;
+    if (appendedCount <= 0) {
+      performance.clearMarks(FEED_APPEND_MARK_START);
+      return;
+    }
+
+    performance.mark(FEED_APPEND_MARK_END);
+    try {
+      performance.measure(
+        FEED_APPEND_MEASURE_DURATION,
+        FEED_APPEND_MARK_START,
+        FEED_APPEND_MARK_END,
+      );
+    } catch {
+      // mark/measure best-effort for local perf harness
+    } finally {
+      performance.clearMarks(FEED_APPEND_MARK_START);
+      performance.clearMarks(FEED_APPEND_MARK_END);
+    }
+  }, [isFetchingNextPage, displayArticles.length]);
 
   const handleCardClick = useCallback(
     (article: Article) => {

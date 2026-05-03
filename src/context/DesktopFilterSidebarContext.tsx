@@ -1,17 +1,21 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { LAYOUT } from '@/constants/layout';
 
-interface DesktopFilterSidebarContextValue {
+interface DesktopFilterSidebarStateValue {
   /** Home feed at lg+ — header filter control toggles sidebar instead of a dropdown */
   isInlineDesktopFiltersActive: boolean;
-  setInlineDesktopFiltersActive: (v: boolean) => void;
   sidebarCollapsed: boolean;
+}
+
+interface DesktopFilterSidebarActionsValue {
+  setInlineDesktopFiltersActive: (v: boolean) => void;
   setSidebarCollapsed: (v: boolean) => void;
   toggleSidebarCollapsed: () => void;
   expandSidebar: () => void;
 }
 
-const DesktopFilterSidebarContext = createContext<DesktopFilterSidebarContextValue | null>(null);
+const DesktopFilterSidebarStateContext = createContext<DesktopFilterSidebarStateValue | null>(null);
+const DesktopFilterSidebarActionsContext = createContext<DesktopFilterSidebarActionsValue | null>(null);
 
 export const DesktopFilterSidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isInlineDesktopFiltersActive, setIsInlineDesktopFiltersActive] = useState(false);
@@ -52,32 +56,60 @@ export const DesktopFilterSidebarProvider: React.FC<{ children: React.ReactNode 
     setSidebarCollapsedState(false);
   }, []);
 
-  const value = useMemo(
+  const stateValue = useMemo(
     () => ({
       isInlineDesktopFiltersActive,
-      setInlineDesktopFiltersActive,
       sidebarCollapsed,
+    }),
+    [
+      isInlineDesktopFiltersActive,
+      sidebarCollapsed,
+    ],
+  );
+
+  const actionsValue = useMemo(
+    () => ({
+      setInlineDesktopFiltersActive,
       setSidebarCollapsed,
       toggleSidebarCollapsed,
       expandSidebar,
     }),
     [
-      isInlineDesktopFiltersActive,
       setInlineDesktopFiltersActive,
-      sidebarCollapsed,
       setSidebarCollapsed,
       toggleSidebarCollapsed,
       expandSidebar,
     ],
   );
 
-  return <DesktopFilterSidebarContext.Provider value={value}>{children}</DesktopFilterSidebarContext.Provider>;
+  return (
+    <DesktopFilterSidebarActionsContext.Provider value={actionsValue}>
+      <DesktopFilterSidebarStateContext.Provider value={stateValue}>
+        {children}
+      </DesktopFilterSidebarStateContext.Provider>
+    </DesktopFilterSidebarActionsContext.Provider>
+  );
 };
 
-export function useDesktopFilterSidebar(): DesktopFilterSidebarContextValue {
-  const ctx = useContext(DesktopFilterSidebarContext);
-  if (!ctx) {
-    throw new Error('useDesktopFilterSidebar must be used within DesktopFilterSidebarProvider');
+export function useDesktopFilterSidebarState(): DesktopFilterSidebarStateValue {
+  const stateCtx = useContext(DesktopFilterSidebarStateContext);
+  if (!stateCtx) {
+    throw new Error('useDesktopFilterSidebarState must be used within DesktopFilterSidebarProvider');
   }
-  return ctx;
+  return stateCtx;
+}
+
+export function useDesktopFilterSidebarActions(): DesktopFilterSidebarActionsValue {
+  const actionsCtx = useContext(DesktopFilterSidebarActionsContext);
+  if (!actionsCtx) {
+    throw new Error('useDesktopFilterSidebarActions must be used within DesktopFilterSidebarProvider');
+  }
+  return actionsCtx;
+}
+
+export function useDesktopFilterSidebar(): DesktopFilterSidebarStateValue & DesktopFilterSidebarActionsValue {
+  return {
+    ...useDesktopFilterSidebarState(),
+    ...useDesktopFilterSidebarActions(),
+  };
 }

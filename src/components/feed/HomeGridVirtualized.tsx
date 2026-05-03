@@ -18,6 +18,163 @@ export type HomeGridVirtualizedApi = {
   scrollToFlatArticleIndex: (flatIndex: number) => void;
 };
 
+interface VirtualizedRowProps {
+  rowIndex: number;
+  rowStart: number;
+  rowsLength: number;
+  scrollMarginTop: number;
+  columnCount: number;
+  rowGap: number;
+  rowArticles: Article[];
+  shouldAnimate: boolean;
+  staggerCapIndex: number;
+  priorityThumbnailCount: number;
+  selectionMode: boolean;
+  selectedIdSet: ReadonlySet<string>;
+  disableInlineExpansion: boolean;
+  searchHighlightQuery?: string;
+  currentUserId?: string;
+  onCategoryClick: (category: string) => void;
+  onCardClick: (article: Article) => void;
+  onTagClick?: (tag: string) => void;
+  getSelectCallbackForArticle: (id: string) => (() => void) | undefined;
+  getRegisterRefForArticle: (id: string) => (el: HTMLDivElement | null) => void;
+  measureElement: (el: HTMLElement | null) => void;
+}
+
+const VirtualizedRow = React.memo(function VirtualizedRow({
+  rowIndex,
+  rowStart,
+  rowsLength,
+  scrollMarginTop,
+  columnCount,
+  rowGap,
+  rowArticles,
+  shouldAnimate,
+  staggerCapIndex,
+  priorityThumbnailCount,
+  selectionMode,
+  selectedIdSet,
+  disableInlineExpansion,
+  searchHighlightQuery,
+  currentUserId,
+  onCategoryClick,
+  onCardClick,
+  onTagClick,
+  getSelectCallbackForArticle,
+  getRegisterRefForArticle,
+  measureElement,
+}: VirtualizedRowProps) {
+  return (
+    <div
+      data-index={rowIndex}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        // With window virtualizer + scrollMargin, starts are document-based.
+        // Convert to container-local coordinates by subtracting scrollMargin.
+        transform: `translateY(${rowStart - scrollMarginTop}px)`,
+      }}
+      ref={measureElement}
+    >
+      <div
+        className="grid w-full auto-rows-auto items-stretch"
+        style={{
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+          columnGap: rowGap,
+          // Preserve row spacing between virtualized bands without doubling grid row-gap math.
+          paddingBottom: rowIndex < rowsLength - 1 ? rowGap : 0,
+        }}
+      >
+        {rowArticles.map((article, colInRow) => {
+          const flatIndex = rowIndex * columnCount + colInRow;
+          const isPriorityTile = flatIndex < priorityThumbnailCount;
+          // Only animate within the first-screen stagger window. Virtualized rows
+          // remount when they re-enter overscan, so applying the fade class past
+          // the cap re-fires on every scroll-back.
+          const animateThisRow =
+            shouldAnimate &&
+            !isPriorityTile &&
+            flatIndex <= staggerCapIndex;
+          const delay = animateThisRow ? Math.min(flatIndex * 50, 750) : 0;
+          return (
+            <ErrorBoundary
+              key={article.id}
+              fallback={
+                <CardError
+                  error={new Error('Failed to render card')}
+                  variant="grid"
+                />
+              }
+            >
+              <div
+                className={`
+                  h-full flex
+                  ${animateThisRow ? 'animate-fade-in-up' : ''}
+                  motion-reduce:animate-none motion-reduce:opacity-100
+                `}
+                style={{
+                  animationDelay: animateThisRow ? `${delay}ms` : '0ms',
+                }}
+              >
+                <NewsCard
+                  ref={getRegisterRefForArticle(article.id)}
+                  article={article}
+                  skipArticlePrepare
+                  viewMode="grid"
+                  onCategoryClick={onCategoryClick}
+                  onClick={onCardClick}
+                  currentUserId={currentUserId}
+                  onTagClick={onTagClick}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIdSet.has(article.id)}
+                  onSelect={getSelectCallbackForArticle(article.id)}
+                  disableInlineExpansion={disableInlineExpansion}
+                  searchHighlightQuery={searchHighlightQuery}
+                  priorityThumbnail={isPriorityTile}
+                />
+              </div>
+            </ErrorBoundary>
+          );
+        })}
+      </div>
+    </div>
+  );
+}, (prev, next) => {
+  if (prev.rowArticles !== next.rowArticles) return false;
+  if (prev.rowIndex !== next.rowIndex) return false;
+  if (prev.rowStart !== next.rowStart) return false;
+  if (prev.rowsLength !== next.rowsLength) return false;
+  if (prev.scrollMarginTop !== next.scrollMarginTop) return false;
+  if (prev.columnCount !== next.columnCount) return false;
+  if (prev.rowGap !== next.rowGap) return false;
+  if (prev.shouldAnimate !== next.shouldAnimate) return false;
+  if (prev.staggerCapIndex !== next.staggerCapIndex) return false;
+  if (prev.priorityThumbnailCount !== next.priorityThumbnailCount) return false;
+  if (prev.selectionMode !== next.selectionMode) return false;
+  if (prev.disableInlineExpansion !== next.disableInlineExpansion) return false;
+  if (prev.searchHighlightQuery !== next.searchHighlightQuery) return false;
+  if (prev.currentUserId !== next.currentUserId) return false;
+  if (prev.onCategoryClick !== next.onCategoryClick) return false;
+  if (prev.onCardClick !== next.onCardClick) return false;
+  if (prev.onTagClick !== next.onTagClick) return false;
+  if (prev.getSelectCallbackForArticle !== next.getSelectCallbackForArticle) return false;
+  if (prev.getRegisterRefForArticle !== next.getRegisterRefForArticle) return false;
+  if (prev.measureElement !== next.measureElement) return false;
+
+  if (prev.selectedIdSet !== next.selectedIdSet) {
+    for (const article of prev.rowArticles) {
+      if (prev.selectedIdSet.has(article.id) !== next.selectedIdSet.has(article.id)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+});
+
 interface HomeGridVirtualizedProps {
   displayArticles: Article[];
   columnCount: number;
@@ -66,6 +223,9 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
 }) => {
   const measureParentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
+  const prevDisplayArticlesRef = useRef<Article[]>([]);
+  const prevRowsRef = useRef<Article[][]>([]);
+  const prevColumnCountRef = useRef(columnCount);
 
   /** Stable per-row ref callbacks avoid ref churn when the parent virtualizer re-renders. */
   const registerRefByIdRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
@@ -113,12 +273,47 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  const rows = useMemo(
-    () => chunkIntoGridRows(displayArticles, columnCount),
-    [displayArticles, columnCount],
-  );
+  const rows = useMemo(() => {
+    const prevArticles = prevDisplayArticlesRef.current;
+    const prevRows = prevRowsRef.current;
+    const canIncrementallyAppend =
+      prevColumnCountRef.current === columnCount &&
+      prevArticles.length > 0 &&
+      displayArticles.length >= prevArticles.length &&
+      prevArticles.every((prevArticle, idx) => prevArticle === displayArticles[idx]);
+
+    if (canIncrementallyAppend) {
+      const nextRows = prevRows.slice();
+      let workingLastRow = nextRows.length > 0 ? [...nextRows[nextRows.length - 1]] : [];
+      if (nextRows.length > 0) {
+        nextRows[nextRows.length - 1] = workingLastRow;
+      }
+
+      for (let i = prevArticles.length; i < displayArticles.length; i += 1) {
+        const article = displayArticles[i];
+        if (workingLastRow.length < columnCount) {
+          workingLastRow.push(article);
+        } else {
+          workingLastRow = [article];
+          nextRows.push(workingLastRow);
+        }
+      }
+
+      prevDisplayArticlesRef.current = displayArticles;
+      prevRowsRef.current = nextRows;
+      prevColumnCountRef.current = columnCount;
+      return nextRows;
+    }
+
+    const rebuiltRows = chunkIntoGridRows(displayArticles, columnCount);
+    prevDisplayArticlesRef.current = displayArticles;
+    prevRowsRef.current = rebuiltRows;
+    prevColumnCountRef.current = columnCount;
+    return rebuiltRows;
+  }, [displayArticles, columnCount]);
 
   const rowGap = gridRowGapPx();
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const priorityThumbnailCount = useMemo(
     () => getPriorityThumbnailCount(columnCount),
     [columnCount],
@@ -159,7 +354,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     if (import.meta.env.DEV) {
       recordMeasureEffect();
     }
-  }, [virtualizer, baseEstimate, rows.length]);
+  }, [virtualizer, baseEstimate]);
 
   return (
     <div ref={measureParentRef} className="mx-auto w-full">
@@ -174,82 +369,30 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
           const rowArticles = rows[virtualRow.index];
           if (!rowArticles?.length) return null;
           return (
-            <div
+            <VirtualizedRow
               key={virtualRow.key}
-              data-index={virtualRow.index}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                // With window virtualizer + scrollMargin, starts are document-based.
-                // Convert to container-local coordinates by subtracting scrollMargin.
-                transform: `translateY(${virtualRow.start - scrollMarginTop}px)`,
-              }}
-              ref={virtualizer.measureElement}
-            >
-              <div
-                className="grid w-full auto-rows-auto items-stretch"
-                style={{
-                  gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
-                  columnGap: rowGap,
-                  // Preserve row spacing between virtualized bands without doubling grid row-gap math.
-                  paddingBottom: virtualRow.index < rows.length - 1 ? rowGap : 0,
-                }}
-              >
-                {rowArticles.map((article, colInRow) => {
-                  const flatIndex = virtualRow.index * columnCount + colInRow;
-                  const isPriorityTile = flatIndex < priorityThumbnailCount;
-                  // Only animate within the first-screen stagger window. Virtualized rows
-                  // remount when they re-enter overscan, so applying the fade class past
-                  // the cap re-fires on every scroll-back.
-                  const animateThisRow =
-                    shouldAnimate &&
-                    !isPriorityTile &&
-                    flatIndex <= staggerCapIndex;
-                  const delay = animateThisRow ? Math.min(flatIndex * 50, 750) : 0;
-                  return (
-                    <ErrorBoundary
-                      key={article.id}
-                      fallback={
-                        <CardError
-                          error={new Error('Failed to render card')}
-                          variant="grid"
-                        />
-                      }
-                    >
-                      <div
-                        className={`
-                          h-full flex
-                          ${animateThisRow ? 'animate-fade-in-up' : ''}
-                          motion-reduce:animate-none motion-reduce:opacity-100
-                        `}
-                        style={{
-                          animationDelay: animateThisRow ? `${delay}ms` : '0ms',
-                        }}
-                      >
-                        <NewsCard
-                          ref={getRegisterRefForArticle(article.id)}
-                          article={article}
-                          skipArticlePrepare
-                          viewMode="grid"
-                          onCategoryClick={onCategoryClick}
-                          onClick={onCardClick}
-                          currentUserId={currentUserId}
-                          onTagClick={onTagClick}
-                          selectionMode={selectionMode}
-                          isSelected={selectedIds.includes(article.id)}
-                          onSelect={getSelectCallbackForArticle(article.id)}
-                          disableInlineExpansion={disableInlineExpansion}
-                          searchHighlightQuery={searchHighlightQuery}
-                          priorityThumbnail={isPriorityTile}
-                        />
-                      </div>
-                    </ErrorBoundary>
-                  );
-                })}
-              </div>
-            </div>
+              rowIndex={virtualRow.index}
+              rowStart={virtualRow.start}
+              rowsLength={rows.length}
+              scrollMarginTop={scrollMarginTop}
+              columnCount={columnCount}
+              rowGap={rowGap}
+              rowArticles={rowArticles}
+              shouldAnimate={shouldAnimate}
+              staggerCapIndex={staggerCapIndex}
+              priorityThumbnailCount={priorityThumbnailCount}
+              selectionMode={selectionMode}
+              selectedIdSet={selectedIdSet}
+              disableInlineExpansion={disableInlineExpansion}
+              searchHighlightQuery={searchHighlightQuery}
+              currentUserId={currentUserId}
+              onCategoryClick={onCategoryClick}
+              onCardClick={onCardClick}
+              onTagClick={onTagClick}
+              getSelectCallbackForArticle={getSelectCallbackForArticle}
+              getRegisterRefForArticle={getRegisterRefForArticle}
+              measureElement={virtualizer.measureElement}
+            />
           );
         })}
       </div>
