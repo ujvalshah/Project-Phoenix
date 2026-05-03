@@ -16,6 +16,7 @@ import { normalizeSearchQuery } from '@/utils/searchQuery';
 import {
   HEADER_PERF_SURFACES,
   headerPerfSurfaceReady,
+  markMobileSearchInteractive,
 } from '@/dev/perfMarks';
 
 interface MobileSearchOverlayProps {
@@ -65,6 +66,21 @@ export const MobileSearchOverlay = React.memo<MobileSearchOverlayProps>(({
     headerPerfSurfaceReady(HEADER_PERF_SURFACES.MOBILE_SEARCH_OVERLAY, {
       phase: 'overlay-is-open-commit',
     });
+  }, [isOpen]);
+
+  // Dev-only: after paint (2× rAF), extend stored perf meta with commit→interactive timing.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        markMobileSearchInteractive();
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
   useEffect(() => {

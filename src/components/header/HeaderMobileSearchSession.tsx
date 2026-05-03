@@ -1,7 +1,11 @@
 import React, { useCallback, useMemo, Suspense, lazy } from 'react';
+import { markMobileSearchChunkResolved } from '@/dev/perfMarks';
 
 const LazyMobileSearchOverlay = lazy(() =>
-  import('./MobileSearchOverlay').then((m) => ({ default: m.MobileSearchOverlay })),
+  import('./MobileSearchOverlay').then((m) => {
+    markMobileSearchChunkResolved();
+    return { default: m.MobileSearchOverlay };
+  }),
 );
 import { shallowEqual as shallowEqualFilters, useFilterSelector } from '@/context/FilterStateContext';
 import { recordSearchEvent } from '@/observability/telemetry';

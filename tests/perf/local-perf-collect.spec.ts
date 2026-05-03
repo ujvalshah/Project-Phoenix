@@ -42,7 +42,12 @@ const ALL_METRIC_KEYS = [
 ] as const;
 
 type MetricValue =
-  | { duration: number; status: 'ok' }
+  | {
+      duration: number;
+      status: 'ok';
+      /** Present for metrics that attach dev perf `meta` (e.g. mobile search stage breakdown). */
+      meta?: Record<string, string | number | boolean>;
+    }
   | { status: 'missing'; reason?: string }
   | { status: 'skipped'; reason: string };
 
@@ -139,19 +144,41 @@ async function waitForPerfKey(
   page: Page,
   key: string,
   timeoutMs = 25_000,
-): Promise<{ duration: number; status: 'ok' } | null> {
+  options?: { requiredMetaKeys?: string[] },
+): Promise<{
+  duration: number;
+  status: 'ok';
+  meta?: Record<string, string | number | boolean>;
+} | null> {
+  const requiredMetaKeys = options?.requiredMetaKeys ?? [];
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const entry = await page.evaluate((k) => {
-      const w = window as Window & {
-        __DEV_PERF_RESULTS__?: Record<string, { duration?: number; status?: string }>;
-      };
-      const r = w.__DEV_PERF_RESULTS__?.[k];
-      if (r?.status === 'ok' && typeof r.duration === 'number') {
-        return { duration: r.duration, status: 'ok' as const };
-      }
-      return null;
-    }, key);
+    const entry = await page.evaluate(
+      ({ k, metaKeys }: { k: string; metaKeys: string[] }) => {
+        const w = window as Window & {
+          __DEV_PERF_RESULTS__?: Record<
+            string,
+            {
+              duration?: number;
+              status?: string;
+              meta?: Record<string, string | number | boolean>;
+            }
+          >;
+        };
+        const r = w.__DEV_PERF_RESULTS__?.[k];
+        if (r?.status === 'ok' && typeof r.duration === 'number') {
+          if (
+            metaKeys.length > 0 &&
+            (!r.meta || metaKeys.some((mk) => r.meta![mk] === undefined))
+          ) {
+            return null;
+          }
+          return { duration: r.duration, status: 'ok' as const, meta: r.meta };
+        }
+        return null;
+      },
+      { k: key, metaKeys: requiredMetaKeys },
+    );
     if (entry) return entry;
     await page.waitForTimeout(80);
   }
@@ -236,9 +263,15 @@ async function collectSingleRun(browser: Browser, runIndex: number): Promise<Sin
 
       await freshHome(mp);
       await mp.locator('header').getByRole('button', { name: 'Search' }).first().click();
-      const search = await waitForPerfKey(mp, KEYS.search, 25_000);
+      const search = await waitForPerfKey(mp, KEYS.search, 25_000, {
+        requiredMetaKeys: ['ms_trigger_to_interactive'],
+      });
       if (search) {
-        mobile[KEYS.search] = ok(search.duration);
+        mobile[KEYS.search] = {
+          duration: search.duration,
+          status: 'ok',
+          ...(search.meta ? { meta: search.meta } : {}),
+        };
       } else {
         mobile[KEYS.search] = missing('not observed within 25s after Search click');
       }
@@ -279,14 +312,18 @@ function writeOutputs(report: AggregateReport): void {
   fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2), 'utf-8');
 
   const csvPath = path.join(outDir, 'perf-results.csv');
-  const lines = ['run_index,section,metric,duration_ms,status,reason'];
+  const lines = ['run_index,section,metric,duration_ms,status,reason,meta_json'];
   const push = (runIndex: number, section: string, metric: string, v: MetricValue) => {
     const d = 'duration' in v && typeof v.duration === 'number' ? String(v.duration) : '';
     let reason = '';
     if (v.status === 'skipped') reason = v.reason;
     else if (v.status === 'missing' && 'reason' in v && v.reason) reason = v.reason;
     reason = reason.replace(/,/g, ';');
-    lines.push(`${runIndex},${section},${metric},${d},${v.status},${reason}`);
+    const metaJson =
+      v.status === 'ok' && 'meta' in v && v.meta
+        ? JSON.stringify(v.meta).replace(/,/g, ';')
+        : '';
+    lines.push(`${runIndex},${section},${metric},${d},${v.status},${reason},${metaJson}`);
   };
 
   for (const run of report.runs) {

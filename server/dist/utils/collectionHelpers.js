@@ -1,0 +1,93 @@
+import { Collection } from '../models/Collection.js';
+import { getLogger } from './logger.js';
+/**
+ * Remove article references from all collections when an article is deleted.
+ * This maintains referential integrity by cleaning up stale entries.
+ *
+ * NOTE: This operation is currently NOT transactional with article deletion.
+ * If MongoDB replica set is configured, this could be wrapped in a transaction
+ * for true atomicity (see P2-24 follow-up refactor).
+ *
+ * @param articleId - The ID of the deleted article
+ * @returns Promise resolving to the number of collections updated
+ */
+export async function cleanupCollectionEntries(articleId) {
+    try {
+        // First, find collections that contain this articleId
+        const affectedCollections = await Collection.find({
+            'entries.articleId': articleId
+        });
+        if (affectedCollections.length === 0) {
+            return 0; // No collections to update
+        }
+        // FOLLOW-UP REFACTOR (P2-24): Use MongoDB transactions for atomic cleanup
+        // Current implementation: Use atomic $pull operation but not transactional with article deletion
+        // Future improvement: Wrap article deletion and collection cleanup in a transaction
+        // Example:
+        // const session = await mongoose.startSession();
+        // try {
+        //   await session.withTransaction(async () => {
+        //     await Article.findByIdAndDelete(articleId).session(session);
+        //     await Collection.updateMany(..., { session });
+        //   });
+        // } finally { await session.endSession(); }
+        // Use $pull to atomically remove entries matching the articleId
+        // Also decrement validEntriesCount if it exists
+        const result = await Collection.updateMany({ 'entries.articleId': articleId }, {
+            $pull: { entries: { articleId } },
+            $set: { updatedAt: new Date().toISOString() },
+            $inc: { validEntriesCount: -1 } // Decrement count if field exists
+        });
+        // For collections where validEntriesCount was undefined/null, recalculate after update
+        // This handles legacy collections that don't have the field set
+        const updatedCollections = await Collection.find({
+            _id: { $in: affectedCollections.map(c => c._id) }
+        });
+        for (const collection of updatedCollections) {
+            // If validEntriesCount is undefined, null, or negative, recalculate from entries
+            if (collection.validEntriesCount === undefined ||
+                collection.validEntriesCount === null ||
+                collection.validEntriesCount < 0) {
+                collection.validEntriesCount = collection.entries.length;
+                await collection.save();
+            }
+        }
+        return result.modifiedCount;
+    }
+    catch (error) {
+        // Log error but don't throw - deletion should succeed even if cleanup fails
+        // This prevents cascading failures
+        getLogger().error({ err: error, articleId }, '[CollectionHelpers] Failed to cleanup collection entries for article');
+        return 0;
+    }
+}
+/**
+ * Recalculate and update validEntriesCount for a collection.
+ * This validates entries against existing articles and updates the count.
+ *
+ * @param collectionId - The ID of the collection to update
+ * @param validArticleIds - Set of valid article IDs (from Article.find())
+ * @returns Promise resolving to the updated collection or null
+ */
+export async function updateValidEntriesCount(collectionId, validArticleIds) {
+    try {
+        const collection = await Collection.findById(collectionId);
+        if (!collection)
+            return 0;
+        // Filter entries to only those with valid article IDs
+        const validEntries = collection.entries.filter(entry => validArticleIds.has(entry.articleId));
+        const validCount = validEntries.length;
+        // Update collection with validated entries and count
+        await Collection.findByIdAndUpdate(collectionId, {
+            entries: validEntries,
+            validEntriesCount: validCount,
+            updatedAt: new Date().toISOString()
+        });
+        return validCount;
+    }
+    catch (error) {
+        getLogger().error({ err: error, collectionId }, '[CollectionHelpers] Failed to update validEntriesCount');
+        return 0;
+    }
+}
+//# sourceMappingURL=collectionHelpers.js.map

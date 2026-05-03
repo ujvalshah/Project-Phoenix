@@ -68,8 +68,116 @@ export function logDevPerfMarksStartup(): void {
 /** Surfaces that have already completed a first-open measurement (session lifetime). */
 const firstOpenDone = new Set<string>();
 
+/**
+ * Mobile search first-open only: `performance.now()` samples for stage breakdown (dev-only).
+ * Cleared after interactive stage is recorded so the object stays easy to remove later.
+ */
+let mobileSearchStageTimes:
+  | {
+      triggerAt: number;
+      chunkAt?: number;
+      commitAt?: number;
+      interactiveAt?: number;
+    }
+  | undefined;
+
+/** Session lifetime: first double-rAF “interactive” sample for mobile search. */
+let mobileSearchInteractiveDone = false;
+
 /** First-fire wins for initial-idle-settled (requestIdleCallback vs setTimeout 250). */
 let initialIdleSettledRecorded = false;
+
+function roundMs(n: number): number {
+  return Math.round(n);
+}
+
+function resetMobileSearchStageState(): void {
+  mobileSearchStageTimes = undefined;
+}
+
+/** DevTools timeline (optional): cleared after interactive to avoid unbounded marks. */
+const MOBILE_SEARCH_MARK_CHUNK = `${PREFIX}:mobile-search-overlay:chunk`;
+const MOBILE_SEARCH_MARK_INTERACTIVE = `${PREFIX}:mobile-search-overlay:interactive`;
+
+function metaMobileSearchStagesAtCommit(durationMs: number): Record<string, string | number | boolean> {
+  const s = mobileSearchStageTimes;
+  const meta: Record<string, string | number | boolean> = {
+    stage_breakdown: 'mobile-search-v1',
+    ms_trigger_to_commit: durationMs,
+  };
+  if (!s) return meta;
+
+  if (s.chunkAt !== undefined) {
+    meta.ms_trigger_to_chunk = roundMs(s.chunkAt - s.triggerAt);
+    if (s.commitAt !== undefined) {
+      meta.ms_chunk_to_commit = roundMs(s.commitAt - s.chunkAt);
+    }
+  } else {
+    meta.ms_trigger_to_chunk_missing = true;
+  }
+  return meta;
+}
+
+/**
+ * Lazy `import()` callback: dynamic chunk parsed/evaluated (before overlay render).
+ */
+export function markMobileSearchChunkResolved(): void {
+  if (!active()) return;
+  if (firstOpenDone.has('mobile-search-overlay')) return;
+  if (!mobileSearchStageTimes) return;
+
+  performance.mark(MOBILE_SEARCH_MARK_CHUNK);
+  mobileSearchStageTimes.chunkAt = performance.now();
+}
+
+/**
+ * After first paint following overlay commit (double rAF). Approximates “shell is on-screen”.
+ */
+export function markMobileSearchInteractive(): void {
+  if (!active()) return;
+  if (mobileSearchInteractiveDone) return;
+  if (!firstOpenDone.has('mobile-search-overlay')) return;
+  const s = mobileSearchStageTimes;
+  const commitAt = s?.commitAt;
+  const triggerAt = s?.triggerAt;
+  if (commitAt === undefined || triggerAt === undefined) return;
+
+  const key = DEV_PERF_RESULT_KEYS.MOBILE_SEARCH_FIRST_OPEN;
+  const prev = ensureDevPerfResults()[key];
+  if (!prev || prev.status !== 'ok' || typeof prev.duration !== 'number') {
+    return;
+  }
+
+  mobileSearchInteractiveDone = true;
+  performance.mark(MOBILE_SEARCH_MARK_INTERACTIVE);
+
+  const interactiveAt = performance.now();
+  if (s) s.interactiveAt = interactiveAt;
+
+  const meta: Record<string, string | number | boolean> = {
+    ...(prev.meta ?? {}),
+    ms_commit_to_interactive: roundMs(interactiveAt - commitAt),
+    ms_trigger_to_interactive: roundMs(interactiveAt - triggerAt),
+  };
+
+  storeDevPerfResult(key, { ...prev, meta });
+
+  console.groupCollapsed(
+    `[perf] mobile-search-overlay stages (ms): commit→interactive ${meta.ms_commit_to_interactive} · trigger→interactive ${meta.ms_trigger_to_interactive}`,
+  );
+  console.log({
+    'trigger→chunk': prev.meta?.ms_trigger_to_chunk,
+    'chunk→commit': prev.meta?.ms_chunk_to_commit,
+    'commit→interactive': meta.ms_commit_to_interactive,
+    'trigger→commit (total first-open)': prev.duration,
+  });
+  console.groupEnd();
+
+  performance.clearMarks(MOBILE_SEARCH_MARK_CHUNK);
+  performance.clearMarks(MOBILE_SEARCH_MARK_INTERACTIVE);
+
+  resetMobileSearchStageState();
+}
 
 /**
  * Call synchronously when the user initiates opening (click / tap / keyboard).
@@ -78,6 +186,9 @@ let initialIdleSettledRecorded = false;
 export function headerPerfSurfaceTrigger(surfaceId: HeaderPerfSurfaceId): void {
   if (!active()) return;
   if (firstOpenDone.has(surfaceId)) return;
+  if (surfaceId === 'mobile-search-overlay') {
+    mobileSearchStageTimes = { triggerAt: performance.now() };
+  }
   const name = `${PREFIX}:${surfaceId}:trigger`;
   performance.mark(name);
 }
@@ -95,6 +206,10 @@ export function headerPerfSurfaceReady(
   const triggerName = `${PREFIX}:${surfaceId}:trigger`;
   if (performance.getEntriesByName(triggerName, 'mark').length === 0) return;
 
+  if (surfaceId === 'mobile-search-overlay' && mobileSearchStageTimes) {
+    mobileSearchStageTimes.commitAt = performance.now();
+  }
+
   const readyName = `${PREFIX}:${surfaceId}:ready`;
   performance.mark(readyName);
 
@@ -105,14 +220,22 @@ export function headerPerfSurfaceReady(
     const m = entries[entries.length - 1];
     if (m) {
       const resultKey = SURFACE_TO_RESULT_KEY[surfaceId];
+      const msExtra =
+        surfaceId === 'mobile-search-overlay' ? metaMobileSearchStagesAtCommit(Math.round(m.duration)) : {};
+      const mergedMeta =
+        surfaceId === 'mobile-search-overlay'
+          ? { ...(meta ?? {}), ...msExtra }
+          : meta && Object.keys(meta).length > 0
+            ? meta
+            : undefined;
       storeDevPerfResult(resultKey, {
         status: 'ok',
         duration: Math.round(m.duration),
-        ...(meta && Object.keys(meta).length > 0 ? { meta } : {}),
+        ...(mergedMeta && Object.keys(mergedMeta).length > 0 ? { meta: mergedMeta } : {}),
       });
       firstOpenDone.add(surfaceId);
       console.groupCollapsed(`[perf] ${surfaceId}-first-open: ${Math.round(m.duration)}ms`);
-      if (meta && Object.keys(meta).length > 0) console.log(meta);
+      if (mergedMeta && Object.keys(mergedMeta).length > 0) console.log(mergedMeta);
       console.groupEnd();
     }
   } catch {

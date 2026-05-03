@@ -1,0 +1,630 @@
+import { z } from 'zod';
+import { Bookmark } from '../models/Bookmark.js';
+import { BookmarkCollection } from '../models/BookmarkCollection.js';
+import { BookmarkCollectionLink } from '../models/BookmarkCollectionLink.js';
+import { Article } from '../models/Article.js';
+import { normalizeDoc, getTagNameMap } from '../utils/db.js';
+import { createRequestLogger } from '../utils/logger.js';
+import { captureException } from '../utils/sentry.js';
+import { sendValidationError, sendNotFoundError, sendInternalError, sendForbiddenError } from '../utils/errorResponse.js';
+import { getOrCreateBookmark, ensureBookmarkInDefaultCollection, deleteBookmarkCompletely, getBookmarkStatus, assignBookmarkToCollections, assertAllBookmarkFoldersOwned, getBookmarkCollectionIdsMap } from '../utils/bookmarkHelpers.js';
+import { createSearchRegex } from '../utils/escapeRegExp.js';
+/**
+ * Bookmark Controller
+ *
+ * Handles core bookmark CRUD operations.
+ * Uses YouTube x Instagram hybrid UX model:
+ * - Quick toggle (single tap save/unsave)
+ * - Optional collection organization
+ */
+// Zod validation schemas
+const toggleBookmarkSchema = z.object({
+    itemId: z.string().min(1, 'Item ID is required'),
+    itemType: z.enum(['nugget', 'article', 'video', 'course']).optional().default('nugget')
+});
+const getBookmarksSchema = z.object({
+    collectionId: z.string().optional(),
+    itemType: z.enum(['nugget', 'article', 'video', 'course']).optional(),
+    page: z.coerce.number().int().positive().optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+    sort: z.enum(['createdAt', 'lastAccessedAt']).optional().default('createdAt'),
+    order: z.enum(['asc', 'desc']).optional().default('desc'),
+    q: z.string().optional()
+});
+const assignCollectionsSchema = z.object({
+    bookmarkId: z.string().min(1, 'Bookmark ID is required'),
+    collectionIds: z.array(z.string().min(1)).min(1, 'At least one collection ID is required')
+});
+const batchToggleSchema = z.object({
+    itemIds: z.array(z.string().min(1)).min(1).max(50, 'Maximum 50 items per batch'),
+    itemType: z.enum(['nugget', 'article', 'video', 'course']).optional().default('nugget'),
+    action: z.enum(['bookmark', 'unbookmark'])
+});
+/**
+ * Toggle bookmark status for an item.
+ * If not bookmarked, creates bookmark and adds to default collection.
+ * If already bookmarked, removes bookmark completely.
+ *
+ * POST /api/bookmarks/toggle
+ */
+export const toggleBookmark = async (req, res) => {
+    const userId = req.user?.userId;
+    const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/toggle');
+    try {
+        // Validate request body
+        const validation = toggleBookmarkSchema.safeParse(req.body);
+        if (!validation.success) {
+            const errors = validation.error.errors.map(e => ({
+                path: e.path.join('.'),
+                message: e.message
+            }));
+            return sendValidationError(res, 'Invalid request body', errors);
+        }
+        const { itemId, itemType } = validation.data;
+        // Check current bookmark status
+        const status = await getBookmarkStatus(userId, itemId, itemType);
+        if (status.isBookmarked && status.bookmarkId) {
+            // Already bookmarked - remove it
+            await deleteBookmarkCompletely(status.bookmarkId, userId);
+            requestLogger.info({
+                msg: 'Bookmark removed',
+                itemId,
+                itemType
+            });
+            return res.json({
+                bookmarked: false,
+                message: 'Bookmark removed'
+            });
+        }
+        // Not bookmarked - create and add to default collection
+        const { bookmarkId } = await getOrCreateBookmark(userId, itemId, itemType);
+        const defaultCollectionId = await ensureBookmarkInDefaultCollection(bookmarkId, userId);
+        requestLogger.info({
+            msg: 'Bookmark created',
+            itemId,
+            itemType,
+            bookmarkId,
+            defaultCollectionId
+        });
+        return res.json({
+            bookmarked: true,
+            bookmarkId,
+            defaultCollectionId,
+            message: 'Saved to Saved'
+        });
+    }
+    catch (error) {
+        requestLogger.error({
+            msg: '[Bookmarks] Toggle failed',
+            error: { message: error.message, stack: error.stack }
+        });
+        captureException(error, { requestId: req.id, route: '/api/bookmarks/toggle' });
+        return sendInternalError(res, 'Failed to toggle bookmark');
+    }
+};
+/**
+ * Get bookmark status for a specific item.
+ *
+ * GET /api/bookmarks/status/:itemId
+ */
+export const getStatus = async (req, res) => {
+    const userId = req.user?.userId;
+    const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/status');
+    try {
+        const { itemId } = req.params;
+        const itemType = req.query.itemType || 'nugget';
+        if (!itemId) {
+            return sendValidationError(res, 'Item ID is required', [
+                { path: 'itemId', message: 'Item ID is required' }
+            ]);
+        }
+        const status = await getBookmarkStatus(userId, itemId, itemType);
+        return res.json(status);
+    }
+    catch (error) {
+        requestLogger.error({
+            msg: '[Bookmarks] Get status failed',
+            error: { message: error.message, stack: error.stack },
+            itemId: req.params.itemId
+        });
+        captureException(error, { requestId: req.id, route: '/api/bookmarks/status' });
+        return sendInternalError(res, 'Failed to get bookmark status');
+    }
+};
+/**
+ * Get user's bookmarks with optional filtering.
+ *
+ * GET /api/bookmarks
+ */
+export const getBookmarks = async (req, res) => {
+    const userId = req.user?.userId;
+    const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks');
+    try {
+        // Validate query params
+        const validation = getBookmarksSchema.safeParse(req.query);
+        if (!validation.success) {
+            const errors = validation.error.errors.map(e => ({
+                path: e.path.join('.'),
+                message: e.message
+            }));
+            return sendValidationError(res, 'Invalid query parameters', errors);
+        }
+        const { collectionId, itemType, page, limit, sort, order, q } = validation.data;
+        const skip = (page - 1) * limit;
+        // Build query
+        const bookmarkQuery = { userId };
+        if (itemType) {
+            bookmarkQuery.itemType = itemType;
+        }
+        // If filtering by collection, get bookmark IDs from links first
+        let bookmarkIdsInCollection;
+        if (collectionId) {
+            const links = await BookmarkCollectionLink.find({
+                collectionId,
+                userId
+            }).select('bookmarkId').lean();
+            bookmarkIdsInCollection = links.map(l => l.bookmarkId);
+            if (bookmarkIdsInCollection.length === 0) {
+                // No bookmarks in this collection
+                return res.json({
+                    data: [],
+                    meta: { total: 0, page, limit, hasMore: false }
+                });
+            }
+            bookmarkQuery._id = { $in: bookmarkIdsInCollection };
+        }
+        // Build sort order
+        const sortOrder = {};
+        sortOrder[sort] = order === 'asc' ? 1 : -1;
+        const searchTrimmed = q && q.trim().length > 0 ? q.trim() : '';
+        let pageBookmarks;
+        let total;
+        let hasMore;
+        if (searchTrimmed.length > 0) {
+            // DB-bounded search: join bookmarks->articles, filter in Mongo, then paginate.
+            const searchRegex = createSearchRegex(searchTrimmed);
+            const aggregateResult = await Bookmark.aggregate([
+                { $match: bookmarkQuery },
+                {
+                    $lookup: {
+                        from: 'articles',
+                        let: { bookmarkItemId: '$itemId' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: { $eq: [{ $toString: '$_id' }, '$$bookmarkItemId'] },
+                                },
+                            },
+                            {
+                                $match: {
+                                    $or: [
+                                        { authorId: userId },
+                                        {
+                                            $and: [
+                                                {
+                                                    $or: [
+                                                        { visibility: 'public' },
+                                                        { visibility: { $exists: false } },
+                                                        { visibility: null },
+                                                    ],
+                                                },
+                                                {
+                                                    $or: [
+                                                        { status: 'published' },
+                                                        { status: { $exists: false } },
+                                                        { status: null },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            },
+                            {
+                                $match: {
+                                    $or: [
+                                        { title: searchRegex },
+                                        { content: searchRegex },
+                                        { excerpt: searchRegex },
+                                    ],
+                                },
+                            },
+                        ],
+                        as: 'article',
+                    },
+                },
+                { $unwind: '$article' },
+                { $sort: sortOrder },
+                {
+                    $facet: {
+                        data: [{ $skip: skip }, { $limit: limit }],
+                        meta: [{ $count: 'total' }],
+                    },
+                },
+            ]);
+            const facet = aggregateResult[0] ?? { data: [], meta: [] };
+            pageBookmarks = facet.data;
+            total = facet.meta[0]?.total ?? 0;
+            hasMore = skip + pageBookmarks.length < total;
+        }
+        else {
+            total = await Bookmark.countDocuments(bookmarkQuery);
+            pageBookmarks = await Bookmark.find(bookmarkQuery)
+                .sort(sortOrder)
+                .skip(skip)
+                .limit(limit)
+                .lean();
+            hasMore = skip + pageBookmarks.length < total;
+        }
+        // Full article documents + tag resolution for the current page only.
+        // Search path already fetched joined articles via aggregation.
+        const itemIds = pageBookmarks.map((b) => b.itemId);
+        const preloadedArticles = searchTrimmed.length > 0
+            ? pageBookmarks
+                .map((b) => b.article)
+                .filter((a) => Boolean(a))
+            : [];
+        const articles = preloadedArticles.length > 0
+            ? preloadedArticles
+            : await Article.find({
+                _id: { $in: itemIds },
+                $or: [
+                    { authorId: userId },
+                    {
+                        $and: [
+                            {
+                                $or: [
+                                    { visibility: 'public' },
+                                    { visibility: { $exists: false } },
+                                    { visibility: null },
+                                ],
+                            },
+                            {
+                                $or: [
+                                    { status: 'published' },
+                                    { status: { $exists: false } },
+                                    { status: null },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            }).lean();
+        const tagNameMap = await getTagNameMap();
+        const articleMap = new Map(articles.map((a) => {
+            const normalized = normalizeDoc(a);
+            if (normalized && normalized.tagIds && normalized.tagIds.length > 0) {
+                const resolved = normalized.tagIds
+                    .map((id) => tagNameMap.get(id.toString()))
+                    .filter(Boolean);
+                if (resolved.length > 0)
+                    normalized.tags = resolved;
+            }
+            return [a._id.toString(), normalized];
+        }));
+        const bookmarkIdsOnPage = pageBookmarks.map((b) => b._id.toString());
+        const collectionIdsByBookmark = await getBookmarkCollectionIdsMap(bookmarkIdsOnPage);
+        const enrichedBookmarks = pageBookmarks.map((bookmark) => {
+            const article = articleMap.get(bookmark.itemId);
+            const collectionIds = collectionIdsByBookmark.get(bookmark._id.toString()) ?? [];
+            return {
+                id: bookmark._id.toString(),
+                itemId: bookmark.itemId,
+                itemType: bookmark.itemType,
+                createdAt: bookmark.createdAt,
+                lastAccessedAt: bookmark.lastAccessedAt,
+                notes: bookmark.notes,
+                collectionIds,
+                article: article || null
+            };
+        });
+        return res.json({
+            data: enrichedBookmarks,
+            meta: {
+                total,
+                page,
+                limit,
+                hasMore
+            }
+        });
+    }
+    catch (error) {
+        requestLogger.error({
+            msg: '[Bookmarks] Get bookmarks failed',
+            error: { message: error.message, stack: error.stack }
+        });
+        captureException(error, { requestId: req.id, route: '/api/bookmarks' });
+        return sendInternalError(res, 'Failed to get bookmarks');
+    }
+};
+/**
+ * Assign a bookmark to specific collections.
+ * Replaces current collection assignments with the new set.
+ *
+ * POST /api/bookmarks/assign
+ */
+export const assignToCollections = async (req, res) => {
+    const userId = req.user?.userId;
+    const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/assign');
+    try {
+        // Validate request body
+        const validation = assignCollectionsSchema.safeParse(req.body);
+        if (!validation.success) {
+            const errors = validation.error.errors.map(e => ({
+                path: e.path.join('.'),
+                message: e.message
+            }));
+            return sendValidationError(res, 'Invalid request body', errors);
+        }
+        const { bookmarkId, collectionIds } = validation.data;
+        // Verify bookmark ownership
+        const bookmark = await Bookmark.findOne({
+            _id: bookmarkId,
+            userId
+        }).lean();
+        if (!bookmark) {
+            return sendNotFoundError(res, 'Bookmark not found');
+        }
+        const uniqueRequested = [...new Set(collectionIds)];
+        const ownedFolders = await BookmarkCollection.find({
+            userId,
+            _id: { $in: uniqueRequested }
+        })
+            .select('_id')
+            .lean();
+        const ownership = assertAllBookmarkFoldersOwned(collectionIds, ownedFolders);
+        if (!ownership.ok) {
+            return sendForbiddenError(res, 'One or more folders are invalid or do not belong to your account');
+        }
+        await assignBookmarkToCollections(bookmarkId, userId, ownership.uniqueIds);
+        requestLogger.info({
+            msg: 'Bookmark collections updated',
+            bookmarkId,
+            collectionIds: ownership.uniqueIds
+        });
+        return res.json({
+            success: true,
+            bookmarkId,
+            collectionIds: ownership.uniqueIds
+        });
+    }
+    catch (error) {
+        requestLogger.error({
+            msg: '[Bookmarks] Assign to collections failed',
+            error: { message: error.message, stack: error.stack }
+        });
+        captureException(error, { requestId: req.id, route: '/api/bookmarks/assign' });
+        return sendInternalError(res, 'Failed to assign bookmark to collections');
+    }
+};
+/**
+ * Delete a specific bookmark.
+ *
+ * DELETE /api/bookmarks/:bookmarkId
+ */
+export const deleteBookmark = async (req, res) => {
+    const userId = req.user?.userId;
+    const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks');
+    try {
+        const { bookmarkId } = req.params;
+        if (!bookmarkId) {
+            return sendValidationError(res, 'Bookmark ID is required', [
+                { path: 'bookmarkId', message: 'Bookmark ID is required' }
+            ]);
+        }
+        const deleted = await deleteBookmarkCompletely(bookmarkId, userId);
+        if (!deleted) {
+            return sendNotFoundError(res, 'Bookmark not found');
+        }
+        requestLogger.info({
+            msg: 'Bookmark deleted',
+            bookmarkId
+        });
+        return res.status(204).send();
+    }
+    catch (error) {
+        requestLogger.error({
+            msg: '[Bookmarks] Delete failed',
+            error: { message: error.message, stack: error.stack },
+            bookmarkId: req.params.bookmarkId
+        });
+        captureException(error, { requestId: req.id, route: '/api/bookmarks' });
+        return sendInternalError(res, 'Failed to delete bookmark');
+    }
+};
+/**
+ * Batch toggle bookmarks (bookmark or unbookmark multiple items).
+ *
+ * POST /api/bookmarks/batch-toggle
+ */
+export const batchToggle = async (req, res) => {
+    const userId = req.user?.userId;
+    const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/batch-toggle');
+    try {
+        // Validate request body
+        const validation = batchToggleSchema.safeParse(req.body);
+        if (!validation.success) {
+            const errors = validation.error.errors.map(e => ({
+                path: e.path.join('.'),
+                message: e.message
+            }));
+            return sendValidationError(res, 'Invalid request body', errors);
+        }
+        const { itemIds, itemType, action } = validation.data;
+        const nowIso = new Date().toISOString();
+        const results = itemIds.map((itemId) => ({
+            itemId,
+            success: true,
+        }));
+        if (action === 'bookmark') {
+            const defaultCollectionId = await ensureDefaultCollection(userId);
+            const existingBookmarks = await Bookmark.find({
+                userId,
+                itemType,
+                itemId: { $in: itemIds },
+            })
+                .select('_id itemId')
+                .lean();
+            const existingByItemId = new Map(existingBookmarks.map((b) => [b.itemId, b._id.toString()]));
+            const toCreate = itemIds.filter((id) => !existingByItemId.has(id));
+            if (toCreate.length > 0) {
+                try {
+                    await Bookmark.insertMany(toCreate.map((itemId) => ({
+                        userId,
+                        itemId,
+                        itemType,
+                        createdAt: nowIso,
+                        lastAccessedAt: nowIso,
+                    })), { ordered: false });
+                }
+                catch {
+                    // Duplicate races are acceptable in unordered bulk inserts.
+                }
+            }
+            await Bookmark.updateMany({ userId, itemType, itemId: { $in: itemIds } }, { $set: { lastAccessedAt: nowIso } });
+            const allBookmarks = await Bookmark.find({
+                userId,
+                itemType,
+                itemId: { $in: itemIds },
+            })
+                .select('_id itemId')
+                .lean();
+            const bookmarkIds = allBookmarks.map((b) => b._id.toString());
+            const existingLinks = await BookmarkCollectionLink.find({
+                collectionId: defaultCollectionId,
+                bookmarkId: { $in: bookmarkIds },
+            })
+                .select('bookmarkId')
+                .lean();
+            const linkedBookmarkIds = new Set(existingLinks.map((l) => l.bookmarkId));
+            const linksToCreate = allBookmarks
+                .filter((b) => !linkedBookmarkIds.has(b._id.toString()))
+                .map((b) => ({
+                userId,
+                bookmarkId: b._id.toString(),
+                collectionId: defaultCollectionId,
+                createdAt: nowIso,
+            }));
+            if (linksToCreate.length > 0) {
+                try {
+                    await BookmarkCollectionLink.insertMany(linksToCreate, { ordered: false });
+                }
+                catch {
+                    // Duplicate races are acceptable in unordered bulk inserts.
+                }
+            }
+            // Keep counter accurate after unordered inserts (race-safe).
+            const accurateCount = await BookmarkCollectionLink.countDocuments({
+                collectionId: defaultCollectionId,
+            });
+            await BookmarkCollection.updateOne({ _id: defaultCollectionId }, { $set: { bookmarkCount: accurateCount, updatedAt: nowIso } });
+        }
+        else {
+            const existingBookmarks = await Bookmark.find({
+                userId,
+                itemType,
+                itemId: { $in: itemIds },
+            })
+                .select('_id itemId')
+                .lean();
+            if (existingBookmarks.length > 0) {
+                const bookmarkIds = existingBookmarks.map((b) => b._id.toString());
+                const links = await BookmarkCollectionLink.find({
+                    bookmarkId: { $in: bookmarkIds },
+                })
+                    .select('collectionId')
+                    .lean();
+                await BookmarkCollectionLink.deleteMany({ bookmarkId: { $in: bookmarkIds } });
+                await Bookmark.deleteMany({ _id: { $in: bookmarkIds } });
+                const removedPerCollection = new Map();
+                for (const link of links) {
+                    removedPerCollection.set(link.collectionId, (removedPerCollection.get(link.collectionId) ?? 0) + 1);
+                }
+                if (removedPerCollection.size > 0) {
+                    const updates = Array.from(removedPerCollection.entries()).map(([collectionId, removed]) => ({
+                        updateOne: {
+                            filter: { _id: collectionId },
+                            update: {
+                                $inc: { bookmarkCount: -removed },
+                                $set: { updatedAt: nowIso },
+                            },
+                        },
+                    }));
+                    await BookmarkCollection.bulkWrite(updates);
+                }
+            }
+        }
+        const successCount = results.filter(r => r.success).length;
+        const failureCount = results.filter(r => !r.success).length;
+        requestLogger.info({
+            msg: 'Batch toggle completed',
+            action,
+            total: itemIds.length,
+            successCount,
+            failureCount
+        });
+        return res.json({
+            results,
+            summary: {
+                total: itemIds.length,
+                success: successCount,
+                failed: failureCount
+            }
+        });
+    }
+    catch (error) {
+        requestLogger.error({
+            msg: '[Bookmarks] Batch toggle failed',
+            error: { message: error.message, stack: error.stack }
+        });
+        captureException(error, { requestId: req.id, route: '/api/bookmarks/batch-toggle' });
+        return sendInternalError(res, 'Failed to process batch toggle');
+    }
+};
+/**
+ * Get batch bookmark status for multiple items.
+ * Useful for checking bookmark state when rendering a list of articles.
+ *
+ * POST /api/bookmarks/status/batch
+ */
+export const getBatchStatus = async (req, res) => {
+    const userId = req.user?.userId;
+    const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/status/batch');
+    try {
+        const { itemIds, itemType = 'nugget' } = req.body;
+        if (!Array.isArray(itemIds) || itemIds.length === 0) {
+            return sendValidationError(res, 'itemIds must be a non-empty array', [
+                { path: 'itemIds', message: 'itemIds must be a non-empty array' }
+            ]);
+        }
+        if (itemIds.length > 100) {
+            return sendValidationError(res, 'Maximum 100 items per batch', [
+                { path: 'itemIds', message: 'Maximum 100 items per batch' }
+            ]);
+        }
+        // Get all bookmarks for these items in one query
+        const bookmarks = await Bookmark.find({
+            userId,
+            itemId: { $in: itemIds },
+            itemType
+        }).lean();
+        // Create a map for quick lookup
+        const bookmarkMap = new Map(bookmarks.map(b => [b.itemId, { bookmarkId: b._id.toString(), isBookmarked: true }]));
+        // Build status for all requested items
+        const statuses = itemIds.map(itemId => ({
+            itemId,
+            isBookmarked: bookmarkMap.has(itemId),
+            bookmarkId: bookmarkMap.get(itemId)?.bookmarkId || null
+        }));
+        return res.json({ statuses });
+    }
+    catch (error) {
+        requestLogger.error({
+            msg: '[Bookmarks] Batch status failed',
+            error: { message: error.message, stack: error.stack }
+        });
+        captureException(error, { requestId: req.id, route: '/api/bookmarks/status/batch' });
+        return sendInternalError(res, 'Failed to get batch bookmark status');
+    }
+};
+//# sourceMappingURL=bookmarksController.js.map
