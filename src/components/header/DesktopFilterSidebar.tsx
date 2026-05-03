@@ -16,7 +16,7 @@ import { FilterPanel } from './FilterPanel';
 export const DesktopFilterSidebar: React.FC = () => {
   const { filterState, handleFilterChange, handleFilterClear } = useFilterPanelHandlers();
   const { resultCount } = useFilterResults();
-  const { sidebarCollapsed } = useDesktopFilterSidebarState();
+  const { sidebarCollapsed, isInlineDesktopFiltersActive } = useDesktopFilterSidebarState();
   const { toggleSidebarCollapsed, setSidebarCollapsed } = useDesktopFilterSidebarActions();
   const { hasActiveFilters, activeFilterCount } = useFilterSelector(
     (s) => ({
@@ -31,7 +31,9 @@ export const DesktopFilterSidebar: React.FC = () => {
   // unified motion rather than a snapping shell with separately-animating guts.
   const state = sidebarCollapsed ? 'collapsed' : 'expanded';
   const SIDEBAR_EASE = 'cubic-bezier(0.32,0.72,0,1)';
-  const SIDEBAR_MS = 220;
+  // Home feed toggles frequently while virtualized rows are measuring. Keep
+  // this path snap-fast to avoid exposing transient overlap during layout churn.
+  const SIDEBAR_MS = isInlineDesktopFiltersActive ? 0 : 220;
 
   return (
     <aside

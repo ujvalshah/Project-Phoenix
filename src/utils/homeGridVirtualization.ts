@@ -5,6 +5,19 @@
 const GRID_GAP_PX = 24; // matches gap-6
 
 /**
+ * Coalesce `virtualizer.measure()` when container width flickers (e.g. desktop filter
+ * column reflow). Keep modest to limit layout thrash.
+ */
+export const HOME_GRID_VIRTUAL_MEASURE_DEBOUNCE_MS = 120;
+
+/**
+ * Recompute window `scrollMargin` after layout settles. Desktop filter aside uses a
+ * 220ms CSS transition on inner panel motion; finishing slightly after avoids stale
+ * anchor geometry when width-driven reflow completes.
+ */
+export const HOME_GRID_SCROLL_MARGIN_DEBOUNCE_MS = 260;
+
+/**
  * TanStack Virtual `overscan` in **rows** (not cells). Larger values smooth fast scroll /
  * compound layouts on long feeds (~100+) at modest memory cost (TASK-020).
  */
@@ -31,7 +44,9 @@ export function estimateHomeGridRowHeightPx(containerInnerWidth: number, columnC
   const totalGaps = GRID_GAP_PX * (cols - 1);
   const cellWidth = Math.max(120, (containerInnerWidth - totalGaps) / cols);
   const imageHeight = cellWidth * (9 / 16);
-  const textBlock = 140;
+  // Hybrid grid cards: tags + title + truncated body (max ~180px) + footer/meta +
+  // padding. Conservative vs old 140px to reduce estimate→measure gap and row overlap.
+  const textBlock = 235;
   return Math.round(imageHeight + textBlock);
 }
 

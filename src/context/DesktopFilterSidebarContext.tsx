@@ -14,7 +14,8 @@ interface DesktopFilterSidebarActionsValue {
   expandSidebar: () => void;
 }
 
-const DesktopFilterSidebarStateContext = createContext<DesktopFilterSidebarStateValue | null>(null);
+export const DesktopFilterSidebarStateContext =
+  createContext<DesktopFilterSidebarStateValue | null>(null);
 const DesktopFilterSidebarActionsContext = createContext<DesktopFilterSidebarActionsValue | null>(null);
 
 export const DesktopFilterSidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

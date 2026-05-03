@@ -209,7 +209,7 @@ const NewsCardInner = forwardRef<HTMLDivElement, NewsCardProps>(
 
     return (
       <>
-        <div ref={ref} id={logic.cardElementId || undefined} className="h-full">
+        <div ref={ref} id={logic.cardElementId || undefined} className="h-full w-full min-w-0">
           {variant}
         </div>
 

@@ -167,7 +167,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
         handleCardClick(e);
       }}
       className={`
-        group relative flex flex-col h-full overflow-hidden
+        group relative flex w-full min-w-0 flex-col h-full overflow-hidden
         bg-white dark:bg-slate-900
         border rounded-xl
         shadow-sm hover:shadow-md

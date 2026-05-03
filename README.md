@@ -178,8 +178,18 @@ For split deployment (frontend on Vercel, backend elsewhere):
 | `npm run promote-admin` | Promote a user to admin role |
 | `npm run list-users` | List all users in database |
 | `npm run audit` | Run code audit checks |
+| `npm run test:e2e` | Default e2e gate (smoke layer) |
+| `npm run test:e2e:forensic` | Forensic grid/feed geometry audit (raw JSON in `output/forensic/`) |
 | `npm run perf:collect` | Playwright multi-run perf JSON/CSV → `output/` (requires `npm run dev` or `dev:all`; dev perf marks on) |
+| `npm run perf:feed-append` | Append/feed performance layer (raw JSON in `output/home-feed-append-perf-results.json`) |
 | `npm run perf:collect:throttled` | Same as `perf:collect` with optional CPU slowdown (`PERF_COLLECT_CPU_THROTTLE=4`) for sensitivity |
+
+---
+
+## Test layers
+
+Playwright test layers are config/project-driven (smoke, forensic, performance).  
+See `docs/testing/NUGGETS_TEST_WORKFLOW.md` for trigger rules, CI guidance, and metric priorities.
 
 ---
 

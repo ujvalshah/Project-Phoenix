@@ -37,24 +37,28 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  /* Configure projects for major browsers */
-  /* Start with just Chromium for faster local development */
+  /**
+   * Layered e2e contract:
+   * - smoke: fast PR/push gate (default CI blocker)
+   * - forensic: geometry/layout audit with raw JSON artifact emission
+   */
   projects: [
     {
-      name: 'chromium',
+      name: 'smoke',
       use: { ...devices['Desktop Chrome'] },
+      testMatch: [
+        '**/home-feed-smoke.spec.ts',
+        '**/perf-guards-nugget-modal.spec.ts',
+        '**/masonry-toggle.spec.ts',
+      ],
     },
-
-    // Uncomment to run on Firefox and WebKit
-    // {
-    //   name: 'firefox',
-    //   use: { ...devices['Desktop Firefox'] },
-    // },
-    //
-    // {
-    //   name: 'webkit',
-    //   use: { ...devices['Desktop Safari'] },
-    // },
+    {
+      name: 'forensic',
+      use: { ...devices['Desktop Chrome'] },
+      retries: 0,
+      timeout: 120_000,
+      testMatch: ['**/home-grid-forensic-audit.spec.ts'],
+    },
   ],
 
   /* Auto-start API + Vite; wait for Mongo-backed `/api/health` (not bare Vite HTML). */

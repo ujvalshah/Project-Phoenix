@@ -19,7 +19,29 @@ export default defineConfig({
     screenshot: 'off',
     video: 'off',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  /**
+   * Performance layer projects:
+   * - perf-append: feed append latency / longtask baseline
+   * - perf-collect: broader local perf collector
+   * - perf-sidebar-guard: focused desktop sidebar perf guard
+   */
+  projects: [
+    {
+      name: 'perf-append',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['**/home-feed-append.perf.spec.ts'],
+    },
+    {
+      name: 'perf-collect',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['**/local-perf-collect.spec.ts'],
+    },
+    {
+      name: 'perf-sidebar-guard',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['**/sidebar-toggle-guard.spec.ts'],
+    },
+  ],
   webServer: {
     command: 'npm run dev:all',
     url: 'http://localhost:3000/api/health',

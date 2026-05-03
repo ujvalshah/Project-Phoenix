@@ -153,6 +153,8 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  /** Observed for virtualizer scrollMargin when column width or summary height changes. */
+  const homeFeedLayoutRef = useRef<HTMLDivElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const { setResultCount } = useFilterResults();
   const isLg = useMediaQuery('(min-width: 1024px)');
@@ -700,7 +702,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           pulseMicroServer={onboardingMicroHeadersQuery.data?.marketPulseMicroHeader}
         />
       )}
-      <div className="px-4 lg:px-6">
+      <div ref={homeFeedLayoutRef} className="px-4 lg:px-6">
         <div
           className="mt-0.5 mb-2 text-[10.5px] leading-4 tabular-nums text-slate-500/90 dark:text-slate-400 sm:text-[11px]"
           role="status"
@@ -725,6 +727,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           error={articlesError || null}
           onRetry={refetchArticles}
           overscanRows={HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS}
+          scrollLayoutRootRef={homeFeedLayoutRef}
         />
       </div>
     </div>
