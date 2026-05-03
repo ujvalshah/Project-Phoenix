@@ -264,7 +264,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
 
   const measureParentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
-  const geometryWidthKey = Math.max(0, Math.round(containerWidth));
+  const geometryWidthKey = Math.max(0, containerWidth);
   const prevDisplayArticlesRef = useRef<Article[]>([]);
   const prevRowsRef = useRef<Article[][]>([]);
   const prevColumnCountRef = useRef(columnCount);
@@ -407,7 +407,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     if (!el) return;
     let measureDebounce: number | null = null;
     const flushContainerWidth = () => {
-      setContainerWidth(el.getBoundingClientRect().width);
+      setContainerWidth(el.clientWidth);
     };
     const scheduleDebouncedMeasure = () => {
       flushContainerWidth();
