@@ -25,7 +25,7 @@ interface VirtualizedRowProps {
   rowIndex: number;
   rowStart: number;
   rowsLength: number;
-  scrollMarginTop: number;
+  scrollMargin: number;
   columnCount: number;
   rowGap: number;
   rowArticles: Article[];
@@ -52,7 +52,7 @@ const VirtualizedRow = React.memo(function VirtualizedRow({
   rowIndex,
   rowStart,
   rowsLength,
-  scrollMarginTop,
+  scrollMargin,
   columnCount,
   rowGap,
   rowArticles,
@@ -89,7 +89,7 @@ const VirtualizedRow = React.memo(function VirtualizedRow({
         width: '100%',
         // With window virtualizer + scrollMargin, starts are document-based.
         // Convert to container-local coordinates by subtracting scrollMargin.
-        transform: `translateY(${rowStart - scrollMarginTop}px)`,
+        transform: `translateY(${rowStart - scrollMargin}px)`,
         ...(devOutlineRows
           ? { outline: '2px dashed fuchsia', outlineOffset: '-1px' }
           : undefined),
@@ -171,7 +171,7 @@ const VirtualizedRow = React.memo(function VirtualizedRow({
   if (prev.rowIndex !== next.rowIndex) return false;
   if (prev.rowStart !== next.rowStart) return false;
   if (prev.rowsLength !== next.rowsLength) return false;
-  if (prev.scrollMarginTop !== next.scrollMarginTop) return false;
+  if (prev.scrollMargin !== next.scrollMargin) return false;
   if (prev.columnCount !== next.columnCount) return false;
   if (prev.rowGap !== next.rowGap) return false;
   if (prev.shouldAnimate !== next.shouldAnimate) return false;
@@ -554,7 +554,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
               rowIndex={virtualRow.index}
               rowStart={virtualRow.start}
               rowsLength={rows.length}
-              scrollMarginTop={scrollMarginTop}
+              scrollMargin={virtualizer.options.scrollMargin}
               columnCount={columnCount}
               rowGap={rowGap}
               rowArticles={rowArticles}
