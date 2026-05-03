@@ -83,7 +83,7 @@ const PublicHomeIntro: React.FC<{
 
   return (
     <section
-      className="mx-4 mb-0.5 min-h-[4.75rem] px-0 pt-0.5 pb-0 lg:mx-6"
+      className="mx-4 mb-0.5 px-0 pt-0.5 pb-0 lg:mx-6"
       aria-label="Nuggets homepage intro"
     >
       <h1 className="max-w-[62ch] text-[15px] font-medium leading-5 tracking-tight text-slate-950 dark:text-white sm:text-base lg:max-w-none">
@@ -704,7 +704,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       )}
       <div ref={homeFeedLayoutRef} className="px-4 lg:px-6">
         <div
-          className="mt-0.5 mb-2 text-[10.5px] leading-4 tabular-nums text-slate-500/90 dark:text-slate-400 sm:text-[11px]"
+          className="mt-0.5 mb-6 text-[10.5px] leading-4 tabular-nums text-slate-500/90 dark:text-slate-400 sm:text-[11px]"
           role="status"
           aria-live="polite"
         >
