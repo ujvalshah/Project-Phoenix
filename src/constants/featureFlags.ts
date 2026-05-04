@@ -73,6 +73,34 @@ export const FEATURE_FLAGS = {
    * grid via `HomeGridVirtualized`; this flag is not read there.
    */
   HOME_FEED_VIRTUALIZATION: import.meta.env.VITE_HOME_FEED_VIRTUALIZATION === 'true',
+
+  /**
+   * HOME_CRITICAL_PATH_SLIM_V1:
+   * Master gate for home-route critical-path slimming prototype.
+   * When disabled, home route behavior remains unchanged.
+   */
+  HOME_CRITICAL_PATH_SLIM_V1: import.meta.env.VITE_HOME_CRITICAL_PATH_SLIM_V1 === 'true',
+
+  /**
+   * HOME_CRITICAL_PATH_SLIM_V1_PHASE_A_SURFACE:
+   * Enables minimal Phase A above-the-fold cards before promoting to full feed.
+   */
+  HOME_CRITICAL_PATH_SLIM_V1_PHASE_A_SURFACE:
+    import.meta.env.VITE_HOME_CRITICAL_PATH_SLIM_V1_PHASE_A_SURFACE === 'true',
+
+  /**
+   * HOME_CRITICAL_PATH_SLIM_V1_DEFER_SECONDARY_HOME_QUERIES:
+   * Defers non-critical home queries until Phase B promotion.
+   */
+  HOME_CRITICAL_PATH_SLIM_V1_DEFER_SECONDARY_HOME_QUERIES:
+    import.meta.env.VITE_HOME_CRITICAL_PATH_SLIM_V1_DEFER_SECONDARY_HOME_QUERIES === 'true',
+
+  /**
+   * HOME_CRITICAL_PATH_SLIM_V1_DEFER_HOME_SIDE_EFFECTS:
+   * Defers non-critical home effects/context updates until Phase B promotion.
+   */
+  HOME_CRITICAL_PATH_SLIM_V1_DEFER_HOME_SIDE_EFFECTS:
+    import.meta.env.VITE_HOME_CRITICAL_PATH_SLIM_V1_DEFER_HOME_SIDE_EFFECTS === 'true',
 } as const;
 
 /**

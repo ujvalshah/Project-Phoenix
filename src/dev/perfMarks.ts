@@ -26,6 +26,9 @@ export const DEV_PERF_RESULT_KEYS = {
   NAV_DRAWER_FIRST_OPEN: 'nav-drawer-first-open',
   MOBILE_SEARCH_FIRST_OPEN: 'mobile-search-overlay-first-open',
   MOBILE_FILTER_FIRST_OPEN: 'mobile-filter-sheet-first-open',
+  HOME_PHASEA_FIRST_CARDS: 'home-phasea-first-cards',
+  HOME_PHASEA_TO_PHASEB: 'home-phasea-to-phaseb',
+  HOME_FEED_DATA_READY_TO_LCP_REQUEST: 'home-feed-data-ready-to-lcp-request',
 } as const;
 
 export type DevPerfResultEntry = {
@@ -62,6 +65,24 @@ function storeDevPerfResult(key: string, entry: DevPerfResultEntry): void {
   } catch {
     // Ignore (e.g. sealed window in exotic environments); dev-only path.
   }
+}
+
+/**
+ * Generic dev perf result sink for custom local prototype metrics.
+ * No-op in production builds.
+ */
+export function recordDevPerfResult(
+  key: string,
+  durationMs: number,
+  meta?: Record<string, string | number | boolean>,
+): void {
+  if (!active()) return;
+  const rounded = roundMs(durationMs);
+  storeDevPerfResult(key, {
+    status: 'ok',
+    duration: rounded,
+    ...(meta && Object.keys(meta).length > 0 ? { meta } : {}),
+  });
 }
 
 function active(): boolean {

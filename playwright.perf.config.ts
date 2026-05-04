@@ -24,6 +24,8 @@ export default defineConfig({
    * - perf-append: feed append latency / longtask baseline
    * - perf-collect: broader local perf collector
    * - perf-sidebar-guard: focused desktop sidebar perf guard
+   * - perf-home-cwv: Lighthouse median gates (LCP/CLS)
+   * - perf-home-interaction: INP proxy + CLS + scroll smoothness advisory
    */
   projects: [
     {
@@ -40,6 +42,16 @@ export default defineConfig({
       name: 'perf-sidebar-guard',
       use: { ...devices['Desktop Chrome'] },
       testMatch: ['**/sidebar-toggle-guard.spec.ts'],
+    },
+    {
+      name: 'perf-home-cwv',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['**/home-feed-cwv-gates.perf.spec.ts'],
+    },
+    {
+      name: 'perf-home-interaction',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['**/home-feed-interaction-cls.perf.spec.ts'],
     },
   ],
   webServer: {

@@ -36,7 +36,10 @@ import { PageStack } from '@/components/layouts/PageStack';
 import { HeaderSpacer } from '@/components/layouts/HeaderSpacer';
 import { DesktopFilterSidebar } from '@/components/header/DesktopFilterSidebar';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { useDesktopFilterSidebarActions } from '@/context/DesktopFilterSidebarContext';
+import {
+  useDesktopFilterSidebarActions,
+  useDesktopFilterSidebarState,
+} from '@/context/DesktopFilterSidebarContext';
 import { CategoryToolbar, type ActiveFilterChip } from '@/components/CategoryToolbar';
 import { shallowEqualAuth, useAuthSelector } from '@/context/AuthContext';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -54,6 +57,23 @@ import {
   ONBOARDING_PUBLIC_QUERY_KEY,
 } from '@/services/onboardingCopyService';
 import { HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS } from '@/utils/homeGridVirtualization';
+import { isFeatureEnabled } from '@/constants/featureFlags';
+import { HomeCriticalAboveFoldPhaseA } from '@/components/feed/HomeCriticalAboveFoldPhaseA';
+import { DEV_PERF_RESULT_KEYS, recordDevPerfResult } from '@/dev/perfMarks';
+import {
+  HOME_PHASE_RESERVED_INTRO_HEIGHT_CLASS,
+  HOME_PHASE_RESERVED_SIDEBAR_COLLAPSED_CLASS,
+  HOME_PHASE_RESERVED_SIDEBAR_EXPANDED_CLASS,
+  HOME_PHASE_RESERVED_SUMMARY_HEIGHT_CLASS,
+  HOME_PHASE_RESERVED_TOOLBAR_HEIGHT_CLASS,
+} from '@/pages/homePhaseLayoutContract';
+
+const HOME_PHASE_A_START_MARK = 'home:phasea:start';
+const HOME_PHASE_A_FIRST_CARDS_MARK = 'home:phasea:first-cards';
+const HOME_PHASE_B_PROMOTE_MARK = 'home:phaseb:promoted';
+const HOME_FEED_DATA_READY_MARK = 'home:feed:data-ready';
+const PHASE_B_POST_PAINT_WINDOW_MS = 120;
+const PHASE_B_TIMEOUT_FALLBACK_MS = 900;
 
 function mergeMicroHeaderLine(
   defaults: typeof HOME_MICRO_HEADER_COPY | typeof MARKET_PULSE_MICRO_HEADER_COPY,
@@ -103,6 +123,24 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({
   viewMode,
 }) => {
+  const homeCriticalPathSlimMaster = isFeatureEnabled('HOME_CRITICAL_PATH_SLIM_V1');
+  const homeCriticalPathPhaseAEnabled =
+    homeCriticalPathSlimMaster && isFeatureEnabled('HOME_CRITICAL_PATH_SLIM_V1_PHASE_A_SURFACE');
+  const homeCriticalPathDeferSecondaryQueries =
+    homeCriticalPathSlimMaster &&
+    isFeatureEnabled('HOME_CRITICAL_PATH_SLIM_V1_DEFER_SECONDARY_HOME_QUERIES');
+  const homeCriticalPathDeferEffects =
+    homeCriticalPathSlimMaster &&
+    isFeatureEnabled('HOME_CRITICAL_PATH_SLIM_V1_DEFER_HOME_SIDE_EFFECTS');
+  const [isHomePhaseBActive, setIsHomePhaseBActive] = useState(!homeCriticalPathPhaseAEnabled);
+  const [isHomePhaseBMounted, setIsHomePhaseBMounted] = useState(!homeCriticalPathPhaseAEnabled);
+  const [homePhaseAFirstCardsMounted, setHomePhaseAFirstCardsMounted] = useState(false);
+  const [reservedFeedShellMinHeight, setReservedFeedShellMinHeight] = useState<number | null>(null);
+  const phaseAFirstCardsMarkedRef = useRef(false);
+  const phaseBPromotionMarkedRef = useRef(false);
+  const homeFeedDataReadyMarkedRef = useRef(false);
+  const phaseAFirstImageUrlRef = useRef<string | null>(null);
+  const phaseAShellRef = useRef<HTMLDivElement | null>(null);
   const numberFormatter = useMemo(() => new Intl.NumberFormat(), []);
   const firstContentMarkedRef = useRef(false);
   // Consume filter state from context — no prop drilling required
@@ -160,6 +198,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const isLg = useMediaQuery('(min-width: 1024px)');
   const isSmallViewport = useMediaQuery('(max-width: 640px)');
   const { setInlineDesktopFiltersActive } = useDesktopFilterSidebarActions();
+  const { sidebarCollapsed } = useDesktopFilterSidebarState();
 
   const { currentUserId, isAuthenticated } = useAuthSelector(
     (a) => ({
@@ -168,13 +207,50 @@ export const HomePage: React.FC<HomePageProps> = ({
     }),
     shallowEqualAuth,
   );
+  const allowSecondaryHomeQueries = !homeCriticalPathDeferSecondaryQueries || isHomePhaseBActive;
+  const allowDeferredHomeEffects = !homeCriticalPathDeferEffects || isHomePhaseBActive;
+
+  useEffect(() => {
+    setIsHomePhaseBActive(!homeCriticalPathPhaseAEnabled);
+    setIsHomePhaseBMounted(!homeCriticalPathPhaseAEnabled);
+    if (!homeCriticalPathPhaseAEnabled) {
+      setHomePhaseAFirstCardsMounted(false);
+      setReservedFeedShellMinHeight(null);
+      phaseAFirstCardsMarkedRef.current = false;
+      phaseBPromotionMarkedRef.current = false;
+      phaseAFirstImageUrlRef.current = null;
+    }
+  }, [homeCriticalPathPhaseAEnabled]);
+
+  useEffect(() => {
+    if (!homeCriticalPathPhaseAEnabled) return;
+    performance.mark(HOME_PHASE_A_START_MARK);
+  }, [homeCriticalPathPhaseAEnabled]);
+
+  useEffect(() => {
+    if (!homeCriticalPathPhaseAEnabled || isHomePhaseBActive) return;
+    const shell = phaseAShellRef.current;
+    if (!shell || typeof ResizeObserver === 'undefined') return;
+    const updateHeight = () => {
+      const nextHeight = Math.round(shell.getBoundingClientRect().height);
+      if (nextHeight > 0) {
+        setReservedFeedShellMinHeight((prev) => (prev == null ? nextHeight : Math.max(prev, nextHeight)));
+      }
+    };
+    updateHeight();
+    const ro = new ResizeObserver(updateHeight);
+    ro.observe(shell);
+    return () => {
+      ro.disconnect();
+    };
+  }, [homeCriticalPathPhaseAEnabled, isHomePhaseBActive]);
 
   // Public micro-header CMS copy (anonymous homepage / pulse stream only).
   const onboardingMicroHeadersQuery = useQuery({
     queryKey: ONBOARDING_PUBLIC_QUERY_KEY,
     queryFn: () => onboardingCopyService.fetchMicroHeaderBundle(),
     staleTime: 1000 * 60 * 10,
-    enabled: !isAuthenticated,
+    enabled: !isAuthenticated && allowSecondaryHomeQueries,
   });
 
   const markFeedSeen = useMarkFeedSeen();
@@ -183,18 +259,20 @@ export const HomePage: React.FC<HomePageProps> = ({
   // stream. Guarded by isAuthenticated to avoid 401s on anonymous visits;
   // re-runs each time contentStream changes so switching streams re-marks once.
   useEffect(() => {
+    if (!allowDeferredHomeEffects) return;
     if (!isAuthenticated) return;
     if (contentStream === 'pulse') markFeedSeen.mutate('market-pulse');
     else if (contentStream === 'standard') markFeedSeen.mutate('home');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentStream, isAuthenticated]);
+  }, [allowDeferredHomeEffects, contentStream, isAuthenticated]);
 
   useEffect(() => {
+    if (!allowDeferredHomeEffects) return;
     setInlineDesktopFiltersActive(isLg);
     return () => {
       setInlineDesktopFiltersActive(false);
     };
-  }, [isLg, setInlineDesktopFiltersActive]);
+  }, [allowDeferredHomeEffects, isLg, setInlineDesktopFiltersActive]);
 
   // Handle ?openArticle=<id> query param (from push notifications / shared links)
   useEffect(() => {
@@ -210,7 +288,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   }, [searchParams, setSearchParams]);
 
   // Fetch tag taxonomy for the category toolbar (Format + Domain tags)
-  const { data: taxonomy, isLoading: isLoadingTaxonomy } = useTagTaxonomy();
+  const { data: taxonomy, isLoading: isLoadingTaxonomy } = useTagTaxonomy(allowSecondaryHomeQueries);
 
   // Determine active tag from selectedCategories (needed for useInfiniteArticles)
   const activeCategory = useMemo(() => {
@@ -249,6 +327,13 @@ export const HomePage: React.FC<HomePageProps> = ({
     subtopicTagIds,
     contentStream,
   });
+
+  useEffect(() => {
+    if (articles.length === 0) return;
+    if (homeFeedDataReadyMarkedRef.current) return;
+    homeFeedDataReadyMarkedRef.current = true;
+    performance.mark(HOME_FEED_DATA_READY_MARK);
+  }, [articles.length]);
 
   /** Keeps latest flattened feed for click telemetry without changing `handleArticleGridClick` identity on every infinite-query append. */
   const articlesForModalClickRef = useRef<Article[]>([]);
@@ -361,8 +446,9 @@ export const HomePage: React.FC<HomePageProps> = ({
   }, [articles.length, pathname]);
 
   useEffect(() => {
+    if (!allowDeferredHomeEffects) return;
     setResultCount(totalCount);
-  }, [setResultCount, totalCount]);
+  }, [allowDeferredHomeEffects, setResultCount, totalCount]);
 
   const committedQuery = searchQuery.trim();
   const isCommittedSearch = committedQuery.length > 0;
@@ -660,6 +746,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   // Build inline filter chips for non-toolbar filters (subtopics, free-form tag, etc.)
   const activeFilters = useMemo(() => {
+    if (!allowSecondaryHomeQueries) return [];
     const chips: ActiveFilterChip[] = [];
     if (selectedTag) {
       chips.push({ key: 'tag', label: `Tag: ${selectedTag}`, onRemove: () => setSelectedTag(null) });
@@ -674,11 +761,19 @@ export const HomePage: React.FC<HomePageProps> = ({
       }
     }
     return chips;
-  }, [selectedTag, setSelectedTag, subtopicTagIds, taxonomy, toggleSubtopicTag]);
+  }, [allowSecondaryHomeQueries, selectedTag, setSelectedTag, subtopicTagIds, taxonomy, toggleSubtopicTag]);
 
   // Show toolbar when taxonomy is loading or has format/domain tags
-  const showToolbar = isLoadingTaxonomy || (taxonomy && (taxonomy.formats.length > 0 || taxonomy.domains.length > 0));
+  const showToolbar =
+    allowSecondaryHomeQueries &&
+    (isLoadingTaxonomy || (taxonomy && (taxonomy.formats.length > 0 || taxonomy.domains.length > 0)));
 
+  const showPhaseBUi = !homeCriticalPathPhaseAEnabled || isHomePhaseBActive;
+  const isPhaseAVisible = homeCriticalPathPhaseAEnabled && !isHomePhaseBActive;
+  const reservePhaseBChrome = homeCriticalPathPhaseAEnabled && !showPhaseBUi;
+  const reservedSidebarClass = sidebarCollapsed
+    ? HOME_PHASE_RESERVED_SIDEBAR_COLLAPSED_CLASS
+    : HOME_PHASE_RESERVED_SIDEBAR_EXPANDED_CLASS;
   const categoryToolbarEl = showToolbar ? (
     <CategoryToolbar
       formatTags={taxonomy?.formats ?? []}
@@ -691,44 +786,237 @@ export const HomePage: React.FC<HomePageProps> = ({
       isLoading={isLoadingTaxonomy}
       activeFilters={activeFilters}
     />
+  ) : homeCriticalPathPhaseAEnabled ? (
+    <div
+      aria-hidden
+      className={`${HOME_PHASE_RESERVED_TOOLBAR_HEIGHT_CLASS} w-full border-b border-slate-200/80 dark:border-slate-800`}
+    />
   ) : undefined;
+
+  const onHomePhaseACardsMounted = useCallback(
+    ({
+      firstImageUrl,
+      renderedCount,
+      shellHeightPx,
+    }: {
+      firstImageUrl: string | null;
+      renderedCount: number;
+      shellHeightPx: number | null;
+    }) => {
+      setHomePhaseAFirstCardsMounted(true);
+      if (shellHeightPx && shellHeightPx > 0) {
+        setReservedFeedShellMinHeight((prev) =>
+          prev == null ? shellHeightPx : Math.max(prev, shellHeightPx),
+        );
+      }
+      phaseAFirstImageUrlRef.current = firstImageUrl;
+      if (phaseAFirstCardsMarkedRef.current) return;
+      phaseAFirstCardsMarkedRef.current = true;
+      performance.mark(HOME_PHASE_A_FIRST_CARDS_MARK);
+      try {
+        performance.measure('home:phasea-to-first-cards', HOME_PHASE_A_START_MARK, HOME_PHASE_A_FIRST_CARDS_MARK);
+      } catch {
+        // best-effort dev measurement
+      }
+
+      const firstCardsEntry = performance.getEntriesByName(HOME_PHASE_A_FIRST_CARDS_MARK, 'mark').pop();
+      const phaseAStartEntry = performance.getEntriesByName(HOME_PHASE_A_START_MARK, 'mark').pop();
+      if (firstCardsEntry && phaseAStartEntry) {
+        recordDevPerfResult(
+          DEV_PERF_RESULT_KEYS.HOME_PHASEA_FIRST_CARDS,
+          firstCardsEntry.startTime - phaseAStartEntry.startTime,
+          { renderedCount },
+        );
+      }
+
+      if (!firstImageUrl) return;
+      const dataReadyEntry = performance.getEntriesByName(HOME_FEED_DATA_READY_MARK, 'mark').pop();
+      if (!dataReadyEntry) return;
+
+      const resourceEntries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+      const normalizedTarget = firstImageUrl.split('#')[0];
+      const matchingResource = resourceEntries
+        .filter((entry) => {
+          if (entry.initiatorType !== 'img' && entry.initiatorType !== 'image') return false;
+          const name = entry.name.split('#')[0];
+          return name === normalizedTarget || name.includes(normalizedTarget) || normalizedTarget.includes(name);
+        })
+        .sort((a, b) => a.startTime - b.startTime)[0];
+
+      if (!matchingResource) return;
+      const deltaMs = matchingResource.startTime - dataReadyEntry.startTime;
+      if (deltaMs < 0) return;
+      recordDevPerfResult(DEV_PERF_RESULT_KEYS.HOME_FEED_DATA_READY_TO_LCP_REQUEST, deltaMs, {
+        resourceName: matchingResource.name,
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!homeCriticalPathPhaseAEnabled) return;
+    if (isHomePhaseBActive) return;
+    if (!homePhaseAFirstCardsMounted) return;
+
+    let promoted = false;
+    let firstRaf = 0;
+    let secondRaf = 0;
+    let postPaintTimer = 0;
+    let timeoutFallback = 0;
+    let activateRaf = 0;
+    let idleHandle: number | null = null;
+
+    const promote = (reason: 'post-paint-window' | 'requestIdleCallback' | 'timeout-fallback') => {
+      if (promoted) return;
+      promoted = true;
+      setIsHomePhaseBMounted(true);
+      activateRaf = requestAnimationFrame(() => {
+        setIsHomePhaseBActive(true);
+      });
+      if (phaseBPromotionMarkedRef.current) return;
+      phaseBPromotionMarkedRef.current = true;
+      performance.mark(HOME_PHASE_B_PROMOTE_MARK);
+      const firstCardsEntry = performance.getEntriesByName(HOME_PHASE_A_FIRST_CARDS_MARK, 'mark').pop();
+      const phaseBEntry = performance.getEntriesByName(HOME_PHASE_B_PROMOTE_MARK, 'mark').pop();
+      if (!firstCardsEntry || !phaseBEntry) return;
+      recordDevPerfResult(
+        DEV_PERF_RESULT_KEYS.HOME_PHASEA_TO_PHASEB,
+        phaseBEntry.startTime - firstCardsEntry.startTime,
+        { reason },
+      );
+    };
+
+    firstRaf = requestAnimationFrame(() => {
+      secondRaf = requestAnimationFrame(() => {
+        postPaintTimer = window.setTimeout(() => {
+          promote('post-paint-window');
+        }, PHASE_B_POST_PAINT_WINDOW_MS);
+      });
+    });
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleHandle = (
+        window as Window & {
+          requestIdleCallback: (
+            cb: (deadline: IdleDeadline) => void,
+            opts?: { timeout?: number },
+          ) => number;
+        }
+      ).requestIdleCallback(() => {
+        promote('requestIdleCallback');
+      });
+    }
+
+    timeoutFallback = window.setTimeout(() => {
+      promote('timeout-fallback');
+    }, PHASE_B_TIMEOUT_FALLBACK_MS);
+
+    return () => {
+      cancelAnimationFrame(firstRaf);
+      cancelAnimationFrame(secondRaf);
+      cancelAnimationFrame(activateRaf);
+      window.clearTimeout(postPaintTimer);
+      window.clearTimeout(timeoutFallback);
+      if (idleHandle !== null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleHandle);
+      }
+    };
+  }, [homeCriticalPathPhaseAEnabled, homePhaseAFirstCardsMounted, isHomePhaseBActive]);
 
   const feedMain = (
     <div className="max-w-[1800px] mx-auto pb-4">
-      {!isAuthenticated && (
-        <PublicHomeIntro
-          isPulseStream={isPulseStream}
-          homeMicroServer={onboardingMicroHeadersQuery.data?.homeMicroHeader}
-          pulseMicroServer={onboardingMicroHeadersQuery.data?.marketPulseMicroHeader}
-        />
-      )}
+      {!isAuthenticated &&
+        (showPhaseBUi ? (
+          <PublicHomeIntro
+            isPulseStream={isPulseStream}
+            homeMicroServer={onboardingMicroHeadersQuery.data?.homeMicroHeader}
+            pulseMicroServer={onboardingMicroHeadersQuery.data?.marketPulseMicroHeader}
+          />
+        ) : (
+          <section
+            aria-hidden
+            className={`mx-4 mb-0.5 px-0 pt-0.5 pb-0 lg:mx-6 ${HOME_PHASE_RESERVED_INTRO_HEIGHT_CLASS}`}
+          />
+        ))}
       <div ref={homeFeedLayoutRef} className="px-4 lg:px-6">
-        <div
-          className="mt-0.5 mb-6 text-[10.5px] leading-4 tabular-nums text-slate-500/90 dark:text-slate-400 sm:text-[11px]"
-          role="status"
-          aria-live="polite"
-        >
-          {resultSummaryText}
-          {!isSmallViewport && sortLabel && safeTotalCount > 0 && ` · Sorted by ${sortLabel.toLowerCase()}`}
-        </div>
-        <HomeArticleFeed
-          articles={articles}
-          viewMode={viewMode}
-          isLoading={isLoadingArticles}
-          isFeedRefetching={isFeedRefetching}
-          searchHighlightQuery={isCommittedSearch ? committedQuery : undefined}
-          onArticleClick={handleArticleGridClick}
-          onTagClick={handleArticleTagClick}
-          onCategoryClick={toggleTag}
-          currentUserId={currentUserId}
-          hasNextPage={hasNextPage}
-          isFetchingNextPage={isFetchingNextPage}
-          onLoadMore={fetchNextPage}
-          error={articlesError || null}
-          onRetry={refetchArticles}
-          overscanRows={HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS}
-          scrollLayoutRootRef={homeFeedLayoutRef}
-        />
+        {showPhaseBUi ? (
+          <div
+            className="mt-0.5 mb-6 text-[10.5px] leading-4 tabular-nums text-slate-500/90 dark:text-slate-400 sm:text-[11px]"
+            role="status"
+            aria-live="polite"
+          >
+            {resultSummaryText}
+            {!isSmallViewport && sortLabel && safeTotalCount > 0 && ` · Sorted by ${sortLabel.toLowerCase()}`}
+          </div>
+        ) : reservePhaseBChrome ? (
+          <div aria-hidden className={`mt-0.5 mb-6 ${HOME_PHASE_RESERVED_SUMMARY_HEIGHT_CLASS}`} />
+        ) : null}
+        {homeCriticalPathPhaseAEnabled ? (
+          <div
+            className="relative"
+            style={reservedFeedShellMinHeight != null ? { minHeight: `${reservedFeedShellMinHeight}px` } : undefined}
+          >
+            <div
+              ref={phaseAShellRef}
+              className={isPhaseAVisible ? 'relative z-[1]' : 'pointer-events-none absolute inset-0 z-0 opacity-0'}
+              aria-hidden={!isPhaseAVisible}
+            >
+              <HomeCriticalAboveFoldPhaseA
+                articles={articles}
+                isLoading={isLoadingArticles}
+                currentUserId={currentUserId}
+                onArticleClick={handleArticleGridClick}
+                onTagClick={handleArticleTagClick}
+                onCategoryClick={toggleTag}
+                onCardsMounted={onHomePhaseACardsMounted}
+              />
+            </div>
+            {isHomePhaseBMounted && (
+              <div
+                className={isPhaseAVisible ? 'pointer-events-none absolute inset-0 z-0 opacity-0' : 'relative z-[1]'}
+                aria-hidden={isPhaseAVisible}
+              >
+                <HomeArticleFeed
+                  articles={articles}
+                  viewMode={viewMode}
+                  isLoading={isLoadingArticles}
+                  isFeedRefetching={isFeedRefetching}
+                  searchHighlightQuery={isCommittedSearch ? committedQuery : undefined}
+                  onArticleClick={handleArticleGridClick}
+                  onTagClick={handleArticleTagClick}
+                  onCategoryClick={toggleTag}
+                  currentUserId={currentUserId}
+                  hasNextPage={hasNextPage}
+                  isFetchingNextPage={isFetchingNextPage}
+                  onLoadMore={fetchNextPage}
+                  error={articlesError || null}
+                  onRetry={refetchArticles}
+                  overscanRows={HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS}
+                  scrollLayoutRootRef={homeFeedLayoutRef}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <HomeArticleFeed
+            articles={articles}
+            viewMode={viewMode}
+            isLoading={isLoadingArticles}
+            isFeedRefetching={isFeedRefetching}
+            searchHighlightQuery={isCommittedSearch ? committedQuery : undefined}
+            onArticleClick={handleArticleGridClick}
+            onTagClick={handleArticleTagClick}
+            onCategoryClick={toggleTag}
+            currentUserId={currentUserId}
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            onLoadMore={fetchNextPage}
+            error={articlesError || null}
+            onRetry={refetchArticles}
+            overscanRows={HOME_FEED_WINDOW_VIRTUAL_OVERSCAN_ROWS}
+            scrollLayoutRootRef={homeFeedLayoutRef}
+          />
+        )}
       </div>
     </div>
   );
@@ -757,7 +1045,14 @@ export const HomePage: React.FC<HomePageProps> = ({
           <>
             <HeaderSpacer />
             <div className="flex w-full min-w-0 flex-1 items-stretch">
-              <DesktopFilterSidebar />
+              {showPhaseBUi ? (
+                <DesktopFilterSidebar />
+              ) : reservePhaseBChrome ? (
+                <aside
+                  aria-hidden
+                  className={`sticky top-16 z-0 hidden h-[calc(100vh-4rem)] min-h-0 shrink-0 self-start overflow-hidden opacity-0 pointer-events-none lg:flex ${reservedSidebarClass}`}
+                />
+              ) : null}
               <div className="min-h-0 min-w-0 flex-1">
                 <PageStack
                   suppressHeaderSpacer

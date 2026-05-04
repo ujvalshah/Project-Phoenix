@@ -12,6 +12,7 @@ type RowAudit = {
 
 type Snapshot = {
   label: string;
+  scrollY: number;
   measureParentClientWidth: number | null;
   measureParentScrollWidth: number | null;
   firstVisibleRowShellWidth: number | null;
@@ -111,6 +112,7 @@ async function captureSnapshot(
     }
 
     return {
+      scrollY: Number(window.scrollY.toFixed(2)),
       measureParentClientWidth: measureParent ? measureParent.clientWidth : null,
       measureParentScrollWidth: measureParent ? measureParent.scrollWidth : null,
       firstVisibleRowShellWidth: firstVisible
@@ -172,6 +174,17 @@ test('forensic: home grid width/geometry contract', async ({ page }) => {
   snapshots.push(afterAppendDeepScroll);
   console.log(`[forensic] ${JSON.stringify(afterAppendDeepScroll)}`);
 
+  // No-jump guard after append: once user-driven deep scroll settles, idle time
+  // should not produce a large spontaneous scroll rebound.
+  await page.waitForTimeout(900);
+  const afterAppendIdle = await captureSnapshot(page, 'after-append-idle-stability', false);
+  snapshots.push(afterAppendIdle);
+  console.log(`[forensic] ${JSON.stringify(afterAppendIdle)}`);
+  expect(
+    Math.abs(afterAppendIdle.scrollY - afterAppendDeepScroll.scrollY),
+    'Unexpected scroll rebound after append settle',
+  ).toBeLessThanOrEqual(48);
+
   const showFilters = page.getByTitle('Show filters');
   if (await showFilters.isVisible().catch(() => false)) {
     await page.evaluate(() => {
@@ -191,6 +204,15 @@ test('forensic: home grid width/geometry contract', async ({ page }) => {
     const afterExpand = await captureSnapshot(page, 'after-expand');
     snapshots.push(afterExpand);
     console.log(`[forensic] ${JSON.stringify(afterExpand)}`);
+
+    const earlyFirstIndex = duringExpandEarly.visibleRows[0]?.index ?? null;
+    const finalFirstIndex = afterExpand.visibleRows[0]?.index ?? null;
+    if (earlyFirstIndex !== null && finalFirstIndex !== null) {
+      expect(
+        Math.abs(finalFirstIndex - earlyFirstIndex),
+        'Visible row index drifted unexpectedly after sidebar settle',
+      ).toBeLessThanOrEqual(1);
+    }
   }
 
   if (process.env.NUGGETS_FORENSIC_EMIT_JSON === '1') {

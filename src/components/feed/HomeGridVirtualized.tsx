@@ -75,9 +75,6 @@ const VirtualizedRow = React.memo(function VirtualizedRow({
   devClipRowShell = false,
 }: VirtualizedRowProps) {
   const rowRootRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    measureElement(rowRootRef.current);
-  }, [measureElement, rowIndex, rowArticles]);
 
   return (
     <div
