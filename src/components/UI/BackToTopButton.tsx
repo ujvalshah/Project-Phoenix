@@ -1,93 +1,49 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { Z_INDEX } from '@/constants/zIndex';
 
 export const BackToTopButton: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
-  const rafIdRef = useRef<number | null>(null);
   const lastVisibleRef = useRef(false);
   const location = useLocation();
+  const isHomeFeedRoute = location.pathname === '/';
   const isAdminRoute = location.pathname.startsWith('/admin');
   const bottomOffsetClass = isAdminRoute
     ? 'bottom-20 md:bottom-24'
     : 'max-md:bottom-[calc(1.5rem+var(--mobile-bottom-nav-inset,0px))] md:max-lg:bottom-[calc(2rem+var(--mobile-bottom-nav-inset,0px))] lg:bottom-8';
 
   useEffect(() => {
-    // CRITICAL PERFORMANCE FIX: Optimize scroll handler to be < 5ms
-    // Previous implementation was taking 11-14ms because:
-    // 1. Performance.now() calls in hot path (even in dev)
-    // 2. Multiple function calls in RAF callback
-    // 3. State updates even when value didn't change
-    //
-    // Solution: Minimize work in scroll handler, batch efficiently
     const handleScroll = () => {
-      // Cancel any pending RAF to avoid multiple queued updates
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
+      const shouldBeVisible = window.scrollY > 300;
+      if (shouldBeVisible !== lastVisibleRef.current) {
+        lastVisibleRef.current = shouldBeVisible;
+        setIsVisible(shouldBeVisible);
       }
-
-      rafIdRef.current = requestAnimationFrame(() => {
-        // Read scrollY once and cache
-        const scrollY = window.scrollY;
-        const shouldBeVisible = scrollY > 300;
-        
-        // Only update state if visibility actually changed
-        // This prevents unnecessary re-renders that cause scrollbar flicker
-        if (shouldBeVisible !== lastVisibleRef.current) {
-          lastVisibleRef.current = shouldBeVisible;
-          setIsVisible(shouldBeVisible);
-        }
-        
-        rafIdRef.current = null;
-      });
     };
-    
-    // Performance monitoring (only in development, outside hot path)
-    // Only check performance every 100 scrolls to avoid overhead
-    let perfCheckCount = 0;
-    const scrollHandler = process.env.NODE_ENV === 'development' 
-      ? () => {
-          // Only check performance every 100 scrolls to avoid overhead
-          if (perfCheckCount++ % 100 === 0) {
-            const perfStart = performance.now();
-            handleScroll();
-            requestAnimationFrame(() => {
-              const duration = performance.now() - perfStart;
-              if (duration > 5) {
-                console.warn(`[BackToTopButton] Scroll handler took ${duration.toFixed(2)}ms (target: <5ms)`);
-              }
-            });
-          } else {
-            handleScroll();
-          }
-        }
-      : handleScroll;
 
-    // Mark as passive to allow browser scroll optimizations
-    // Passive listeners can't call preventDefault(), which is fine here
-    window.addEventListener('scroll', scrollHandler, { passive: true });
-    
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
     return () => {
-      window.removeEventListener('scroll', scrollHandler);
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
+      window.removeEventListener('scroll', handleScroll);
     };
   }, []);
 
   const scrollToTop = () => {
     window.scrollTo({
       top: 0,
-      behavior: 'smooth',
+      behavior: isHomeFeedRoute ? 'instant' : 'smooth',
     });
   };
 
   return (
     <button
       onClick={scrollToTop}
-      className={`fixed right-6 md:right-8 z-30 p-2.5 rounded-full bg-primary-500 text-slate-900 shadow-lg shadow-primary-500/30 hover:bg-primary-400 hover:scale-110 transition-all duration-300 transform flex items-center justify-center ${bottomOffsetClass} ${
-        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
+      className={`fixed right-6 md:right-8 p-2.5 rounded-full bg-primary-500 text-slate-900 shadow-lg shadow-primary-500/30 hover:bg-primary-400 flex items-center justify-center ${bottomOffsetClass} ${
+        isVisible ? 'visible opacity-100 pointer-events-auto' : 'invisible opacity-0 pointer-events-none'
       }`}
+      style={{ zIndex: Z_INDEX.CHROME_WIDGET }}
     >
       <ArrowUp size={20} />
     </button>

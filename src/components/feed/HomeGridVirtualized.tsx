@@ -382,8 +382,6 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
 
   const virtualizerRef = useRef(virtualizer);
   virtualizerRef.current = virtualizer;
-  const appendSettleTimerRef = useRef<number | null>(null);
-  const prevDisplayLengthRef = useRef(displayArticles.length);
   const prevWidthRemeasureKeyRef = useRef(geometryWidthKey);
 
   const measureRowElement = useCallback((el: HTMLElement | null) => {
@@ -501,40 +499,6 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
       });
     });
   }, [rows.length, measureVisibleVirtualRows]);
-
-  /** Append lifecycle: invalidate stale geometry once, then run one bounded settle pass. */
-  useEffect(() => {
-    const nextLen = displayArticles.length;
-    const prevLen = prevDisplayLengthRef.current;
-    prevDisplayLengthRef.current = nextLen;
-    if (nextLen <= prevLen || nextLen === 0) return;
-
-    const v = virtualizerRef.current;
-    v.measure();
-    requestAnimationFrame(() => {
-      measureVisibleVirtualRows();
-    });
-
-    if (appendSettleTimerRef.current != null) {
-      window.clearTimeout(appendSettleTimerRef.current);
-    }
-    appendSettleTimerRef.current = window.setTimeout(() => {
-      appendSettleTimerRef.current = null;
-      const now = virtualizerRef.current;
-      now.measure();
-      requestAnimationFrame(() => {
-        measureVisibleVirtualRows();
-      });
-    }, 420);
-  }, [displayArticles.length, measureVisibleVirtualRows]);
-
-  useEffect(() => {
-    return () => {
-      if (appendSettleTimerRef.current != null) {
-        window.clearTimeout(appendSettleTimerRef.current);
-      }
-    };
-  }, []);
 
   return (
     <div ref={measureParentRef} className="mx-auto w-full">
