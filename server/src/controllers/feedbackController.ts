@@ -5,6 +5,20 @@ import { z } from 'zod';
 import { createSearchRegex } from '../utils/escapeRegExp.js';
 import { createRequestLogger } from '../utils/logger.js';
 
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { userId?: string };
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  return (req as RequestWithAuthContext).user?.userId;
+}
+
 // Validation schemas
 const createFeedbackSchema = z.object({
   content: z.string().min(1, 'Content is required').max(5000, 'Content too long'),
@@ -39,7 +53,7 @@ export const getFeedback = async (req: Request, res: Response) => {
     const skip = (page - 1) * limit;
     
     // Build query
-    const query: any = {};
+    const query: Record<string, unknown> = {};
     if (status) {
       query.status = status;
     }
@@ -72,8 +86,8 @@ export const getFeedback = async (req: Request, res: Response) => {
       limit,
       hasMore: page * limit < total
     });
-  } catch (error: any) {
-    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     logger.error({ err: error }, '[Feedback] Get feedback error');
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -94,7 +108,7 @@ export const createFeedback = async (req: Request, res: Response) => {
       });
     }
 
-    const { id, ...feedbackData } = validationResult.data; // Remove id if present (let MongoDB generate _id)
+    const { id: _id, ...feedbackData } = validationResult.data; // Remove id if present (let MongoDB generate _id)
     
     // Create new feedback
     const newFeedback = await Feedback.create({
@@ -104,8 +118,8 @@ export const createFeedback = async (req: Request, res: Response) => {
     });
     
     res.status(201).json(normalizeDoc(newFeedback));
-  } catch (error: any) {
-    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     logger.error({ err: error }, '[Feedback] Create feedback error');
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -139,8 +153,8 @@ export const updateFeedbackStatus = async (req: Request, res: Response) => {
     }
     
     res.json(normalizeDoc(feedback));
-  } catch (error: any) {
-    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     logger.error({ err: error }, '[Feedback] Update feedback status error');
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -159,8 +173,8 @@ export const deleteFeedback = async (req: Request, res: Response) => {
     }
     
     res.status(204).send();
-  } catch (error: any) {
-    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     logger.error({ err: error }, '[Feedback] Delete feedback error');
     res.status(500).json({ message: 'Internal server error' });
   }

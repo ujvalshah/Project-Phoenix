@@ -74,7 +74,7 @@ const updateSearchCohortSchema = z.object({
 
 // Short-lived cache to avoid hammering the database
 // Cache up to 10 entries for 2 minutes each
-const statsCache = new LRUCache<any>(10, 2 * 60 * 1000);
+const statsCache = new LRUCache<Record<string, unknown>>(10, 2 * 60 * 1000);
 const CACHE_KEY = 'admin_stats';
 
 export async function getAdminStats(req: Request, res: Response) {
@@ -246,8 +246,10 @@ export async function getAdminStats(req: Request, res: Response) {
 
   // Moderation stats already in correct format from getModerationStats()
   const feedbackStats = feedbackAgg.reduce(
-    (acc: Record<string, number>, item: any) => {
-      acc[item._id] = item.count;
+    (acc: Record<string, number>, item: { _id?: string; count?: number }) => {
+      if (typeof item._id === 'string') {
+        acc[item._id] = typeof item.count === 'number' ? item.count : 0;
+      }
       return acc;
     },
     { new: 0, read: 0, archived: 0 }
@@ -496,7 +498,6 @@ export async function updateMediaLimits(req: AdminRequest, res: Response) {
 
   const parseResult = updateMediaLimitsSchema.safeParse(req.body);
   if (!parseResult.success) {
-    const message = parseResult.error.errors.map((e) => e.message).join('; ') || 'Validation failed';
     return res.status(400).json({ message: 'Invalid request', errors: parseResult.error.flatten().fieldErrors });
   }
 
@@ -965,15 +966,15 @@ async function applyLifecycle(
   }
 }
 
-export async function suspendUser(req: AdminRequest, res: Response) {
+export function suspendUser(req: AdminRequest, res: Response) {
   return applyLifecycle('suspend', req, res);
 }
 
-export async function banUser(req: AdminRequest, res: Response) {
+export function banUser(req: AdminRequest, res: Response) {
   return applyLifecycle('ban', req, res);
 }
 
-export async function activateUser(req: AdminRequest, res: Response) {
+export function activateUser(req: AdminRequest, res: Response) {
   return applyLifecycle('activate', req, res);
 }
 

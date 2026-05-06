@@ -53,7 +53,7 @@ async function createTestUser(): Promise<string> {
   return user._id.toString();
 }
 
-async function createArticleDoc(params: {
+function createArticleDoc(params: {
   authorId: string;
   contentStream?: 'standard' | 'pulse' | 'both';
   visibility?: 'public' | 'private';

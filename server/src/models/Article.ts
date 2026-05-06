@@ -376,6 +376,11 @@ function isSuspiciousTruncation(oldContent: string, newContent: string): boolean
   return false;
 }
 
+type ContentUpdatePayload = {
+  $set?: { content?: unknown };
+  content?: unknown;
+};
+
 // Pre-save hook: Detect content truncation on document.save()
 // NOTE: Use async without next — in Mongoose async pre hooks, Kareem does not pass next;
 // calling next() throws "next is not a function" in production (Mongoose 9 / Kareem 2).
@@ -427,18 +432,20 @@ ArticleSchema.pre('save', async function() {
 // Pre-updateOne hook: Detect content truncation on Model.updateOne()
 // NOTE: Use async without next — same as pre('save'); calling next() throws in Mongoose 9.
 ArticleSchema.pre('updateOne', async function() {
-  const update = this.getUpdate() as any;
+  const update = this.getUpdate() as ContentUpdatePayload | undefined;
   
   // Check if content is being updated
   if (!update || (!update.$set?.content && !update.content)) {
     return;
   }
   
-  const newContent = update.$set?.content || update.content || '';
+  const rawNewContent = update.$set?.content ?? update.content;
+  const newContent = typeof rawNewContent === 'string' ? rawNewContent : '';
   
   try {
     const query = this.getQuery();
-    const Model = (this as any).model || mongoose.model('Article');
+    const modelFromContext = (this as unknown as { model?: mongoose.Model<IArticle> }).model;
+    const Model = modelFromContext || mongoose.model<IArticle>('Article');
     const oldDoc = await Model.findOne(query).lean();
     
     if (!oldDoc) {
@@ -474,18 +481,20 @@ ArticleSchema.pre('updateOne', async function() {
 // Pre-findOneAndUpdate hook: Detect content truncation on Model.findOneAndUpdate()
 // NOTE: Use async without next — same as pre('save'); calling next() throws in Mongoose 9.
 ArticleSchema.pre('findOneAndUpdate', async function() {
-  const update = this.getUpdate() as any;
+  const update = this.getUpdate() as ContentUpdatePayload | undefined;
   
   // Check if content is being updated
   if (!update || (!update.$set?.content && !update.content)) {
     return;
   }
   
-  const newContent = update.$set?.content || update.content || '';
+  const rawNewContent = update.$set?.content ?? update.content;
+  const newContent = typeof rawNewContent === 'string' ? rawNewContent : '';
   
   try {
     const query = this.getQuery();
-    const Model = (this as any).model || mongoose.model('Article');
+    const modelFromContext = (this as unknown as { model?: mongoose.Model<IArticle> }).model;
+    const Model = modelFromContext || mongoose.model<IArticle>('Article');
     const oldDoc = await Model.findOne(query).lean();
     
     if (!oldDoc) {

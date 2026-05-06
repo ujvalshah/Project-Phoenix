@@ -1,6 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { ACCESS_TOKEN_COOKIE, CSRF_TOKEN_COOKIE } from '../utils/authCookies.js';
 
+type RequestWithCookies = Request & {
+  cookies?: Record<string, string | undefined>;
+};
+
+function getCookie(req: Request, name: string): string | undefined {
+  const raw = (req as RequestWithCookies).cookies?.[name];
+  return typeof raw === 'string' ? raw : undefined;
+}
+
 /**
  * Endpoints exempt from CSRF validation.
  *
@@ -54,8 +63,8 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return next();
   }
 
-  const csrfCookie = (req as any).cookies?.[CSRF_TOKEN_COOKIE] as string | undefined;
-  const accessCookie = (req as any).cookies?.[ACCESS_TOKEN_COOKIE] as string | undefined;
+  const csrfCookie = getCookie(req, CSRF_TOKEN_COOKIE);
+  const accessCookie = getCookie(req, ACCESS_TOKEN_COOKIE);
 
   // If the request is cookie-authenticated (access_token present), CSRF is
   // REQUIRED — even if the csrf_token cookie was lost. Previously we skipped

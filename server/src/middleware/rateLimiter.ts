@@ -3,6 +3,14 @@ import type { Request } from 'express';
 import { RedisStore } from 'rate-limit-redis';
 import { getRedisClientOrFallback, isRedisAvailable } from '../utils/redisClient.js';
 
+type RateLimitInfo = {
+  resetTime?: Date | number;
+};
+
+type RateLimitRequest = Request & {
+  rateLimit?: RateLimitInfo;
+};
+
 /**
  * Helper function to create a RedisStore instance with a unique prefix
  * Each rate limiter must have its own RedisStore instance to avoid conflicts
@@ -17,11 +25,11 @@ function createRedisStore(prefix: string): RedisStore | undefined {
 
   return new RedisStore({
     prefix: prefix, // Unique prefix for each rate limiter
-    sendCommand: async (...args: string[]) => {
+    sendCommand: (...args: string[]) => {
       // Redis v5 sendCommand expects an array: [command, ...args]
       // rate-limit-redis passes arguments as individual parameters via rest syntax
       // So args is already an array containing [command, arg1, arg2, ...]
-      return await client.sendCommand(args);
+      return client.sendCommand(args);
     },
   });
 }
@@ -50,7 +58,7 @@ export const loginLimiter = rateLimit({
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   /** Playwright global-setup + browser login share one IP; integration hits limit quickly. */
   skip: () => process.env.E2E_AUTH_RELAXED_LIMITS === '1',
-  handler: (req, res) => {
+  handler: (_req, res) => {
     res.status(429).json({
       message: 'Too many attempts. Please try again later.'
     });
@@ -105,7 +113,7 @@ export const resendVerificationLimiter = rateLimit({
   message: 'Too many requests. Please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => {
+  handler: (_req, res) => {
     res.status(429).json({ message: 'Too many requests. Please try again later.' });
   },
 });
@@ -126,7 +134,7 @@ export const unfurlLimiter = rateLimit({
   message: 'Too many unfurl requests. Please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
+  skip: (_req) => {
     // Check if user is authenticated/admin and adjust limit dynamically
     // Note: express-rate-limit doesn't support dynamic max, so we use skip
     // For now, we'll use a conservative limit for all users
@@ -134,7 +142,7 @@ export const unfurlLimiter = rateLimit({
     return false; // Don't skip - apply limit to all
   },
   handler: (req, res) => {
-    const resetTime = (req as any).rateLimit?.resetTime || Date.now() + 60000;
+    const resetTime = (req as RateLimitRequest).rateLimit?.resetTime || Date.now() + 60000;
     const retryAfter = Math.ceil((resetTime - Date.now()) / 1000);
     
     res.status(429).json({
@@ -161,7 +169,7 @@ export const aiLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   handler: (req, res) => {
-    const resetTime = (req as any).rateLimit?.resetTime || Date.now() + 60000;
+    const resetTime = (req as RateLimitRequest).rateLimit?.resetTime || Date.now() + 60000;
     const retryAfter = Math.ceil((resetTime - Date.now()) / 1000);
     
     res.status(429).json({
@@ -203,7 +211,7 @@ export const adminMutationLimiter = rateLimit({
     return ipKeyGenerator(req.ip ?? '');
   },
   handler: (req, res) => {
-    const resetTime = (req as Request & { rateLimit?: { resetTime?: Date | number } }).rateLimit?.resetTime;
+    const resetTime = (req as RateLimitRequest).rateLimit?.resetTime;
     const resetMs = resetTime instanceof Date ? resetTime.getTime() : (resetTime ?? Date.now() + 60000);
     const retryAfter = Math.max(1, Math.ceil((resetMs - Date.now()) / 1000));
     res.status(429).json({

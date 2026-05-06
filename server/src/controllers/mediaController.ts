@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import multer from 'multer';
-import { Media, IMedia } from '../models/Media.js';
+import { Media, IMedia, type MediaEntityType, type MediaPurpose, type MediaStatus } from '../models/Media.js';
 import { 
   uploadToCloudinary, 
   deleteFromCloudinary,
@@ -14,6 +14,36 @@ import { getMediaQuotaConfig } from '../services/mediaQuotaConfigService.js';
 import mongoose from 'mongoose';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+
+type RequestWithAuthUser = Request & { user?: { userId?: string; role?: string } };
+
+function getRequestUserId(req: Request): string | undefined {
+  return (req as RequestWithAuthUser).user?.userId;
+}
+
+function getRequestUserRole(req: Request): string | undefined {
+  return (req as RequestWithAuthUser).user?.role;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) return error.stack;
+  return undefined;
+}
+
+function getMongoErrorCode(error: unknown): number | undefined {
+  if (!isRecord(error)) return undefined;
+  const code = error.code;
+  return typeof code === 'number' ? code : undefined;
+}
 
 /**
  * Media Controller
@@ -71,7 +101,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
       });
     }
 
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
     if (!userId) {
       return sendUnauthorizedError(res, 'Authentication required');
     }
@@ -82,7 +112,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
       return sendValidationError(res, 'No file provided', []);
     }
 
-    const userRole = (req as any).user?.role;
+    const userRole = getRequestUserRole(req);
 
     // SECURITY: Check user quotas before upload (admins are exempt)
     if (userRole !== 'admin') {
@@ -117,13 +147,13 @@ export const uploadMedia = async (req: Request, res: Response) => {
             message: `Maximum daily upload limit reached (${limits.maxDailyUploads} files). Please try again tomorrow.`
           });
         }
-      } catch (quotaError: any) {
-        const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+      } catch (quotaError: unknown) {
+        const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
         requestLogger.error({
           msg: '[Media] Quota check failed',
           error: {
-            message: quotaError.message,
-            stack: quotaError.stack,
+            message: getErrorMessage(quotaError),
+            stack: getErrorStack(quotaError),
           },
         });
         captureException(quotaError instanceof Error ? quotaError : new Error(String(quotaError)), {
@@ -196,7 +226,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
         width: cloudinaryResult.width,
         height: cloudinaryResult.height,
       }, '[Media] Cloudinary upload successful');
-    } catch (cloudinaryError: any) {
+    } catch (cloudinaryError: unknown) {
       // Audit Phase-1 Fix: Use structured logging and Sentry capture
       requestLogger.error({ err: cloudinaryError }, '[Media] Cloudinary upload failed');
       captureException(cloudinaryError instanceof Error ? cloudinaryError : new Error(String(cloudinaryError)), {
@@ -205,13 +235,13 @@ export const uploadMedia = async (req: Request, res: Response) => {
       });
       return res.status(500).json({
         error: 'Upload Failed',
-        message: `Failed to upload to Cloudinary: ${cloudinaryError.message}`
+        message: `Failed to upload to Cloudinary: ${getErrorMessage(cloudinaryError)}`
       });
     }
 
     // CRITICAL: Check if media with this publicId already exists (idempotency guard)
     // This prevents duplicate Media records even if Cloudinary allows the upload
-    let existingMedia = await Media.findOne({
+    const existingMedia = await Media.findOne({
       'cloudinary.publicId': cloudinaryResult.publicId,
       status: 'active'
     });
@@ -239,7 +269,14 @@ export const uploadMedia = async (req: Request, res: Response) => {
     // Create MongoDB record (MongoDB-first approach)
     let mediaDoc: IMedia;
     try {
-      const mediaData: any = {
+      const mediaData: {
+        ownerId: mongoose.Types.ObjectId;
+        purpose: MediaPurpose;
+        cloudinary: IMedia['cloudinary'];
+        file: IMedia['file'];
+        status: MediaStatus;
+        usedBy?: IMedia['usedBy'];
+      } = {
         ownerId: new mongoose.Types.ObjectId(userId),
         purpose,
         cloudinary: {
@@ -263,7 +300,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
       // Add usedBy if entity linking provided
       if (entityType && entityId) {
         mediaData.usedBy = {
-          entityType,
+          entityType: entityType as MediaEntityType,
           entityId: new mongoose.Types.ObjectId(entityId)
         };
       }
@@ -271,7 +308,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
       requestLogger.info({ publicId: cloudinaryResult.publicId }, '[Media] Creating MongoDB record');
       mediaDoc = await Media.create(mediaData);
       requestLogger.info({ mediaId: mediaDoc._id.toString(), publicId: cloudinaryResult.publicId }, '[Media] MongoDB record created');
-    } catch (mongoError: any) {
+    } catch (mongoError: unknown) {
       // ROLLBACK: Delete from Cloudinary if MongoDB insert fails
       // Audit Phase-1 Fix: Use structured logging and Sentry capture
       requestLogger.error({ err: mongoError, publicId: cloudinaryResult.publicId }, '[Media] MongoDB insert failed, rolling back Cloudinary upload');
@@ -283,7 +320,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
       await deleteFromCloudinary(cloudinaryResult.publicId, cloudinaryResult.resourceType);
       
       // Check for duplicate publicId error
-      if (mongoError.code === 11000) {
+      if (getMongoErrorCode(mongoError) === 11000) {
         requestLogger.warn({ publicId: cloudinaryResult.publicId }, '[Media] Duplicate publicId detected during insert');
         // Try to find existing media
         const existing = await Media.findOne({ 'cloudinary.publicId': cloudinaryResult.publicId });
@@ -318,9 +355,9 @@ export const uploadMedia = async (req: Request, res: Response) => {
       purpose: mediaDoc.purpose,
       status: mediaDoc.status
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({ err: error }, '[Media] Upload error');
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     sendInternalError(res);
@@ -336,7 +373,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
  */
 export const linkMedia = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
     if (!userId) {
       return sendUnauthorizedError(res, 'Authentication required');
     }
@@ -369,7 +406,7 @@ export const linkMedia = async (req: Request, res: Response) => {
 
     // Update usedBy field
     media.usedBy = {
-      entityType: entityType as any,
+      entityType: entityType as MediaEntityType,
       entityId: new mongoose.Types.ObjectId(entityId)
     };
     media.status = 'active';
@@ -383,14 +420,14 @@ export const linkMedia = async (req: Request, res: Response) => {
         usedBy: media.usedBy
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Media] Link error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
@@ -405,7 +442,7 @@ export const linkMedia = async (req: Request, res: Response) => {
  */
 export const deleteMedia = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
     if (!userId) {
       return sendUnauthorizedError(res, 'Authentication required');
     }
@@ -450,14 +487,14 @@ export const deleteMedia = async (req: Request, res: Response) => {
       success: true,
       message: 'Media deleted successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Media] Delete error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
@@ -499,14 +536,14 @@ export const getMedia = async (req: Request, res: Response) => {
       purpose: media.purpose,
       usedBy: media.usedBy
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Media] Get error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });

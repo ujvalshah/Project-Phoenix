@@ -58,7 +58,7 @@ export function initSentry() {
       // Enable Express integration
       expressIntegration(),
     ],
-    beforeSend(event, hint) {
+    beforeSend(event, _hint) {
       // Sanitize sensitive data
       if (event.request) {
         if (event.request.headers) {
@@ -90,7 +90,7 @@ export function captureException(error: Error, context?: {
   requestId?: string;
   route?: string;
   userId?: string;
-  extra?: Record<string, any>;
+  extra?: Record<string, unknown>;
 }) {
   Sentry.withScope((scope) => {
     if (context?.requestId) {
@@ -119,7 +119,7 @@ export function captureMessage(message: string, level: 'debug' | 'info' | 'warni
   requestId?: string;
   route?: string;
   userId?: string;
-  extra?: Record<string, any>;
+  extra?: Record<string, unknown>;
 }) {
   Sentry.withScope((scope) => {
     if (context?.requestId) {

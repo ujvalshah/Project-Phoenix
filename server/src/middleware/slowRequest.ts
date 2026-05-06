@@ -18,7 +18,7 @@ export function slowRequestMiddleware(req: Request, res: Response, next: NextFun
 
   // Override res.end to measure duration
   const originalEnd = res.end.bind(res);
-  res.end = function (chunk?: any, encoding?: any) {
+  res.end = function (this: Response, ...args: Parameters<Response['end']>) {
     const duration = Date.now() - startTime;
 
     if (duration >= SLOW_REQUEST_THRESHOLD_MS) {
@@ -33,8 +33,7 @@ export function slowRequestMiddleware(req: Request, res: Response, next: NextFun
       });
     }
 
-    // Call original end
-    originalEnd(chunk, encoding);
+    return originalEnd(...args);
   };
 
   next();

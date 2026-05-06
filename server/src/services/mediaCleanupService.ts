@@ -3,6 +3,11 @@ import { Media } from '../models/Media.js';
 import { deleteFromCloudinary, isCloudinaryConfigured } from './cloudinaryService.js';
 import { getLogger } from '../utils/logger.js';
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 /**
  * Media Cleanup Service
  * Handles orphaned media cleanup and scheduled maintenance
@@ -80,12 +85,12 @@ export async function cleanupOrphanedMedia(orphanAgeMinutes: number = 60): Promi
         await media.save();
         deletedCount++;
 
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Log but continue with other media
         logger.error({
           msg: 'Error cleaning up orphaned media',
           mediaId: media._id.toString(),
-          error: error.message
+          error: getErrorMessage(error)
         });
       }
     }
@@ -98,10 +103,10 @@ export async function cleanupOrphanedMedia(orphanAgeMinutes: number = 60): Promi
     });
 
     return deletedCount;
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({
       msg: 'Orphaned media cleanup failed',
-      error: error.message
+      error: getErrorMessage(error)
     });
     throw error;
   }
@@ -142,12 +147,12 @@ export async function markMediaAsOrphaned(
     });
 
     return result.modifiedCount;
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({
       msg: 'Failed to mark media as orphaned',
       entityType,
       entityId,
-      error: error.message
+      error: getErrorMessage(error)
     });
     throw error;
   }
@@ -180,11 +185,11 @@ export async function getUserStorageStats(userId: string): Promise<{
       activeFiles: activeMedia.length,
       activeBytes
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({
       msg: 'Failed to get user storage stats',
       userId,
-      error: error.message
+      error: getErrorMessage(error)
     });
     throw error;
   }

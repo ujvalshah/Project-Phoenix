@@ -12,6 +12,35 @@ import mongoose from 'mongoose';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { userId?: string };
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  const id = (req as RequestWithAuthContext).user?.userId;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) return error.stack;
+  return undefined;
+}
+
+function toSentryError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 // Validation schemas
 const createReportSchema = z.object({
   targetId: z.string().min(1, 'Target ID is required'),
@@ -26,11 +55,6 @@ const createReportSchema = z.object({
     id: z.string(),
     name: z.string()
   }).optional()
-});
-
-const resolveReportSchema = z.object({
-  resolution: z.enum(['resolved', 'dismissed']),
-  actionReason: z.string().max(500).optional()
 });
 
 /**
@@ -70,17 +94,17 @@ export const getReports = async (req: Request, res: Response) => {
       limit,
       hasMore: page * limit < total
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Moderation] Get reports error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -101,11 +125,11 @@ export const createReport = async (req: Request, res: Response) => {
     }
 
     // Remove id if present (let MongoDB generate _id)
-    const reportData = validationResult.data;
-    if ('id' in reportData) {
-      delete (reportData as any).id;
-    }
-    
+    const { id: _clientId, ...reportData } = validationResult.data as z.infer<typeof createReportSchema> & {
+      id?: string;
+    };
+    void _clientId;
+
     // Create new report - explicitly set status to 'open'
     const newReport = await Report.create({
       ...reportData,
@@ -113,17 +137,17 @@ export const createReport = async (req: Request, res: Response) => {
     });
     
     res.status(201).json(normalizeDoc(newReport));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Moderation] Create report error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -186,17 +210,17 @@ export const resolveReport = async (req: AdminRequest, res: Response) => {
     });
 
     res.json(normalizeDoc(report));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Moderation] Resolve report error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -259,17 +283,17 @@ export const dismissReport = async (req: AdminRequest, res: Response) => {
     });
 
     res.json(normalizeDoc(report));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Moderation] Dismiss report error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -305,7 +329,7 @@ export const getReportedContent = async (req: AdminRequest, res: Response) => {
       });
     }
 
-    let content: any = null;
+    let content: unknown = null;
     let exists = false;
 
     try {
@@ -320,20 +344,20 @@ export const getReportedContent = async (req: AdminRequest, res: Response) => {
       }
 
       exists = content !== null;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Audit Phase-1 Fix: Use structured logging and Sentry capture
-      const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+      const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
       requestLogger.error({
         msg: `[Moderation] Error fetching ${targetType}`,
         targetId,
         targetType,
         error: {
-          message: error.message,
-          stack: error.stack,
+          message: getErrorMessage(error),
+          stack: getErrorStack(error),
         },
       });
-      captureException(error instanceof Error ? error : new Error(String(error)), {
-        requestId: req.id,
+      captureException(toSentryError(error), {
+        requestId: getRequestId(req),
         route: req.path,
         targetId,
         targetType,
@@ -354,23 +378,23 @@ export const getReportedContent = async (req: AdminRequest, res: Response) => {
 
     // Content exists - return it
     res.json({
-      content: normalizeDoc(content),
+      content: normalizeDoc(content as object),
       exists: true,
       deleted: false,
       targetType,
       targetId
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Moderation] Get reported content error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };

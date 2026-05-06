@@ -5,10 +5,12 @@ import { Tag } from '../models/Tag.js';
 import { User } from '../models/User.js';
 import { normalizeDoc, normalizeDocs, normalizeArticleDocs } from '../utils/db.js';
 import { createCollectionSchema, updateCollectionSchema, addEntrySchema, batchEntriesSchema, flagEntrySchema, setFeaturedSchema, reorderFeaturedSchema } from '../utils/validation.js';
-import { getCommunityCollections, getCommunityCollectionsCount, CollectionQueryFilters } from '../utils/collectionQueryHelpers.js';
-import { createSearchRegex, createExactMatchRegex } from '../utils/escapeRegExp.js';
+import { CollectionQueryFilters } from '../utils/collectionQueryHelpers.js';
+import { createSearchRegex } from '../utils/escapeRegExp.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
+import { Types } from 'mongoose';
+import type { SortOrder } from 'mongoose';
 import {
   canModifyCollectionMetadata,
   canModifyCollectionEntriesPolicy,
@@ -28,6 +30,62 @@ import {
   shouldRedisCacheCollectionsList,
 } from '../config/publicReadCache.js';
 
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { userId?: string; role?: string };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  const id = (req as RequestWithAuthContext).user?.userId;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function getRequestUserRole(req: Request): string | undefined {
+  const role = (req as RequestWithAuthContext).user?.role;
+  return typeof role === 'string' ? role : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) return error.stack;
+  return undefined;
+}
+
+function getMongoErrorCode(error: unknown): number | undefined {
+  if (!isRecord(error)) return undefined;
+  const code = error.code;
+  return typeof code === 'number' ? code : undefined;
+}
+
+function getMongoKeyPattern(error: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(error)) return undefined;
+  const kp = error.keyPattern;
+  return isRecord(kp) ? kp : undefined;
+}
+
+function toSentryError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function getBodyString(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const candidate = value[key];
+  return typeof candidate === 'string' ? candidate : undefined;
+}
+
 function scheduleInvalidateCollectionReadCaches(): void {
   void invalidateRedisCollectionReadCaches();
 }
@@ -46,7 +104,7 @@ const MAX_BATCH_ENTRIES = {
   nonAdmin: 100,
 } as const;
 
-async function addEntryIfMissing(
+function addEntryIfMissing(
   collectionId: string,
   articleId: string,
   addedByUserId: string,
@@ -87,13 +145,13 @@ export const getCollections = async (req: Request, res: Response) => {
     const includeCount = req.query.includeCount === 'true';
     const summaryOnly = req.query.summary === 'true';
     const includeEntries = req.query.includeEntries !== 'false' && !summaryOnly;
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
     const parentId = req.query.parentId as string | undefined;
     const rootOnly = req.query.rootOnly === 'true';
     
     // PHASE 1: Filter private collections - require authentication
     // Admins can see all private collections, regular users only see their own
-    const userRole = (req as any).user?.role;
+    const userRole = getRequestUserRole(req);
     const isAdmin = typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
     
     if (type === 'private' && !userId) {
@@ -116,7 +174,7 @@ export const getCollections = async (req: Request, res: Response) => {
     if (creatorId) filters.creatorId = creatorId;
     
     // Build MongoDB query
-    const query: any = {};
+    const query: Record<string, unknown> = {};
     if (type === 'private') {
       // PHASE 1: Admins can see all private collections, regular users only see their own
       query.type = 'private';
@@ -156,7 +214,7 @@ export const getCollections = async (req: Request, res: Response) => {
     }
     
     // PHASE 5: Build sort object based on sortField and sortDirection
-    const sortObj: any = {};
+    const sortObj: Record<string, 1 | -1> = {};
     if (sortField) {
       switch (sortField) {
         case 'created':
@@ -186,16 +244,11 @@ export const getCollections = async (req: Request, res: Response) => {
     // Build projection based on caller needs.
     // Hot paths (filter surfaces/list pages) should request summary payloads so
     // we avoid shipping large entries arrays on every interaction.
-    const projection = includeEntries
-      ? undefined
-      : {
-          entries: 0,
-        };
-
     const buildCollectionsPayload = async () => {
       const [collections, total] = await Promise.all([
-        Collection.find(query)
-          .select(projection)
+        (includeEntries
+          ? Collection.find(query)
+          : Collection.find(query).select({ entries: 0 }))
           .sort(sortObj)
           .skip(skip)
           .limit(limit)
@@ -247,17 +300,17 @@ export const getCollections = async (req: Request, res: Response) => {
       },
     );
     return res.json(payload);
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Get collections error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -265,30 +318,31 @@ export const getCollections = async (req: Request, res: Response) => {
 export const getCollectionById = async (req: Request, res: Response) => {
   try {
     const includeEntries = req.query.includeEntries !== 'false';
-    const collection = await Collection.findById(req.params.id)
-      .select(includeEntries ? undefined : { entries: 0 })
+    const collection = await (includeEntries
+      ? Collection.findById(req.params.id)
+      : Collection.findById(req.params.id).select({ entries: 0 }))
       .lean();
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
     
     // PHASE 1: Check collection access with admin override
-    const userId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const userId = getRequestUserId(req);
+    const userRole = getRequestUserRole(req);
     if (!canViewCollectionPolicy(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to view this collection' });
     }
     
     res.json(normalizeDoc(collection));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Get collection by ID error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -300,8 +354,8 @@ export const getCollectionById = async (req: Request, res: Response) => {
  */
 export const getCollectionsContainingArticle = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId as string | undefined;
-    const userRole = (req as any).user?.role as string | undefined;
+    const userId = getRequestUserId(req);
+    const userRole = getRequestUserRole(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -337,15 +391,15 @@ export const getCollectionsContainingArticle = async (req: Request, res: Respons
 
     res.json(normalizeDocs(visible));
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] getCollectionsContainingArticle error',
       error: {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -353,7 +407,7 @@ export const getCollectionsContainingArticle = async (req: Request, res: Respons
 export const createCollection = async (req: Request, res: Response) => {
   try {
     // PATCH 1: Use authenticated user ID, ignore client-provided creatorId
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -363,14 +417,14 @@ export const createCollection = async (req: Request, res: Response) => {
     if (!validationResult.success) {
       return res.status(400).json({ 
         message: 'Validation failed', 
-        errors: validationResult.error.errors 
+        errors: validationResult.error.issues 
       });
     }
 
     const { name, description, type, parentId } = validationResult.data;
     const creatorId = userId; // USE AUTHENTICATED USER, NOT CLIENT PROVIDED
 
-    if (!canCreateCollectionOfType(type, (req as any).user?.role)) {
+    if (!canCreateCollectionOfType(type, getRequestUserRole(req))) {
       return res.status(403).json({
         message: 'Only administrators can create public collections',
         code: 'PUBLIC_COLLECTION_ADMIN_ONLY'
@@ -380,7 +434,7 @@ export const createCollection = async (req: Request, res: Response) => {
     // PHASE 4: Validate creatorId existence (even though it's the authenticated user)
     const creatorExists = await User.exists({ _id: creatorId });
     if (!creatorExists) {
-      const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+      const requestLogger = createRequestLogger(getRequestId(req), userId, req.path);
       requestLogger.warn({
         msg: '[Collections] Create collection with invalid creatorId',
         creatorId,
@@ -412,7 +466,7 @@ export const createCollection = async (req: Request, res: Response) => {
     // PHASE 2: Check if collection already exists by canonicalName
     // For private collections: check per creator (same creator can't have duplicate canonicalName)
     // For public collections: check globally (anyone can't create duplicate canonicalName)
-    const query: any = { canonicalName };
+    const query: Record<string, unknown> = { canonicalName };
     if (type === 'private') {
       query.creatorId = creatorId;
       query.type = 'private';
@@ -448,20 +502,20 @@ export const createCollection = async (req: Request, res: Response) => {
     
     scheduleInvalidateCollectionReadCaches();
     res.status(201).json(normalizeDoc(newCollection));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Create collection error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     
     // PHASE 2: Handle duplicate key error (MongoDB unique constraint on canonicalName)
-    if (error.code === 11000) {
+    if (getMongoErrorCode(error) === 11000) {
       // Try to find and return existing collection
       const trimmedName = (req.body.name || '').trim();
       const canonicalName = trimmedName.toLowerCase();
@@ -469,8 +523,8 @@ export const createCollection = async (req: Request, res: Response) => {
       const requestedParentId = typeof req.body.parentId === 'string' && req.body.parentId.trim().length > 0
         ? req.body.parentId.trim()
         : null;
-      const authUserId = (req as any).user?.userId as string | undefined;
-      const query: any = { canonicalName };
+      const authUserId = getRequestUserId(req);
+      const query: Record<string, unknown> = { canonicalName };
       if (collectionType === 'private') {
         query.creatorId = authUserId;
         query.type = 'private';
@@ -488,7 +542,8 @@ export const createCollection = async (req: Request, res: Response) => {
         return res.status(200).json(normalizeDoc(existingCollection));
       }
       // PHASE 6: Contextual error message indicating which field caused the conflict
-      const errorKey = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'name';
+      const kp = getMongoKeyPattern(error);
+      const errorKey = kp ? Object.keys(kp)[0] ?? 'name' : 'name';
       return res.status(409).json({ 
         message: `A collection with this ${errorKey === 'canonicalName' ? 'name' : errorKey} already exists`,
         code: 'DUPLICATE_COLLECTION',
@@ -506,8 +561,8 @@ export const updateCollection = async (req: Request, res: Response) => {
     const collection = await Collection.findById(req.params.id);
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
     
-    const userId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const userId = getRequestUserId(req);
+    const userRole = getRequestUserRole(req);
     if (!canModifyCollectionMetadata(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to update this collection' });
     }
@@ -517,16 +572,17 @@ export const updateCollection = async (req: Request, res: Response) => {
     if (!validationResult.success) {
       return res.status(400).json({ 
         message: 'Validation failed', 
-        errors: validationResult.error.errors 
+        errors: validationResult.error.issues 
       });
     }
 
     // FOLLOW-UP REFACTOR: Safely construct update data, excluding undefined fields (P1-18)
     // Zod's .partial() allows undefined fields, but we don't want to explicitly set undefined
     // Filter out undefined values to prevent unintended field clearing
-    const safeUpdateData: any = { updatedAt: new Date().toISOString() };
-    Object.keys(validationResult.data).forEach(key => {
-      const value = (validationResult.data as any)[key];
+    const safeUpdateData: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    const updatePayload = validationResult.data as Record<string, unknown>;
+    Object.keys(updatePayload).forEach((key) => {
+      const value = updatePayload[key];
       // Only include defined (non-undefined) values in update
       if (value !== undefined) {
         safeUpdateData[key] = value;
@@ -539,14 +595,14 @@ export const updateCollection = async (req: Request, res: Response) => {
     const updateData = safeUpdateData;
     
     // PHASE 2: If name is being updated, update both rawName and canonicalName
-    if (updateData.name !== undefined) {
+    if (typeof updateData.name === 'string') {
       const trimmedName = updateData.name.trim();
       const canonicalName = trimmedName.toLowerCase();
       
       // PHASE 2: Check if the new canonicalName would create a duplicate
       // For private collections: check per creator
       // For public collections: check globally (no creatorId filter)
-      const duplicateQuery: any = {
+      const duplicateQuery: Record<string, unknown> = {
         canonicalName,
         _id: { $ne: req.params.id } // Exclude current collection
       };
@@ -608,34 +664,35 @@ export const updateCollection = async (req: Request, res: Response) => {
     if (!updatedCollection) return res.status(404).json({ message: 'Collection not found' });
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Update collection error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     
     // PHASE 6: Handle duplicate key error with contextual message
-    if (error.code === 11000) {
+    if (getMongoErrorCode(error) === 11000) {
       // Try to find the conflicting collection
-      const updateData = validationResult?.data || req.body;
-      if (updateData?.name) {
-        const trimmedName = updateData.name.trim();
+      const updateBody = isRecord(req.body) ? req.body : {};
+      const updateName = typeof updateBody.name === 'string' ? updateBody.name : undefined;
+      if (updateName) {
+        const trimmedName = updateName.trim();
         const canonicalName = trimmedName.toLowerCase();
-        const targetType = updateData.type || collection?.type || 'public';
-        const duplicateQuery: any = { canonicalName };
+        const targetType = typeof updateBody.type === 'string' ? updateBody.type : 'public';
+        const duplicateQuery: Record<string, unknown> = { canonicalName };
         
         if (targetType === 'private') {
-          duplicateQuery.creatorId = collection?.creatorId;
+          duplicateQuery.creatorId = getRequestUserId(req);
           duplicateQuery.type = 'private';
         } else {
           duplicateQuery.type = 'public';
-          const targetParentId = updateData.parentId || collection?.parentId;
+          const targetParentId = getBodyString(updateBody, 'parentId');
           if (targetParentId) {
             duplicateQuery.parentId = targetParentId;
           } else {
@@ -655,7 +712,8 @@ export const updateCollection = async (req: Request, res: Response) => {
         }
       }
       // PHASE 6: Contextual error message indicating which field caused the conflict
-      const errorKey = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'name';
+      const kpUpdate = getMongoKeyPattern(error);
+      const errorKey = kpUpdate ? Object.keys(kpUpdate)[0] ?? 'name' : 'name';
       return res.status(409).json({ 
         message: `A collection with this ${errorKey === 'canonicalName' ? 'name' : errorKey} already exists`,
         code: 'DUPLICATE_COLLECTION',
@@ -673,8 +731,8 @@ export const deleteCollection = async (req: Request, res: Response) => {
     const collection = await Collection.findById(req.params.id);
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
     
-    const userId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const userId = getRequestUserId(req);
+    const userRole = getRequestUserRole(req);
     if (!canModifyCollectionMetadata(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to delete this collection' });
     }
@@ -686,7 +744,7 @@ export const deleteCollection = async (req: Request, res: Response) => {
     // For now, we log the deletion for potential future cleanup needs.
     const followersCount = collection.followers?.length || 0;
     if (followersCount > 0) {
-      const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+      const requestLogger = createRequestLogger(getRequestId(req), userId, req.path);
       requestLogger.info({
         msg: '[Collections] Deleting collection with followers',
         collectionId: req.params.id,
@@ -698,17 +756,17 @@ export const deleteCollection = async (req: Request, res: Response) => {
     await Collection.findByIdAndDelete(req.params.id);
     scheduleInvalidateCollectionReadCaches();
     res.status(204).send();
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Delete collection error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -720,7 +778,7 @@ export const addEntry = async (req: Request, res: Response) => {
     if (!validationResult.success) {
       return res.status(400).json({ 
         message: 'Validation failed', 
-        errors: validationResult.error.errors 
+        errors: validationResult.error.issues 
       });
     }
 
@@ -731,8 +789,11 @@ export const addEntry = async (req: Request, res: Response) => {
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
 
     // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
-    const currentUserId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const currentUserId = getRequestUserId(req);
+    const userRole = getRequestUserRole(req);
+    if (!currentUserId) {
+      return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
+    }
     if (!canModifyCollectionEntriesPolicy(collection, currentUserId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
     }
@@ -799,17 +860,17 @@ export const addEntry = async (req: Request, res: Response) => {
 
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Add entry error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -820,8 +881,8 @@ export const removeEntry = async (req: Request, res: Response) => {
     const collection = await Collection.findById(req.params.id);
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
     
-    const userId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const userId = getRequestUserId(req);
+    const userRole = getRequestUserRole(req);
     if (!canModifyCollectionEntriesPolicy(collection, userId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to remove entries from this collection' });
     }
@@ -872,17 +933,17 @@ export const removeEntry = async (req: Request, res: Response) => {
 
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Remove entry error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -894,12 +955,12 @@ export const addBatchEntries = async (req: Request, res: Response) => {
     if (!validationResult.success) {
       return res.status(400).json({
         message: 'Validation failed',
-        errors: validationResult.error.errors
+        errors: validationResult.error.issues
       });
     }
 
     const { articleIds } = validationResult.data;
-    const requestUserRole = (req as any).user?.role;
+    const requestUserRole = getRequestUserRole(req);
     const normalizedRole = typeof requestUserRole === 'string' ? requestUserRole.toLowerCase().trim() : '';
     const maxAllowed = normalizedRole === 'admin' ? MAX_BATCH_ENTRIES.admin : MAX_BATCH_ENTRIES.nonAdmin;
 
@@ -917,8 +978,11 @@ export const addBatchEntries = async (req: Request, res: Response) => {
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
 
     // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
-    const currentUserId = (req as any).user?.userId;
+    const currentUserId = getRequestUserId(req);
     const userRole = requestUserRole;
+    if (!currentUserId) {
+      return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
+    }
     if (!canModifyCollectionEntriesPolicy(collection, currentUserId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to add entries to this collection' });
     }
@@ -935,7 +999,7 @@ export const addBatchEntries = async (req: Request, res: Response) => {
     // add entries only when that articleId is not already present.
     // We use per-item atomic guards in bulkWrite so repeated adds are idempotent.
     const now = new Date().toISOString();
-    const buildBulkOps = (collectionId: string) =>
+    const buildBulkOps = (collectionId: Types.ObjectId) =>
       validArticleIds.map((articleId) => ({
         updateOne: {
           filter: {
@@ -956,7 +1020,7 @@ export const addBatchEntries = async (req: Request, res: Response) => {
         }
       }));
 
-    const bulkOps = buildBulkOps(req.params.id);
+    const bulkOps = buildBulkOps(collection._id);
 
     if (bulkOps.length > 0) {
       await Collection.bulkWrite(bulkOps);
@@ -966,7 +1030,7 @@ export const addBatchEntries = async (req: Request, res: Response) => {
     if (collection.parentId) {
       const parentCollection = await Collection.findById(collection.parentId).select('creatorId type').lean();
       if (parentCollection && canModifyCollectionEntriesPolicy(parentCollection, currentUserId, userRole)) {
-        const parentBulkOps = buildBulkOps(String(collection.parentId));
+        const parentBulkOps = buildBulkOps(parentCollection._id);
         if (parentBulkOps.length > 0) {
           await Collection.bulkWrite(parentBulkOps);
         }
@@ -1021,16 +1085,16 @@ export const addBatchEntries = async (req: Request, res: Response) => {
 
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Add batch entries error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -1042,12 +1106,12 @@ export const removeBatchEntries = async (req: Request, res: Response) => {
     if (!validationResult.success) {
       return res.status(400).json({
         message: 'Validation failed',
-        errors: validationResult.error.errors
+        errors: validationResult.error.issues
       });
     }
 
     const { articleIds } = validationResult.data;
-    const requestUserRole = (req as any).user?.role;
+    const requestUserRole = getRequestUserRole(req);
     const normalizedRole = typeof requestUserRole === 'string' ? requestUserRole.toLowerCase().trim() : '';
     const maxAllowed = normalizedRole === 'admin' ? MAX_BATCH_ENTRIES.admin : MAX_BATCH_ENTRIES.nonAdmin;
 
@@ -1064,7 +1128,7 @@ export const removeBatchEntries = async (req: Request, res: Response) => {
     const collection = await Collection.findById(req.params.id);
     if (!collection) return res.status(404).json({ message: 'Collection not found' });
 
-    const currentUserId = (req as any).user?.userId;
+    const currentUserId = getRequestUserId(req);
     const userRole = requestUserRole;
     if (!canModifyCollectionEntriesPolicy(collection, currentUserId, userRole)) {
       return res.status(403).json({ message: 'You do not have permission to remove entries from this collection' });
@@ -1112,16 +1176,16 @@ export const removeBatchEntries = async (req: Request, res: Response) => {
 
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(updatedCollection));
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Remove batch entries error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -1133,12 +1197,12 @@ export const flagEntry = async (req: Request, res: Response) => {
     if (!validationResult.success) {
       return res.status(400).json({
         message: 'Validation failed',
-        errors: validationResult.error.errors
+        errors: validationResult.error.issues
       });
     }
 
     // SECURITY FIX: Always use authenticated user ID, never trust client-provided userId
-    const currentUserId = (req as any).user?.userId;
+    const currentUserId = getRequestUserId(req);
     if (!currentUserId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -1150,7 +1214,7 @@ export const flagEntry = async (req: Request, res: Response) => {
     }
 
     const entry = collection.entries.find(
-      (e: any) => e.articleId === req.params.articleId
+      (e: { articleId: string }) => e.articleId === req.params.articleId
     );
 
     if (entry && !entry.flaggedBy.includes(currentUserId)) {
@@ -1161,24 +1225,24 @@ export const flagEntry = async (req: Request, res: Response) => {
     }
 
     res.json(normalizeDoc(collection));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Flag entry error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
 
 export const followCollection = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -1210,24 +1274,24 @@ export const followCollection = async (req: Request, res: Response) => {
 
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(collection));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Follow collection error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
 
 export const unfollowCollection = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -1270,17 +1334,17 @@ export const unfollowCollection = async (req: Request, res: Response) => {
 
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(collection));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Unfollow collection error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -1305,12 +1369,12 @@ export const getFeaturedCollections = async (req: Request, res: Response) => {
     res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
     res.json(normalizeDocs(collections));
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Get featured collections error',
-      error: { message: error instanceof Error ? error.message : String(error) },
+      error: { message: getErrorMessage(error) },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -1322,7 +1386,7 @@ export const getFeaturedCollections = async (req: Request, res: Response) => {
  */
 export const setFeatured = async (req: Request, res: Response) => {
   try {
-    const userRole = (req as any).user?.role;
+    const userRole = getRequestUserRole(req);
     if (typeof userRole !== 'string' || userRole.toLowerCase().trim() !== 'admin') {
       return res.status(403).json({ message: 'Admin access required' });
     }
@@ -1370,12 +1434,12 @@ export const setFeatured = async (req: Request, res: Response) => {
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDoc(collection));
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Set featured error',
-      error: { message: error instanceof Error ? error.message : String(error) },
+      error: { message: getErrorMessage(error) },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -1388,7 +1452,7 @@ export const setFeatured = async (req: Request, res: Response) => {
  */
 export const reorderFeatured = async (req: Request, res: Response) => {
   try {
-    const userRole = (req as unknown as { user?: { role?: string; userId?: string } }).user?.role;
+    const userRole = getRequestUserRole(req);
     if (typeof userRole !== 'string' || userRole.toLowerCase().trim() !== 'admin') {
       return res.status(403).json({ message: 'Admin access required' });
     }
@@ -1404,7 +1468,7 @@ export const reorderFeatured = async (req: Request, res: Response) => {
     // Bulk update: set featuredOrder = array index for each ID
     const bulkOps = orderedIds.map((id, index) => ({
       updateOne: {
-        filter: { _id: id, isFeatured: true, ...buildRootCollectionQuery() },
+        filter: { _id: new Types.ObjectId(id), isFeatured: true, ...buildRootCollectionQuery() },
         update: { $set: { featuredOrder: index, updatedAt: now } },
       },
     }));
@@ -1420,12 +1484,12 @@ export const reorderFeatured = async (req: Request, res: Response) => {
     scheduleInvalidateCollectionReadCaches();
     res.json(normalizeDocs(collections));
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as unknown as { user?: { userId?: string } })?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Reorder featured error',
-      error: { message: error instanceof Error ? error.message : String(error) },
+      error: { message: getErrorMessage(error) },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -1448,8 +1512,8 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     }
 
     // Check access
-    const userId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const userId = getRequestUserId(req);
+    const userRole = getRequestUserRole(req);
     if (!canViewCollectionPolicy(collection, userId, userRole)) {
       return res.status(403).json({ message: 'Access denied' });
     }
@@ -1461,7 +1525,7 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     if (!collection.parentId) {
       const childCollections = await Collection.find({
         type: collection.type,
-        parentId: String((collection as any)._id),
+        parentId: String(collection._id),
       })
         .select('entries')
         .lean();
@@ -1532,7 +1596,7 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
       }
     }
 
-    const sortMap: Record<string, Record<string, number>> = {
+    const sortMap: Record<string, Record<string, SortOrder>> = {
       latest: { publishedAt: -1, _id: -1 },
       oldest: { publishedAt: 1, _id: 1 },
       title: { title: 1 },
@@ -1590,12 +1654,12 @@ export const getCollectionArticles = async (req: Request, res: Response) => {
     });
     return res.json(await buildCollectionArticlesPayload());
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Collections] Get collection articles error',
-      error: { message: error instanceof Error ? error.message : String(error) },
+      error: { message: getErrorMessage(error) },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };

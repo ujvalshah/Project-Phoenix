@@ -40,10 +40,10 @@ export function requestTimeout(timeoutMs: number = DEFAULT_TIMEOUT_MS) {
     }, timeoutMs);
 
     // Clear timeout when response is sent
-    const originalEnd = res.end;
-    res.end = function(...args: any[]) {
+    const originalEnd = res.end.bind(res);
+    res.end = function (this: Response, ...args: Parameters<Response['end']>) {
       clearTimeout(timeout);
-      originalEnd.apply(this, args);
+      return originalEnd(...args);
     };
 
     next();

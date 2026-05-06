@@ -44,7 +44,6 @@ import {
 
 // Database
 import { connectDB, isMongoConnected } from './utils/db.js';
-import { seedDatabase } from './utils/seed.js';
 import { clearDatabase } from './utils/clearDatabase.js';
 
 // Token Service (Redis-based token management)
@@ -86,6 +85,26 @@ const app = express();
 app.set('trust proxy', 1);
 const env = getEnv();
 const PORT = parseInt(env.PORT, 10) || 5000;
+
+type PingableClient = {
+  ping: () => Promise<unknown>;
+};
+
+type ErrorLike = {
+  status?: number;
+  message?: string;
+  stack?: string;
+  name?: string;
+};
+
+const isPingableClient = (client: unknown): client is PingableClient =>
+  typeof client === 'object' &&
+  client !== null &&
+  'ping' in client &&
+  typeof client.ping === 'function';
+
+const toErrorLike = (error: unknown): ErrorLike =>
+  typeof error === 'object' && error !== null ? (error as ErrorLike) : {};
 
 // Compression Middleware (Gzip) - Reduces JSON response size by ~70%
 app.use(compression({
@@ -393,14 +412,19 @@ app.get('/api/health', async (req, res) => {
     if (isRedisAvailable()) {
       try {
         const client = getRedisClientOrFallback();
-        await (client as any).ping();
+        if (isPingableClient(client)) {
+          await client.ping();
+        } else {
+          throw new Error('Redis client does not support ping');
+        }
         redisHealthy = true;
-      } catch (redisError: any) {
+      } catch (redisError: unknown) {
+        const errorMessage = redisError instanceof Error ? redisError.message : String(redisError);
         redisHealthy = false;
         const logger = getLogger();
         logger.warn({
           msg: 'Redis health check failed',
-          error: { message: redisError.message },
+          error: { message: errorMessage },
         });
       }
     }
@@ -451,14 +475,15 @@ app.get('/api/health', async (req, res) => {
         }
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     // Health check itself failed
     res.status(503).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       database: 'unknown',
       redis: 'unknown',
-      error: error.message,
+      error: errorMessage,
       dependencies: {
         database: {
           status: 'error',
@@ -498,20 +523,22 @@ if (env.NODE_ENV !== 'production') {
         message: 'Database cleared successfully',
         timestamp: new Date().toISOString()
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const capturedError = error instanceof Error ? error : new Error(String(error));
       const requestLogger = createRequestLogger(req.id || 'unknown', undefined, '/api/clear-db');
       requestLogger.error({
         msg: 'Clear DB error',
         error: {
-          message: error.message,
-          stack: error.stack,
+          message: errorMessage,
+          stack: capturedError.stack,
         },
       });
-      captureException(error, { requestId: req.id, route: '/api/clear-db' });
+      captureException(capturedError, { requestId: req.id, route: '/api/clear-db' });
       res.status(500).json({
         success: false,
         message: 'Failed to clear database',
-        error: error.message,
+        error: errorMessage,
         requestId: req.id,
       });
     }
@@ -571,23 +598,33 @@ if (isSentryEnabled()) {
   Sentry.setupExpressErrorHandler(app);
 }
 
+type RequestWithUserId = express.Request & {
+  userId?: string;
+};
 
 // Global Error Handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const normalizedError = toErrorLike(err);
+  const errorMessage =
+    typeof normalizedError.message === 'string' && normalizedError.message
+      ? normalizedError.message
+      : 'Internal Server Error';
+  const errorStatus = typeof normalizedError.status === 'number' ? normalizedError.status : 500;
+  const requestWithUserId = req as RequestWithUserId;
   const requestLogger = createRequestLogger(
     req.id || 'unknown',
-    (req as any).userId,
+    requestWithUserId.userId,
     req.path
   );
 
   // Enhanced logging for CORS errors
-  if (err.message && err.message.includes('CORS')) {
+  if (errorMessage.includes('CORS')) {
     requestLogger.error({
       msg: '[CORS-DIAG] CORS error detected',
       error: {
-        message: err.message,
-        stack: err.stack,
-        name: err.name,
+        message: errorMessage,
+        stack: normalizedError.stack,
+        name: normalizedError.name,
       },
       method: req.method,
       path: req.path,
@@ -601,9 +638,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     requestLogger.error({
       msg: 'Unhandled server error',
       error: {
-        message: err.message,
-        stack: err.stack,
-        name: err.name,
+        message: errorMessage,
+        stack: normalizedError.stack,
+        name: normalizedError.name,
       },
       method: req.method,
       path: req.path,
@@ -615,7 +652,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   captureException(err, {
     requestId: req.id,
     route: req.path,
-    userId: (req as any).userId,
+    userId: requestWithUserId.userId,
     extra: isAuthRoute
       ? { method: req.method }
       : { method: req.method, body: req.body, query: req.query },
@@ -632,14 +669,14 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   }
 
   // Send error response
-  res.status(err.status || 500).json({
-    message: env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message,
+  res.status(errorStatus).json({
+    message: env.NODE_ENV === 'production' ? 'Internal Server Error' : errorMessage,
     requestId: req.id,
   });
 });
 
 // Initialize Database and Start Server
-let server: any = null;
+let server: ReturnType<typeof app.listen> | null = null;
 
 async function startServer() {
   try {
@@ -688,15 +725,17 @@ async function startServer() {
     });
     
     return server;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const capturedError = error instanceof Error ? error : new Error(String(error));
     logger.error({
       msg: 'Failed to start server',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: errorMessage,
+        stack: capturedError.stack,
       },
     });
-    captureException(error, { extra: { phase: 'startup' } });
+    captureException(capturedError, { extra: { phase: 'startup' } });
     process.exit(1);
   }
 }
@@ -720,12 +759,14 @@ async function gracefulShutdown(signal: string) {
     try {
       await mongoose.connection.close();
       logger.info({ msg: 'MongoDB connection closed' });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const capturedError = error instanceof Error ? error : new Error(String(error));
       logger.error({
         msg: 'Error closing MongoDB',
         error: {
-          message: error.message,
-          stack: error.stack,
+          message: errorMessage,
+          stack: capturedError.stack,
         },
       });
     }
@@ -735,18 +776,20 @@ async function gracefulShutdown(signal: string) {
   try {
     await closeRedisClient();
     logger.info({ msg: 'Shared Redis connection closed' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Redis might not be configured, so this is not critical
-    if (error.message && !error.message.includes('Redis')) {
-      logger.warn({ msg: 'Error closing Redis connection', error: error.message });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage && !errorMessage.includes('Redis')) {
+      logger.warn({ msg: 'Error closing Redis connection', error: errorMessage });
     }
   }
 
   try {
     await closeTokenService();
     logger.info({ msg: 'Token service closed' });
-  } catch (error: any) {
-    logger.warn({ msg: 'Error closing token service connection', error: error.message });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn({ msg: 'Error closing token service connection', error: errorMessage });
   }
 
   // Close notification service (BullMQ queue + worker)
@@ -754,15 +797,17 @@ async function gracefulShutdown(signal: string) {
     const { closeNotificationService } = await import('./services/notificationService.js');
     await closeNotificationService();
     logger.info({ msg: 'Notification service closed' });
-  } catch (error: any) {
-    logger.warn({ msg: 'Error closing notification service', error: error.message });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn({ msg: 'Error closing notification service', error: errorMessage });
   }
   
   // Flush Sentry events before exit
   try {
     await Sentry.flush(2000); // Wait up to 2 seconds
-  } catch (error: any) {
-    logger.warn({ msg: 'Failed to flush Sentry events', error: error.message });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn({ msg: 'Failed to flush Sentry events', error: errorMessage });
   }
   
   // Give connections time to close, then exit
@@ -793,8 +838,9 @@ process.on('uncaughtException', async (error: Error) => {
   // Flush Sentry before exit
   try {
     await Sentry.flush(2000);
-  } catch (flushError: any) {
-    logger.warn({ msg: 'Failed to flush Sentry on uncaught exception' });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn({ msg: 'Failed to flush Sentry on uncaught exception', error: errorMessage });
   }
   
   // Attempt graceful shutdown
@@ -802,7 +848,7 @@ process.on('uncaughtException', async (error: Error) => {
   process.exit(1);
 });
 
-process.on('unhandledRejection', async (reason: any, promise: Promise<any>) => {
+process.on('unhandledRejection', async (reason: unknown, _promise: Promise<unknown>) => {
   const error = reason instanceof Error ? reason : new Error(String(reason));
   
   logger.error({
@@ -821,8 +867,9 @@ process.on('unhandledRejection', async (reason: any, promise: Promise<any>) => {
   if (env.NODE_ENV === 'production') {
     try {
       await Sentry.flush(2000);
-    } catch (flushError: any) {
-      logger.warn({ msg: 'Failed to flush Sentry on unhandled rejection' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn({ msg: 'Failed to flush Sentry on unhandled rejection', error: errorMessage });
     }
     await gracefulShutdown('unhandledRejection');
     process.exit(1);

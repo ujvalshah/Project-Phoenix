@@ -6,6 +6,25 @@ import { isUrlSafeForFetch } from '../utils/ssrfProtection.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { id?: string };
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getLoggerUserId(req: Request): string | undefined {
+  const uid = (req as RequestWithAuthContext).user?.id;
+  return typeof uid === 'string' ? uid : undefined;
+}
+
+function toSentryError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 // Audit Phase-1 Fix: Zod validation schema for unfurl request body
 const unfurlUrlSchema = z.object({
   url: z.string().url('Invalid URL format').refine(
@@ -80,18 +99,19 @@ export async function unfurlUrl(req: Request, res: Response) {
 
     // Return normalized Nugget
     res.json(nugget);
-  } catch (error: any) {
+  } catch (error: unknown) {
     // This should never happen, but if it does, return a fallback
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.id, req.path);
+    const err = toSentryError(error);
+    const requestLogger = createRequestLogger(getRequestId(req), getLoggerUserId(req), req.path);
     requestLogger.error({
       msg: '[Unfurl] Unexpected error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: err.message,
+        stack: err.stack,
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(err, { requestId: getRequestId(req), route: req.path });
 
     // Create a minimal fallback
     // CRITICAL: Do not generate titles for non-Social/Video content types

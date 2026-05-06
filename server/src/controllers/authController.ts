@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
+import type { HydratedDocument } from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { User } from '../models/User.js';
+import { User, type IUser } from '../models/User.js';
 import { normalizeDoc } from '../utils/db.js';
 import {
   generateAccessToken,
@@ -45,6 +46,59 @@ import {
   sendInternalError
 } from '../utils/errorResponse.js';
 import { createRequestLogger } from '../utils/logger.js';
+
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { userId?: string };
+  cookies?: {
+    refresh_token?: string;
+    access_token?: string;
+    csrf_token?: string;
+  };
+  token?: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  return (req as RequestWithAuthContext).user?.userId;
+}
+
+function getRequestAccessToken(req: Request): string | undefined {
+  const t = (req as RequestWithAuthContext).token;
+  return typeof t === 'string' ? t : undefined;
+}
+
+function getCookie(req: Request, name: 'refresh_token' | 'access_token' | 'csrf_token'): string | undefined {
+  const cookies = (req as RequestWithAuthContext).cookies;
+  if (!cookies) return undefined;
+  const value = cookies[name];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getMongoErrorCode(error: unknown): number | undefined {
+  if (!isRecord(error)) return undefined;
+  const code = error.code;
+  return typeof code === 'number' ? code : undefined;
+}
+
+function getMongoKeyPattern(error: unknown): Record<string, unknown> {
+  if (!isRecord(error)) return {};
+  const kp = error.keyPattern;
+  return isRecord(kp) ? kp : {};
+}
 
 // Validation Schemas — email normalized for consistent lookups and user-enumeration resistance
 const loginSchema = z.object({
@@ -98,16 +152,13 @@ async function generateUniqueUsername(baseSeed: string): Promise<string> {
 }
 
 function getZodIssues(error: z.ZodError): z.ZodIssue[] {
-  const issuesFromV4 = (error as any).issues;
-  if (Array.isArray(issuesFromV4)) {
-    return issuesFromV4;
+  if (Array.isArray(error.issues)) {
+    return error.issues;
   }
-
-  const issuesFromLegacy = (error as any).errors;
-  if (Array.isArray(issuesFromLegacy)) {
-    return issuesFromLegacy;
+  const legacy = isRecord(error) ? error.errors : undefined;
+  if (Array.isArray(legacy)) {
+    return legacy as z.ZodIssue[];
   }
-
   return [];
 }
 
@@ -183,7 +234,7 @@ const signupSchema = z.object({
  * - Generic error messages to prevent user enumeration
  */
 export const login = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
 
   try {
     // Validate input
@@ -307,11 +358,11 @@ export const login = async (req: Request, res: Response) => {
             userId: user._id.toString()
           });
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If refresh token storage fails, continue without it (graceful degradation)
         requestLogger.warn({ 
           msg: 'Failed to store refresh token, continuing without it', 
-          err: { message: error.message } 
+          err: { message: getErrorMessage(error) } 
         });
         refreshToken = undefined;
       }
@@ -333,7 +384,7 @@ export const login = async (req: Request, res: Response) => {
       csrfToken, // For double-submit CSRF pattern
       expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_SECONDS, // Seconds until access token expires
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: 'Login failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) }
@@ -350,7 +401,7 @@ export const signup = async (req: Request, res: Response) => {
   // Declare variables outside try block for error handler access
   let normalizedEmail: string = '';
   let normalizedUsername: string = '';
-  let existingUser: any = null;
+  let existingUser: HydratedDocument<IUser> | null = null;
   
   try {
     // Validate input
@@ -383,7 +434,7 @@ export const signup = async (req: Request, res: Response) => {
       const baseUrl = getEnv().FRONTEND_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
       const loginUrl = `${baseUrl.replace(/\/$/, '')}/login`;
       sendAccountExistsEmail(normalizedEmail, loginUrl).catch((err: Error) => {
-        createRequestLogger((req as any).id || 'unknown', undefined, req.path).warn({
+        createRequestLogger(getRequestId(req), undefined, req.path).warn({
           msg: 'Failed to send account-exists email',
           err: { message: err.message, name: err.name }
         });
@@ -459,7 +510,7 @@ export const signup = async (req: Request, res: Response) => {
       const verificationToken = generateEmailVerificationToken(newUser._id.toString(), newUser.auth.email);
       const verificationUrl = `${baseUrl.replace(/\/$/, '')}/verify-email?token=${encodeURIComponent(verificationToken)}`;
       sendVerificationEmail(newUser.auth.email, verificationUrl).catch((err: Error) => {
-        createRequestLogger((req as any).id || 'unknown', undefined, req.path).warn({
+        createRequestLogger(getRequestId(req), undefined, req.path).warn({
           msg: 'Failed to send verification email',
           err: { message: err.message, name: err.name }
         });
@@ -495,16 +546,16 @@ export const signup = async (req: Request, res: Response) => {
       csrfToken, // For double-submit CSRF pattern
       expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_SECONDS,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Handle duplicate key error (MongoDB unique constraint)
     // This catches:
     // 1. Race conditions where another request created the user between our checks
     // 2. Stale index entries from deleted users (index not cleaned up)
-    if (error.code === 11000) {
-      const keyPattern = error.keyPattern || {};
+    if (getMongoErrorCode(error) === 11000) {
+      const keyPattern = getMongoKeyPattern(error);
       // Email race condition: return uniform 201 to prevent enumeration
       if (keyPattern['auth.email']) {
-        const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+        const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
         requestLogger.warn({ msg: 'Signup duplicate key race: auth.email. If unexpected, run: npm run fix-indexes' });
         // Send account-exists email (fire-and-forget)
         if (normalizedEmail) {
@@ -518,7 +569,7 @@ export const signup = async (req: Request, res: Response) => {
       }
       // Retry with a fresh generated username in the rare event of race collisions.
       if (keyPattern['profile.username']) {
-        const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+        const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
         requestLogger.warn({ msg: 'Signup duplicate key race on generated profile.username - retrying once' });
         try {
           const retryData = signupSchema.parse(req.body);
@@ -581,14 +632,14 @@ export const signup = async (req: Request, res: Response) => {
             csrfToken,
             expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_SECONDS,
           });
-        } catch (retryError) {
+        } catch (retryError: unknown) {
           requestLogger.error({ err: retryError }, 'Signup retry after username collision failed');
           return sendInternalError(res, 'Something went wrong on our end. Please try again in a moment.');
         }
       }
     }
 
-    const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
     requestLogger.error({
       msg: 'Signup failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) }
@@ -604,7 +655,7 @@ export const signup = async (req: Request, res: Response) => {
 export const getMe = async (req: Request, res: Response) => {
   try {
     // This assumes req.user is set by authentication middleware
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
     if (!userId) {
       return sendUnauthorizedError(res);
     }
@@ -620,7 +671,7 @@ export const getMe = async (req: Request, res: Response) => {
     // is how the client bootstraps a valid double-submit header after a hard
     // reload. Reuse an existing csrf cookie when present to avoid breaking
     // concurrent tabs mid-flight.
-    const existingCsrf = (req as any).cookies?.csrf_token as string | undefined;
+    const existingCsrf = getCookie(req, 'csrf_token');
     const csrfToken = existingCsrf && existingCsrf.length >= 32
       ? existingCsrf
       : crypto.randomBytes(32).toString('hex');
@@ -628,8 +679,8 @@ export const getMe = async (req: Request, res: Response) => {
 
     const userData = normalizeDoc(user);
     res.json({ ...userData, csrfToken });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({
       msg: 'Get me failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) }
@@ -681,8 +732,8 @@ export const verifyEmail = async (req: Request, res: Response) => {
     await user.save();
 
     res.status(200).json({ message: 'Email verified successfully.' });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
     requestLogger.error({
       msg: 'Verify email failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) }
@@ -740,8 +791,8 @@ export const resendVerification = async (req: Request, res: Response) => {
     await sendVerificationEmail(user.auth.email, verificationUrl);
 
     res.status(200).json({ message: 'If an account exists with this email, a verification link has been sent.' });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
     requestLogger.error({
       msg: 'Resend verification failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) }
@@ -754,10 +805,6 @@ export const resendVerification = async (req: Request, res: Response) => {
 // TOKEN REFRESH & LOGOUT
 // ============================================================================
 
-const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
-});
-
 /**
  * POST /api/auth/refresh
  * Exchange a valid refresh token for new access and refresh tokens
@@ -765,7 +812,7 @@ const refreshTokenSchema = z.object({
  * Security: Implements refresh token rotation - old token is invalidated
  */
 export const refreshAccessToken = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
 
   try {
     // Check if token service is available
@@ -775,7 +822,7 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 
     // Validate input — accept refresh token from body or HttpOnly cookie
     const bodyToken = req.body?.refreshToken;
-    const cookieRefreshToken = (req as any).cookies?.refresh_token as string | undefined;
+    const cookieRefreshToken = getCookie(req, 'refresh_token');
     const refreshTokenInput = bodyToken || cookieRefreshToken;
 
     if (!refreshTokenInput || typeof refreshTokenInput !== 'string' || refreshTokenInput.length === 0) {
@@ -818,7 +865,7 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     // In that case, attempt to decode access token if present.
     const authHeader = req.headers['authorization'];
     const headerAccessToken = authHeader && authHeader.split(' ')[1];
-    const cookieAccessToken = (req as any).cookies?.access_token as string | undefined;
+    const cookieAccessToken = getCookie(req, 'access_token');
     const accessTokenForFallback = headerAccessToken || cookieAccessToken;
     if (!userId && accessTokenForFallback) {
       const { decodeTokenUnsafe } = await import('../utils/jwt.js');
@@ -952,7 +999,7 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     // spurious CSRF_INVALID 403s. CSRF tokens rotate on login/logout only.
     // We re-issue the existing csrf cookie (extending its TTL) so it stays
     // aligned with the new access-token lifetime.
-    const existingCsrf = (req as any).cookies?.csrf_token as string | undefined;
+    const existingCsrf = getCookie(req, 'csrf_token');
     const csrfToken = existingCsrf && existingCsrf.length >= 32
       ? existingCsrf
       : crypto.randomBytes(32).toString('hex');
@@ -965,7 +1012,7 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
       csrfToken,
       expiresIn: TOKEN_CONFIG.ACCESS_TOKEN_SECONDS,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: 'Token refresh failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) },
@@ -989,10 +1036,10 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
  * - Always clear all auth + CSRF cookies on the response.
  */
 export const logout = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
 
   // Extract access token from cookie first, then Authorization header.
-  const cookieAccessToken = (req as any).cookies?.access_token as string | undefined;
+  const cookieAccessToken = getCookie(req, 'access_token');
   const authHeader = req.headers['authorization'];
   const headerAccessToken = authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
     ? authHeader.slice(7)
@@ -1018,7 +1065,7 @@ export const logout = async (req: Request, res: Response) => {
       if (remainingSeconds > 0) {
         await blacklistToken(accessToken, remainingSeconds);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       requestLogger.warn({
         msg: 'Access token blacklist failed during logout (continuing)',
         err: error instanceof Error ? { message: error.message } : { message: String(error) },
@@ -1028,12 +1075,12 @@ export const logout = async (req: Request, res: Response) => {
 
   // Best-effort: revoke the refresh token from body or HttpOnly cookie.
   const bodyRefreshToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : undefined;
-  const cookieRefreshToken = (req as any).cookies?.refresh_token as string | undefined;
+  const cookieRefreshToken = getCookie(req, 'refresh_token');
   const refreshToken = bodyRefreshToken || cookieRefreshToken;
   if (refreshToken && userId) {
     try {
       await revokeRefreshToken(userId, refreshToken);
-    } catch (error: any) {
+    } catch (error: unknown) {
       requestLogger.warn({
         msg: 'Refresh token revoke failed during logout (continuing)',
         err: error instanceof Error ? { message: error.message } : { message: String(error) },
@@ -1054,11 +1101,11 @@ export const logout = async (req: Request, res: Response) => {
  * Requires authentication
  */
 export const logoutAll = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
 
   try {
-    const userId = (req as any).user?.userId;
-    const currentToken = (req as any).token;
+    const userId = getRequestUserId(req);
+    const currentToken = getRequestAccessToken(req);
 
     if (!userId || !currentToken) {
       return sendUnauthorizedError(res, 'Authentication required');
@@ -1093,7 +1140,7 @@ export const logoutAll = async (req: Request, res: Response) => {
     res.json({
       message: 'Logged out from all devices successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: 'Logout all failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) },
@@ -1113,10 +1160,10 @@ export const logoutAll = async (req: Request, res: Response) => {
  * Requires authentication
  */
 export const getSessions = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
 
   try {
-    const userId = (req as any).user?.userId;
+    const userId = getRequestUserId(req);
 
     if (!userId) {
       return sendUnauthorizedError(res, 'Authentication required');
@@ -1133,7 +1180,7 @@ export const getSessions = async (req: Request, res: Response) => {
       sessions,
       count: sessions.length,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: 'Get sessions failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) },
@@ -1167,7 +1214,7 @@ const resetPasswordSchema = z.object({
  * Security: Always returns success to prevent email enumeration
  */
 export const forgotPassword = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
 
   try {
     // Validate input
@@ -1219,7 +1266,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
     requestLogger.info({ msg: 'Password reset email sent', userId: user._id.toString() });
 
     res.status(200).json({ message: successMessage });
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: 'Forgot password failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) },
@@ -1236,7 +1283,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
  * Reset password using the token from email
  */
 export const resetPassword = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger((req as any).id || 'unknown', undefined, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
 
   try {
     // Validate input
@@ -1308,7 +1355,7 @@ export const resetPassword = async (req: Request, res: Response) => {
     res.status(200).json({
       message: 'Password reset successful. Please sign in with your new password.',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: 'Reset password failed',
       err: error instanceof Error ? { message: error.message, name: error.name } : { message: String(error) },

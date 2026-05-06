@@ -5,6 +5,21 @@ import { z } from 'zod';
 import { createSearchRegex } from '../utils/escapeRegExp.js';
 import { createRequestLogger } from '../utils/logger.js';
 
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { userId?: string };
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  const id = (req as RequestWithAuthContext).user?.userId;
+  return typeof id === 'string' ? id : undefined;
+}
+
 // Validation schemas
 const createContactMessageSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name too long'),
@@ -38,7 +53,7 @@ export const createContactMessage = async (req: Request, res: Response) => {
 
     res.status(201).json(normalizeDoc(newMessage));
   } catch (error: unknown) {
-    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     logger.error({ err: error }, '[Contact] Create contact message error');
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -87,7 +102,7 @@ export const getContactMessages = async (req: Request, res: Response) => {
       hasMore: page * limit < total
     });
   } catch (error: unknown) {
-    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     logger.error({ err: error }, '[Contact] Get contact messages error');
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -121,7 +136,7 @@ export const updateContactStatus = async (req: Request, res: Response) => {
 
     res.json(normalizeDoc(message));
   } catch (error: unknown) {
-    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     logger.error({ err: error }, '[Contact] Update contact status error');
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -141,7 +156,7 @@ export const deleteContactMessage = async (req: Request, res: Response) => {
 
     res.status(204).send();
   } catch (error: unknown) {
-    const logger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     logger.error({ err: error }, '[Contact] Delete contact message error');
     res.status(500).json({ message: 'Internal server error' });
   }

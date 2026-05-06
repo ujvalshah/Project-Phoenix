@@ -14,8 +14,8 @@ export interface ModerationQueryFilters {
   searchQuery?: string;
 }
 
-export function buildModerationQuery(filters: ModerationQueryFilters = {}): any {
-  const query: any = {};
+export function buildModerationQuery(filters: ModerationQueryFilters = {}): Record<string, unknown> {
+  const query: Record<string, unknown> = {};
   
   // Status filter - default to 'open' if not provided
   query.status = filters.status || 'open';

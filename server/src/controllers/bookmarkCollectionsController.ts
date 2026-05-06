@@ -5,19 +5,47 @@ import { BookmarkCollectionLink } from '../models/BookmarkCollectionLink.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { captureException } from '../utils/sentry.js';
 import {
-  sendErrorResponse,
   sendValidationError,
   sendNotFoundError,
   sendConflictError,
   sendForbiddenError,
   sendInternalError,
-  handleDuplicateKeyError
 } from '../utils/errorResponse.js';
 import {
   ensureDefaultCollection,
   removeBookmarkFromCollection,
   recalculateCollectionCount
 } from '../utils/bookmarkHelpers.js';
+
+type RequestWithAuthUser = Request & { user?: { userId?: string } };
+
+function getRequestUserId(req: Request): string | undefined {
+  return (req as RequestWithAuthUser).user?.userId;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) return error.stack;
+  return undefined;
+}
+
+function getMongoErrorCode(error: unknown): number | undefined {
+  if (!isRecord(error)) return undefined;
+  const code = error.code;
+  return typeof code === 'number' ? code : undefined;
+}
+
+function toSentryError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 /**
  * Bookmark Collections Controller
@@ -62,7 +90,7 @@ const reorderCollectionsSchema = z.object({
  * GET /api/bookmark-collections
  */
 export const getCollections = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmark-collections');
 
   try {
@@ -88,12 +116,12 @@ export const getCollections = async (req: Request, res: Response) => {
 
     return res.json({ collections: data });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[BookmarkCollections] Get collections failed',
-      error: { message: error.message, stack: error.stack }
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) }
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmark-collections' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmark-collections' });
     return sendInternalError(res, 'Failed to get bookmark collections');
   }
 };
@@ -104,7 +132,7 @@ export const getCollections = async (req: Request, res: Response) => {
  * GET /api/bookmark-collections/:id
  */
 export const getCollectionById = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmark-collections');
 
   try {
@@ -130,13 +158,13 @@ export const getCollectionById = async (req: Request, res: Response) => {
       updatedAt: collection.updatedAt
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[BookmarkCollections] Get collection by ID failed',
-      error: { message: error.message, stack: error.stack },
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) },
       collectionId: req.params.id
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmark-collections' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmark-collections' });
     return sendInternalError(res, 'Failed to get bookmark collection');
   }
 };
@@ -147,7 +175,7 @@ export const getCollectionById = async (req: Request, res: Response) => {
  * POST /api/bookmark-collections
  */
 export const createCollection = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmark-collections');
 
   try {
@@ -205,17 +233,17 @@ export const createCollection = async (req: Request, res: Response) => {
       updatedAt: collection.updatedAt
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Handle duplicate name error
-    if (error.code === 11000) {
+    if (getMongoErrorCode(error) === 11000) {
       return sendConflictError(res, 'A collection with this name already exists', 'COLLECTION_NAME_EXISTS');
     }
 
     requestLogger.error({
       msg: '[BookmarkCollections] Create collection failed',
-      error: { message: error.message, stack: error.stack }
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) }
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmark-collections' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmark-collections' });
     return sendInternalError(res, 'Failed to create bookmark collection');
   }
 };
@@ -226,7 +254,7 @@ export const createCollection = async (req: Request, res: Response) => {
  * PUT /api/bookmark-collections/:id
  */
 export const updateCollection = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmark-collections');
 
   try {
@@ -260,7 +288,7 @@ export const updateCollection = async (req: Request, res: Response) => {
     }
 
     // Build update object
-    const updates: any = {
+    const updates: Record<string, unknown> = {
       updatedAt: new Date().toISOString()
     };
 
@@ -305,18 +333,18 @@ export const updateCollection = async (req: Request, res: Response) => {
       updatedAt: updated.updatedAt
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Handle duplicate name error
-    if (error.code === 11000) {
+    if (getMongoErrorCode(error) === 11000) {
       return sendConflictError(res, 'A collection with this name already exists', 'COLLECTION_NAME_EXISTS');
     }
 
     requestLogger.error({
       msg: '[BookmarkCollections] Update collection failed',
-      error: { message: error.message, stack: error.stack },
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) },
       collectionId: req.params.id
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmark-collections' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmark-collections' });
     return sendInternalError(res, 'Failed to update bookmark collection');
   }
 };
@@ -328,7 +356,7 @@ export const updateCollection = async (req: Request, res: Response) => {
  * DELETE /api/bookmark-collections/:id
  */
 export const deleteCollection = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmark-collections');
 
   try {
@@ -363,13 +391,13 @@ export const deleteCollection = async (req: Request, res: Response) => {
 
     return res.status(204).send();
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[BookmarkCollections] Delete collection failed',
-      error: { message: error.message, stack: error.stack },
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) },
       collectionId: req.params.id
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmark-collections' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmark-collections' });
     return sendInternalError(res, 'Failed to delete bookmark collection');
   }
 };
@@ -380,7 +408,7 @@ export const deleteCollection = async (req: Request, res: Response) => {
  * PUT /api/bookmark-collections/reorder
  */
 export const reorderCollections = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmark-collections/reorder');
 
   try {
@@ -430,12 +458,12 @@ export const reorderCollections = async (req: Request, res: Response) => {
 
     return res.json({ collections: data });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[BookmarkCollections] Reorder collections failed',
-      error: { message: error.message, stack: error.stack }
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) }
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmark-collections/reorder' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmark-collections/reorder' });
     return sendInternalError(res, 'Failed to reorder bookmark collections');
   }
 };
@@ -446,7 +474,7 @@ export const reorderCollections = async (req: Request, res: Response) => {
  * DELETE /api/bookmark-collections/:collectionId/bookmarks/:bookmarkId
  */
 export const removeBookmark = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmark-collections');
 
   try {
@@ -477,14 +505,14 @@ export const removeBookmark = async (req: Request, res: Response) => {
 
     return res.status(204).send();
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[BookmarkCollections] Remove bookmark failed',
-      error: { message: error.message, stack: error.stack },
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) },
       collectionId: req.params.collectionId,
       bookmarkId: req.params.bookmarkId
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmark-collections' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmark-collections' });
     return sendInternalError(res, 'Failed to remove bookmark from collection');
   }
 };
@@ -495,7 +523,7 @@ export const removeBookmark = async (req: Request, res: Response) => {
  * POST /api/bookmark-collections/:id/recalculate
  */
 export const recalculateCount = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmark-collections');
 
   try {
@@ -527,13 +555,13 @@ export const recalculateCount = async (req: Request, res: Response) => {
       newCount: count
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[BookmarkCollections] Recalculate count failed',
-      error: { message: error.message, stack: error.stack },
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) },
       collectionId: req.params.id
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmark-collections' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmark-collections' });
     return sendInternalError(res, 'Failed to recalculate collection count');
   }
 };

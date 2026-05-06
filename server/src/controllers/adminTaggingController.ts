@@ -9,6 +9,32 @@ import { z } from 'zod';
 import mongoose from 'mongoose';
 import * as XLSX from 'xlsx';
 
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { userId?: string };
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  const id = (req as RequestWithAuthContext).user?.userId;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function toSentryError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/** Narrow lean article fields used for export source URL extraction */
+type ArticleExportUrls = {
+  externalLinks?: Array<{ isPrimary?: boolean; url?: string }>;
+  primaryMedia?: { url?: string };
+  media?: { url?: string };
+};
+
 // ─── Collection → Tag Mapping (v2: three-axis taxonomy) ────────────────────
 // Maps old collection names to the new format/domain/subtopic tags.
 
@@ -61,7 +87,7 @@ const COLLECTION_TO_TAG_MAP: Record<string, TagMapping> = {
  * as an XLSX file for manual review.
  */
 export const exportTagMapping = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
 
   try {
     // 1. Build article → collection names map
@@ -75,7 +101,10 @@ export const exportTagMapping = async (req: Request, res: Response) => {
         if (!articleCollections.has(entry.articleId)) {
           articleCollections.set(entry.articleId, []);
         }
-        articleCollections.get(entry.articleId)!.push(col.rawName || '');
+        const collectionNames = articleCollections.get(entry.articleId);
+        if (collectionNames) {
+          collectionNames.push(col.rawName || '');
+        }
       }
     }
 
@@ -119,15 +148,16 @@ export const exportTagMapping = async (req: Request, res: Response) => {
       // Check existing dimension tagIds
       const existingDimTags = (article.tagIds || [])
         .map(tid => dimensionTags.find(dt => dt._id.toString() === tid.toString()))
-        .filter(Boolean)
-        .map(t => t!.rawName);
+        .filter((tag): tag is { rawName: string } => Boolean(tag?.rawName))
+        .map(t => t.rawName);
 
       // Extract best source URL: primary external link > primaryMedia > legacy media
-      const primaryLink = (article.externalLinks || []).find((l: any) => l.isPrimary);
+      const art = article as ArticleExportUrls;
+      const primaryLink = (art.externalLinks || []).find((l) => l.isPrimary);
       const sourceUrl =
         primaryLink?.url ||
-        (article.primaryMedia as any)?.url ||
-        (article.media as any)?.url ||
+        art.primaryMedia?.url ||
+        art.media?.url ||
         '';
 
       return {
@@ -296,9 +326,9 @@ DATA:
     res.setHeader('Content-Disposition', 'attachment; filename=nugget_tag_mapping.xlsx');
     res.send(buffer);
   } catch (error: unknown) {
-    const err = error instanceof Error ? error : new Error(String(error));
+    const err = toSentryError(error);
     requestLogger.error({ msg: '[AdminTagging] Export error', error: { message: err.message, stack: err.stack } });
-    captureException(err, { requestId: req.id, route: req.path });
+    captureException(err, { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -318,7 +348,7 @@ const importRowSchema = z.object({
  * Tag values are matched by rawName against the Tag collection.
  */
 export const importTagMapping = async (req: Request, res: Response) => {
-  const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
 
   try {
     if (!req.file) {
@@ -439,9 +469,9 @@ export const importTagMapping = async (req: Request, res: Response) => {
       validationErrors: validationErrors.slice(0, 50),
     });
   } catch (error: unknown) {
-    const err = error instanceof Error ? error : new Error(String(error));
+    const err = toSentryError(error);
     requestLogger.error({ msg: '[AdminTagging] Import error', error: { message: err.message, stack: err.stack } });
-    captureException(err, { requestId: req.id, route: req.path });
+    captureException(err, { requestId: getRequestId(req), route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };

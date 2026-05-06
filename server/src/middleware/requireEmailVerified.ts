@@ -19,6 +19,32 @@ import { sendForbiddenError } from '../utils/errorResponse.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { getEnv } from '../config/envValidation.js';
 
+/** Populated by `authenticateToken`; extended here for optional email-verification flags. */
+type RequestWithAuthAndEmail = Request & {
+  id?: string;
+  user?: { userId?: string; role?: string };
+  emailVerified?: boolean;
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthAndEmail).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  const id = (req as RequestWithAuthAndEmail).user?.userId;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function getRequestTokenRole(req: Request): string | undefined {
+  const role = (req as RequestWithAuthAndEmail).user?.role;
+  return typeof role === 'string' ? role : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Middleware that requires email verification for the current user
  * Must be used AFTER authenticateToken middleware
@@ -34,8 +60,8 @@ export async function requireEmailVerified(
     return;
   }
 
-  const userId = (req as any).user?.userId;
-  const tokenRole = (req as any).user?.role;
+  const userId = getRequestUserId(req);
+  const tokenRole = getRequestTokenRole(req);
 
   if (!userId) {
     sendForbiddenError(res, 'Authentication required');
@@ -72,7 +98,7 @@ export async function requireEmailVerified(
 
     // Check if email is verified
     if (!user.auth.emailVerified) {
-      const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+      const requestLogger = createRequestLogger(getRequestId(req), userId, req.path);
       requestLogger.info({
         msg: 'Blocked unverified user action',
         action: `${req.method} ${req.path}`,
@@ -88,11 +114,11 @@ export async function requireEmailVerified(
     }
 
     next();
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), userId, req.path);
     requestLogger.error({
       msg: 'Email verification check failed',
-      err: { message: error.message },
+      err: { message: getErrorMessage(error) },
     });
     sendForbiddenError(res, 'Unable to verify email status');
   }
@@ -108,10 +134,11 @@ export async function enrichEmailStatus(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const userId = (req as any).user?.userId;
+  const reqAug = req as RequestWithAuthAndEmail;
+  const userId = getRequestUserId(req);
 
   if (!userId) {
-    (req as any).emailVerified = false;
+    reqAug.emailVerified = false;
     next();
     return;
   }
@@ -120,17 +147,17 @@ export async function enrichEmailStatus(
     const user = await User.findById(userId).select('auth.emailVerified auth.provider').lean();
 
     if (!user) {
-      (req as any).emailVerified = false;
+      reqAug.emailVerified = false;
     } else if (user.auth.provider !== 'email') {
       // Social auth users are considered verified
-      (req as any).emailVerified = true;
+      reqAug.emailVerified = true;
     } else {
-      (req as any).emailVerified = user.auth.emailVerified;
+      reqAug.emailVerified = user.auth.emailVerified;
     }
 
     next();
-  } catch (error) {
-    (req as any).emailVerified = false;
+  } catch {
+    reqAug.emailVerified = false;
     next();
   }
 }

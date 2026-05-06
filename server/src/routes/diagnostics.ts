@@ -11,6 +11,41 @@ import { createRequestLogger } from '../utils/logger.js';
 import { snapshotAppCounters } from '../utils/metrics.js';
 import { countApiResponseCacheRedisKeysByPrefix } from '../utils/cacheRedisKeyStats.js';
 
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { userId?: string };
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  const id = (req as RequestWithAuthContext).user?.userId;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Narrow Redis client shape used by my-sessions (ioredis-compatible subset). */
+interface RedisSessionClient {
+  sMembers(key: string): Promise<string[]>;
+  get(key: string): Promise<string | null>;
+  ttl(key: string): Promise<number>;
+}
+
+function asRedisSessionClient(client: unknown): RedisSessionClient | null {
+  if (typeof client !== 'object' || client === null) return null;
+  const o = client as Record<string, unknown>;
+  if (typeof o.sMembers !== 'function' || typeof o.get !== 'function' || typeof o.ttl !== 'function') {
+    return null;
+  }
+  return client as RedisSessionClient;
+}
+
 const router = Router();
 
 /**
@@ -18,7 +53,7 @@ const router = Router();
  * API response Redis key counts + in-process counters (hits/misses, public-read observations).
  */
 router.get('/cache-stats', authenticateToken, async (req: Request, res: Response) => {
-  const logger = createRequestLogger((req as unknown as { id?: string }).id || 'unknown', (req as unknown as { user?: { userId?: string } }).user?.userId, req.path);
+  const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
 
   try {
     const allCounters = snapshotAppCounters();
@@ -64,17 +99,18 @@ router.get('/cache-stats', authenticateToken, async (req: Request, res: Response
  * Comprehensive Redis diagnostics (requires auth)
  */
 router.get('/redis', authenticateToken, async (req: Request, res: Response) => {
-  const logger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
-  
+  const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
+
   try {
     const diagnostics = await diagnoseRedisTokenStorage();
     res.json({
       timestamp: new Date().toISOString(),
       diagnostics,
     });
-  } catch (error: any) {
-    logger.error({ msg: 'Diagnostics failed', err: { message: error.message } });
-    res.status(500).json({ error: 'Diagnostics failed', message: error.message });
+  } catch (error: unknown) {
+    const msg = getErrorMessage(error);
+    logger.error({ msg: 'Diagnostics failed', err: { message: msg } });
+    res.status(500).json({ error: 'Diagnostics failed', message: msg });
   }
 });
 
@@ -83,9 +119,9 @@ router.get('/redis', authenticateToken, async (req: Request, res: Response) => {
  * Verify if a refresh token exists in Redis (requires auth)
  */
 router.post('/verify-refresh-token', authenticateToken, async (req: Request, res: Response) => {
-  const logger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
-  const userId = (req as any).user?.userId;
-  
+  const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
+  const userId = getRequestUserId(req);
+
   try {
     const { refreshToken } = req.body;
     if (!refreshToken) {
@@ -98,9 +134,10 @@ router.post('/verify-refresh-token', authenticateToken, async (req: Request, res
       userId,
       verification,
     });
-  } catch (error: any) {
-    logger.error({ msg: 'Token verification failed', err: { message: error.message } });
-    res.status(500).json({ error: 'Verification failed', message: error.message });
+  } catch (error: unknown) {
+    const msg = getErrorMessage(error);
+    logger.error({ msg: 'Token verification failed', err: { message: msg } });
+    res.status(500).json({ error: 'Verification failed', message: msg });
   }
 });
 
@@ -109,34 +146,35 @@ router.post('/verify-refresh-token', authenticateToken, async (req: Request, res
  * List all refresh tokens for current user (requires auth)
  */
 router.get('/my-sessions', authenticateToken, async (req: Request, res: Response) => {
-  const logger = createRequestLogger((req as any).id || 'unknown', (req as any).user?.userId, req.path);
-  const userId = (req as any).user?.userId;
-  
+  const logger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
+  const userId = getRequestUserId(req);
+
   try {
     if (!isRedisAvailable()) {
       return res.json({ sessions: [], message: 'Redis not available' });
     }
 
     const client = getRedisClientOrFallback();
-    
+
     // Check if real Redis client (has sMembers method)
-    if (!isRedisAvailable() || typeof (client as any).sMembers !== 'function') {
-      return res.json({ 
-        userId, 
-        sessionCount: 0, 
+    const redis = asRedisSessionClient(client);
+    if (!isRedisAvailable() || !redis) {
+      return res.json({
+        userId,
+        sessionCount: 0,
         sessions: [],
-        message: 'Real Redis client not available - sessions require actual Redis connection'
+        message: 'Real Redis client not available - sessions require actual Redis connection',
       });
     }
-    
+
     const sessionKey = `sess:${userId}`;
-    const tokenHashes = await (client as any).sMembers(sessionKey);
-    
+    const tokenHashes = await redis.sMembers(sessionKey);
+
     const sessions = [];
     for (const hash of tokenHashes) {
       const key = `rt:${userId}:${hash}`;
-      const dataStr = await (client as any).get(key);
-      const ttl = await (client as any).ttl(key);
+      const dataStr = await redis.get(key);
+      const ttl = await redis.ttl(key);
       
       if (dataStr) {
         const data = JSON.parse(dataStr);
@@ -157,9 +195,10 @@ router.get('/my-sessions', authenticateToken, async (req: Request, res: Response
       sessionCount: sessions.length,
       sessions,
     });
-  } catch (error: any) {
-    logger.error({ msg: 'Failed to get sessions', err: { message: error.message } });
-    res.status(500).json({ error: 'Failed to get sessions', message: error.message });
+  } catch (error: unknown) {
+    const msg = getErrorMessage(error);
+    logger.error({ msg: 'Failed to get sessions', err: { message: msg } });
+    res.status(500).json({ error: 'Failed to get sessions', message: msg });
   }
 });
 

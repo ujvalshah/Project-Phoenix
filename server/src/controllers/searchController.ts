@@ -285,11 +285,21 @@ async function loadSearchSuggestionsBody(
   };
 }
 
+type RequestWithOptionalAuth = Request & {
+  cookies?: Record<string, string | undefined>;
+  user?: { userId?: string; id?: string };
+};
+
+function getAccessTokenCookie(req: Request): string | undefined {
+  const raw = (req as RequestWithOptionalAuth).cookies?.access_token;
+  return typeof raw === 'string' ? raw : undefined;
+}
+
 function getOptionalUserId(req: Request): string | undefined {
-  const requestUser = (req as any).user;
+  const requestUser = (req as RequestWithOptionalAuth).user;
   if (requestUser?.userId) return requestUser.userId;
   if (requestUser?.id) return requestUser.id;
-  const cookieToken = (req as any).cookies?.access_token as string | undefined;
+  const cookieToken = getAccessTokenCookie(req);
   const authHeader = req.headers['authorization'];
   const headerToken = authHeader && authHeader.split(' ')[1];
   const token = cookieToken || headerToken;

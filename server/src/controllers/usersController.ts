@@ -19,6 +19,46 @@ import { sendVerificationEmail, sendEmailChangedNoticeEmail } from '../services/
 import { generateEmailVerificationToken } from '../utils/jwt.js';
 import { getEnv } from '../config/envValidation.js';
 
+type RequestWithAuthUser = Request & { user?: { userId?: string; role?: string } };
+
+function getRequestUserId(req: Request): string | undefined {
+  return (req as RequestWithAuthUser).user?.userId;
+}
+
+function getRequestUserRole(req: Request): string | undefined {
+  return (req as RequestWithAuthUser).user?.role;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) return error.stack;
+  return undefined;
+}
+
+function getMongoErrorCode(error: unknown): number | undefined {
+  if (!isRecord(error)) return undefined;
+  const code = error.code;
+  return typeof code === 'number' ? code : undefined;
+}
+
+function getMongoKeyPattern(error: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(error)) return undefined;
+  const kp = error.keyPattern;
+  return isRecord(kp) ? kp : undefined;
+}
+
+function toSentryError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 export const getUsers = async (req: Request, res: Response) => {
   try {
     const { q } = req.query;
@@ -29,7 +69,7 @@ export const getUsers = async (req: Request, res: Response) => {
     const query: Record<string, unknown> = {};
     // SECURITY: createSearchRegex escapes user input to prevent ReDoS
     // Email is only searchable by admins to reduce user-enumeration risk.
-    const authRole = (req as { user?: { role?: string } }).user?.role;
+    const authRole = getRequestUserRole(req);
     const includeEmailInSearch = authRole === 'admin';
     if (q && typeof q === 'string' && q.trim().length > 0) {
       const regex = createSearchRegex(q);
@@ -56,17 +96,17 @@ export const getUsers = async (req: Request, res: Response) => {
       limit,
       hasMore: page * limit < total
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Users] Get users error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: req.id, route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -88,7 +128,7 @@ export const getPublicUserProfile = async (req: Request, res: Response) => {
     if (!view) return res.status(404).json({ message: 'User not found' });
     res.json(view);
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as { user?: { userId?: string } }).user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Users] Get public profile error',
       error: {
@@ -96,7 +136,7 @@ export const getPublicUserProfile = async (req: Request, res: Response) => {
         stack: error instanceof Error ? error.stack : undefined,
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: req.id, route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -106,17 +146,17 @@ export const getUserById = async (req: Request, res: Response) => {
     const user = await User.findById(req.params.id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(normalizeDoc(user));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Users] Get user by ID error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: req.id, route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -133,10 +173,10 @@ export const updateUser = async (req: Request, res: Response) => {
     }
 
     // Don't allow password updates through this endpoint (use separate change password endpoint)
-    const { password, ...updateData } = validationResult.data;
+    const { password: _password, ...updateData } = validationResult.data;
 
-    const authUserId = (req as { user?: { userId?: string; role?: string } }).user?.userId;
-    const authRole = (req as { user?: { userId?: string; role?: string } }).user?.role;
+    const authUserId = getRequestUserId(req);
+    const authRole = getRequestUserRole(req);
     const targetUserId = req.params.id;
     const access = accessUserMutation(authUserId, authRole, targetUserId);
     if (access === 'unauthenticated') {
@@ -203,7 +243,7 @@ export const updateUser = async (req: Request, res: Response) => {
     }
     
     // Build update object for nested structure
-    const updateObj: any = {};
+    const updateObj: Record<string, unknown> = {};
     
     // Handle flat fields that map to nested structure (for backward compatibility)
     if (updateData.name) {
@@ -287,19 +327,26 @@ export const updateUser = async (req: Request, res: Response) => {
     
     // Handle direct nested updates if provided
     if (updateData.profile) {
-      Object.assign(updateObj, Object.keys(updateData.profile).reduce((acc, key) => {
-        acc[`profile.${key}`] = (updateData.profile as any)[key];
-        return acc;
-      }, {} as any));
+      const profileRecord = updateData.profile as Record<string, unknown>;
+      Object.assign(
+        updateObj,
+        Object.keys(profileRecord).reduce<Record<string, unknown>>((acc, key) => {
+          acc[`profile.${key}`] = profileRecord[key];
+          return acc;
+        }, {})
+      );
     }
     if (updateData.preferences && typeof updateData.preferences === 'object') {
-      Object.keys(updateData.preferences).forEach(key => {
+      const prefs = updateData.preferences as Record<string, unknown>;
+      Object.keys(prefs).forEach((key) => {
         if (key === 'notifications') {
-          Object.keys((updateData.preferences as any).notifications || {}).forEach(nKey => {
-            updateObj[`preferences.notifications.${nKey}`] = (updateData.preferences as any).notifications[nKey];
+          const notifications = prefs.notifications;
+          const notifRecord = isRecord(notifications) ? notifications : {};
+          Object.keys(notifRecord).forEach((nKey) => {
+            updateObj[`preferences.notifications.${nKey}`] = notifRecord[nKey];
           });
         } else {
-          updateObj[`preferences.${key}`] = (updateData.preferences as any)[key];
+          updateObj[`preferences.${key}`] = prefs[key];
         }
       });
     }
@@ -455,21 +502,21 @@ export const updateUser = async (req: Request, res: Response) => {
     }
 
     res.json(normalizeDoc(user));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Users] Update user error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: req.id, route: req.path });
     
     // Handle duplicate key error (MongoDB unique constraint)
-    if (error.code === 11000) {
-      const keyPattern = error.keyPattern || {};
+    if (getMongoErrorCode(error) === 11000) {
+      const keyPattern = getMongoKeyPattern(error) ?? {};
       let code = 'EMAIL_ALREADY_EXISTS';
       let message = 'Email already registered';
       
@@ -493,8 +540,8 @@ export const updateUser = async (req: Request, res: Response) => {
 
 export const deleteUser = async (req: Request, res: Response) => {
   try {
-    const authUserId = (req as { user?: { userId?: string; role?: string } }).user?.userId;
-    const authRole = (req as { user?: { userId?: string; role?: string } }).user?.role;
+    const authUserId = getRequestUserId(req);
+    const authRole = getRequestUserRole(req);
     const targetUserId = req.params.id;
     const access = accessUserMutation(authUserId, authRole, targetUserId);
     if (access === 'unauthenticated') {
@@ -550,17 +597,17 @@ export const deleteUser = async (req: Request, res: Response) => {
     }
 
     res.status(204).send();
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Users] Delete user error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: req.id, route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -573,8 +620,8 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
     // feed. Without this any authenticated user could enumerate another
     // user's interest tags AND forge their `appState.lastLoginAt` (which
     // corrupts dormancy and security-event signals).
-    const authUserId = (req as { user?: { userId?: string; role?: string } }).user?.userId;
-    const authRole = (req as { user?: { userId?: string; role?: string } }).user?.role;
+    const authUserId = getRequestUserId(req);
+    const authRole = getRequestUserRole(req);
     const access = accessUserMutation(authUserId, authRole, userId);
     if (access === 'unauthenticated') {
       return res.status(401).json({ message: 'Authentication required' });
@@ -602,7 +649,7 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
 
     // Build MongoDB query for articles matching user's interests
     // PRIVACY FIX: Only show public articles in personalized feed
-    const articleQuery: any = {
+    const articleQuery: Record<string, unknown> = {
       visibility: 'public',
       $or: [{ status: 'published' }, { status: { $exists: false } }, { status: null }],
     };
@@ -638,17 +685,17 @@ export const getPersonalizedFeed = async (req: Request, res: Response) => {
       articles: await normalizeArticleDocs(articles),
       newCount
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Users] Get personalized feed error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
-    captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
+    captureException(toSentryError(error), { requestId: req.id, route: req.path });
     res.status(500).json({ message: 'Internal server error' });
   }
 };

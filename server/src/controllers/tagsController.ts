@@ -3,7 +3,6 @@ import { Tag } from '../models/Tag.js';
 import { Article } from '../models/Article.js';
 import { normalizeDoc, normalizeDocs, invalidateTagNameCache } from '../utils/db.js';
 import { z } from 'zod';
-import { createExactMatchRegex } from '../utils/escapeRegExp.js';
 import { calculateTagUsageCounts } from '../utils/tagUsageHelpers.js';
 import { resolveTagIdsToNames } from '../utils/tagHelpers.js';
 import { createRequestLogger } from '../utils/logger.js';
@@ -13,6 +12,41 @@ import { buildApiCacheKey, getOrSetCachedJson, invalidateApiResponseCachePrefix 
 
 const TAG_TAXONOMY_CACHE_NAMESPACE = 'tags:taxonomy:v1';
 const TAG_TAXONOMY_CACHE_TTL_SECONDS = 60;
+
+type RequestWithAuthUser = Request & { user?: { userId?: string } };
+
+function getRequestUserId(req: Request): string | undefined {
+  return (req as RequestWithAuthUser).user?.userId;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) return error.stack;
+  return undefined;
+}
+
+/** Mongo duplicate key error code */
+function getMongoErrorCode(error: unknown): number | undefined {
+  if (!isRecord(error)) return undefined;
+  const code = error.code;
+  return typeof code === 'number' ? code : undefined;
+}
+
+function tagIdBodyEntryToString(id: unknown): string {
+  if (typeof id === 'string') return id;
+  if (id != null && typeof (id as { toString?: () => string }).toString === 'function') {
+    return (id as { toString: () => string }).toString();
+  }
+  return String(id);
+}
 
 // Validation schemas
 //
@@ -149,14 +183,14 @@ export const getTags = async (req: Request, res: Response) => {
       limit,
       hasMore: page * limit < total
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Tags] Get tags error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
@@ -210,22 +244,23 @@ export const createTag = async (req: Request, res: Response) => {
     invalidateTagNameCache();
     await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     res.status(201).json(tag);
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Tags] Create tag error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     
     // Handle validation errors from createOrResolveTag
-    if (error.message && error.message.includes('cannot be empty')) {
+    const errMsg = getErrorMessage(error);
+    if (errMsg && errMsg.includes('cannot be empty')) {
       return res.status(400).json({ 
-        message: error.message
+        message: errMsg
       });
     }
     
@@ -235,7 +270,7 @@ export const createTag = async (req: Request, res: Response) => {
 
 export const updateTag = async (req: Request, res: Response) => {
   try {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ message: 'Tag ID is required' });
@@ -260,7 +295,7 @@ export const updateTag = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Tag not found' });
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     let oldName: string | null = null;
     let newName: string | null = null;
     
@@ -359,20 +394,20 @@ export const updateTag = async (req: Request, res: Response) => {
     invalidateTagNameCache();
     await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     res.json(normalizedTag);
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Tags] Update tag error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     
     // Handle duplicate key error
-    if (error.code === 11000) {
+    if (getMongoErrorCode(error) === 11000) {
       return res.status(409).json({ message: 'A tag with this name already exists' });
     }
     
@@ -403,14 +438,14 @@ export const deleteTag = async (req: Request, res: Response) => {
     invalidateTagNameCache();
     await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     res.status(204).send();
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Audit Phase-1 Fix: Use structured logging and Sentry capture
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Tags] Delete tag error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
@@ -451,11 +486,11 @@ export const softDeleteTagById = async (req: Request, res: Response) => {
     await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
 
     res.json({ message: 'Tag deprecated', tag: normalizeDoc(tag) });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Tags] Soft-delete tag error',
-      error: { message: error.message, stack: error.stack },
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
     res.status(500).json({ message: 'Internal server error' });
@@ -501,7 +536,7 @@ export const getTaxonomyCoverage = async (req: Request, res: Response) => {
       missingDomain: total - withDomain,
     });
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     const err = error instanceof Error ? error : new Error(String(error));
     requestLogger.error({
       msg: '[Tags] Taxonomy coverage error',
@@ -520,9 +555,7 @@ export const resolveTags = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'tagIds must be an array' });
     }
 
-    const tags = await resolveTagIdsToNames(tagIds.map((id: any) => 
-      typeof id === 'string' ? id : id.toString()
-    ));
+    const tags = await resolveTagIdsToNames(tagIds.map(tagIdBodyEntryToString));
 
     res.json({ 
       tags: tags.map((name, index) => ({
@@ -530,13 +563,13 @@ export const resolveTags = async (req: Request, res: Response) => {
         rawName: name
       }))
     });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Tags] Resolve tags error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });
@@ -602,7 +635,7 @@ export const getTagTaxonomy = async (req: Request, res: Response) => {
 
     res.json(payload);
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     const err = error instanceof Error ? error : new Error(String(error));
     requestLogger.error({
       msg: '[Tags] Get taxonomy error',
@@ -696,7 +729,7 @@ export const reorderTaxonomy = async (req: Request, res: Response) => {
     await invalidateApiResponseCachePrefix(TAG_TAXONOMY_CACHE_NAMESPACE);
     return res.json({ message: `Sorted by ${mode}`, count: tags.length });
   } catch (error: unknown) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     const err = error instanceof Error ? error : new Error(String(error));
     requestLogger.error({
       msg: '[Tags] Reorder taxonomy error',
@@ -709,7 +742,7 @@ export const reorderTaxonomy = async (req: Request, res: Response) => {
 
 export const syncArticleTags = async (req: Request, res: Response) => {
   try {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.info({ msg: '[Tags] Starting article tags sync' });
 
     // Get all articles and extract distinct tag values
@@ -806,13 +839,13 @@ export const syncArticleTags = async (req: Request, res: Response) => {
       errors,
       insertedTags: insertedTags.slice(0, 50) // Limit response size
     });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(req.id || 'unknown', getRequestUserId(req), req.path);
     requestLogger.error({
       msg: '[Tags] Sync article tags error',
       error: {
-        message: error.message,
-        stack: error.stack,
+        message: getErrorMessage(error),
+        stack: getErrorStack(error),
       },
     });
     captureException(error instanceof Error ? error : new Error(String(error)), { requestId: req.id, route: req.path });

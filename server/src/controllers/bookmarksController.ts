@@ -24,6 +24,26 @@ import {
 } from '../utils/bookmarkHelpers.js';
 import { createSearchRegex } from '../utils/escapeRegExp.js';
 
+type RequestWithAuthUser = Request & { user?: { userId?: string } };
+
+function getRequestUserId(req: Request): string | undefined {
+  return (req as RequestWithAuthUser).user?.userId;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) return error.stack;
+  return undefined;
+}
+
+function toSentryError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 /**
  * Bookmark Controller
  *
@@ -68,7 +88,7 @@ const batchToggleSchema = z.object({
  * POST /api/bookmarks/toggle
  */
 export const toggleBookmark = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/toggle');
 
   try {
@@ -122,12 +142,12 @@ export const toggleBookmark = async (req: Request, res: Response) => {
       message: 'Saved to Saved'
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[Bookmarks] Toggle failed',
-      error: { message: error.message, stack: error.stack }
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) }
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmarks/toggle' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmarks/toggle' });
     return sendInternalError(res, 'Failed to toggle bookmark');
   }
 };
@@ -138,7 +158,7 @@ export const toggleBookmark = async (req: Request, res: Response) => {
  * GET /api/bookmarks/status/:itemId
  */
 export const getStatus = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/status');
 
   try {
@@ -155,13 +175,13 @@ export const getStatus = async (req: Request, res: Response) => {
 
     return res.json(status);
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[Bookmarks] Get status failed',
-      error: { message: error.message, stack: error.stack },
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) },
       itemId: req.params.itemId
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmarks/status' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmarks/status' });
     return sendInternalError(res, 'Failed to get bookmark status');
   }
 };
@@ -172,7 +192,7 @@ export const getStatus = async (req: Request, res: Response) => {
  * GET /api/bookmarks
  */
 export const getBookmarks = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks');
 
   try {
@@ -190,7 +210,7 @@ export const getBookmarks = async (req: Request, res: Response) => {
     const skip = (page - 1) * limit;
 
     // Build query
-    const bookmarkQuery: any = { userId };
+    const bookmarkQuery: Record<string, unknown> = { userId };
 
     if (itemType) {
       bookmarkQuery.itemType = itemType;
@@ -398,12 +418,12 @@ export const getBookmarks = async (req: Request, res: Response) => {
       }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[Bookmarks] Get bookmarks failed',
-      error: { message: error.message, stack: error.stack }
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) }
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmarks' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmarks' });
     return sendInternalError(res, 'Failed to get bookmarks');
   }
 };
@@ -415,7 +435,7 @@ export const getBookmarks = async (req: Request, res: Response) => {
  * POST /api/bookmarks/assign
  */
 export const assignToCollections = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/assign');
 
   try {
@@ -471,12 +491,12 @@ export const assignToCollections = async (req: Request, res: Response) => {
       collectionIds: ownership.uniqueIds
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[Bookmarks] Assign to collections failed',
-      error: { message: error.message, stack: error.stack }
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) }
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmarks/assign' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmarks/assign' });
     return sendInternalError(res, 'Failed to assign bookmark to collections');
   }
 };
@@ -487,7 +507,7 @@ export const assignToCollections = async (req: Request, res: Response) => {
  * DELETE /api/bookmarks/:bookmarkId
  */
 export const deleteBookmark = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks');
 
   try {
@@ -512,13 +532,13 @@ export const deleteBookmark = async (req: Request, res: Response) => {
 
     return res.status(204).send();
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[Bookmarks] Delete failed',
-      error: { message: error.message, stack: error.stack },
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) },
       bookmarkId: req.params.bookmarkId
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmarks' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmarks' });
     return sendInternalError(res, 'Failed to delete bookmark');
   }
 };
@@ -529,7 +549,7 @@ export const deleteBookmark = async (req: Request, res: Response) => {
  * POST /api/bookmarks/batch-toggle
  */
 export const batchToggle = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/batch-toggle');
 
   try {
@@ -689,12 +709,12 @@ export const batchToggle = async (req: Request, res: Response) => {
       }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[Bookmarks] Batch toggle failed',
-      error: { message: error.message, stack: error.stack }
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) }
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmarks/batch-toggle' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmarks/batch-toggle' });
     return sendInternalError(res, 'Failed to process batch toggle');
   }
 };
@@ -706,7 +726,7 @@ export const batchToggle = async (req: Request, res: Response) => {
  * POST /api/bookmarks/status/batch
  */
 export const getBatchStatus = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   const requestLogger = createRequestLogger(req.id || 'unknown', userId, '/api/bookmarks/status/batch');
 
   try {
@@ -745,12 +765,12 @@ export const getBatchStatus = async (req: Request, res: Response) => {
 
     return res.json({ statuses });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     requestLogger.error({
       msg: '[Bookmarks] Batch status failed',
-      error: { message: error.message, stack: error.stack }
+      error: { message: getErrorMessage(error), stack: getErrorStack(error) }
     });
-    captureException(error, { requestId: req.id, route: '/api/bookmarks/status/batch' });
+    captureException(toSentryError(error), { requestId: req.id, route: '/api/bookmarks/status/batch' });
     return sendInternalError(res, 'Failed to get batch bookmark status');
   }
 };

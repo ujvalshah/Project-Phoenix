@@ -1,8 +1,41 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '../utils/jwt.js';
+import { verifyToken, type JWTPayload } from '../utils/jwt.js';
 import { createRequestLogger } from '../utils/logger.js';
 import { getUserTokenVersionForAuth, isTokenBlacklisted } from '../services/tokenService.js';
 import { getEnv } from '../config/envValidation.js';
+
+/** Cookie-parser + auth enrichment (`authenticateToken` runs after cookie middleware). */
+type AuthenticatedRequest = Request & {
+  id?: string;
+  cookies?: Record<string, string | undefined>;
+  user?: JWTPayload;
+  token?: string;
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as AuthenticatedRequest).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getCookieAccessToken(req: Request): string | undefined {
+  const raw = (req as AuthenticatedRequest).cookies?.access_token;
+  return typeof raw === 'string' ? raw : undefined;
+}
+
+/** Matches prior optional chaining on thrown values (`error?.name` / `error?.message`). */
+function getThrownErrorFields(error: unknown): { name?: string; message?: string } {
+  if (typeof error !== 'object' || error === null) return {};
+  const o = error as Record<string, unknown>;
+  return {
+    name: typeof o.name === 'string' ? o.name : undefined,
+    message: typeof o.message === 'string' ? o.message : undefined,
+  };
+}
+
+function getJwtExpiredAt(error: unknown): unknown {
+  if (typeof error !== 'object' || error === null || !('expiredAt' in error)) return undefined;
+  return (error as { expiredAt?: unknown }).expiredAt;
+}
 
 /**
  * Express middleware to authenticate JWT tokens
@@ -31,9 +64,9 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
   // client could otherwise out-vote a fresher cookie token. Cookie-first
   // closes that class of "I logged in again but the old token is being
   // used" bugs. The header path remains for non-browser API clients.
-  const cookieToken = (req as any).cookies?.access_token as string | undefined;
+  const cookieToken = getCookieAccessToken(req);
   const token = cookieToken || headerToken;
-  const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
+  const requestLogger = createRequestLogger(getRequestId(req), undefined, req.path);
 
   if (!token) {
     requestLogger.warn({
@@ -120,21 +153,23 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       });
     }
 
-    (req as any).user = decoded;
-    (req as any).token = token; // Store token for logout blacklisting
+    const reqAuth = req as AuthenticatedRequest;
+    reqAuth.user = decoded;
+    reqAuth.token = token; // Store token for logout blacklisting
     next();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const { name: errorName, message: errorMessage } = getThrownErrorFields(error);
     requestLogger.warn({
       msg: '[AuthDebug] Token verification failed',
       method: req.method,
-      errorName: error?.name,
-      errorMessage: error?.message,
+      errorName,
+      errorMessage,
     });
-    if (error.name === 'TokenExpiredError') {
-      const requestLogger = createRequestLogger(req.id || 'unknown', undefined, req.path);
-      requestLogger.warn({
+    if (errorName === 'TokenExpiredError') {
+      const innerLogger = createRequestLogger(getRequestId(req), undefined, req.path);
+      innerLogger.warn({
         msg: 'Token expired',
-        expiredAt: (error as any).expiredAt,
+        expiredAt: getJwtExpiredAt(error),
       });
       return res.status(401).json({
         error: true,
@@ -142,7 +177,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
         code: 'TOKEN_EXPIRED',
       });
     }
-    if (error.name === 'JsonWebTokenError') {
+    if (errorName === 'JsonWebTokenError') {
       return res.status(401).json({
         error: true,
         message: 'Invalid token',

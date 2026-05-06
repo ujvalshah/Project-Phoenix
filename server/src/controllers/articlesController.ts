@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Article } from '../models/Article.js';
 import { Collection } from '../models/Collection.js';
 import { Tag } from '../models/Tag.js';
-import { normalizeDoc, normalizeDocs, normalizeArticleDoc, normalizeArticleDocs } from '../utils/db.js';
+import { normalizeArticleDoc, normalizeArticleDocs } from '../utils/db.js';
 import { createArticleSchema, updateArticleSchema } from '../utils/validation.js';
 import { validateDimensionTagIds } from '../utils/validateDimensionTagIds.js';
 import { cleanupCollectionEntries } from '../utils/collectionHelpers.js';
@@ -18,7 +18,6 @@ import {
   type FeedBadgeKey,
 } from '../services/unseenBadgeService.js';
 import {
-  sendErrorResponse,
   sendValidationError,
   sendUnauthorizedError,
   sendForbiddenError,
@@ -44,6 +43,38 @@ import {
   stableSerializeForArticlesCache,
 } from '../config/publicReadCache.js';
 import { PUBLIC_READ_RESPONSE_CACHE_HEADER } from '../middleware/publicReadRedisCache.js';
+
+type RequestWithAuthContext = Request & {
+  id?: string;
+  user?: { userId?: string; role?: string; id?: string };
+  cookies?: { access_token?: string };
+};
+
+function getRequestId(req: Request): string {
+  const id = (req as RequestWithAuthContext).id;
+  return typeof id === 'string' && id.length > 0 ? id : 'unknown';
+}
+
+function getRequestUserId(req: Request): string | undefined {
+  const id = (req as RequestWithAuthContext).user?.userId ?? (req as RequestWithAuthContext).user?.id;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function getRequestUserRole(req: Request): string | undefined {
+  const role = (req as RequestWithAuthContext).user?.role;
+  return typeof role === 'string' ? role : undefined;
+}
+
+function getAccessTokenCookie(req: Request): string | undefined {
+  const cookies = (req as RequestWithAuthContext).cookies;
+  const v = cookies?.access_token;
+  return typeof v === 'string' ? v : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
 
 // ── Lightweight in-memory query cache (LRU, TTL 60s) ────────────────────────
 const SEARCH_CACHE_TTL_MS = 60_000;
@@ -93,7 +124,7 @@ interface OptionalUserContext {
 
 function getOptionalUserContext(req: Request): OptionalUserContext {
   // First check if middleware already set req.user
-  const requestUser = (req as any).user;
+  const requestUser = (req as RequestWithAuthContext).user;
   if (requestUser?.userId) {
     return {
       userId: requestUser.userId,
@@ -108,7 +139,7 @@ function getOptionalUserContext(req: Request): OptionalUserContext {
   }
   
   // Cookie-based auth is the canonical browser path in this app.
-  const cookieToken = (req as any).cookies?.access_token as string | undefined;
+  const cookieToken = getAccessTokenCookie(req);
 
   // Fallback: Authorization header for API clients.
   const authHeader = req.headers['authorization'];
@@ -122,7 +153,7 @@ function getOptionalUserContext(req: Request): OptionalUserContext {
   try {
     const decoded = verifyToken(token);
     return { userId: decoded.userId, role: decoded.role };
-  } catch (error) {
+  } catch {
     // Token invalid/expired - silently ignore (this is optional auth)
     return {};
   }
@@ -136,12 +167,7 @@ function normalizeStatus(raw: unknown): 'draft' | 'published' | undefined {
   return raw === 'draft' || raw === 'published' ? raw : undefined;
 }
 
-function isPublishedStatus(status: unknown): boolean {
-  // Backward compatibility: records created before status existed are published.
-  return status === 'published' || status === undefined || status === null;
-}
-
-function appendAndQueryCondition(query: Record<string, any>, condition: Record<string, any>): void {
+function appendAndQueryCondition(query: Record<string, unknown>, condition: Record<string, unknown>): void {
   if (query.$and && Array.isArray(query.$and)) {
     query.$and.push(condition);
     return;
@@ -160,8 +186,8 @@ function appendAndQueryCondition(query: Record<string, any>, condition: Record<s
   query.$and = [currentQuery, condition];
 }
 
-function cloneQueryForSearch(baseQuery: Record<string, any>): Record<string, any> {
-  const nextQuery: Record<string, any> = { ...baseQuery };
+function cloneQueryForSearch(baseQuery: Record<string, unknown>): Record<string, unknown> {
+  const nextQuery: Record<string, unknown> = { ...baseQuery };
   if (Array.isArray(baseQuery.$and)) {
     nextQuery.$and = [...baseQuery.$and];
   }
@@ -172,9 +198,9 @@ function cloneQueryForSearch(baseQuery: Record<string, any>): Record<string, any
 }
 
 function mergeSearchConditions(
-  baseQuery: Record<string, any>,
+  baseQuery: Record<string, unknown>,
   searchConditions: Record<string, unknown>[],
-): Record<string, any> {
+): Record<string, unknown> {
   const nextQuery = cloneQueryForSearch(baseQuery);
   if (searchConditions.length === 0) return nextQuery;
 
@@ -226,7 +252,7 @@ async function resolveCategoryIds(categoryNames: string[]): Promise<string[]> {
       '[Articles] Resolved category names to IDs',
     );
     return categoryIds;
-  } catch (error: any) {
+  } catch (error: unknown) {
     getLogger().error({ err: error }, '[Articles] Error resolving category IDs');
     return []; // Fail gracefully - categoryIds is optional
   }
@@ -267,7 +293,7 @@ export const getArticles = async (req: Request, res: Response) => {
     const currentUserId = getOptionalUserId(req);
 
     // Build MongoDB query object
-    let query: any = {};
+    let query: Record<string, unknown> = {};
     let hybridSearchContext: { trimmedQ: string; regex: RegExp; matchingTagIds: unknown[] } | null = null;
 
     // Collection filter: restrict to articles in a specific community collection.
@@ -471,7 +497,7 @@ export const getArticles = async (req: Request, res: Response) => {
         : [categories];
       
       // Check if "Today" is in the array - if so, apply date filter
-      const hasToday = categoryArray.some((cat: any) => 
+      const hasToday = categoryArray.some((cat: unknown) => 
         typeof cat === 'string' && cat === 'Today'
       );
       
@@ -488,7 +514,7 @@ export const getArticles = async (req: Request, res: Response) => {
         };
         
         // Also filter by other categories if any
-        const otherCategories = categoryArray.filter((cat: any) => 
+        const otherCategories = categoryArray.filter((cat: unknown) => 
           typeof cat === 'string' && cat !== 'Today'
         );
         
@@ -609,7 +635,7 @@ export const getArticles = async (req: Request, res: Response) => {
     // Sort parameter (map frontend values to MongoDB sort)
     const isDraftListing = requestedStatus === 'draft';
     const defaultDateField = isDraftListing ? 'updated_at' : 'publishedAt';
-    const sortMap: Record<string, any> = {
+    const sortMap: Record<string, Record<string, unknown>> = {
       'latest': { [defaultDateField]: -1, _id: -1 },
       'oldest': { [defaultDateField]: 1, _id: 1 },
       'title': { title: 1 },
@@ -659,8 +685,8 @@ export const getArticles = async (req: Request, res: Response) => {
       const fetchWindow = skip + limit;
 
       const [hybridFacet] = await Article.aggregate<{
-        relevanceDocs: any[];
-        fallbackDocs: any[];
+        relevanceDocs: Record<string, unknown>[];
+        fallbackDocs: Record<string, unknown>[];
         relevanceIds: Array<{ _id: null; ids: unknown[] }>;
         fallbackIds: Array<{ _id: null; ids: unknown[] }>;
       }>([
@@ -694,9 +720,9 @@ export const getArticles = async (req: Request, res: Response) => {
       const relevanceIds = hybridFacet?.relevanceIds?.[0]?.ids ?? [];
       const fallbackIds = hybridFacet?.fallbackIds?.[0]?.ids ?? [];
 
-      const merged: any[] = [];
+      const merged: Record<string, unknown>[] = [];
       const seenIds = new Set<string>();
-      const pushUnique = (doc: any) => {
+      const pushUnique = (doc: Record<string, unknown>) => {
         const id = String(doc?._id ?? '');
         if (!id || seenIds.has(id)) return;
         seenIds.add(id);
@@ -788,8 +814,8 @@ export const getArticles = async (req: Request, res: Response) => {
       limit,
       hasMore: page * limit < chunk.total,
     });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({ err: error }, '[Articles] Get articles error');
     sendInternalError(res);
   }
@@ -854,8 +880,8 @@ export const getArticleById = async (req: Request, res: Response) => {
 
     res.setHeader(PUBLIC_READ_RESPONSE_CACHE_HEADER, canShareCachedDetail ? 'MISS' : 'BYPASS');
     return res.json(payload);
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({ err: error }, '[Articles] Get article by ID error');
     sendInternalError(res);
   }
@@ -865,7 +891,7 @@ export const createArticle = async (req: Request, res: Response) => {
   invalidateSearchCache();
   void invalidateRedisArticleDerivedReadCaches();
   try {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     // Validate input
     const validationResult = createArticleSchema.safeParse(req.body);
     if (!validationResult.success) {
@@ -932,12 +958,11 @@ export const createArticle = async (req: Request, res: Response) => {
     const categoryIds = await resolveCategoryIds(data.categories || []);
 
     // Admin-only: Handle custom creation date
-    const currentUserId = (req as any).user?.userId;
-    const userRole = (req as any).user?.role;
+    const userRole = getRequestUserRole(req);
     const isAdmin = userRole === 'admin';
     
     const requestedStatus = normalizeStatus(data.status) || 'published';
-    let status: 'draft' | 'published' = requestedStatus;
+    const status: 'draft' | 'published' = requestedStatus;
     let publishedAt: string | null = status === 'draft' ? null : (data.publishedAt || new Date().toISOString());
     let isCustomCreatedAt = false;
     
@@ -966,7 +991,7 @@ export const createArticle = async (req: Request, res: Response) => {
         
         publishedAt = customDate.toISOString();
         isCustomCreatedAt = true;
-      } catch (error) {
+      } catch {
         return sendValidationError(res, 'Invalid customCreatedAt date', [{
           path: ['customCreatedAt'],
           message: 'Invalid date format',
@@ -987,22 +1012,23 @@ export const createArticle = async (req: Request, res: Response) => {
     });
 
     res.status(201).json(await normalizeArticleDoc(newArticle));
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({ err: error }, '[Articles] Create article error');
     
     // Log more details for debugging
-    if (error.name === 'ValidationError') {
-      requestLogger.warn({ errors: error.errors }, '[Articles] Mongoose validation errors');
-      const errors = Object.keys(error.errors).map(key => ({
+    if (error instanceof Error && error.name === 'ValidationError') {
+      const ve = error as Error & { errors: Record<string, { message: string }> };
+      requestLogger.warn({ errors: ve.errors }, '[Articles] Mongoose validation errors');
+      const errors = Object.keys(ve.errors).map(key => ({
         path: key,
-        message: error.errors[key].message
+        message: ve.errors[key].message
       }));
       return sendValidationError(res, 'Validation failed', errors);
     }
     
     // Check for BSON size limit (MongoDB document size limit is 16MB)
-    if (error.message && error.message.includes('BSON')) {
+    if (getErrorMessage(error).includes('BSON')) {
       requestLogger.warn({ err: error }, '[Articles] Document size limit exceeded');
       return sendPayloadTooLargeError(res, 'Payload too large. Please reduce image sizes or use fewer images.');
     }
@@ -1015,9 +1041,9 @@ export const updateArticle = async (req: Request, res: Response) => {
   invalidateSearchCache();
   void invalidateRedisArticleDerivedReadCaches();
   try {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     // Get current user from authentication middleware
-    const currentUserId = (req as any).user?.userId;
+    const currentUserId = getRequestUserId(req);
     if (!currentUserId) {
       return sendUnauthorizedError(res, 'Authentication required');
     }
@@ -1029,7 +1055,7 @@ export const updateArticle = async (req: Request, res: Response) => {
     }
 
     // Verify ownership (user must be the author or admin)
-    const userRole = (req as any).user?.role;
+    const userRole = getRequestUserRole(req);
     const isAdmin = userRole === 'admin';
     
     // Allow admin or author to edit
@@ -1133,7 +1159,7 @@ export const updateArticle = async (req: Request, res: Response) => {
     // CRITICAL FIX: Convert nested media.previewMetadata updates to dot notation
     // This prevents Mongoose from replacing the entire media object (which fails validation)
     // when we only want to update previewMetadata fields
-    let mongoUpdate: any = { ...updates };
+    const mongoUpdate: Record<string, unknown> = { ...updates } as Record<string, unknown>;
 
     const existingStatus: 'draft' | 'published' = existingArticle.status === 'draft' ? 'draft' : 'published';
     const requestedStatus = normalizeStatus(updates.status);
@@ -1175,7 +1201,7 @@ export const updateArticle = async (req: Request, res: Response) => {
           
           mongoUpdate.publishedAt = customDate.toISOString();
           mongoUpdate.isCustomCreatedAt = true;
-        } catch (error) {
+        } catch {
           return sendValidationError(res, 'Invalid customCreatedAt date', [{
             path: ['customCreatedAt'],
             message: 'Invalid date format',
@@ -1283,8 +1309,8 @@ export const updateArticle = async (req: Request, res: Response) => {
     // thus different dedupe keys, leading to duplicate notifications.
 
     res.json(await normalizeArticleDoc(article));
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({ err: error }, '[Articles] Update article error');
     sendInternalError(res);
   }
@@ -1294,7 +1320,7 @@ export const deleteArticle = async (req: Request, res: Response) => {
   invalidateSearchCache();
   void invalidateRedisArticleDerivedReadCaches();
   try {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     const articleId = req.params.id;
     
     // Delete the article first
@@ -1315,14 +1341,14 @@ export const deleteArticle = async (req: Request, res: Response) => {
       if (orphanedCount > 0) {
         requestLogger.info({ articleId, orphanedCount }, '[Articles] Marked media files as orphaned');
       }
-    } catch (mediaError: any) {
+    } catch (mediaError: unknown) {
       // Log but don't fail article deletion if media cleanup fails
       requestLogger.warn({ articleId, err: mediaError }, '[Articles] Failed to mark media as orphaned');
     }
     
     res.status(204).send();
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({ err: error }, '[Articles] Delete article error');
     sendInternalError(res);
   }
@@ -1352,8 +1378,8 @@ function normalizeImageUrlForCompare(url: string): string {
  */
 export const deleteArticleImage = async (req: Request, res: Response) => {
   try {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
-    const currentUserId = (req as any).user?.userId;
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
+    const currentUserId = getRequestUserId(req);
     if (!currentUserId) {
       return sendUnauthorizedError(res, 'Authentication required');
     }
@@ -1442,7 +1468,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
 
     if (updatedSupportingMedia.length > 0) {
       const beforeCount = updatedSupportingMedia.length;
-      updatedSupportingMedia = updatedSupportingMedia.filter((media: any) => {
+      updatedSupportingMedia = updatedSupportingMedia.filter((media: { type?: string; url?: string }) => {
         if (media.type === 'image' && media.url) {
           const supportingUrl = normalizeImageUrlForCompare(media.url);
           return supportingUrl !== normalizedImageUrl;
@@ -1453,7 +1479,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
       if (updatedSupportingMedia.length < beforeCount) {
         supportingMediaUpdated = true;
         // Reindex positions so the canonical order stays contiguous after delete.
-        updatedSupportingMedia = updatedSupportingMedia.map((media: any, index: number) => ({
+        updatedSupportingMedia = updatedSupportingMedia.map((media: { type?: string; url?: string; toObject?: () => object }, index: number) => ({
           ...(typeof media?.toObject === 'function' ? media.toObject() : media),
           position: index,
           order: index,
@@ -1594,7 +1620,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
       } else {
         requestLogger.debug({ articleId: id, imageUrl }, '[Articles] Image URL is not Cloudinary');
       }
-    } catch (mediaError: any) {
+    } catch (mediaError: unknown) {
       // Log but don't fail if media cleanup fails
       requestLogger.warn({ articleId: id, imageUrl, err: mediaError }, '[Articles] Failed to cleanup media for image');
     }
@@ -1604,8 +1630,8 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
       message: 'Image deleted successfully',
       images: updatedImages
     });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({ err: error }, '[Articles] Delete image error');
     sendInternalError(res);
   }
@@ -1621,7 +1647,7 @@ export const deleteArticleImage = async (req: Request, res: Response) => {
 export const getMyArticleCounts = async (req: Request, res: Response) => {
   try {
     // Get current user from authentication middleware
-    const currentUserId = (req as any).user?.userId;
+    const currentUserId = getRequestUserId(req);
     if (!currentUserId) {
       return sendUnauthorizedError(res, 'Authentication required');
     }
@@ -1648,8 +1674,8 @@ export const getMyArticleCounts = async (req: Request, res: Response) => {
       draft: draftCount,
       published: publishedCount,
     });
-  } catch (error: any) {
-    const requestLogger = createRequestLogger(req.id || 'unknown', (req as any)?.user?.userId, req.path);
+  } catch (error: unknown) {
+    const requestLogger = createRequestLogger(getRequestId(req), getRequestUserId(req), req.path);
     requestLogger.error({ err: error }, '[Articles] Get my article counts error');
     sendInternalError(res);
   }
@@ -1664,7 +1690,7 @@ function normalizeLegacyStreamToFeed(stream: 'pulse' | 'standard'): FeedBadgeKey
 }
 
 function getAuthedUserId(req: Request, res: Response): string | null {
-  const userId = (req as any).user?.userId;
+  const userId = getRequestUserId(req);
   if (!userId) {
     res.status(401).json({ error: true, message: 'Unauthorized' });
     return null;

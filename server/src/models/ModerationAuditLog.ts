@@ -7,7 +7,7 @@ export interface IModerationAuditLog extends Document {
   previousStatus: 'open' | 'resolved' | 'dismissed';
   newStatus: 'open' | 'resolved' | 'dismissed';
   timestamp: Date;
-  metadata?: Record<string, any>; // Optional additional data
+  metadata?: Record<string, unknown>; // Optional additional data
 }
 
 const ModerationAuditLogSchema = new Schema<IModerationAuditLog>({

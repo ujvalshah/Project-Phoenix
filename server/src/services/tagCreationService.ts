@@ -19,6 +19,16 @@ import { Tag } from '../models/Tag.js';
 import { normalizeDoc } from '../utils/db.js';
 import { getLogger } from '../utils/logger.js';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getMongoErrorCode(error: unknown): number | undefined {
+  if (!isRecord(error)) return undefined;
+  const code = error.code;
+  return typeof code === 'number' ? code : undefined;
+}
+
 /**
  * Normalize tag name:
  * - Trim whitespace
@@ -60,7 +70,7 @@ export async function createOrResolveTag(
     status?: 'active' | 'pending' | 'deprecated';
     isOfficial?: boolean;
   }
-): Promise<any> {
+): Promise<Record<string, unknown>> {
   // Normalize input
   const { rawName, canonicalName } = normalizeTagName(name);
   
@@ -103,7 +113,7 @@ export async function createOrResolveTag(
       }, '[TagCreate] Updated casing of existing tag');
     }
     
-    return normalizeDoc(existingTag);
+    return normalizeDoc(existingTag) as Record<string, unknown>;
   }
   
   // No tag exists - create new one
@@ -126,10 +136,10 @@ export async function createOrResolveTag(
       canonicalName
     }, '[TagCreate] Created new tag');
     
-    return normalizeDoc(newTag);
-  } catch (error: any) {
+    return normalizeDoc(newTag) as Record<string, unknown>;
+  } catch (error: unknown) {
     // Handle duplicate key error (race condition - another request created it)
-    if (error.code === 11000) {
+    if (getMongoErrorCode(error) === 11000) {
       // Tag was created by another request - fetch and return it
       const raceConditionTag = await Tag.findOne({ canonicalName });
       if (raceConditionTag) {
@@ -137,7 +147,7 @@ export async function createOrResolveTag(
           id: raceConditionTag._id.toString(),
           canonicalName
         }, '[TagCreate] Race condition handled');
-        return normalizeDoc(raceConditionTag);
+        return normalizeDoc(raceConditionTag) as Record<string, unknown>;
       }
     }
     
@@ -160,16 +170,18 @@ export async function createOrResolveTags(
     status?: 'active' | 'pending' | 'deprecated';
     isOfficial?: boolean;
   }
-): Promise<Map<string, any>> {
-  const results = new Map<string, any>();
+): Promise<Map<string, Record<string, unknown>>> {
+  const results = new Map<string, Record<string, unknown>>();
   
   // Process in parallel for better performance
   const promises = names.map(async (name) => {
     try {
       const tag = await createOrResolveTag(name, options);
-      const canonicalName = tag.canonicalName || name.toLowerCase().trim();
+      const rawCn = tag.canonicalName;
+      const canonicalName =
+        typeof rawCn === 'string' && rawCn.length > 0 ? rawCn : name.toLowerCase().trim();
       results.set(canonicalName, tag);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Log error but continue with other tags
       const logger = getLogger().child({ service: 'tagCreationService' });
       logger.error({

@@ -65,6 +65,31 @@ interface OgMeta {
   publishedTime?: string;
 }
 
+type OgArticleDoc = {
+  visibility?: string;
+  title?: string;
+  excerpt?: string;
+  content?: string;
+  images?: string[];
+  media?: {
+    thumbnail_url?: string;
+    previewMetadata?: {
+      title?: string;
+      description?: string;
+      imageUrl?: string;
+    };
+  };
+  publishedAt?: string;
+  customCreatedAt?: string;
+  created_at?: string;
+};
+
+type OgCollectionDoc = {
+  rawName?: string;
+  name?: string;
+  description?: string;
+};
+
 /** Detect image MIME type from URL extension. Returns null if unknown. */
 function detectImageMime(url: string): string | null {
   const extMatch = url.split('?')[0].match(/\.(jpe?g|png|webp|gif)$/i);
@@ -156,27 +181,28 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
           return;
         }
 
-        const metadataTitle = (article as any)?.media?.previewMetadata?.title;
+        const ogArticle = article as OgArticleDoc;
+        const metadataTitle = ogArticle.media?.previewMetadata?.title;
         const rawTitle =
-          (typeof article.title === 'string' && article.title.trim()) ||
+          (typeof ogArticle.title === 'string' && ogArticle.title.trim()) ||
           (typeof metadataTitle === 'string' && metadataTitle.trim()) ||
           'Nugget from Nuggets';
         const title = truncate(rawTitle, 70);
 
-        const metadataDescription = (article as any)?.media?.previewMetadata?.description;
+        const metadataDescription = ogArticle.media?.previewMetadata?.description;
         const rawDescription =
-          (typeof article.excerpt === 'string' && article.excerpt.trim()) ||
-          (typeof article.content === 'string' && article.content.trim()) ||
+          (typeof ogArticle.excerpt === 'string' && ogArticle.excerpt.trim()) ||
+          (typeof ogArticle.content === 'string' && ogArticle.content.trim()) ||
           (typeof metadataDescription === 'string' && metadataDescription.trim()) ||
           'Read this nugget on Nuggets.';
         const description = truncate(rawDescription, 155);
 
         // Pick best available image, ensuring absolute URL
         let image =
-          (article.media as any)?.previewMetadata?.imageUrl ||
-          (article.media as any)?.thumbnail_url ||
-          (article.images && article.images.length > 0
-            ? article.images[0]
+          ogArticle.media?.previewMetadata?.imageUrl ||
+          ogArticle.media?.thumbnail_url ||
+          (ogArticle.images && ogArticle.images.length > 0
+            ? ogArticle.images[0]
             : null) ||
           defaultImage;
 
@@ -186,9 +212,9 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
 
         // Extract published date for article:published_time
         const publishedTime =
-          (article as any).publishedAt ||
-          (article as any).customCreatedAt ||
-          (article as any).created_at;
+          ogArticle.publishedAt ||
+          ogArticle.customCreatedAt ||
+          ogArticle.created_at;
 
         const html = renderOgHtml({
           title,
@@ -234,13 +260,14 @@ export function ogMiddleware(req: Request, res: Response, next: NextFunction): v
           return;
         }
 
+        const ogCollection = collection as OgCollectionDoc;
         const name =
-          (collection as any).rawName ||
-          (collection as any).name ||
+          ogCollection.rawName ||
+          ogCollection.name ||
           'Collection';
         const title = truncate(name, 50);
         const description = truncate(
-          (collection as any).description?.trim() || `A curated collection on Nuggets.`,
+          ogCollection.description?.trim() || `A curated collection on Nuggets.`,
           155,
         );
 

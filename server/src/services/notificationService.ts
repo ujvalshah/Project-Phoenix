@@ -1,7 +1,7 @@
 import { Queue, Worker, Job } from 'bullmq';
 import webPush from 'web-push';
 import { getLogger } from '../utils/logger.js';
-import { getRedisClient, isRedisAvailable, getRedisClientOrFallback } from '../utils/redisClient.js';
+import { getRedisClientOrFallback } from '../utils/redisClient.js';
 import { PushSubscription, IPushSubscription } from '../models/PushSubscription.js';
 import { Notification } from '../models/Notification.js';
 import { NotificationDelivery } from '../models/NotificationDelivery.js';
@@ -684,11 +684,17 @@ export async function initNotificationService(): Promise<void> {
     });
   });
 
+  const queue = notificationQueue;
+  if (!queue) {
+    logger.warn({ msg: '[Notifications] Queue unavailable after initialization — skipping schedule setup' });
+    return;
+  }
+
   // Schedule repeatable digest jobs.
   // Wrapped in try/catch with a timeout so a Redis outage cannot block server startup —
   // if the queue can't be reached, we log and continue; HTTP must come up regardless.
-  const scheduleWithTimeout = async (name: string, opts: Parameters<typeof notificationQueue.add>[2]) => {
-    const addPromise = notificationQueue!.add(name, {}, opts);
+  const scheduleWithTimeout = async (name: string, opts: Parameters<typeof queue.add>[2]) => {
+    const addPromise = queue.add(name, {}, opts);
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error(`BullMQ ${name} schedule timed out after 5s`)), 5000)
     );
@@ -831,7 +837,7 @@ export async function setNotificationsEnabled(enabled: boolean): Promise<void> {
 /**
  * Get notification system status.
  */
-export async function getNotificationsEnabled(): Promise<boolean> {
+export function getNotificationsEnabled(): Promise<boolean> {
   return isNotificationsEnabled();
 }
 

@@ -2,6 +2,11 @@ import { v2 as cloudinary } from 'cloudinary';
 import { getEnv } from '../config/envValidation.js';
 import { getLogger } from '../utils/logger.js';
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 /**
  * Cloudinary Service
  * Handles all Cloudinary operations with proper error handling
@@ -53,7 +58,7 @@ export function isCloudinaryConfigured(): boolean {
 export interface UploadOptions {
   folder: string; // Folder path in Cloudinary (e.g., 'users/123/avatars')
   resourceType?: 'image' | 'video' | 'raw' | 'auto';
-  transformation?: any; // Cloudinary transformation options
+  transformation?: unknown; // Cloudinary transformation options
   overwrite?: boolean;
   invalidate?: boolean; // Invalidate CDN cache
 }
@@ -89,7 +94,7 @@ export async function uploadToCloudinary(
   }
 
   try {
-    const uploadOptions: any = {
+    const uploadOptions: Record<string, unknown> = {
       folder: options.folder,
       resource_type: options.resourceType || 'auto',
       overwrite: options.overwrite || false,
@@ -107,7 +112,7 @@ export async function uploadToCloudinary(
       // Upload from buffer
       uploadResult = await new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
-          uploadOptions,
+          uploadOptions as Parameters<typeof cloudinary.uploader.upload_stream>[0],
           (error, result) => {
             if (error) reject(error);
             else resolve(result);
@@ -117,7 +122,10 @@ export async function uploadToCloudinary(
       });
     } else {
       // Upload from base64 string
-      uploadResult = await cloudinary.uploader.upload(fileBuffer, uploadOptions);
+      uploadResult = await cloudinary.uploader.upload(
+        fileBuffer,
+        uploadOptions as Parameters<typeof cloudinary.uploader.upload>[1],
+      );
     }
 
     if (!uploadResult) {
@@ -134,10 +142,10 @@ export async function uploadToCloudinary(
       duration: uploadResult.duration,
       bytes: uploadResult.bytes
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     const logger = getLogger().child({ service: 'cloudinary' });
     logger.error({ err: error }, '[Cloudinary] Upload error');
-    throw new Error(`Cloudinary upload failed: ${error.message || 'Unknown error'}`);
+    throw new Error(`Cloudinary upload failed: ${getErrorMessage(error) || 'Unknown error'}`);
   }
 }
 
@@ -172,7 +180,7 @@ export async function deleteFromCloudinary(
 
     logger.warn({ publicId, resourceType, result: result.result }, '[Cloudinary] Delete returned unexpected result');
     return false;
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Best-effort deletion - log but don't throw
     logger.error({ err: error, publicId, resourceType }, '[Cloudinary] Delete error');
     return false;
@@ -188,7 +196,7 @@ export async function deleteFromCloudinary(
  */
 export function getCloudinaryUrl(
   publicId: string,
-  transformations?: any
+  transformations?: Record<string, unknown>
 ): string {
   if (!isConfigured) {
     throw new Error('Cloudinary is not configured');
@@ -196,7 +204,7 @@ export function getCloudinaryUrl(
 
   return cloudinary.url(publicId, {
     secure: true,
-    ...transformations
+    ...(transformations ?? {}),
   });
 }
 

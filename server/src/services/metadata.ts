@@ -54,11 +54,22 @@ function setCached(url: string, nugget: Nugget): void {
 }
 
 // Timeouts (in milliseconds)
-const TIER_0_TIMEOUT = 0; // No network, instant
 const TIER_1_TIMEOUT = 1500; // Microlink
 const TIER_2_TIMEOUT = 1500; // Open Graph
 const TIER_3_TIMEOUT = 1000; // Image probing
 const TOTAL_TIMEOUT = 5000; // Hard limit
+
+function isTransientNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const errorWithCode = error as Error & { code?: string };
+  const message = error.message;
+  return errorWithCode.code === 'ETIMEDOUT' ||
+    errorWithCode.code === 'ECONNRESET' ||
+    error.name === 'AbortError' ||
+    message.includes('timeout') ||
+    message.includes('ECONNRESET') ||
+    message.includes('ETIMEDOUT');
+}
 
 // Audit Phase-2 Fix: Retry wrapper for transient network errors
 async function fetchWithRetry<T>(
@@ -69,16 +80,9 @@ async function fetchWithRetry<T>(
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn();
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Only retry on transient network errors
-      const isTransientError = error.code === 'ETIMEDOUT' || 
-                              error.code === 'ECONNRESET' ||
-                              error.name === 'AbortError' ||
-                              (error.message && (
-                                error.message.includes('timeout') ||
-                                error.message.includes('ECONNRESET') ||
-                                error.message.includes('ETIMEDOUT')
-                              ));
+      const isTransientError = isTransientNetworkError(error);
       
       if (i === maxRetries - 1 || !isTransientError) {
         throw error;
@@ -190,7 +194,7 @@ function isImageUrl(urlString: string): boolean {
 /**
  * Detect content type from URL
  */
-function detectContentType(url: URL, domain: string): Nugget['contentType'] {
+function detectContentType(url: URL, _domain: string): Nugget['contentType'] {
   const pathname = url.pathname.toLowerCase();
   const hostname = url.hostname.toLowerCase();
 
@@ -214,22 +218,6 @@ function detectContentType(url: URL, domain: string): Nugget['contentType'] {
 
   // Default to article
   return 'article';
-}
-
-/**
- * PHASE 2: REMOVED - Auto-title generation is completely disabled.
- * 
- * Title generation must happen ONLY when the user explicitly clicks a "Generate title" button.
- * The system must NEVER auto-add or auto-modify the title.
- * 
- * Metadata may SUGGEST a title (stored in previewMetadata.title) but must NEVER mutate state automatically.
- * 
- * This function is kept for backward compatibility but always returns false.
- * All title generation logic has been removed.
- */
-function shouldAutoGenerateTitle(contentType: Nugget['contentType'], urlString?: string): boolean {
-  // PHASE 2: Always return false - no auto-title generation allowed
-  return false;
 }
 
 /**

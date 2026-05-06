@@ -54,7 +54,7 @@ export function buildUnseenFeedQuery(userId: string, feed: FeedBadgeKey) {
   };
 }
 
-export async function getUnseenCountForFeed(userId: string, feed: FeedBadgeKey): Promise<number> {
+export function getUnseenCountForFeed(userId: string, feed: FeedBadgeKey): Promise<number> {
   return Article.countDocuments(buildUnseenFeedQuery(userId, feed));
 }
 

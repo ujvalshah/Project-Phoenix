@@ -13,7 +13,6 @@ import { getLogger } from '../utils/logger.js';
 import {
   getRedisClientOrFallback,
   isRedisAvailable,
-  initRedisClient,
   ensureRedisConnection,
 } from '../utils/redisClient.js';
 import { getEnv } from '../config/envValidation.js';
@@ -84,6 +83,16 @@ function getClient() {
   return getRedisClientOrFallback();
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function hasPing(client: ReturnType<typeof getClient>): client is ReturnType<typeof getClient> & {
+  ping: () => Promise<unknown>;
+} {
+  return typeof (client as { ping?: unknown }).ping === 'function';
+}
+
 function hasPipeline(client: ReturnType<typeof getClient>): client is ReturnType<typeof getClient> & {
   pipeline: () => {
     setEx: (...args: unknown[]) => unknown;
@@ -104,11 +113,12 @@ function hasPipeline(client: ReturnType<typeof getClient>): client is ReturnType
  * Note: Redis client is initialized in server/src/index.ts
  * This function just verifies the service is ready
  */
-export async function initTokenService(): Promise<void> {
+export function initTokenService(): Promise<void> {
   const logger = getLogger();
   // Redis client is already initialized in index.ts, no need to call initRedisClient() again
   // This prevents double initialization and multiple connection attempts
   logger.info({ msg: '[TokenService] Initialized (using shared Redis client)' });
+  return Promise.resolve();
 }
 
 /**
@@ -149,9 +159,9 @@ export async function blacklistToken(token: string, expiresInSeconds: number): P
       '1'
     );
     return true;
-  } catch (error: any) {
+  } catch (error: unknown) {
     const logger = getLogger();
-    logger.error({ msg: '[TokenService] Failed to blacklist token', err: { message: error.message } });
+    logger.error({ msg: '[TokenService] Failed to blacklist token', err: { message: getErrorMessage(error) } });
     return false;
   }
 }
@@ -187,10 +197,10 @@ export async function isTokenBlacklisted(token: string): Promise<boolean> {
     const tokenHash = hashToken(token);
     const result = await client.get(`${PREFIX.BLACKLIST}${tokenHash}`);
     return result !== null;
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({
       msg: '[TokenService] Failed to check blacklist',
-      err: { message: error.message },
+      err: { message: getErrorMessage(error) },
       strict,
       action: strict ? 'fail-closed (reject token)' : 'fail-open (allow token)',
     });
@@ -508,11 +518,11 @@ export async function validateRefreshToken(
     const client = getClient();
 
     // Verify connection with ping before critical validation operation
-    if (typeof (client as any).ping === 'function') {
+    if (hasPing(client)) {
       try {
-        await (client as any).ping();
+        await client.ping();
       } catch (pingError: unknown) {
-        const pingMsg = pingError instanceof Error ? pingError.message : String(pingError);
+        const pingMsg = getErrorMessage(pingError);
         logger.error({
           msg: '[TokenService] Redis connection lost during validation ping',
           err: { message: pingMsg },
@@ -769,10 +779,10 @@ export async function rotateRefreshToken(
     }
 
     return newToken;
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({ 
       msg: '[TokenService] Failed to rotate refresh token', 
-      err: { message: error.message },
+      err: { message: getErrorMessage(error) },
       userId 
     });
     return null;
@@ -808,9 +818,9 @@ export async function revokeRefreshToken(userId: string, refreshToken: string): 
     }
 
     return true;
-  } catch (error: any) {
+  } catch (error: unknown) {
     const logger = getLogger();
-    logger.error({ msg: '[TokenService] Failed to revoke refresh token', err: { message: error.message } });
+    logger.error({ msg: '[TokenService] Failed to revoke refresh token', err: { message: getErrorMessage(error) } });
     return false;
   }
 }
@@ -855,9 +865,9 @@ export async function revokeAllRefreshTokensDetailed(userId: string): Promise<Re
     }
 
     return { ok: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     const logger = getLogger();
-    logger.error({ msg: '[TokenService] Failed to revoke all tokens', err: { message: error.message } });
+    logger.error({ msg: '[TokenService] Failed to revoke all tokens', err: { message: getErrorMessage(error) } });
     return { ok: false, reason: 'unknown_error' };
   }
 }
@@ -985,7 +995,7 @@ export async function getUserSessions(userId: string): Promise<Omit<RefreshToken
         const dataStr = results[i] as string | null;
         if (dataStr) {
           const data: RefreshTokenData = JSON.parse(dataStr);
-          const { tokenHash, ...safeData } = data;
+          const { tokenHash: _tokenHash, ...safeData } = data;
           sessions.push(safeData);
         }
       }
@@ -994,16 +1004,16 @@ export async function getUserSessions(userId: string): Promise<Omit<RefreshToken
         const dataStr = await client.get(`${PREFIX.REFRESH}${userId}:${hash}`);
         if (dataStr) {
           const data: RefreshTokenData = JSON.parse(dataStr);
-          const { tokenHash, ...safeData } = data;
+          const { tokenHash: _tokenHash, ...safeData } = data;
           sessions.push(safeData);
         }
       }
     }
 
     return sessions;
-  } catch (error: any) {
+  } catch (error: unknown) {
     const logger = getLogger();
-    logger.error({ msg: '[TokenService] Failed to get user sessions', err: { message: error.message } });
+    logger.error({ msg: '[TokenService] Failed to get user sessions', err: { message: getErrorMessage(error) } });
     return [];
   }
 }
@@ -1088,9 +1098,9 @@ export async function recordFailedLogin(email: string): Promise<LockoutStatus> {
       failedAttempts: attempts,
       remainingAttempts: CONFIG.MAX_FAILED_ATTEMPTS - attempts,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     const logger = getLogger();
-    logger.error({ msg: '[TokenService] Failed to record failed login', err: { message: error.message } });
+    logger.error({ msg: '[TokenService] Failed to record failed login', err: { message: getErrorMessage(error) } });
     return defaultStatus;
   }
 }
@@ -1118,9 +1128,9 @@ export async function clearFailedLogins(email: string): Promise<void> {
       await client.del(lockKey);
       await client.del(lockTimeKey);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     const logger = getLogger();
-    logger.error({ msg: '[TokenService] Failed to clear failed logins', err: { message: error.message } });
+    logger.error({ msg: '[TokenService] Failed to clear failed logins', err: { message: getErrorMessage(error) } });
   }
 }
 
@@ -1188,9 +1198,9 @@ export async function isAccountLocked(email: string): Promise<LockoutStatus> {
       failedAttempts: attempts,
       remainingAttempts: CONFIG.MAX_FAILED_ATTEMPTS - attempts,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     const logger = getLogger();
-    logger.error({ msg: '[TokenService] Failed to check lockout', err: { message: error.message } });
+    logger.error({ msg: '[TokenService] Failed to check lockout', err: { message: getErrorMessage(error) } });
     return defaultStatus;
   }
 }
@@ -1202,9 +1212,10 @@ export async function isAccountLocked(email: string): Promise<LockoutStatus> {
 /**
  * Close Redis connection gracefully
  */
-export async function closeTokenService(): Promise<void> {
+export function closeTokenService(): Promise<void> {
   // Token service uses shared Redis client, so closing is handled by redisClient.ts
   // This function kept for backward compatibility
   const logger = getLogger();
   logger.info({ msg: '[TokenService] Close requested (using shared client)' });
+  return Promise.resolve();
 }
