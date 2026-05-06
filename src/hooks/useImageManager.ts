@@ -14,10 +14,9 @@
  * - Proper lifecycle management for add/delete operations
  */
 
-import { useState, useMemo, useCallback, useRef } from 'react';
-import type { Article, MediaType } from '@/types';
+import { useState, useMemo, useCallback } from 'react';
+import type { Article, MediaType, PreviewMetadata } from '@/types';
 import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
-import { getAllImageUrls } from '@/utils/mediaClassifier';
 import type { MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { normalizeMediaOrder } from '@/utils/mediaOrder';
 
@@ -50,7 +49,7 @@ export interface ImageItem {
   /** Thumbnail URL */
   thumbnail?: string;
   /** Preview metadata */
-  previewMetadata?: any;
+  previewMetadata?: PreviewMetadata;
   /** V2: Explicit order for carousel display */
   order?: number;
 }
@@ -104,7 +103,7 @@ export interface UseImageManagerReturn {
       masonryTitle?: string;
       type?: MediaType;
       thumbnail?: string;
-      previewMetadata?: any;
+      previewMetadata?: PreviewMetadata;
     }
   ) => void;
 
@@ -205,9 +204,6 @@ function articleToImageItems(article: Article): ImageItem[] {
   ) => {
     const normalizedUrl = normalizeImageUrl(url);
     if (seenUrls.has(normalizedUrl)) {
-      if (import.meta.env.DEV) {
-        console.log('[useImageManager] Skipping duplicate:', { url, normalizedUrl, source });
-      }
       return;
     }
     seenUrls.add(normalizedUrl);
@@ -312,9 +308,6 @@ export function useImageManager(
   initialArticle?: Article,
   prefillArticle?: Article
 ): UseImageManagerReturn {
-  // Track initial article ID to detect changes
-  const initialArticleIdRef = useRef<string | undefined>(initialArticle?.id);
-
   // ============================================================================
   // CANONICAL STATE (single source of truth)
   // ============================================================================
@@ -407,7 +400,7 @@ export function useImageManager(
       masonryTitle?: string;
       type?: MediaType;
       thumbnail?: string;
-      previewMetadata?: any;
+      previewMetadata?: PreviewMetadata;
     }
   ) => {
     const normalizedUrl = normalizeImageUrl(url);
@@ -418,17 +411,11 @@ export function useImageManager(
         (img) => img.normalizedUrl === normalizedUrl && img.status === 'active'
       );
       if (exists) {
-        if (import.meta.env.DEV) {
-          console.log('[useImageManager] addImage: Duplicate skipped', { url, normalizedUrl });
-        }
         return prev;
       }
 
       // Check if explicitly deleted
       if (prev.explicitlyDeleted.has(normalizedUrl)) {
-        if (import.meta.env.DEV) {
-          console.log('[useImageManager] addImage: Explicitly deleted, skipping', { url });
-        }
         return prev;
       }
 
@@ -448,10 +435,6 @@ export function useImageManager(
         thumbnail: options?.thumbnail ?? url,
         previewMetadata: options?.previewMetadata,
       };
-
-      if (import.meta.env.DEV) {
-        console.log('[useImageManager] addImage:', { url, source, newImage });
-      }
 
       return {
         ...prev,
@@ -482,10 +465,6 @@ export function useImageManager(
       const newExplicitlyDeleted = new Set(prev.explicitlyDeleted);
       newExplicitlyDeleted.add(normalizedUrl);
 
-      if (import.meta.env.DEV) {
-        console.log('[useImageManager] deleteImage: Optimistic delete', { url, normalizedUrl });
-      }
-
       return {
         ...prev,
         images: updatedImages,
@@ -512,10 +491,6 @@ export function useImageManager(
       // Remove from pending
       const newPending = new Set(prev.pendingDeletions);
       newPending.delete(normalizedUrl);
-
-      if (import.meta.env.DEV) {
-        console.log('[useImageManager] confirmDeletion:', { url, normalizedUrl });
-      }
 
       return {
         ...prev,
@@ -544,10 +519,6 @@ export function useImageManager(
       // Remove from explicitly deleted
       const newExplicitlyDeleted = new Set(prev.explicitlyDeleted);
       newExplicitlyDeleted.delete(normalizedUrl);
-
-      if (import.meta.env.DEV) {
-        console.log('[useImageManager] rollbackDeletion:', { url, normalizedUrl });
-      }
 
       return {
         ...prev,
@@ -633,23 +604,7 @@ export function useImageManager(
 
       // If images are unchanged and already initialized, return prev state (no update)
       if (imagesUnchanged && prev.isInitialized) {
-        if (import.meta.env.DEV) {
-          console.log('[useImageManager] syncFromArticle: No changes detected, skipping update', {
-            articleId: article.id,
-            imageCount: filteredImages.length,
-          });
-        }
         return prev; // No state update = no re-render
-      }
-
-      if (import.meta.env.DEV) {
-        console.log('[useImageManager] syncFromArticle:', {
-          articleId: article.id,
-          totalImages: newImages.length,
-          afterFiltering: filteredImages.length,
-          explicitlyDeleted: Array.from(prev.explicitlyDeleted),
-          imagesChanged: !imagesUnchanged,
-        });
       }
 
       return {
@@ -677,15 +632,6 @@ export function useImageManager(
         ...item,
         order: idx,
       }));
-
-      if (import.meta.env.DEV) {
-        console.log('[useImageManager] reorderImages:', {
-          sourceIndex,
-          destinationIndex,
-          movedItem: removed?.url,
-          newOrder: reorderedItems.map((item) => item.url),
-        });
-      }
 
       return {
         ...prev,

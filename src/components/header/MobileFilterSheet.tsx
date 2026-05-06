@@ -128,9 +128,9 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
     staleTime: 1000 * 60,
   });
 
-  const selectedFormatIds = filters.formatTagIds || [];
-  const selectedDomainIds = filters.domainTagIds || [];
-  const selectedSubtopicIds = filters.subtopicTagIds || [];
+  const selectedFormatIds = useMemo(() => filters.formatTagIds ?? [], [filters.formatTagIds]);
+  const selectedDomainIds = useMemo(() => filters.domainTagIds ?? [], [filters.domainTagIds]);
+  const selectedSubtopicIds = useMemo(() => filters.subtopicTagIds ?? [], [filters.subtopicTagIds]);
   const hasActiveFilter =
     filters.collectionId !== null ||
     selectedFormatIds.length > 0 ||
@@ -237,7 +237,9 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
   const hasCollectionMatches = groupedCollections.length > 0;
 
   const animStateRef = useRef(animState);
-  animStateRef.current = animState;
+  useLayoutEffect(() => {
+    animStateRef.current = animState;
+  }, [animState]);
 
   // Animation lifecycle: open → entering → open, close → exiting → closed.
   // Reopen while exiting must be handled: closing clears the exit timer, so without
@@ -344,9 +346,10 @@ const MobileFilterSheet: React.FC<MobileFilterSheetProps> = ({
     window.setTimeout(() => {
       panelRef.current?.querySelector<HTMLElement>('button, input')?.focus();
     }, 20);
+    const triggerElement = triggerRef?.current;
     return () => {
       window.removeEventListener('keydown', onKeyDown);
-      triggerRef?.current?.focus();
+      triggerElement?.focus();
     };
   }, [isOpen, onClose, triggerRef]);
 

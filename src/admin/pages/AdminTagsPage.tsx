@@ -11,7 +11,7 @@ export const AdminTagsPage: React.FC = () => {
       "Tags",
       "Manage toolbar tag placement and ordering."
     );
-  }, []);
+  }, [setPageHeader]);
 
   return (
     <div className="space-y-4">

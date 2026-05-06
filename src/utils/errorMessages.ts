@@ -8,8 +8,39 @@
 /**
  * Maps authentication-related error messages to user-friendly copy
  */
-export function mapAuthError(error: any, context: 'login' | 'signup' | 'password_reset' | 'general' = 'general'): string {
-  const rawMessage = error?.message ?? error?.toString?.() ?? 'An unexpected error occurred';
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (isRecord(error) && typeof error.message === 'string') return error.message;
+  if (error instanceof Error) return error.message;
+  return 'An unexpected error occurred';
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (!isRecord(error) || !isRecord(error.response)) return undefined;
+  return typeof error.response.status === 'number' ? error.response.status : undefined;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  if (isRecord(error)) {
+    if (typeof error.code === 'string') return error.code;
+    if (isRecord(error.response) && isRecord(error.response.data) && typeof error.response.data.code === 'string') {
+      return error.response.data.code;
+    }
+  }
+  return undefined;
+}
+
+function getResponseMessage(error: unknown): string | undefined {
+  if (!isRecord(error) || !isRecord(error.response) || !isRecord(error.response.data)) return undefined;
+  return typeof error.response.data.message === 'string' ? error.response.data.message : undefined;
+}
+
+export function mapAuthError(error: unknown, context: 'login' | 'signup' | 'password_reset' | 'general' = 'general'): string {
+  const rawMessage = getErrorMessage(error);
   const message = typeof rawMessage === 'string' ? rawMessage : 'An unexpected error occurred';
   
   // Handle network/connection errors
@@ -18,8 +49,8 @@ export function mapAuthError(error: any, context: 'login' | 'signup' | 'password
   }
   
   // Handle HTTP status-based errors
-  if (error?.response?.status) {
-    const status = error.response.status;
+  const status = getErrorStatus(error);
+  if (status) {
     
     if (status === 429) {
       return "Too many attempts. Please wait a moment and try again.";
@@ -42,7 +73,7 @@ export function mapAuthError(error: any, context: 'login' | 'signup' | 'password
     
     if (status === 409) {
       // Check for error code first (most reliable)
-      const errorCode = error?.response?.data?.code || error?.code;
+      const errorCode = getErrorCode(error);
       if (errorCode === 'EMAIL_ALREADY_EXISTS') {
         return "This email is already registered. Please sign in or use a different email.";
       }
@@ -85,7 +116,7 @@ export function mapAuthError(error: any, context: 'login' | 'signup' | 'password
   
   // Password reset-specific messages
   if (context === 'password_reset') {
-    const errorCode = error?.response?.data?.code || error?.code;
+    const errorCode = getErrorCode(error);
     if (errorCode === 'INVALID_RESET_TOKEN') {
       return "This reset link has expired or is invalid. Please request a new one.";
     }
@@ -135,7 +166,7 @@ export function mapAuthError(error: any, context: 'login' | 'signup' | 'password
  */
 function cleanValidationMessage(message: string): string {
   // Remove field prefixes like "Email:", "Password:", etc.
-  let cleaned = message
+  const cleaned = message
     .replace(/^(Email|Password|Username|Full name|Phone number):\s*/gi, '')
     .replace(/\s*\.\s*/g, '. ')
     .trim();
@@ -184,7 +215,7 @@ function cleanValidationMessage(message: string): string {
  */
 function cleanGenericMessage(message: string): string {
   // Remove technical details
-  let cleaned = message
+  const cleaned = message
     .replace(/^Error:\s*/i, '')
     .replace(/^API Error:\s*/i, '')
     .replace(/\d{3}\s*error/gi, '')
@@ -210,18 +241,20 @@ function cleanGenericMessage(message: string): string {
 /**
  * Maps network errors to user-friendly messages
  */
-export function mapNetworkError(error: any): string {
+export function mapNetworkError(error: unknown): string {
   if (error instanceof TypeError) {
     if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
       return "We couldn't connect to the server. Please check your internet connection and try again.";
     }
   }
   
-  if (error?.message?.includes('ECONNREFUSED') || error?.message?.includes('ENOTFOUND')) {
+  const responseMessage = getResponseMessage(error);
+  const message = getErrorMessage(error);
+  if (message.includes('ECONNREFUSED') || message.includes('ENOTFOUND') || responseMessage?.includes('ECONNREFUSED') || responseMessage?.includes('ENOTFOUND')) {
     return "We couldn't connect to the server. Please check your internet connection and try again.";
   }
   
-  if (error?.message?.includes('timeout')) {
+  if (message.includes('timeout') || responseMessage?.includes('timeout')) {
     return "The request took too long. Please try again.";
   }
   

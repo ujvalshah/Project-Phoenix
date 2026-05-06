@@ -32,7 +32,21 @@ function getCookie(name: string): string | undefined {
 }
 
 // Helper to extract error message and details from response
-async function extractError(response: Response): Promise<{ message: string; errors?: any[]; code?: string }> {
+type ApiClientError = Error & {
+  requestId?: string;
+  errors?: unknown[];
+  response?: {
+    status: number;
+    data: { message: string; errors?: unknown[]; code?: string };
+  };
+  isNetworkError?: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+async function extractError(response: Response): Promise<{ message: string; errors?: unknown[]; code?: string }> {
   try {
     const errorData = await response.json();
     return {
@@ -231,7 +245,7 @@ class ApiClient {
 
       if (!response.ok) {
         const errorInfo = await extractError(response);
-        const error: any = new Error(errorInfo.message);
+        const error: ApiClientError = new Error(errorInfo.message);
 
         if (requestId) {
           error.requestId = requestId;
@@ -247,7 +261,7 @@ class ApiClient {
 
         // For 404, preserve the response data in the error
         if (response.status === 404) {
-          const notFoundError: any = new Error(errorInfo.message || 'The requested resource was not found.');
+          const notFoundError: ApiClientError = new Error(errorInfo.message || 'The requested resource was not found.');
           notFoundError.response = { status: response.status, data: errorInfo };
           throw notFoundError;
         }
@@ -331,7 +345,7 @@ class ApiClient {
           const backendMessage = errorInfo.message && errorInfo.message !== 'Internal server error'
             ? errorInfo.message
             : 'Something went wrong on our end. Please try again in a moment.';
-          const serverError: any = new Error(backendMessage);
+          const serverError: ApiClientError = new Error(backendMessage);
           serverError.response = error.response;
           throw serverError;
         }
@@ -349,13 +363,14 @@ class ApiClient {
       // Opportunistically capture CSRF tokens returned by auth endpoints so
       // cross-origin deployments (SPA on a different domain than the API)
       // keep a valid token in memory even when document.cookie can't see it.
-      if (data && typeof data === 'object' && typeof (data as any).csrfToken === 'string') {
-        setCsrfToken((data as any).csrfToken);
+      if (isRecord(data) && typeof data.csrfToken === 'string') {
+        setCsrfToken(data.csrfToken);
       }
       return data as T;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // SAFETY PATCH: Treat request cancellations as non-errors
-      if (error?.name === 'AbortError' || error?.message?.includes('Request cancelled')) {
+      const maybeError = error instanceof Error ? error : null;
+      if (maybeError?.name === 'AbortError' || maybeError?.message?.includes('Request cancelled')) {
         const currentController = this.activeControllers.get(cancelKey);
         if (currentController === abortController) {
           this.activeControllers.delete(cancelKey);
@@ -366,7 +381,8 @@ class ApiClient {
 
       // Handle network errors (connection refused, timeout, etc.)
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        captureException(error, {
+        const capturedError = error instanceof Error ? error : new Error(String(error));
+        captureException(capturedError, {
           requestId: requestId || undefined,
           route: endpoint,
           extra: {
@@ -387,13 +403,14 @@ class ApiClient {
 
       // Capture API errors (non-network) in Sentry
       if (statusCode && statusCode >= 500) {
-        captureException(error, {
+        const capturedError = error instanceof Error ? error : new Error(String(error));
+        captureException(capturedError, {
           requestId: requestId || undefined,
           route: endpoint,
           extra: {
             method,
             status: statusCode,
-            errorMessage: error.message,
+            errorMessage: capturedError.message,
           },
         });
       }
@@ -423,15 +440,15 @@ class ApiClient {
     return this.request<T>(url, { method: 'GET', headers, cancelKey });
   }
 
-  post<T>(url: string, body: any, headers?: HeadersInit, cancelKey?: string) {
+  post<T>(url: string, body: unknown, headers?: HeadersInit, cancelKey?: string) {
     return this.request<T>(url, { method: 'POST', body: JSON.stringify(body), headers, cancelKey });
   }
 
-  put<T>(url: string, body: any, headers?: HeadersInit, cancelKey?: string) {
+  put<T>(url: string, body: unknown, headers?: HeadersInit, cancelKey?: string) {
     return this.request<T>(url, { method: 'PUT', body: JSON.stringify(body), headers, cancelKey });
   }
 
-  patch<T>(url: string, body: any, headers?: HeadersInit, cancelKey?: string) {
+  patch<T>(url: string, body: unknown, headers?: HeadersInit, cancelKey?: string) {
     return this.request<T>(url, { method: 'PATCH', body: JSON.stringify(body), headers, cancelKey });
   }
 

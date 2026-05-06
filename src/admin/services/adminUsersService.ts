@@ -82,7 +82,7 @@ class AdminUsersService {
    * non-admin role changes (PR8); we pass through only the documented edit
    * subset. The backend resolves nested writes via `profile.*`.
    */
-  async updateUserProfile(id: string, edits: AdminProfileEdits): Promise<User> {
+  updateUserProfile(id: string, edits: AdminProfileEdits): Promise<User> {
     // The PUT endpoint accepts a flat `name` (mapped to profile.displayName
     // for legacy callers) and a nested `profile` object. We use the nested
     // form for everything except displayName so the schema validates
@@ -107,35 +107,35 @@ class AdminUsersService {
   // ── Lifecycle (PR7b backend, re-enabled in the UI by PR10) ────────────────
   // Each call is idempotent on the backend (a no-op transition still returns
   // 200 + writes an audit row with wasAlreadyInState: true).
-  async suspendUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
+  suspendUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
     return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }>(
       `/admin/users/${id}/suspend`,
       reason ? { reason } : {},
     );
   }
 
-  async banUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
+  banUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
     return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }>(
       `/admin/users/${id}/ban`,
       reason ? { reason } : {},
     );
   }
 
-  async activateUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
+  activateUser(id: string, reason?: string): Promise<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
     return apiClient.post<{ status: AdminUserStatus; sessionsRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }>(
       `/admin/users/${id}/activate`,
       reason ? { reason } : {},
     );
   }
 
-  async revokeUserSessions(id: string, reason?: string): Promise<{ tokenVersion: number; refreshTokensRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
+  revokeUserSessions(id: string, reason?: string): Promise<{ tokenVersion: number; refreshTokensRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }> {
     return apiClient.post<{ tokenVersion: number; refreshTokensRevoked: boolean; auditPersisted?: boolean; revocationFailureReason?: string }>(
       `/admin/users/${id}/revoke-sessions`,
       reason ? { reason } : {},
     );
   }
 
-  async updateUserSearchCohort(
+  updateUserSearchCohort(
     id: string,
     searchCohort: string | null,
   ): Promise<{ message: string; searchCohort: string | null; auditPersisted?: boolean }> {

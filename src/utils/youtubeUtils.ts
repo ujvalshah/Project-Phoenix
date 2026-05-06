@@ -76,7 +76,7 @@ export async function fetchYouTubeChannelThumbnail(
       return null;
     }
 
-    const oEmbedData = await oEmbedResponse.json();
+    await oEmbedResponse.json();
     
     // Note: We could extract channel ID here, but fetching channel thumbnail
     // requires either:
@@ -88,7 +88,7 @@ export async function fetchYouTubeChannelThumbnail(
     // This avoids CORS errors and provides a consistent experience.
     
     return null;
-  } catch (error) {
+  } catch {
     // Silently fail - SourceBadge will use YouTube favicon as fallback
     return null;
   }

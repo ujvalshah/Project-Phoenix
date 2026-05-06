@@ -6,6 +6,8 @@
  * minifiers may drop dead branches after constant folding.
  */
 
+/* eslint-disable no-console -- intentional dev-only console grouping for local perf.mark traces (gated by __NUGGETS_DEV_PERF_MARKS__) */
+
 declare const __NUGGETS_DEV_PERF_MARKS__: boolean;
 
 const PREFIX = 'nuggets-perf';

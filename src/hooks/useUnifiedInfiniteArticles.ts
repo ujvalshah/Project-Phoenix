@@ -248,23 +248,7 @@ export function useUnifiedInfiniteArticles(input: UnifiedFeedInput): UnifiedInfi
       subtopicTagIds: streamInput.subtopicTagIds ?? [],
       contentStream: streamInput.contentStream,
     });
-  }, [
-    streamInput?.activeCategory,
-    streamInput?.collectionId,
-    streamInput?.contentStream,
-    streamInput?.domainTagIds?.join('\u241e'),
-    streamInput?.favorites,
-    streamInput?.formatTagIds?.join('\u241e'),
-    streamInput?.formats?.join('\u241e'),
-    streamInput?.limit,
-    streamInput?.searchQuery,
-    streamInput?.selectedCategories?.join('\u241e'),
-    streamInput?.sortOrder,
-    streamInput?.subtopicTagIds?.join('\u241e'),
-    streamInput?.tag,
-    streamInput?.timeRange,
-    streamInput?.unread,
-  ]);
+  }, [streamInput]);
 
   const streamQuery = useInfiniteQuery<
     PaginatedArticlesResponse,

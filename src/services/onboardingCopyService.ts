@@ -15,7 +15,7 @@ export interface PublicOnboardingMicroHeaders {
 export const ONBOARDING_PUBLIC_QUERY_KEY = ['public-onboarding-microheaders'] as const;
 
 export const onboardingCopyService = {
-  async fetchMicroHeaderBundle(): Promise<PublicOnboardingMicroHeaders> {
+  fetchMicroHeaderBundle(): Promise<PublicOnboardingMicroHeaders> {
     return apiClient.get<PublicOnboardingMicroHeaders>('/config/onboarding-bundle');
   },
 };

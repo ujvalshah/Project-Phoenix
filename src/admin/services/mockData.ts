@@ -1,5 +1,7 @@
 import { AdminUser, AdminNugget, AdminCollection, AdminTag, AdminReport, AdminFeedback } from '../types/admin';
 
+const MOCK_NUGGET_TYPES: AdminNugget['type'][] = ['link', 'text', 'video', 'image', 'idea'];
+
 export const MOCK_ADMIN_USERS: AdminUser[] = Array.from({ length: 25 }).map((_, i) => {
   const totalNuggets = Math.floor(Math.random() * 50);
   const publicNuggets = Math.floor(totalNuggets * 0.7); // 70% public
@@ -44,7 +46,7 @@ export const MOCK_ADMIN_NUGGETS: AdminNugget[] = Array.from({ length: 20 }).map(
     name: `User ${(i % 5) + 1}`,
     email: `user${(i % 5) + 1}@example.com`,
   },
-  type: ['link', 'text', 'video', 'image', 'idea'][i % 5] as any,
+  type: MOCK_NUGGET_TYPES[i % 5],
   url: 'https://example.com',
   visibility: i % 3 === 0 ? 'private' : 'public',
   status: i === 2 ? 'flagged' : 'active',

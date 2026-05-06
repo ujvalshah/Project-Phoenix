@@ -17,14 +17,9 @@
  * ============================================================================
  */
 
-import type { CardArticleMediaSource, PrimaryMedia, SupportingMediaItem, MediaType, NuggetMedia } from '@/types';
+import type { CardArticleMediaSource, Document, PrimaryMedia, SupportingMediaItem, MediaType, NuggetMedia } from '@/types';
 import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 import { isImageUrl } from '@/utils/urlUtils';
-
-function shouldLogClassifierDiag(): boolean {
-  if (typeof process !== 'undefined' && process.env.VITEST === 'true') return false;
-  return typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
-}
 
 /**
  * Media type priority for primary media selection
@@ -203,7 +198,11 @@ export function classifyArticleMedia(article: CardArticleMediaSource): {
   }
   
   // Collect all media items from legacy fields
-  const allMediaItems: Array<{ type: MediaType; url: string; source: 'media' | 'images' | 'video' | 'documents'; data?: any }> = [];
+  type LegacyMediaCandidate =
+    | { type: MediaType; url: string; source: 'media'; data: NuggetMedia }
+    | { type: MediaType; url: string; source: 'documents'; data: Document }
+    | { type: MediaType; url: string; source: 'images' | 'video' };
+  const allMediaItems: LegacyMediaCandidate[] = [];
   
   // 1. Primary media field (NuggetMedia)
   if (article.media) {
@@ -276,7 +275,7 @@ export function classifyArticleMedia(article: CardArticleMediaSource): {
   if (primaryCandidate) {
     primaryMediaUrl = primaryCandidate.url;
     
-    if (primaryCandidate.source === 'media' && primaryCandidate.data) {
+    if (primaryCandidate.source === 'media') {
       // Convert from NuggetMedia
       primaryMedia = convertToPrimaryMedia(primaryCandidate.data);
     } else {
@@ -297,7 +296,7 @@ export function classifyArticleMedia(article: CardArticleMediaSource): {
       }
       
       // Add document metadata if available
-      if (primaryCandidate.source === 'documents' && primaryCandidate.data) {
+      if (primaryCandidate.source === 'documents') {
         primaryMedia.previewMetadata = {
           url: primaryCandidate.url,
           title: primaryCandidate.data.title,
@@ -316,7 +315,7 @@ export function classifyArticleMedia(article: CardArticleMediaSource): {
     // Skip the item that became primary media
     if (item.url === primaryMediaUrl) continue;
     
-    if (item.source === 'media' && item.data) {
+    if (item.source === 'media') {
       supportingMedia.push(convertToSupportingMedia(item.data));
     } else if (item.source === 'images') {
       supportingMedia.push({
@@ -338,7 +337,7 @@ export function classifyArticleMedia(article: CardArticleMediaSource): {
       }
       
       supportingMedia.push(supportingItem);
-    } else if (item.source === 'documents' && item.data) {
+    } else if (item.source === 'documents') {
       supportingMedia.push({
         type: 'document',
         url: item.url,
@@ -457,22 +456,16 @@ export function getAllImageUrls(article: CardArticleMediaSource, options?: GetAl
   const gridOnly = options?.gridOnly === true;
   const imageUrls: string[] = [];
   const seenUrls = new Set<string>(); // Deduplicate URLs
-  const duplicatesDetected: Array<{ url: string; normalized: string; source: string }> = [];
-  const sourcesUsed: Array<{ url: string; source: string }> = []; // DEBUG: Track where each URL came from
 
   // PHASE 2B FIX: Use consistent normalizeImageUrl from imageDedup.ts
   // This removes query params and normalizes case for better duplicate detection
   // Helper to add URL if not seen
-  const addImageUrl = (url: string | undefined, source: string = 'unknown') => {
+  const addImageUrl = (url: string | undefined) => {
     if (url && typeof url === 'string' && url.trim()) {
       const normalized = normalizeImageUrl(url);
       if (!seenUrls.has(normalized)) {
         seenUrls.add(normalized);
         imageUrls.push(url); // Keep original casing
-        sourcesUsed.push({ url: url.slice(-40), source }); // DEBUG
-      } else {
-        // PHASE 2B: Log duplicate detection for debugging
-        duplicatesDetected.push({ url, normalized, source });
       }
     }
   };
@@ -484,20 +477,7 @@ export function getAllImageUrls(article: CardArticleMediaSource, options?: GetAl
   // 1) Explicit images[] array (preserves user drag/drop order)
   // 2) Classified media extras not present in images[]
   if (article.images && Array.isArray(article.images)) {
-    article.images.forEach(url => addImageUrl(url, 'images-array'));
-  }
-
-  // DEBUG: Log supportingMedia types to diagnose ordering issue
-  if (shouldLogClassifierDiag() && article.supportingMedia && article.supportingMedia.length > 0) {
-    console.log('[getAllImageUrls] supportingMedia analysis:', {
-      articleId: article.id?.slice(-8),
-      count: article.supportingMedia.length,
-      items: article.supportingMedia.map(m => ({
-        type: m.type,
-        urlSuffix: m.url?.slice(-40),
-        isTypeImage: m.type === 'image',
-      })),
-    });
+    article.images.forEach(url => addImageUrl(url));
   }
 
   if (hasClassifiedMedia) {
@@ -562,7 +542,7 @@ export function getAllImageUrls(article: CardArticleMediaSource, options?: GetAl
         })
       : classifiedImageCandidates;
 
-    orderedCandidates.forEach((item) => addImageUrl(item.url, item.source));
+    orderedCandidates.forEach((item) => addImageUrl(item.url));
   } else {
     // Fall back to classifying media on the fly
     const classified = classifyArticleMedia(article);
@@ -573,7 +553,7 @@ export function getAllImageUrls(article: CardArticleMediaSource, options?: GetAl
       classified.primaryMedia.url &&
       (!gridOnly || isVisibleInGrid(classified.primaryMedia))
     ) {
-      addImageUrl(classified.primaryMedia.url, 'classified-primary');
+      addImageUrl(classified.primaryMedia.url);
     }
 
     // Add supporting images (same rule: image type or image URL)
@@ -583,7 +563,7 @@ export function getAllImageUrls(article: CardArticleMediaSource, options?: GetAl
         (media.type === 'image' || isImageUrl(media.url)) &&
         (!gridOnly || isVisibleInGrid(media))
       ) {
-        addImageUrl(media.url, 'classified-supporting');
+        addImageUrl(media.url);
       }
     });
   }
@@ -594,34 +574,12 @@ export function getAllImageUrls(article: CardArticleMediaSource, options?: GetAl
     article.media.url &&
     (!gridOnly || isVisibleInGrid(article.media))
   ) {
-    addImageUrl(article.media.url, 'media-field');
+    addImageUrl(article.media.url);
   }
 
   // Check media.previewMetadata.imageUrl (for OG image URLs)
   if (article.media?.previewMetadata?.imageUrl && (!gridOnly || isVisibleInGrid(article.media))) {
-    addImageUrl(article.media.previewMetadata.imageUrl, 'og-image');
-  }
-
-  // PHASE 2B: Log duplicates detected for debugging (DEV only — this fires per
-  // card on every render and was previously running in production).
-  if (shouldLogClassifierDiag() && duplicatesDetected.length > 0) {
-    console.log('[getAllImageUrls] Duplicates filtered out:', {
-      articleId: article.id,
-      duplicatesCount: duplicatesDetected.length,
-      duplicates: duplicatesDetected,
-      finalCount: imageUrls.length,
-    });
-  }
-
-  // DEBUG: Log final order and sources
-  if (shouldLogClassifierDiag() && imageUrls.length > 0) {
-    console.log('[getAllImageUrls] FINAL ORDER:', {
-      articleId: article.id?.slice(-8),
-      count: imageUrls.length,
-      order: imageUrls.map(url => url.slice(-40)),
-      sources: sourcesUsed,
-      imagesArrayOrder: article.images?.map(url => url.slice(-40)) || [],
-    });
+    addImageUrl(article.media.previewMetadata.imageUrl);
   }
 
   return imageUrls;

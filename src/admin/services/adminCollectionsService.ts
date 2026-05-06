@@ -54,7 +54,7 @@ class AdminCollectionsService {
 
       const uniqueCollections = Array.from(new Map(allCollections.map((c) => [c.id, c])).values());
       return uniqueCollections.map(mapCollectionToAdminCollection);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[AdminCollectionsService.listCollections] Error fetching collections:', error);
       throw error;
     }
@@ -66,7 +66,7 @@ class AdminCollectionsService {
     return mapCollectionToAdminCollection(collection);
   }
 
-  async getStats(): Promise<{ totalCommunity: number; totalNuggetsInCommunity: number }> {
+  getStats(): Promise<{ totalCommunity: number; totalNuggetsInCommunity: number }> {
     // Reuse in-flight request if one exists (prevents duplicate concurrent fetches)
     if (this.inFlightStatsRequest) {
       return this.inFlightStatsRequest;
@@ -97,7 +97,7 @@ class AdminCollectionsService {
           totalCommunity: totalCommunity, // Use backend total count
           totalNuggetsInCommunity: collections.reduce((acc, c) => acc + (c.validEntriesCount ?? c.entries?.length ?? 0), 0)
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[AdminCollectionsService.getStats] Error fetching stats:', error);
         throw error;
       } finally {
@@ -110,7 +110,7 @@ class AdminCollectionsService {
   }
 
   async updateCollection(id: string, updates: Partial<AdminCollection>): Promise<void> {
-    const payload: any = {};
+    const payload: Record<string, unknown> = {};
     
     if (updates.name !== undefined) {
       payload.name = updates.name;
@@ -147,10 +147,10 @@ class AdminCollectionsService {
     await apiClient.post(`/collections/${collectionId}/entries/batch`, { articleIds }, undefined, 'adminCollectionsService.addNuggetsToCollection');
   }
 
-  async updateCollectionStatus(_id: string, _status: 'active' | 'hidden'): Promise<void> {
+  updateCollectionStatus(_id: string, _status: 'active' | 'hidden'): Promise<void> {
     // Backend doesn't have status field for collections
     // This would need backend support
-    throw new Error('Collection status update not supported by backend');
+    return Promise.reject(new Error('Collection status update not supported by backend'));
   }
 
   async setFeatured(id: string, isFeatured: boolean, featuredOrder?: number): Promise<void> {
@@ -166,14 +166,18 @@ class AdminCollectionsService {
   async deleteCollection(id: string): Promise<void> {
     try {
       await apiClient.delete(`/collections/${id}`, undefined, 'adminCollectionsService.deleteCollection');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[AdminCollectionsService.deleteCollection] Error:', error);
       // Re-throw with better context
-      const errorMessage = error?.message || 'Failed to delete collection';
-      const enhancedError: any = new Error(errorMessage);
-      enhancedError.response = error?.response;
-      enhancedError.status = error?.status;
-      enhancedError.requestId = error?.requestId;
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete collection';
+      type AugmentedError = Error & { response?: unknown; status?: unknown; requestId?: unknown };
+      const enhancedError = new Error(errorMessage) as AugmentedError;
+      if (typeof error === 'object' && error !== null) {
+        const e = error as Record<string, unknown>;
+        enhancedError.response = e.response;
+        enhancedError.status = e.status;
+        enhancedError.requestId = e.requestId;
+      }
       throw enhancedError;
     }
   }

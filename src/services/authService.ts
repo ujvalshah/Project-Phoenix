@@ -44,15 +44,27 @@ const mapLegacyToModular = (legacy: LegacyUser): ModularUser => {
 };
 
 // Helper: Check if user data is in modular format (new backend) or legacy format
-const isModularUser = (user: any): user is ModularUser => {
-  return user && user.auth && user.profile && user.preferences && user.appState;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isModularUser = (user: unknown): user is ModularUser => {
+  return (
+    isRecord(user) &&
+    isRecord(user.auth) &&
+    isRecord(user.profile) &&
+    isRecord(user.preferences) &&
+    isRecord(user.appState)
+  );
 };
 
 // Helper: Normalize user data from backend (handles both legacy and modular formats)
-const normalizeUserFromBackend = (user: any): ModularUser => {
+const normalizeUserFromBackend = (user: unknown): ModularUser => {
   // If already in modular format, return as-is (with id field)
   if (isModularUser(user)) {
-    const normalizedId = user.id || (user as any)._id?.toString() || '';
+    const normalizedId =
+      user.id ||
+      (isRecord(user) && typeof user._id?.toString === 'function' ? user._id.toString() : '') ||
+      '';
     return {
       ...user,
       id: normalizedId,
@@ -75,7 +87,7 @@ const normalizeUserFromBackend = (user: any): ModularUser => {
  * Auth response from backend with new token structure
  */
 interface AuthResponse {
-  user?: any;
+  user?: unknown;
   token?: string; // Legacy field (access token)
   accessToken?: string;
   refreshToken?: string;
@@ -107,7 +119,7 @@ class AuthService {
         refreshToken: response.refreshToken,
         expiresIn: response.expiresIn,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Map backend error to user-friendly message
       const userMessage = mapAuthError(error, 'login');
       throw new Error(userMessage);
@@ -140,14 +152,14 @@ class AuthService {
         refreshToken: response.refreshToken,
         expiresIn: response.expiresIn,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Map backend error to user-friendly message
       const userMessage = mapAuthError(error, 'signup');
       throw new Error(userMessage);
     }
   }
 
-  async loginWithProvider(provider: AuthProvider): Promise<{ user: ModularUser; token: string }> {
+  loginWithProvider(provider: AuthProvider): Promise<{ user: ModularUser; token: string }> {
     throw new Error(`Social login with ${provider} is not yet implemented`);
   }
 
@@ -162,10 +174,16 @@ class AuthService {
   async requestPasswordReset(email: string): Promise<void> {
     try {
       await apiClient.post('/auth/forgot-password', { email });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Backend always returns success to prevent enumeration
       // Only throw if it's a real error (network, 5xx)
-      if (error?.response?.status >= 500) {
+      const status =
+        isRecord(error) &&
+        isRecord(error.response) &&
+        typeof error.response.status === 'number'
+          ? error.response.status
+          : undefined;
+      if (typeof status === 'number' && status >= 500) {
         throw new Error('Unable to process your request. Please try again later.');
       }
       // Ignore other errors - treat as success
@@ -175,13 +193,13 @@ class AuthService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     try {
       await apiClient.post('/auth/reset-password', { token, password: newPassword });
-    } catch (error: any) {
+    } catch (error: unknown) {
       const userMessage = mapAuthError(error, 'password_reset');
       throw new Error(userMessage);
     }
   }
 
-  async changePassword(current: string, next: string): Promise<void> {
+  changePassword(_current: string, _next: string): Promise<void> {
     // Deferred feature — backend support pending
     // TODO: Implement when backend endpoint is ready
     throw new Error('Change password is not yet implemented');
@@ -204,9 +222,9 @@ class AuthService {
     }
   }
 
-  async getSessions(): Promise<any[]> {
+  async getSessions(): Promise<unknown[]> {
     try {
-      const response = await apiClient.get<{ sessions: any[]; count: number }>('/auth/sessions');
+      const response = await apiClient.get<{ sessions: unknown[]; count: number }>('/auth/sessions');
       return response.sessions || [];
     } catch {
       return [];

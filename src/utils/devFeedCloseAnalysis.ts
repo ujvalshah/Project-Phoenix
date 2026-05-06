@@ -29,9 +29,6 @@ export function beginFeedCloseAnalysisWindow(durationMs = 1200): void {
   if (!import.meta.env.DEV) return;
   resetStats();
   windowEndMs = performance.now() + durationMs;
-  setTimeout(() => {
-    console.log('[feed-close-instrument] summary', { ...stats });
-  }, durationMs + 50);
 }
 
 export function isFeedCloseAnalysisWindowActive(): boolean {

@@ -51,16 +51,16 @@ export function createMockApiClient(
 export function createMockArticleService(
   responses: Map<number, PaginatedArticlesResponse> | ((page: number) => PaginatedArticlesResponse)
 ) {
-  const callLog: Array<{ page: number; filters: any }> = [];
+  const callLog: Array<{ page: number; filters: unknown }> = [];
 
-  const mockGetArticles = vi.fn(async (filters: any, page: number) => {
+  const mockGetArticles = vi.fn((filters: unknown, page: number) => {
     callLog.push({ page, filters });
 
     const response = typeof responses === 'function'
       ? responses(page)
       : responses.get(page) || createMockPageResponse(page, 25, 0, undefined);
 
-    return response;
+    return Promise.resolve(response);
   });
 
   return {

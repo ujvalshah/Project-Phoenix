@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { authService } from '@/services/authService';
 import { Lock, ArrowRight, Check, Loader2 } from 'lucide-react';
 import { Input } from '@/components/UI/Input';
+import { mapAuthError } from '@/utils/errorMessages';
 
 export const ResetPasswordPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -29,9 +30,8 @@ export const ResetPasswordPage: React.FC = () => {
           await authService.resetPassword(token, password);
           setIsSuccess(true);
           setTimeout(() => navigate('/'), 3000);
-      } catch (err: any) {
-          // Show specific error from backend if available
-          setError(err.message || "Failed to reset password. The link may be expired.");
+      } catch (err: unknown) {
+          setError(mapAuthError(err, 'password_reset'));
       } finally {
           setIsSubmitting(false);
       }

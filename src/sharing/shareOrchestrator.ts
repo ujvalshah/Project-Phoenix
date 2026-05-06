@@ -149,7 +149,7 @@ export async function shareWithFallback(payload: SharePayload): Promise<ShareOrc
   return { status: 'copy_failed', method: 'copy' };
 }
 
-export async function copySharePayload(payload: SharePayload): Promise<boolean> {
+export function copySharePayload(payload: SharePayload): Promise<boolean> {
   const copyPayload = [payload.text, payload.url].filter(Boolean).join('\n\n');
   return copyToClipboard(copyPayload);
 }

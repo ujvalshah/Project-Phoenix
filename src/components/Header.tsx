@@ -37,6 +37,7 @@ import { isFeatureEnabled } from '@/constants/featureFlags';
 import { useLegalPages } from '@/hooks/useLegalPages';
 import { usePulseUnseenCount, useStandardUnseenCount } from '@/hooks/usePulseUnseen';
 import { formatNavBadgeCount, hasNavBadge } from '@/utils/navBadge';
+import { getErrorMessage } from '@/utils/runtimeError';
 import { twMerge } from 'tailwind-merge';
 import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
 import { setNarrowHeaderHidden } from '@/constants/layoutScrollBridge';
@@ -272,12 +273,9 @@ const HeaderComponent: React.FC<HeaderProps> = ({
       setTimeout(() => {
         window.location.assign('/');
       }, 150);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setIsLoggingOut(false);
-      const message =
-        typeof error?.message === 'string' && error.message
-          ? error.message
-          : 'Could not sign you out. Please try again.';
+      const message = getErrorMessage(error, 'Could not sign you out. Please try again.');
       headerToast.error('Sign out failed', message);
     }
   }, [isLoggingOut, logout, headerToast]);

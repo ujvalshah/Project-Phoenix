@@ -25,7 +25,7 @@ interface AttachmentManagerProps {
 export const AttachmentManager = React.memo(function AttachmentManager({
   attachments,
   onAttachmentsChange,
-  onFileSelect,
+  onFileSelect: _onFileSelect,
   onError,
 }: AttachmentManagerProps) {
 

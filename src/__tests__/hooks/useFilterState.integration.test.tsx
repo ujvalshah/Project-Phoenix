@@ -352,7 +352,10 @@ describe('localStorage persistence', () => {
 
     const stored = localStorage.getItem('phoenix_filters');
     expect(stored).not.toBeNull();
-    expect(JSON.parse(stored!).sort).toBe('oldest');
+    if (!stored) {
+      throw new Error('Expected phoenix_filters to be stored');
+    }
+    expect(JSON.parse(stored).sort).toBe('oldest');
   });
 
   it('migrates legacy title sort from localStorage to latest', () => {

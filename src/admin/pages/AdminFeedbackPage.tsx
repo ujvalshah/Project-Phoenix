@@ -1,17 +1,20 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AdminTable, Column } from '../components/AdminTable';
 import { AdminFeedback } from '../types/admin';
 import { adminFeedbackService } from '@/admin/services/adminFeedbackService';
-import { MessageSquare, Check, Archive, Trash2, User } from 'lucide-react';
+import { Check, Archive, User } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
-import { formatDate } from '@/utils/formatters';
 import { Avatar } from '@/components/shared/Avatar';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { getSafeUsernameHandle } from '@/utils/userIdentity';
 
 type FeedbackFilter = 'new' | 'read' | 'archived' | 'all';
+
+function isErrorWithMessage(error: unknown): error is { message: string } {
+  return typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: unknown }).message === 'string';
+}
 
 export const AdminFeedbackPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
@@ -55,9 +58,9 @@ export const AdminFeedbackPage: React.FC = () => {
           />
       </div>
     );
-  }, [filter, dateFilter]);
+  }, [filter, dateFilter, setPageHeader]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await adminFeedbackService.listFeedback(filter);
@@ -70,18 +73,18 @@ export const AdminFeedbackPage: React.FC = () => {
 
       setFeedback(filtered);
       setErrorMessage(null);
-    } catch (e: any) {
-      if (e.message !== 'Request cancelled') {
+    } catch (e: unknown) {
+      if (!isErrorWithMessage(e) || e.message !== 'Request cancelled') {
         setErrorMessage("Could not load feedback. Please retry.");
       }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filter, dateFilter]);
 
   useEffect(() => {
     loadData();
-  }, [filter, dateFilter]);
+  }, [filter, dateFilter, loadData]);
 
   // Initialize filters from URL
   useEffect(() => {
@@ -107,7 +110,6 @@ export const AdminFeedbackPage: React.FC = () => {
       const item = feedback.find(f => f.id === id);
       if (!item) return;
       
-      const previousStatus = item.status;
       const previousFeedback = [...feedback];
       
       // Optimistically update the item's status in state
@@ -136,7 +138,7 @@ export const AdminFeedbackPage: React.FC = () => {
                   f.id === id ? { ...f, status: 'new' } : f
                 ));
                 toast.success('Changes reverted');
-              } catch (e) {
+              } catch {
                 toast.error('Failed to undo. Please refresh the page.');
               }
             }
@@ -144,7 +146,7 @@ export const AdminFeedbackPage: React.FC = () => {
         } else {
           toast.success(message);
         }
-      } catch (e) {
+      } catch {
         // Rollback on failure
         setFeedback(previousFeedback);
         toast.error("Update failed. Changes reverted.");
@@ -178,7 +180,7 @@ export const AdminFeedbackPage: React.FC = () => {
       render: (f) => f.user ? (
           <div 
             className="flex items-center gap-3 cursor-pointer group"
-            onClick={(e) => { e.stopPropagation(); navigate(`/profile/${f.user!.id}`); }}
+            onClick={(e) => { e.stopPropagation(); navigate(`/profile/${f.user.id}`); }}
           >
               <Avatar name={f.user.name} size="sm" src={f.user.avatar} />
               <div>

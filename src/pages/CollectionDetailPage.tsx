@@ -69,8 +69,8 @@ export const CollectionDetailPage: React.FC = () => {
     queryKey: collectionId
       ? collectionKeys.detail(collectionId)
       : ([...collectionKeys.all, 'detail', '__none'] as const),
-    queryFn: async () => {
-      if (!collectionId) return undefined;
+    queryFn: () => {
+      if (!collectionId) return Promise.resolve(undefined);
       return storageService.getCollectionById(collectionId, { includeEntries: false });
     },
     enabled: Boolean(collectionId),

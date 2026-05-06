@@ -4,10 +4,8 @@ import { useAuthSelector } from '@/context/AuthContext';
 import type {
   BookmarkStatus,
   BookmarkFilters,
-  BookmarksResponse,
   BookmarkCollection,
-  BookmarkItemType,
-  ToggleBookmarkResponse
+  BookmarkItemType
 } from '@/services/bookmarkService';
 
 /**

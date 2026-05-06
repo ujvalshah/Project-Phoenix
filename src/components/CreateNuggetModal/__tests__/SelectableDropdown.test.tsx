@@ -60,7 +60,7 @@ describe('SelectableDropdown', () => {
       expect(screen.getByText('TypeScript')).toBeInTheDocument();
     });
 
-    it('displays selected items even when options are empty (cached labels)', async () => {
+    it('displays selected items even when options are empty (cached labels)', () => {
       // First render with options to cache the labels
       const { rerender } = render(
         <SelectableDropdown

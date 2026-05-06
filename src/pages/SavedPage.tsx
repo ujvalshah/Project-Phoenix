@@ -201,6 +201,15 @@ const CollectionFilterBar: React.FC<CollectionFilterBarProps> = ({
 
 type BookmarkViewMode = 'grid' | 'masonry';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const getErrorMessage = (error: unknown): string | null => {
+  if (error instanceof Error) return error.message;
+  if (isRecord(error) && typeof error.message === 'string') return error.message;
+  return null;
+};
+
 /**
  * SavedPage (Bookmarks Page)
  */
@@ -274,8 +283,8 @@ export const SavedPage: React.FC = () => {
     try {
       await createCollectionMutation.mutateAsync({ name });
       toast.success(`Created "${name}"`);
-    } catch (error: any) {
-      if (error?.message?.includes('already exists')) {
+    } catch (error: unknown) {
+      if (getErrorMessage(error)?.includes('already exists')) {
         toast.error('A folder with this name already exists');
       } else {
         toast.error('Failed to create folder');

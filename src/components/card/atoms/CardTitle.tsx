@@ -10,13 +10,9 @@ interface CardTitleProps {
   highlightQuery?: string;
 }
 
-export const CardTitle: React.FC<CardTitleProps> = ({ title, className, variant, highlightQuery }) => {
+export const CardTitle: React.FC<CardTitleProps> = ({ title, className, variant: _variant, highlightQuery }) => {
   if (!title) return null;
 
-  // Finance-grade hierarchy: Feed titles are dominant (1.25rem-1.375rem, font-weight 500-600)
-  // Grid titles remain smaller for density
-  const isFeed = variant === 'feed';
-  
   // Parse markdown-style links in title: [text](url)
   const renderTitleWithLinks = (text: string) => {
     // Split by markdown link pattern: [text](url)

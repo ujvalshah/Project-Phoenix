@@ -48,7 +48,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
   menuRef,
   className,
   isPreview = false,
-  variant = 'grid',
+  variant: _variant = 'grid',
   onBookmarkChangeCollection,
 }) => {
   // Mobile UX: Minimum 44px tap targets for better touch ergonomics

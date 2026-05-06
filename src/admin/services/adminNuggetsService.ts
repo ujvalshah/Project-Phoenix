@@ -167,7 +167,7 @@ class AdminNuggetsService {
         limit: typeof articlesResponse.limit === 'number' ? articlesResponse.limit : limit,
         hasMore: Boolean(articlesResponse.hasMore),
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[AdminNuggetsService.listNuggets] Error fetching nuggets:', error);
       throw error;
     }
@@ -191,13 +191,13 @@ class AdminNuggetsService {
       const reportsCount = reports.filter(r => r.targetId === id && r.targetType === 'nugget').length;
       
       return mapArticleToAdminNugget(article, reportsCount);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[AdminNuggetsService.getNuggetDetails] Error fetching nugget details:', error);
       throw error;
     }
   }
 
-  async getStats(): Promise<{
+  getStats(): Promise<{
     total: number;
     flagged: number;
     createdToday: number;
@@ -243,7 +243,7 @@ class AdminNuggetsService {
           draft: statsResponse.nuggets.draft || 0,
           published: statsResponse.nuggets.published || 0,
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[AdminNuggetsService.getStats] Error fetching stats:', error);
         throw error;
       } finally {
@@ -255,16 +255,18 @@ class AdminNuggetsService {
     return this.inFlightStatsRequest;
   }
 
-  async updateNuggetStatus(id: string, status: AdminNuggetStatus): Promise<void> {
+  updateNuggetStatus(_id: string, status: AdminNuggetStatus): Promise<void> {
     // Backend doesn't have status field for articles
     // For 'hidden', we could delete the article, but that's destructive
     // For 'flagged', we rely on reports
     // This would need backend support for article status
     if (status === 'hidden') {
-      // Option: Delete article (destructive) or add backend status field
-      throw new Error('Hiding articles not supported by backend. Use delete instead.');
+      return Promise.reject(
+        new Error('Hiding articles not supported by backend. Use delete instead.')
+      );
     }
     // For 'active' or 'flagged', status is determined by reports
+    return Promise.resolve();
   }
 
   async deleteNugget(id: string): Promise<void> {

@@ -1,9 +1,8 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Check, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { NewsCardLogic } from '@/hooks/useNewsCard';
 import { useDisclaimerConfig, resolveDisclaimer } from '@/hooks/useDisclaimerConfig';
 import { CardMedia } from '../atoms/CardMedia';
-import { CardTitle } from '../atoms/CardTitle';
 import { CardMeta } from '../atoms/CardMeta';
 import { CardTags } from '../atoms/CardTags';
 import { CardActions } from '../atoms/CardActions';
@@ -82,7 +81,6 @@ export const GridVariant: React.FC<GridVariantProps> = ({
   
   // Warn if cardType is media-only but will render as hybrid or has long text
   React.useEffect(() => {
-    const hasText = Boolean((data.content || data.excerpt || '').trim());
     const textLength = (data.content || data.excerpt || '').length;
     const renderedCardType = data.cardType === 'media-only' ? 'media-only' : 'hybrid';
     
@@ -269,7 +267,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
           
           {/* Link Button - positioned absolutely in top-right (shows even when no media) */}
           {linkButtonProps.shouldShow && linkButtonProps.url && (
-            <button
+            <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
@@ -322,7 +320,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               )}
               {/* Link Button - positioned absolutely in top-right */}
               {linkButtonProps.shouldShow && linkButtonProps.url && (
-                <button
+                <button type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
@@ -348,7 +346,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               <CardGradientFallback title={data.title} className="rounded-t-xl" />
               {/* Link Button - for cards without media */}
               {linkButtonProps.shouldShow && linkButtonProps.url && (
-                <button
+                <button type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     window.open(linkButtonProps.url, '_blank', 'noopener,noreferrer');
@@ -451,7 +449,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
               // For media-only cards: don't show buttons (they don't have expandable content)
               data.cardType === 'hybrid' && hasContentOverflow && (
                 <div className="flex justify-center">
-                  <button
+                  <button type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       if (handlers.onClick) {
@@ -486,7 +484,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                   {/* Expand/Collapse Button - Left half (toggles based on expanded state) */}
                   {isContentExpanded ? (
                     // Collapse Button - shown when expanded
-                    <button
+                    <button type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         // Trigger collapse via ref
@@ -512,7 +510,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                     </button>
                   ) : (
                     // Expand Button - shown when collapsed
-                    <button
+                    <button type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         // Trigger inline expansion via ref
@@ -538,7 +536,7 @@ export const GridVariant: React.FC<GridVariantProps> = ({
                     </button>
                   )}
                   {/* View Full Article Button - Right half */}
-                  <button
+                  <button type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       if (handlers.onClick) {

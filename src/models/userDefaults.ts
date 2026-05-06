@@ -30,11 +30,12 @@ export const createDefaultUserSecurity = (overrides?: Partial<UserSecurity>): Us
 
 export const createDefaultUserPreferences = (overrides?: DeepPartial<UserPreferences>): UserPreferences => {
   const { notifications, ...rest } = overrides || {};
+  const preferenceOverrides: Partial<Omit<UserPreferences, 'notifications'>> = rest;
 
   return {
     theme: 'system',
     interestedCategories: [],
-    ...rest as any,
+    ...preferenceOverrides,
     notifications: {
       emailDigest: true,
       productUpdates: false,

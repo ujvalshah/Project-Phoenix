@@ -55,7 +55,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, onSub
         comment: comment.trim()
       });
       onClose();
-    } catch (err) {
+    } catch {
       setError("Something went wrong. Please try again.");
       setIsSubmitting(false);
     }

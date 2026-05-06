@@ -174,7 +174,7 @@ describe('tagUtils', () => {
     it('should handle edit modal tag matching', () => {
       // Scenario: Article created with "AI", admin renamed tag to "Ai"
       const articleCategories = ['AI', 'Blockchain'];
-      const availableCategories = ['Ai', 'Blockchain', 'Reports'];
+      const _availableCategories = ['Ai', 'Blockchain', 'Reports'];
 
       // Check if "Ai" from available should be selected
       expect(tagsInclude(articleCategories, 'Ai')).toBe(true);

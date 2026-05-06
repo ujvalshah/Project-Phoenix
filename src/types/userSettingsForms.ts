@@ -1,4 +1,4 @@
-import { AvatarColor, Visibility, ThemePreference } from './user';
+import { AvatarColor, ThemePreference } from './user';
 
 export interface ProfileFormValues {
   displayName: string;

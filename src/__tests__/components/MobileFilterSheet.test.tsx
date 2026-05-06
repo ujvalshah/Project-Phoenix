@@ -80,10 +80,10 @@ describe('MobileFilterSheet', () => {
     });
 
     const toggle = screen.getByRole('button', { name: 'toggle-sheet' });
-    await act(async () => {
+    await act(() => {
       fireEvent.click(toggle);
     });
-    await act(async () => {
+    await act(() => {
       fireEvent.click(toggle);
     });
 

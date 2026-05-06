@@ -17,9 +17,6 @@ import { X } from 'lucide-react';
 import { useVideoPlayerActions, useVideoPlayerState } from '@/context/VideoPlayerContext';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
 
-const MINI_RIGHT = 16;
-const MINI_BOTTOM = 16;
-
 export const PersistentVideoPlayer: React.FC<{ onExpand?: () => void }> = () => {
   const state = useVideoPlayerState();
   const { closeMiniPlayer } = useVideoPlayerActions();

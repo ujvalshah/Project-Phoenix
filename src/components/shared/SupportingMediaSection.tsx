@@ -25,7 +25,7 @@
 import React, { useState } from 'react';
 import { SupportingMediaItem, MediaType } from '@/types';
 import { Image } from '@/components/Image';
-import { FileText, Film, ExternalLink, Youtube } from 'lucide-react';
+import { FileText, ExternalLink, Youtube } from 'lucide-react';
 import { ImageCarouselModal } from './ImageCarouselModal';
 
 interface SupportingMediaSectionProps {

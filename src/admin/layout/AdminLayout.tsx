@@ -1,5 +1,5 @@
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { AdminSidebar } from '../components/AdminSidebar';
 import { AdminTopbar } from '../components/AdminTopbar';
@@ -26,13 +26,13 @@ export const AdminLayout: React.FC = () => {
     actions: null as React.ReactNode | null
   });
 
-  const setPageHeader = (title: string, description: string = '', actions: React.ReactNode = null) => {
+  const setPageHeader = useCallback((title: string, description: string = '', actions: React.ReactNode = null) => {
     // Prevent infinite loops by checking equality (basic shallow check)
     setHeaderState(prev => {
       if (prev.title === title && prev.description === description && prev.actions === actions) return prev;
       return { title, description, actions };
     });
-  };
+  }, []);
 
   useEffect(() => {
     markPagePerformance({ name: 'admin:navigation', detail: { path: location.pathname } });

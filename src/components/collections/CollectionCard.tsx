@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Collection } from '@/types';
 import { Folder, Lock, Check, Plus, Layers, Users, ArrowRight, Clock3 } from 'lucide-react';
 import { ShareMenu } from '../shared/ShareMenu';
@@ -84,13 +84,20 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
               // If refetch fails, optimistic update is still better than nothing
               console.warn('Failed to refetch collection after follow/unfollow:', refetchError);
           }
-      } catch (error: any) {
+      } catch (error: unknown) {
           // PHASE 5: Rollback on error with proper error message
           if (onCollectionUpdate) {
               onCollectionUpdate(collection);
           }
-          const errorMessage = error?.requestId 
-            ? `Failed to ${wasFollowing ? 'unfollow' : 'follow'} collection (Request ID: ${error.requestId})`
+          const requestId =
+            typeof error === 'object' &&
+            error !== null &&
+            'requestId' in error &&
+            typeof (error as { requestId?: unknown }).requestId === 'string'
+              ? (error as { requestId: string }).requestId
+              : null;
+          const errorMessage = requestId
+            ? `Failed to ${wasFollowing ? 'unfollow' : 'follow'} collection (Request ID: ${requestId})`
             : `Failed to ${wasFollowing ? 'unfollow' : 'follow'} collection`;
           toast.error(errorMessage);
       } finally {

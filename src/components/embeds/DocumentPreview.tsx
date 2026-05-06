@@ -115,9 +115,9 @@ function getFileTypeLabel(type: DocumentType): string {
 // Truncate filename if too long
 function truncateFilename(filename: string, maxLength: number = 30): string {
   if (filename.length <= maxLength) return filename;
-  const extension = filename.split('.').pop();
+  const extension = filename.split('.').pop() ?? '';
   const nameWithoutExt = filename.slice(0, filename.lastIndexOf('.'));
-  const truncated = nameWithoutExt.slice(0, maxLength - extension!.length - 4);
+  const truncated = nameWithoutExt.slice(0, maxLength - extension.length - 4);
   return `${truncated}...${extension}`;
 }
 

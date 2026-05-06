@@ -204,7 +204,7 @@ export async function toggleBookmark(
 /**
  * Get bookmark status for a specific item.
  */
-export async function getBookmarkStatus(
+export function getBookmarkStatus(
   itemId: string,
   itemType: BookmarkItemType = 'nugget'
 ): Promise<BookmarkStatus> {
@@ -217,7 +217,7 @@ export async function getBookmarkStatus(
  * Get batch bookmark status for multiple items.
  * More efficient than calling getBookmarkStatus for each item.
  */
-export async function getBatchBookmarkStatus(
+export function getBatchBookmarkStatus(
   itemIds: string[],
   itemType: BookmarkItemType = 'nugget'
 ): Promise<BatchStatusResponse> {
@@ -230,7 +230,7 @@ export async function getBatchBookmarkStatus(
 /**
  * Get user's bookmarks with optional filtering.
  */
-export async function getBookmarks(
+export function getBookmarks(
   filters?: BookmarkFilters
 ): Promise<BookmarksResponse> {
   const params = new URLSearchParams();
@@ -272,7 +272,7 @@ export async function deleteBookmark(bookmarkId: string): Promise<void> {
 /**
  * Batch toggle bookmarks.
  */
-export async function batchToggleBookmarks(
+export function batchToggleBookmarks(
   itemIds: string[],
   action: 'bookmark' | 'unbookmark',
   itemType: BookmarkItemType = 'nugget'
@@ -297,7 +297,7 @@ export async function getBookmarkCollections(): Promise<BookmarkCollection[]> {
 /**
  * Get a specific bookmark collection by ID.
  */
-export async function getBookmarkCollectionById(
+export function getBookmarkCollectionById(
   collectionId: string
 ): Promise<BookmarkCollection> {
   return apiClient.get<BookmarkCollection>(`/bookmark-collections/${collectionId}`);
@@ -306,7 +306,7 @@ export async function getBookmarkCollectionById(
 /**
  * Create a new bookmark collection.
  */
-export async function createBookmarkCollection(
+export function createBookmarkCollection(
   name: string,
   description?: string,
   order?: number
@@ -321,7 +321,7 @@ export async function createBookmarkCollection(
 /**
  * Update a bookmark collection.
  */
-export async function updateBookmarkCollection(
+export function updateBookmarkCollection(
   collectionId: string,
   updates: { name?: string; description?: string; order?: number }
 ): Promise<BookmarkCollection> {

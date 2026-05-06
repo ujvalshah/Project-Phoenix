@@ -76,9 +76,9 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
 
-  const selectedFormatIds = filters.formatTagIds || [];
-  const selectedDomainIds = filters.domainTagIds || [];
-  const selectedSubtopicIds = filters.subtopicTagIds || [];
+  const selectedFormatIds = useMemo(() => filters.formatTagIds ?? [], [filters.formatTagIds]);
+  const selectedDomainIds = useMemo(() => filters.domainTagIds ?? [], [filters.domainTagIds]);
+  const selectedSubtopicIds = useMemo(() => filters.subtopicTagIds ?? [], [filters.subtopicTagIds]);
   const hasActiveFilter =
     filters.collectionId !== null ||
     selectedFormatIds.length > 0 ||

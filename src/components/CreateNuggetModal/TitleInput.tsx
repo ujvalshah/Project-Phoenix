@@ -15,7 +15,7 @@ export function TitleInput({
   value,
   onChange,
   onBlur,
-  linkMetadataTitle,
+  linkMetadataTitle: _linkMetadataTitle,
   error,
   warning,
   onTouchedChange,

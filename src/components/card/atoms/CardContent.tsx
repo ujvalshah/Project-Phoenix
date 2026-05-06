@@ -44,7 +44,7 @@ interface CardContentProps {
 export const CardContent: React.FC<CardContentProps> = React.memo(({
   excerpt,
   content,
-  isTextNugget,
+  isTextNugget: _isTextNugget,
   variant = 'grid', // Default to grid
   className,
   allowExpansion = false,
@@ -175,18 +175,13 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
         // Get computed styles for line height calculation
         const computedStyle = window.getComputedStyle(el);
         const lineHeight = parseFloat(computedStyle.lineHeight) || parseFloat(computedStyle.fontSize) * 1.5;
-        const fontSize = parseFloat(computedStyle.fontSize) || 12;
         
         // Measurement-based overflow detection (collapsed state only)
         // scrollHeight = full content height (including clipped content)
         // clientHeight = visible height (respects max-height)
-        // offsetHeight = visible height including borders
         const scrollHeight = el.scrollHeight;
         const clientHeight = el.clientHeight;
-        const offsetHeight = el.offsetHeight;
         
-        // Calculate approximate line count
-        const approximateLineCount = scrollHeight / lineHeight;
         const visibleLineCount = clientHeight / lineHeight;
         
         // MINIMUM THRESHOLD: Require at least 2-3 visible lines before truncation triggers
@@ -263,7 +258,7 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
       }
       resizeObserver.disconnect();
     };
-  }, [displayContent, isExpanded]);
+  }, [displayContent, isExpanded, onOverflowChange]);
 
   // Handle fade overlay click to expand
   const handleFadeClick = useCallback((e: React.MouseEvent) => {
@@ -354,7 +349,6 @@ export const CardContent: React.FC<CardContentProps> = React.memo(({
   // - This ensures "Read more" is available for any card with overflowing content
   // NOTE: Tables use a different max-height (200px vs 180px) but still get truncation + fade
   const isHybridCard = cardType === 'hybrid';
-  const isMediaOnlyCard = cardType === 'media-only';
 
   // shouldApplyMaxHeight: Always cap the collapsed body so grid rows stay uniform.
   // Reason: `items-stretch` rows inflate every card to the tallest sibling, so a

@@ -23,8 +23,8 @@
  * ============================================================================
  */
 
-import type { Article, MediaType } from '@/types';
-import { classifyArticleMedia, getAllImageUrls } from './mediaClassifier';
+import type { Article, MediaType, PreviewMetadata } from '@/types';
+import { classifyArticleMedia } from './mediaClassifier';
 import { normalizeImageUrl } from '@/shared/articleNormalization/imageDedup';
 import { normalizeMediaOrder } from './mediaOrder';
 
@@ -61,7 +61,7 @@ export interface MasonryMediaItem {
   masonryTitle?: string;
   
   // Additional metadata
-  previewMetadata?: any;
+  previewMetadata?: PreviewMetadata;
   filename?: string;
   title?: string;
 }
@@ -129,14 +129,6 @@ export function collectMasonryMediaItems(article: Article): MasonryMediaItem[] {
 
       // Skip if already included (duplicate of primary or earlier supporting item)
       if (includedUrls.has(normalizedUrl)) {
-        if (
-          typeof process !== 'undefined' &&
-          process.env.VITEST !== 'true' &&
-          typeof import.meta !== 'undefined' &&
-          !!import.meta.env?.DEV
-        ) {
-          console.log('[masonryMediaHelper] Skipping duplicate supporting media:', { url: media.url, normalizedUrl });
-        }
         return;
       }
 

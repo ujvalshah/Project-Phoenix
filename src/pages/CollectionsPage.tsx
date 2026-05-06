@@ -182,6 +182,37 @@ interface TopicChip {
   count: number;
 }
 
+type CollectionsListResponse = Collection[] | { data?: Collection[]; count?: number };
+
+interface ParsedCollectionsList {
+  data: Collection[];
+  total: number;
+}
+
+const parseCollectionsListResponse = (response: CollectionsListResponse): ParsedCollectionsList => {
+  if (Array.isArray(response)) {
+    return { data: response, total: response.length };
+  }
+
+  const data = Array.isArray(response.data) ? response.data : [];
+  const total = typeof response.count === 'number' ? response.count : data.length;
+  return { data, total };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const getErrorMessage = (error: unknown): string | null => {
+  if (error instanceof Error) return error.message;
+  if (isRecord(error) && typeof error.message === 'string') return error.message;
+  return null;
+};
+
+const getErrorRequestId = (error: unknown): string | null => {
+  if (isRecord(error) && typeof error.requestId === 'string') return error.requestId;
+  return null;
+};
+
 const TOPIC_CHIP_COLLAPSED_LIMIT = 14;
 const TOPIC_CHIP_SKELETON_WIDTHS = [88, 64, 104, 72, 96, 80, 56, 92];
 
@@ -492,12 +523,7 @@ export const CollectionsPage: React.FC = () => {
           page,
           limit: taxonomyPageLimit,
         });
-        const pageData = Array.isArray(response) ? response : response?.data || [];
-        const count = Array.isArray(response)
-          ? pageData.length
-          : typeof response?.count === 'number'
-            ? response.count
-            : pageData.length;
+        const { data: pageData, total: count } = parseCollectionsListResponse(response);
         total = count;
         allCollections.push(...pageData);
         if (pageData.length === 0 || allCollections.length >= total) break;
@@ -523,18 +549,13 @@ export const CollectionsPage: React.FC = () => {
         limit: pageLimit,
         includeEntries: false,
       });
-      const pageData = Array.isArray(response) ? response : response?.data || [];
-      const total = Array.isArray(response)
-        ? pageData.length
-        : typeof response?.count === 'number'
-          ? response.count
-          : pageData.length;
+      const { data: pageData, total } = parseCollectionsListResponse(response);
       setCollections((previous) => (append ? [...previous, ...pageData] : pageData));
       setTotalCount(total);
       setHasMore(page * pageLimit < total);
       setCurrentPage(page);
-    } catch (error: any) {
-      if (error?.message !== 'Request cancelled') {
+    } catch (error: unknown) {
+      if (getErrorMessage(error) !== 'Request cancelled') {
         console.error('Error loading collections:', error);
       }
       if (!append) {
@@ -798,11 +819,12 @@ export const CollectionsPage: React.FC = () => {
       setSelectionMode(false);
       setSelectedIds([]);
       setIsActionMenuOpen(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setCollections(previousCollections);
+      const requestId = getErrorRequestId(error);
       toast.error(
-        error?.requestId
-          ? `Failed to ${action} collections (Request ID: ${error.requestId})`
+        requestId
+          ? `Failed to ${action} collections (Request ID: ${requestId})`
           : `Failed to ${action} collections`,
       );
     }

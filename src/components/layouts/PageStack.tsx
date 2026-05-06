@@ -4,6 +4,8 @@ import { CategorySpacer } from './CategorySpacer';
 import { MainContentTopSpacer } from './MainContentTopSpacer';
 import { Z_INDEX } from '@/constants/zIndex';
 import { LAYOUT_CLASSES } from '@/constants/layout';
+import { useAppChromeScroll } from '@/context/AppChromeScrollContext';
+import { twMerge } from 'tailwind-merge';
 
 interface PageStackProps {
   /**
@@ -55,6 +57,8 @@ export const PageStack: React.FC<PageStackProps> = ({
   mainContent,
   contentTopSpacerClassName,
 }) => {
+  const { narrowHeaderHidden } = useAppChromeScroll();
+
   // Sticky offset is STATIC. Previously this toggled between top-0 (with
   // safe-area padding + background + backdrop-blur + shadow) and top-14 based
   // on narrowHeaderHidden — that is a layout-mutating class swap on scroll and
@@ -69,7 +73,10 @@ export const PageStack: React.FC<PageStackProps> = ({
   // See src/context/AppChromeScrollContext.tsx for the full invariant.
   const categoryStickyClass =
     categoryToolbar != null
-      ? `sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER}`
+      ? twMerge(
+          `sticky ${LAYOUT_CLASSES.STICKY_BELOW_HEADER} transition-[transform,opacity] duration-300 ease-out will-change-transform`,
+          narrowHeaderHidden && 'pointer-events-none -translate-y-14 lg:-translate-y-16 opacity-0',
+        )
       : '';
 
   return (

@@ -9,6 +9,7 @@ import { adminTagsService } from '../services/adminTagsService';
 import { adminModerationService } from '../services/adminModerationService';
 import { adminFeedbackService } from '../services/adminFeedbackService';
 import { useAdminHeader } from '../layout/AdminLayout';
+import { getErrorMessage, isRequestCancelled } from '../utils/adminTypeGuards';
 
 interface DashboardMetrics {
   users: { total: number };
@@ -19,7 +20,16 @@ interface DashboardMetrics {
   feedback: { total: number };
 }
 
-const MetricCard = ({ label, value, subValue, icon, onClick, colorClass }: any) => (
+interface MetricCardProps {
+  label: string;
+  value: number;
+  subValue?: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  colorClass: string;
+}
+
+const MetricCard: React.FC<MetricCardProps> = ({ label, value, subValue, icon, onClick, colorClass }) => (
   <div 
     onClick={onClick}
     className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md transition-all group"
@@ -49,7 +59,7 @@ export const AdminDashboardPage: React.FC = () => {
       "Platform overview at a glance.",
       <button className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold shadow-sm hover:opacity-90">Download Report</button>
     );
-  }, []);
+  }, [setPageHeader]);
 
   const loadAll = useCallback(() => {
     let isCancelled = false;
@@ -76,17 +86,18 @@ export const AdminDashboardPage: React.FC = () => {
           });
           setErrorMessage(null);
         }
-      } catch (error: any) {
-        if (error.message !== 'Request cancelled' && !isCancelled) {
+      } catch (error: unknown) {
+        if (!isRequestCancelled(error) && !isCancelled) {
           // Show more specific error messages
           let errorMsg = "Could not load dashboard metrics. Please retry.";
+          const message = getErrorMessage(error, '');
           
-          if (error.message?.includes('connect to the server')) {
+          if (message.includes('connect to the server')) {
             errorMsg = "Backend server is not running. Please start the server on port 5000.";
-          } else if (error.message?.includes('session has expired')) {
+          } else if (message.includes('session has expired')) {
             errorMsg = "Your session has expired. Please sign in again.";
-          } else if (error.message) {
-            errorMsg = `Error: ${error.message}`;
+          } else if (message) {
+            errorMsg = `Error: ${message}`;
           }
           
           console.error('Dashboard load error:', error);

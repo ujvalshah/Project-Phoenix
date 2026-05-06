@@ -2,6 +2,32 @@ import { AdminReport } from '../types/admin';
 import { apiClient } from '@/services/apiClient';
 import { mapReportToAdminReport, RawReport } from './adminApiMappers';
 
+interface ApiDataEnvelope<T> {
+  data: T;
+}
+
+interface ReporterInfo {
+  id: string;
+  name: string;
+}
+
+interface SubmitReportPayload {
+  targetId: string;
+  targetType: 'nugget' | 'user' | 'collection';
+  reason: 'spam' | 'harassment' | 'misinformation' | 'copyright' | 'other';
+  description?: string;
+  reporter: ReporterInfo;
+  respondent?: ReporterInfo;
+}
+
+function hasDataEnvelope<T>(value: unknown): value is ApiDataEnvelope<T> {
+  return typeof value === 'object' && value !== null && 'data' in value;
+}
+
+function unwrapData<T>(response: T | ApiDataEnvelope<T>): T {
+  return hasDataEnvelope<T>(response) ? response.data : response;
+}
+
 class AdminModerationService {
   async listReports(filter?: 'open' | 'resolved' | 'dismissed', cancelKey?: string): Promise<AdminReport[]> {
     // Build query params - always send status, default to 'open'
@@ -58,8 +84,7 @@ class AdminModerationService {
       `/moderation/reports/${id}/resolve`,
       { actionReason: actionReason || undefined }
     );
-    // Handle both response formats: { data: RawReport } or RawReport
-    const report = (response as any).data || response as RawReport;
+    const report = unwrapData(response);
     return mapReportToAdminReport(report);
   }
 
@@ -68,8 +93,7 @@ class AdminModerationService {
       `/moderation/reports/${id}/dismiss`,
       { actionReason: actionReason || undefined }
     );
-    // Handle both response formats: { data: RawReport } or RawReport
-    const report = (response as any).data || response as RawReport;
+    const report = unwrapData(response);
     return mapReportToAdminReport(report);
   }
 
@@ -90,7 +114,7 @@ class AdminModerationService {
       'other': 'other'
     };
 
-    const payload: any = {
+    const payload: SubmitReportPayload = {
       targetId,
       targetType,
       reason: reasonMap[reason] || 'other',

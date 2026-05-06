@@ -146,17 +146,17 @@ export async function isPushSubscribed(): Promise<boolean> {
   return subscription !== null;
 }
 
-export async function getServerSubscriptionStatus(): Promise<{ hasSubscription: boolean; activeSubscriptions: number }> {
+export function getServerSubscriptionStatus(): Promise<{ hasSubscription: boolean; activeSubscriptions: number }> {
   return apiClient.get<{ hasSubscription: boolean; activeSubscriptions: number }>('/notifications/subscription-status');
 }
 
 // ── Preferences ──
 
-export async function getPreferences(): Promise<NotificationPreferences> {
+export function getPreferences(): Promise<NotificationPreferences> {
   return apiClient.get<NotificationPreferences>('/notifications/preferences');
 }
 
-export async function updatePreferences(
+export function updatePreferences(
   prefs: Partial<NotificationPreferences>
 ): Promise<NotificationPreferences> {
   return apiClient.put<NotificationPreferences>('/notifications/preferences', prefs);
@@ -164,10 +164,7 @@ export async function updatePreferences(
 
 // ── In-App Notifications ──
 
-export async function getNotifications(
-  page = 1,
-  limit = 20
-): Promise<PaginatedNotifications> {
+export function getNotifications(page = 1, limit = 20): Promise<PaginatedNotifications> {
   return apiClient.get<PaginatedNotifications>(
     `/notifications?page=${page}&limit=${limit}`
   );
@@ -225,6 +222,6 @@ export interface NotificationDiagnostics {
   }>;
 }
 
-export async function getNotificationDiagnostics(): Promise<NotificationDiagnostics> {
+export function getNotificationDiagnostics(): Promise<NotificationDiagnostics> {
   return apiClient.get<NotificationDiagnostics>('/notifications/admin/diagnostics');
 }

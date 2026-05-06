@@ -65,6 +65,7 @@ export function mapArticleToAdminNugget(article: Article, reportsCount: number =
   let authorId = 'unknown';
   let authorName = 'Unknown Author';
   let authorAvatar: string | undefined = undefined;
+  const articleAuthorFallback = article as { authorId?: string; authorName?: string };
   
   if (article.author && typeof article.author === 'object') {
     authorId = article.author.id || 'unknown';
@@ -73,13 +74,12 @@ export function mapArticleToAdminNugget(article: Article, reportsCount: number =
   } else {
     // Fallback: try to get authorId/authorName from article directly (backend stores these separately)
     // This handles edge cases where author object might not be properly set
-    const anyArticle = article as any;
-    if (anyArticle.authorId) authorId = anyArticle.authorId;
-    if (anyArticle.authorName) authorName = anyArticle.authorName;
+    if (articleAuthorFallback.authorId) authorId = articleAuthorFallback.authorId;
+    if (articleAuthorFallback.authorName) authorName = articleAuthorFallback.authorName;
     
     // Log warning only in development and only when author is truly missing
     // This prevents spam but alerts developers to data issues
-    if (process.env.NODE_ENV === 'development' && !anyArticle.authorId && !anyArticle.authorName) {
+    if (process.env.NODE_ENV === 'development' && !articleAuthorFallback.authorId && !articleAuthorFallback.authorName) {
       console.warn('mapArticleToAdminNugget: article.author is missing or invalid, using defaults', { articleId: article.id });
     }
   }

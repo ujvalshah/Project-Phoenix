@@ -16,14 +16,14 @@ export const aiService = {
   /**
    * @deprecated AI summarization has been removed
    */
-  async summarizeText(_text: string): Promise<SummaryResult> {
-    throw new Error('AI summarization has been permanently removed. Please create articles manually.');
+  summarizeText(_text: string): Promise<SummaryResult> {
+    return Promise.reject(new Error('AI summarization has been permanently removed. Please create articles manually.'));
   },
 
   /**
    * @deprecated AI takeaways generation has been removed
    */
-  async generateTakeaways(_text: string): Promise<string> {
-    throw new Error('AI takeaways generation has been permanently removed. Please create articles manually.');
+  generateTakeaways(_text: string): Promise<string> {
+    return Promise.reject(new Error('AI takeaways generation has been permanently removed. Please create articles manually.'));
   }
 };

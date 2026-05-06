@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authService } from '@/services/authService';
 import { Mail, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
+import { mapAuthError } from '@/utils/errorMessages';
 
 export const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -16,9 +17,9 @@ export const ForgotPasswordPage: React.FC = () => {
     try {
       await authService.requestPasswordReset(email);
       setStatus('success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatus('error');
-      setErrorMessage(err.message || 'Something went wrong. Please try again.');
+      setErrorMessage(mapAuthError(err, 'password_reset'));
     }
   };
 

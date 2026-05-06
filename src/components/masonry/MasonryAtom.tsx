@@ -138,9 +138,13 @@ const MasonryAtomInner: React.FC<MasonryAtomProps> = ({
       );
       toast.success('Report submitted successfully');
       setShowReportModal(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to submit report:', error);
-      const status = error?.response?.status;
+      const maybeErrorWithResponse = error as { response?: { status?: unknown } } | null;
+      const status =
+        typeof maybeErrorWithResponse?.response?.status === 'number'
+          ? maybeErrorWithResponse.response.status
+          : undefined;
       let errorMessage: string;
       if (status === 400) {
         errorMessage = 'Invalid report data. Please check your input.';
@@ -148,7 +152,7 @@ const MasonryAtomInner: React.FC<MasonryAtomProps> = ({
         errorMessage = 'Too many reports. Please wait a moment before trying again.';
       } else if (status === 403) {
         errorMessage = 'You do not have permission to submit this report.';
-      } else if (status >= 500) {
+      } else if (typeof status === 'number' && status >= 500) {
         errorMessage = 'Server error. Please try again later.';
       } else {
         errorMessage = 'Failed to submit report. Please try again.';
@@ -165,7 +169,7 @@ const MasonryAtomInner: React.FC<MasonryAtomProps> = ({
         await invalidateArticleListCaches(queryClient);
         await queryClient.invalidateQueries({ queryKey: articleKeys.detail(article.id), exact: true });
         toast.success('Nugget deleted');
-      } catch (error) {
+      } catch {
         toast.error('Failed to delete nugget');
       }
     }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Check, Star } from 'lucide-react';
+import { X, Star } from 'lucide-react';
 import { Image } from '@/components/Image';
 import { EmbeddedMedia } from '@/components/embeds/EmbeddedMedia';
 import type { MediaType, PreviewMetadata } from '@/types';

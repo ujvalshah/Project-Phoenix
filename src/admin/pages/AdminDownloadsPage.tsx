@@ -12,7 +12,7 @@ export const AdminDownloadsPage: React.FC = () => {
 
   useEffect(() => {
     setPageHeader("Data Export", "Create custom reports and download data.");
-  }, []);
+  }, [setPageHeader]);
 
   const userCols = ['id', 'name', 'email', 'role', 'status', 'joinedAt', 'nuggets_count'];
   const nuggetCols = ['id', 'title', 'author', 'visibility', 'createdAt', 'reports_count'];

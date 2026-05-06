@@ -141,7 +141,8 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const shouldShowHeader = showHeader ?? isModal;
 
   // Author resolution: check both transformed (author.name) and raw DB (authorName) shapes
-  const rawAuthorName = article?.author?.name || (article as any)?.authorName;
+  const articleWithLegacyAuthor = article as Article & { authorName?: string };
+  const rawAuthorName = article?.author?.name || articleWithLegacyAuthor.authorName;
   const authorName = article?.displayAuthor?.name
     || (rawAuthorName && rawAuthorName !== 'Unknown' ? rawAuthorName : '')
     || article?.media?.previewMetadata?.authorName
@@ -264,7 +265,7 @@ export const ArticleDetail: React.FC<ArticleDetailProps> = ({
     });
   }, [classifiedMedia, article.images]);
 
-  const { primaryMedia, supportingMedia } = classifiedMedia;
+  const { primaryMedia } = classifiedMedia;
 
   const mediaSessionKey = `${article.id}:${drawerMediaItems.length}`;
 

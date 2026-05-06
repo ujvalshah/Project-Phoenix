@@ -6,6 +6,7 @@ import { Input } from '../UI/Input';
 import type { SignupPayload } from '@/types/auth';
 import { authService } from '@/services/authService';
 import { ModalShell } from '@/components/UI/ModalShell';
+import { mapAuthError } from '@/utils/errorMessages';
 
 // Simple validation helpers (minimal client-side checks)
 const validateEmail = (email: string): string | null => {
@@ -148,12 +149,9 @@ export const AuthModal: React.FC = () => {
             await authService.requestPasswordReset(email);
             setForgotSubmitSuccess(true);
         }
-    } catch (err: any) {
-        const safeMessage =
-          typeof err?.message === 'string'
-            ? err.message
-            : (typeof err === 'string' ? err : 'An error occurred');
-        setError(safeMessage);
+    } catch (err: unknown) {
+        const context = view === 'forgot' ? 'password_reset' : view;
+        setError(mapAuthError(err, context));
     } finally {
         setIsLoading(false);
     }

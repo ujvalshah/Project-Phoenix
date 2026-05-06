@@ -119,23 +119,26 @@ function isInNegativeCache(videoId: string): boolean {
  * @param url - YouTube video URL
  * @returns Promise<YouTubeMetadataResult | null> - Metadata or null if failed
  */
-export async function fetchYouTubeMetadata(url: string): Promise<YouTubeMetadataResult | null> {
+export function fetchYouTubeMetadata(url: string): Promise<YouTubeMetadataResult | null> {
   const videoId = extractYouTubeVideoId(url);
-  if (!videoId) return null;
+  if (!videoId) return Promise.resolve(null);
   
   // Check negative cache first (failed recently)
   if (isInNegativeCache(videoId)) {
-    return null;
+    return Promise.resolve(null);
   }
   
   // Check success cache
   if (titleCache.has(videoId)) {
-    const title = titleCache.get(videoId)!;
-    return {
+    const title = titleCache.get(videoId);
+    if (title === undefined) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve({
       title,
       fetchedAt: new Date().toISOString(),
-      source: 'youtube-oembed'
-    };
+      source: 'youtube-oembed',
+    });
   }
   
   // Check in-flight requests (deduplication)

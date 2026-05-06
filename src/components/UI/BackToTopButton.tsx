@@ -7,7 +7,6 @@ export const BackToTopButton: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
   const lastVisibleRef = useRef(false);
   const location = useLocation();
-  const isHomeFeedRoute = location.pathname === '/';
   const isAdminRoute = location.pathname.startsWith('/admin');
   const bottomOffsetClass = isAdminRoute
     ? 'bottom-20 md:bottom-24'
@@ -33,7 +32,7 @@ export const BackToTopButton: React.FC = () => {
   const scrollToTop = () => {
     window.scrollTo({
       top: 0,
-      behavior: isHomeFeedRoute ? 'instant' : 'smooth',
+      behavior: 'smooth',
     });
   };
 

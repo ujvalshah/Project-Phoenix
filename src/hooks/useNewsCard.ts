@@ -8,6 +8,7 @@ import { queryClient } from '@/queryClient';
 import { hasValidAuthor, logError, prepareArticleForNewsCard } from '@/utils/errorHandler';
 import { getAllImageUrls, getPersistedImageUrls, classifyArticleMedia } from '@/utils/mediaClassifier';
 import { extractYouTubeVideoId } from '@/utils/youtubeUtils';
+import { getErrorResponseStatus } from '@/utils/runtimeError';
 import { useVideoPlayerActions } from '@/context/VideoPlayerContext';
 import { useAuthSelector } from '@/context/AuthContext';
 import { articleKeys, invalidateArticleListCaches, patchArticleAcrossCaches } from '@/services/queryKeys/articleKeys';
@@ -503,27 +504,11 @@ export const useNewsCard = ({
   };
 
   const handleYouTubeTimestampClick = (videoId: string, timestamp: number, originalUrl: string) => {
-    if (import.meta.env.DEV) {
-      console.log('[handleYouTubeTimestampClick] Called:', { videoId, timestamp, originalUrl });
-    }
-    
     // Get the YouTube video URL from the article
     const youtubeUrl = primaryMedia?.url || article.media?.url || article.video;
     
-    if (import.meta.env.DEV) {
-      console.log('[handleYouTubeTimestampClick] Article YouTube URL:', {
-        youtubeUrl,
-        primaryMediaType: primaryMedia?.type,
-        articleMediaType: article.media?.type,
-        articleVideo: article.video,
-      });
-    }
-    
     // If no YouTube URL found in article, can't expand inline
     if (!youtubeUrl) {
-      if (import.meta.env.DEV) {
-        console.log('[handleYouTubeTimestampClick] No YouTube URL found in article');
-      }
       // If originalUrl is a valid YouTube URL, open it in new tab
       if (originalUrl && (originalUrl.includes('youtube.com') || originalUrl.includes('youtu.be'))) {
         window.open(originalUrl, '_blank', 'noopener,noreferrer');
@@ -533,19 +518,8 @@ export const useNewsCard = ({
     
     const articleVideoId = extractYouTubeVideoId(youtubeUrl);
     
-    if (import.meta.env.DEV) {
-      console.log('[handleYouTubeTimestampClick] Video ID comparison:', {
-        clickedVideoId: videoId || '(empty - plain text timestamp)',
-        articleVideoId,
-        match: !videoId || articleVideoId === videoId,
-      });
-    }
-    
     // If videoId is empty (plain text timestamp), or if it matches the article's video
     if (!videoId || articleVideoId === videoId) {
-      if (import.meta.env.DEV) {
-        console.log('[handleYouTubeTimestampClick] Opening mini player with timestamp:', timestamp);
-      }
       const videoTitle = primaryMedia?.previewMetadata?.title || article.title || '';
       playVideo({
         videoUrl: youtubeUrl,
@@ -558,9 +532,6 @@ export const useNewsCard = ({
     }
     
     // If video doesn't match, fallback to opening link in new tab
-    if (import.meta.env.DEV) {
-      console.log('[handleYouTubeTimestampClick] Video mismatch, opening in new tab');
-    }
     if (originalUrl) {
       window.open(originalUrl, '_blank', 'noopener,noreferrer');
     }
@@ -592,13 +563,14 @@ export const useNewsCard = ({
       
       toast.success(`Nugget is now ${newVisibility}`);
       setShowMenu(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Rollback on error
       patchArticleAcrossCaches(queryClient, article.id, () => previousArticle);
-      
-      const errorMessage = error?.response?.status === 403
+
+      const status = getErrorResponseStatus(error);
+      const errorMessage = status === 403
         ? 'You can only edit your own nuggets'
-        : error?.response?.status === 404
+        : status === 404
         ? 'Nugget not found'
         : 'Failed to update visibility';
       

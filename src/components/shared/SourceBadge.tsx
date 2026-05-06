@@ -49,10 +49,10 @@ export function extractDomain(url: string | undefined | null): string | null {
     }
 
     return hostname || null;
-  } catch (error) {
+  } catch {
     // If URL parsing fails, try simple string extraction
     try {
-      let cleaned = url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/^\/\//, '');
+      const cleaned = url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/^\/\//, '');
       const parts = cleaned.split('/');
       const potentialDomain = parts[0];
       

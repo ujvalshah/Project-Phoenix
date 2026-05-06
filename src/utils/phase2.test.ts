@@ -3,7 +3,7 @@
  * Tests the full tag ID system end-to-end
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { tagsInclude, removeTag } from './tagUtils';
 
 describe('Phase 2: Tag ID System Integration', () => {

@@ -2,7 +2,6 @@ import React from 'react';
 import { NuggetMedia } from '@/types';
 import { Image } from '@/components/Image';
 import { DocumentPreview, DocumentType } from './DocumentPreview';
-import { ExternalLink } from 'lucide-react';
 
 interface EmbeddedMediaProps {
   media: NuggetMedia;

@@ -10,6 +10,23 @@ import { normalizeSearchQuery } from '@/utils/searchQuery';
 
 const STORAGE_KEY = 'phoenix_filters';
 
+/** URL param keys owned by the filter system (stable module reference for URL merge logic). */
+const FILTER_PARAM_KEYS = new Set([
+  'q',
+  'cat',
+  'tag',
+  'sort',
+  'favorites',
+  'unread',
+  'fmt',
+  'time',
+  'col',
+  'ft',
+  'dt',
+  'st',
+  'stream',
+]);
+
 const DEFAULTS: Required<SerializableFilterState> = {
   q: '',
   categories: [],
@@ -302,7 +319,6 @@ export function useFilterState(): UseFilterStateReturn {
   // ---- URL sync (write) ----
   // CRITICAL: Must preserve URL params that belong to other components (e.g. "expanded"
   // used by ArticleGrid's drawer). Only touch params that belong to the filter system.
-  const FILTER_PARAM_KEYS = new Set(['q', 'cat', 'tag', 'sort', 'favorites', 'unread', 'fmt', 'time', 'col', 'ft', 'dt', 'st', 'stream']);
 
   const syncRef = useRef(false);
   useEffect(() => {

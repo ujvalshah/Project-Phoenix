@@ -20,7 +20,7 @@ export function UrlInput({
   onRemoveUrl,
   onUrlPaste,
   onTouchedChange,
-  onErrorChange,
+  onErrorChange: _onErrorChange,
 }: UrlInputProps) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onUrlInputChange(e.target.value);

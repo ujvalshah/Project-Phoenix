@@ -81,7 +81,7 @@ export const FilterScrollRow: React.FC<FilterScrollRowProps> = ({ categories, se
   }, []);
 
   // Set initial tabindex=0 on the first button (roving tabindex entry point)
-  const handleFocus = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+  const handleFocus = useCallback((_e: React.FocusEvent<HTMLDivElement>) => {
     const container = scrollContainerRef.current;
     if (!container) return;
 

@@ -15,14 +15,14 @@ interface KeyStatus {
 /**
  * Fetch key status from the backend
  */
-const fetchKeyStatus = async (): Promise<KeyStatus> => {
+const fetchKeyStatus = (): Promise<KeyStatus> => {
   return apiClient.get<KeyStatus>('/ai/admin/key-status');
 };
 
 /**
  * Reset all exhausted keys
  */
-const resetKeys = async (): Promise<{ success: boolean; message: string; keyStatus: KeyStatus }> => {
+const resetKeys = (): Promise<{ success: boolean; message: string; keyStatus: KeyStatus }> => {
   return apiClient.post<{ success: boolean; message: string; keyStatus: KeyStatus }>(
     '/ai/admin/reset-keys',
     {}

@@ -12,7 +12,7 @@ import type { Nugget } from '@/types/nugget';
 /**
  * Transform backend Nugget to frontend NuggetMedia format
  */
-function transformNuggetToMedia(nugget: Nugget, url: string): NuggetMedia {
+function transformNuggetToMedia(nugget: Nugget, _url: string): NuggetMedia {
   const previewMetadata: PreviewMetadata = {
     url: nugget.url,
     title: nugget.title,

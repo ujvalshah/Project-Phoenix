@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Tags, Lightbulb, Pencil, Trash2, Plus, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
@@ -58,7 +58,7 @@ export const AdminTaggingPage: React.FC = () => {
   } | null>(null);
   const [isCoverageLoading, setIsCoverageLoading] = useState(false);
 
-  const fetchCoverage = async () => {
+  const fetchCoverage = useCallback(async () => {
     setIsCoverageLoading(true);
     try {
       const data = await apiClient.get<typeof coverage>('/categories/taxonomy/coverage');
@@ -68,10 +68,12 @@ export const AdminTaggingPage: React.FC = () => {
     } finally {
       setIsCoverageLoading(false);
     }
-  };
+  }, [toast]);
 
   // Fetch coverage on mount
-  useEffect(() => { fetchCoverage(); }, []);
+  useEffect(() => {
+    void fetchCoverage();
+  }, [fetchCoverage]);
 
   const refreshTaxonomy = () => {
     queryClient.invalidateQueries({ queryKey: ['tagTaxonomy'] });
@@ -167,7 +169,7 @@ export const AdminTaggingPage: React.FC = () => {
       'Bulk Tag Management',
       'Export nuggets to Excel, review/edit tags, and re-import for bulk classification.'
     );
-  }, []);
+  }, [setPageHeader]);
 
   const handleDownload = async () => {
     setIsDownloading(true);

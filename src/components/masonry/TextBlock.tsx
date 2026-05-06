@@ -19,7 +19,7 @@ interface TextBlockProps {
  */
 export const TextBlock: React.FC<TextBlockProps> = ({
   article,
-  onCategoryClick,
+  onCategoryClick: _onCategoryClick,
 }) => {
   const title = article.title || '';
   const content = article.excerpt || article.content || '';

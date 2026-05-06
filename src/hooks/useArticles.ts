@@ -41,7 +41,7 @@ export const useArticles = ({
 }: UseArticlesOptions): UseArticlesResult => {
   const query = useQuery<PaginatedArticlesResponse>({
     queryKey: ['articles', 'discover', searchQuery, selectedCategories, selectedTag, sortOrder, limit, page],
-    queryFn: async () => {
+    queryFn: () => {
       // Backend pagination - categories/tag filters ignored (backend limitation)
       const filters: FilterState = {
         query: searchQuery,

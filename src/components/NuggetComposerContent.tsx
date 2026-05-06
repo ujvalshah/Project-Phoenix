@@ -3,13 +3,13 @@ import React, {
   useEffect,
   useRef,
   useMemo,
+  useCallback,
   startTransition,
   Suspense,
   lazy,
   forwardRef,
   useImperativeHandle,
   useLayoutEffect,
-  useCallback,
 } from 'react';
 // useNavigate removed - not currently used in this component
 import { X, Loader2, Zap } from 'lucide-react';
@@ -27,6 +27,10 @@ import { unfurlUrl } from '@/services/unfurlService';
 import type { NuggetMedia, MediaType } from '@/types';
 import { formatApiError, getUserFriendlyMessage, logError } from '@/utils/errorHandler';
 import { processNuggetUrl, detectUrlChanges, getPrimaryUrl } from '@/utils/processNuggetUrl';
+import {
+  dedupeUrlsByNormalized,
+  toFinalValidatedUrl,
+} from '@/utils/composerUrlNormalization';
 import { useMediaUpload } from '@/hooks/useMediaUpload';
 import { SourceSelector } from './shared/SourceSelector';
 import { SourceBadge } from './shared/SourceBadge';
@@ -34,16 +38,18 @@ import { DimensionTagPicker } from './CreateNuggetModal/DimensionTagPicker';
 import { CollectionSelector } from './CreateNuggetModal/CollectionSelector';
 import { UrlInput } from './CreateNuggetModal/UrlInput';
 import { AttachmentManager, FileAttachment } from './CreateNuggetModal/AttachmentManager';
-import { MasonryMediaToggle } from './CreateNuggetModal/MasonryMediaToggle';
 import type { UnifiedMediaItem } from './CreateNuggetModal/UnifiedMediaManager';
 import { ExternalLinksSection } from './CreateNuggetModal/ExternalLinksSection';
 import { LayoutVisibilitySection } from './CreateNuggetModal/LayoutVisibilitySection';
 import { MasonryMediaItem } from '@/utils/masonryMediaHelper';
 import { classifyArticleMedia } from '@/utils/mediaClassifier';
 import type { Article, ExternalLink, LayoutVisibility } from '@/types';
-import { DEFAULT_LAYOUT_VISIBILITY } from '@/types';
 import { normalizeArticleInput } from '@/shared/articleNormalization/normalizeArticleInput';
 import { buildDuplicatePrefill } from '@/shared/articleNormalization/duplicatePrefill';
+import type {
+  ComposerUploadDoc,
+  EnrichMediaItemInput,
+} from '@/shared/articleNormalization/normalizeArticleInput';
 import { useImageManager } from '@/hooks/useImageManager';
 import { isFeatureEnabled } from '@/constants/featureFlags';
 import { validateBeforeSave } from '@/shared/articleNormalization/preSaveValidation';
@@ -72,11 +78,51 @@ const unifiedMediaManagerFallback = (
   </div>
 );
 
-function devLog(...args: unknown[]): void {
-  if (import.meta.env.DEV) {
-    console.log(...args);
-  }
+/** DEV-only trace hook points — intentionally silent (no console) for lint/prod cleanliness. */
+function devLog(..._args: unknown[]): void {}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (isRecord(error) && typeof error.message === 'string' && error.message) return error.message;
+  return fallback;
+}
+
+function getErrorList(error: unknown): unknown[] {
+  if (!isRecord(error) || !Array.isArray(error.errors)) return [];
+  return error.errors;
+}
+
+function hasCustomCreatedAtFlag(value: unknown): value is { isCustomCreatedAt: true } {
+  return isRecord(value) && value.isCustomCreatedAt === true;
+}
+
+type ComposerUploadedDoc = ComposerUploadDoc & { size: string; title: string };
+
+const toNuggetMedia = (mediaItem: EnrichMediaItemInput): NuggetMedia => ({
+  type: mediaItem.type,
+  url: mediaItem.url,
+  thumbnail_url:
+    ('thumbnail_url' in mediaItem && typeof mediaItem.thumbnail_url === 'string'
+      ? mediaItem.thumbnail_url
+      : undefined) ??
+    ('thumbnail' in mediaItem && typeof mediaItem.thumbnail === 'string'
+      ? mediaItem.thumbnail
+      : undefined),
+  aspect_ratio: mediaItem.aspect_ratio,
+  filename: 'filename' in mediaItem ? mediaItem.filename : undefined,
+  previewMetadata: mediaItem.previewMetadata,
+  showInMasonry: mediaItem.showInMasonry,
+  showInGrid: mediaItem.showInGrid,
+  masonryTitle: mediaItem.masonryTitle,
+  position: mediaItem.position,
+  order: mediaItem.order,
+  allowMetadataOverride:
+    'allowMetadataOverride' in mediaItem ? mediaItem.allowMetadataOverride : undefined,
+});
 
 /** When Market Pulse is disabled, editor cannot target pulse/both streams (API + UX stay on standard). */
 function clampEditorContentStream(
@@ -196,7 +242,10 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
     [mode, prefillData]
   );
   const duplicatePrefillArticle = duplicatePrefillPayload?.article;
-  const duplicatePrefillUrls = duplicatePrefillPayload?.sourceUrls || [];
+  const duplicatePrefillUrls = useMemo(
+    () => duplicatePrefillPayload?.sourceUrls ?? [],
+    [duplicatePrefillPayload],
+  );
 
   const resolvedContentDraft = useMemo<ContentDraft>(
     () =>
@@ -225,7 +274,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
 
   // Content State
   const [_isTitleUserEdited, setIsTitleUserEdited] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars -- PHASE 6: Safeguard flag for future use
-  const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null); // PHASE 3: Metadata suggests but never mutates
+  const [, setSuggestedTitle] = useState<string | null>(null); // PHASE 3: Metadata suggests but never mutates
   const [content, setContent] = useState('');
   const [urls, setUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState('');
@@ -330,7 +379,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
     return () => {
       cancelAnimationFrame(id);
     };
-  }, [isOpen]);
+  }, [isOpen, modalRef]);
   
   // Data Source State - Now using React Query for caching and automatic refetch
   // Note: queryClient is imported from @/queryClient (singleton instance)
@@ -356,7 +405,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
     if (isOpen) {
       previousActiveElementRef.current = document.activeElement as HTMLElement;
     }
-  }, [isOpen]);
+  }, [isOpen, modalRef]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -378,7 +427,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
           pickComposerInitialTagIds(composerHydrationV2, resolvedContentDraft, articleToInitialize.tagIds),
         );
         // Initialize customCreatedAt if article has isCustomCreatedAt flag (admin only)
-        if (mode === 'edit' && isAdmin && (articleToInitialize as any).isCustomCreatedAt && articleToInitialize.publishedAt) {
+        if (mode === 'edit' && isAdmin && hasCustomCreatedAtFlag(articleToInitialize) && articleToInitialize.publishedAt) {
           // Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
           const date = new Date(articleToInitialize.publishedAt);
           const year = date.getFullYear();
@@ -451,10 +500,10 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
         // Composer v2: defer heavy image graph hydration so shell + ContentDraft fields commit first.
         if (composerHydrationV2) {
           startTransition(() => {
-            imageManager.syncFromArticle(articleToInitialize);
+            syncFromArticleRef.current(articleToInitialize);
           });
         } else {
-          imageManager.syncFromArticle(articleToInitialize);
+          syncFromArticleRef.current(articleToInitialize);
         }
         
         initializedFromDataRef.current = initializationKey;
@@ -626,7 +675,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       modal.removeEventListener('keydown', handleTab);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isOpen]);
+  }, [isOpen, modalRef]);
 
   // loadData function removed - now using React Query hooks (useAllCollections)
   // which provide automatic caching, background refetch, and stale-while-revalidate pattern.
@@ -847,30 +896,8 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       // Parse multiple URLs
       const parsedUrls = parseMultipleUrls(trimmed);
       if (parsedUrls.length > 0) {
-        // CRITICAL FIX: Deduplicate URLs before adding (normalized comparison)
-        const normalizedUrls = urls.map(u => {
-          try {
-            let normalized = u.toLowerCase().trim();
-            if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-              normalized = `https://${normalized}`;
-            }
-            return normalized;
-          } catch {
-            return u.toLowerCase().trim();
-          }
-        });
-        
-        const uniqueUrls = parsedUrls.filter(url => {
-          try {
-            let normalized = url.toLowerCase().trim();
-            if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-              normalized = `https://${normalized}`;
-            }
-            return !normalizedUrls.includes(normalized);
-          } catch {
-            return !urls.includes(url); // Fallback to exact match
-          }
-        });
+        // Deduplicate URLs by normalized comparison.
+        const uniqueUrls = dedupeUrlsByNormalized(parsedUrls, urls);
         
         if (uniqueUrls.length > 0) {
           setUrls([...urls, ...uniqueUrls]);
@@ -893,58 +920,13 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
     } else {
       // Single URL - CRITICAL FIX: Prevent duplicates
       try {
-        // Add protocol if missing
-        let urlToValidate = trimmed;
-        if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-          urlToValidate = `https://${trimmed}`;
-        }
-        
-        new URL(urlToValidate);
-        const finalUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://') 
-          ? trimmed 
-          : urlToValidate;
-        
-        // Check for duplicates (case-insensitive URL comparison)
-        // Also check against existing images in edit mode
-        const normalizedUrls = urls.map(u => {
-          try {
-            let normalized = u.toLowerCase().trim();
-            if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-              normalized = `https://${normalized}`;
-            }
-            return normalized;
-          } catch {
-            return u.toLowerCase().trim();
-          }
+        const finalUrl = toFinalValidatedUrl(trimmed);
+        const existingImages = mode === 'edit' && initialData ? (initialData.images || []) : [];
+        const uniqueUrls = dedupeUrlsByNormalized([finalUrl], urls, {
+          extraExistingUrls: existingImages,
         });
-        
-        // In edit mode, also check against existing images
-        const normalizedExistingImages = mode === 'edit' && initialData
-          ? (initialData.images || []).map((img: string) => {
-              try {
-                let normalized = img.toLowerCase().trim();
-                if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-                  normalized = `https://${normalized}`;
-                }
-                return normalized;
-              } catch {
-                return img.toLowerCase().trim();
-              }
-            })
-          : [];
-        
-        const normalizedFinalUrl = (() => {
-          let normalized = finalUrl.toLowerCase().trim();
-          if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-            normalized = `https://${normalized}`;
-          }
-          return normalized;
-        })();
-        
-        const isDuplicate = normalizedUrls.includes(normalizedFinalUrl) || 
-                           normalizedExistingImages.includes(normalizedFinalUrl);
-        
-        if (!isDuplicate) {
+
+        if (uniqueUrls.length > 0) {
           setUrls([...urls, finalUrl]);
           setUrlInput('');
           if (!contentTouched) setContentTouched(true);
@@ -971,20 +953,9 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       e.preventDefault();
       const parsedUrls = parseMultipleUrls(pastedText);
       if (parsedUrls.length > 0) {
-        // CRITICAL FIX: Deduplicate URLs before adding
-        const normalizedUrls = urls.map(u => u.toLowerCase().trim());
-        const uniqueUrls = parsedUrls.filter(url => {
-          try {
-            // Normalize URL for comparison
-            let urlToCheck = url.trim();
-            if (!urlToCheck.startsWith('http://') && !urlToCheck.startsWith('https://')) {
-              urlToCheck = `https://${urlToCheck}`;
-            }
-            const normalized = urlToCheck.toLowerCase().trim();
-            return !normalizedUrls.includes(normalized);
-          } catch {
-            return true; // Invalid URL, let addUrl handle it
-          }
+        // Keep paste-path duplicate semantics (existing list compares without protocol coercion).
+        const uniqueUrls = dedupeUrlsByNormalized(parsedUrls, urls, {
+          existingOptions: { addProtocolIfMissing: false },
         });
         
         if (uniqueUrls.length > 0) {
@@ -1049,27 +1020,27 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       queryClient.invalidateQueries({ queryKey: articleKeys.detail(initialData.id), exact: true });
       queryClient.invalidateQueries({ queryKey: articleKeys.legacyDetail(initialData.id), exact: true });
       await invalidateArticleListCaches(queryClient);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[CreateNuggetModal] Failed to delete image:', error);
       // Rollback via imageManager
       imageManager.rollbackDeletion(imageUrl);
-      toast.error(error.message || 'Failed to delete image. Please try again.');
+      toast.error(getErrorMessage(error, 'Failed to delete image. Please try again.'));
     }
   };
 
   // addCategory and toggleCollection are now handled by TagSelector and CollectionSelector components
 
   // Field-level validation functions
-  const validateContent = (): string | null => {
+  const validateContent = useCallback((): string | null => {
     const hasContent = content.trim() || title.trim();
     const hasUrl = urls.length > 0;
     const hasAttachment = attachments.length > 0;
-    
+
     if (!hasContent && !hasUrl && !hasAttachment) {
       return "Please add some content, a URL, or an attachment to create a nugget.";
     }
     return null;
-  };
+  }, [content, title, urls, attachments]);
 
   // Validate content when relevant fields change (if touched)
   useEffect(() => {
@@ -1077,7 +1048,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
       const error = validateContent();
       setContentError(error);
     }
-  }, [content, title, urls, attachments, contentTouched]);
+  }, [content, title, urls, attachments, contentTouched, validateContent]);
 
   // Cleanup paste batch timeout on unmount
   useEffect(() => {
@@ -1157,9 +1128,9 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
                           attachment.isUploading = false;
                           console.error('[CreateNuggetModal] Image upload failed:', mediaUpload.error);
                       }
-                  } catch (uploadError: any) {
+                  } catch (uploadError: unknown) {
                       console.error('[CreateNuggetModal] Image upload error:', uploadError);
-                      attachment.uploadError = uploadError.message || 'Upload failed';
+                      attachment.uploadError = getErrorMessage(uploadError, 'Upload failed');
                       attachment.isUploading = false;
                   }
               }
@@ -1310,62 +1281,63 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
    * 🔧 ROOT CAUSE FIX: For image URLs, always create minimal previewMetadata even if unfurl fails
    * This ensures items marked for Masonry always have previewMetadata (required for rendering)
    */
-  const enrichMediaItemIfNeeded = async (mediaItem: any): Promise<any> => {
+  const enrichMediaItemIfNeeded = async (mediaItem: EnrichMediaItemInput): Promise<NuggetMedia> => {
+    const baseMedia = toNuggetMedia(mediaItem);
+
     // If previewMetadata already exists, return unchanged
-    if (mediaItem.previewMetadata) {
-      return mediaItem;
+    if (baseMedia.previewMetadata) {
+      return baseMedia;
     }
     
     // Only enrich if URL exists
-    if (!mediaItem.url) {
-      return mediaItem;
+    if (!baseMedia.url) {
+      return baseMedia;
     }
     
     // Try to enrich via unfurl API
     try {
-      const enrichedMetadata = await unfurlUrl(mediaItem.url);
+      const enrichedMetadata = await unfurlUrl(baseMedia.url);
       if (enrichedMetadata && enrichedMetadata.previewMetadata) {
         return {
-          ...mediaItem,
+          ...baseMedia,
           previewMetadata: enrichedMetadata.previewMetadata,
           // Preserve type if already set, otherwise use enriched type
-          type: mediaItem.type || enrichedMetadata.type,
-          // Preserve thumbnail if already set (handle both thumbnail and thumbnail_url), otherwise use enriched thumbnail
-          thumbnail: mediaItem.thumbnail || enrichedMetadata.thumbnail_url,
-          thumbnail_url: mediaItem.thumbnail_url || enrichedMetadata.thumbnail_url,
-          aspect_ratio: mediaItem.aspect_ratio || enrichedMetadata.aspect_ratio,
+          type: baseMedia.type || enrichedMetadata.type,
+          // Preserve thumbnail_url if already set, otherwise use enriched thumbnail
+          thumbnail_url: baseMedia.thumbnail_url || enrichedMetadata.thumbnail_url,
+          aspect_ratio: baseMedia.aspect_ratio || enrichedMetadata.aspect_ratio,
         };
       }
     } catch (error) {
-      console.warn(`[CreateNuggetModal] Failed to enrich media item ${mediaItem.url}:`, error);
+      console.warn(`[CreateNuggetModal] Failed to enrich media item ${baseMedia.url}:`, error);
     }
     
     // 🔧 ROOT CAUSE FIX: If enrichment failed but this is an image URL, create minimal previewMetadata
     // This ensures items marked for Masonry always have previewMetadata (required for rendering)
     // CRITICAL: Only create minimal metadata for image types to avoid polluting non-image URLs
-    const isImageType = mediaItem.type === 'image' || 
-                        (mediaItem.url && (mediaItem.url.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i) || 
-                                          mediaItem.url.includes('cloudinary.com') ||
-                                          mediaItem.url.includes('images.ctfassets.net')));
+    const isImageType = baseMedia.type === 'image' || 
+                        (baseMedia.url && (baseMedia.url.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i) || 
+                                          baseMedia.url.includes('cloudinary.com') ||
+                                          baseMedia.url.includes('images.ctfassets.net')));
     
     if (isImageType) {
       const minimalMetadata = {
-        url: mediaItem.url,
-        imageUrl: mediaItem.url, // For images, imageUrl is the same as url
+        url: baseMedia.url,
+        imageUrl: baseMedia.url, // For images, imageUrl is the same as url
         mediaType: 'image',
       };
       
       return {
-        ...mediaItem,
+        ...baseMedia,
         previewMetadata: minimalMetadata,
         // Ensure type is set
-        type: mediaItem.type || 'image',
+        type: baseMedia.type || 'image',
       };
     }
     
     // For non-image URLs where enrichment failed, return unchanged
     // (They might not need previewMetadata if not marked for Masonry)
-    return mediaItem;
+    return baseMedia;
   };
 
   // Handle Masonry tile title change
@@ -1871,7 +1843,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
                 hasSupportingMedia: updatePayload.supportingMedia !== undefined,
                 imagesCount: updatePayload.images?.length || 0,
                 // DEBUG: Show actual supportingMedia order
-                supportingMediaOrder: updatePayload.supportingMedia?.map((m: any) => m.url?.slice(-30)),
+                supportingMediaOrder: updatePayload.supportingMedia?.map((mediaItem) => mediaItem.url?.slice(-30)),
             });
             
             // Preserve primaryUrl for regression safeguard check
@@ -1910,7 +1882,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
             devLog('[EDIT RESULT] Backend returned article:', {
                 hasSupportingMedia: !!updatedArticle.supportingMedia,
                 supportingMediaCount: updatedArticle.supportingMedia?.length || 0,
-                supportingMediaOrder: updatedArticle.supportingMedia?.map((m: any) => m.url?.slice(-30)),
+                supportingMediaOrder: updatedArticle.supportingMedia?.map((mediaItem) => mediaItem.url?.slice(-30)),
             });
             
             // CRITICAL: Invalidate and refresh all query caches
@@ -1961,7 +1933,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
         // CREATE MODE - Use mediaIds instead of Base64
         const mediaIds: string[] = [];
         const uploadedImageUrls: string[] = []; // Cloudinary URLs for display
-        const uploadedDocs: any[] = [];
+        const uploadedDocs: ComposerUploadedDoc[] = [];
 
         // Collect mediaIds and secureUrls from successfully uploaded images
         for (const att of attachments) {
@@ -1999,9 +1971,9 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
                     } else {
                         toast.warning(`Document "${att.file.name}" failed to upload and was skipped.`);
                     }
-                } catch (uploadError: any) {
+                } catch (uploadError: unknown) {
                     console.error('Document upload error:', uploadError);
-                    toast.warning(`Document "${att.file.name}" failed to upload: ${uploadError.message || 'Unknown error'}`);
+                    toast.warning(`Document "${att.file.name}" failed to upload: ${getErrorMessage(uploadError, 'Unknown error')}`);
                 }
             }
         }
@@ -2180,7 +2152,7 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
         }
         
         handleClose();
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("Failed to create nugget", e);
         
         // Use unified error handling
@@ -2193,13 +2165,15 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
         let finalErrorMessage = baseErrorMessage;
         let toastMessage = baseErrorMessage;
         
-        if (e?.errors && Array.isArray(e.errors) && e.errors.length > 1) {
-            const formattedErrors = e.errors.map((err: any) => getUserFriendlyMessage(formatApiError(err)));
+        const errorList = getErrorList(e);
+        const message = getErrorMessage(e, '');
+
+        if (errorList.length > 1) {
+            const formattedErrors = errorList.map((err) => getUserFriendlyMessage(formatApiError(err)));
             finalErrorMessage = `Please fix the following issues:\n${formattedErrors.map((msg: string, idx: number) => `${idx + 1}. ${msg}`).join('\n')}`;
             toastMessage = `Multiple validation errors. ${formattedErrors.length} issue(s) need to be fixed.`;
-        } else if (e?.message) {
+        } else if (message) {
             // Handle specific error types
-            const message = e.message;
             if (message.includes('network') || message.includes('fetch')) {
                 finalErrorMessage = "Unable to connect to the server. Please check your internet connection and try again.";
                 toastMessage = "Connection error. Please try again.";
@@ -2522,9 +2496,9 @@ export const NuggetComposerContent = forwardRef<NuggetComposerHandle, NuggetComp
                                             } else {
                                                 toast.error(`Failed to upload pasted image: ${mediaUpload.error || 'Unknown error'}`);
                                             }
-                                        } catch (error: any) {
+                                        } catch (error: unknown) {
                                             console.error('Paste upload error:', error);
-                                            toast.error(`Failed to upload pasted image: ${error.message || 'Unknown error'}`);
+                                            toast.error(`Failed to upload pasted image: ${getErrorMessage(error, 'Unknown error')}`);
                                         }
                                     }
                                 }

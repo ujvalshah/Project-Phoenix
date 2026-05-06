@@ -30,7 +30,7 @@ export interface ApiTiming {
 
 export interface PageMark {
   name: string;
-  detail?: Record<string, any>;
+  detail?: Record<string, unknown>;
 }
 
 export interface SearchEvent {

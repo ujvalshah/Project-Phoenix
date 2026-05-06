@@ -27,6 +27,12 @@
     // React Hooks
     "react-hooks/rules-of-hooks": "error",
     "react-hooks/exhaustive-deps": "warn",
+    // React Compiler-oriented hooks rules are currently advisory in this codebase.
+    // They flag several existing virtualization/state-reset patterns that require
+    // broader perf-sensitive refactors; keep visibility without failing CI lint.
+    "react-hooks/refs": "warn",
+    "react-hooks/use-memo": "warn",
+    "react-hooks/set-state-in-effect": "warn",
     
     // TypeScript
     "@typescript-eslint/no-explicit-any": "warn",

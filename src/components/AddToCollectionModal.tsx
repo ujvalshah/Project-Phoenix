@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { X, Plus, Check, Folder, Search, Globe, Loader2 } from 'lucide-react';
 import { storageService } from '@/services/storageService';
 import { Collection } from '@/types';
@@ -55,9 +55,9 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
       setNewCollectionName('');
       setProcessingId(null);
     }
-  }, [isOpen]);
+  }, [isOpen, fetchCollections]);
 
-  const fetchCollections = async () => {
+  const fetchCollections = useCallback(async () => {
     setIsLoading(true);
     try {
       // Fetch full public collection set + featured in parallel.
@@ -91,7 +91,7 @@ export const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   // --- Helpers ---
 

@@ -25,8 +25,8 @@ export const ArticleDetailPage: React.FC = () => {
   // Fetch article by ID
   const { data: article, isLoading, isError } = useQuery({
     queryKey: articleId ? articleKeys.detail(articleId) : articleKeys.detail(''),
-    queryFn: async () => {
-      if (!articleId) return undefined;
+    queryFn: () => {
+      if (!articleId) return Promise.resolve(undefined);
       return articleService.getArticleById(articleId);
     },
     enabled: !!articleId,

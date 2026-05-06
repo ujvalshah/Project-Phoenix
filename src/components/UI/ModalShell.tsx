@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { twMerge } from 'tailwind-merge';
 import { getOverlayHost } from '@/utils/overlayHosts';
@@ -60,12 +60,69 @@ export const ModalShell: React.FC<ModalShellProps> = ({
     return () => window.removeEventListener('keydown', handler);
   }, [isOpen, disableEscape, onClose]);
 
-  useEffect(() => {
+  // Apply scroll lock before paint so the feed never flashes at scroll 0 behind the backdrop
+  // (useEffect would run after paint and could capture a wrong scroll position).
+  useLayoutEffect(() => {
     if (!isOpen || disableScrollLock) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const body = document.body;
+    const lockCount = Number(body.dataset.modalScrollLockCount ?? '0');
+
+    if (lockCount === 0) {
+      const scrollY = window.scrollY;
+      body.dataset.modalScrollLockScrollY = String(scrollY);
+      body.dataset.modalScrollLockOverflow = body.style.overflow;
+      body.dataset.modalScrollLockOverflowX = body.style.overflowX;
+      body.dataset.modalScrollLockOverflowY = body.style.overflowY;
+      body.dataset.modalScrollLockPosition = body.style.position;
+      body.dataset.modalScrollLockTop = body.style.top;
+      body.dataset.modalScrollLockWidth = body.style.width;
+
+      body.style.position = 'fixed';
+      body.style.top = `-${scrollY}px`;
+      body.style.width = '100%';
+      body.style.overflow = 'hidden';
+      body.style.overflowX = 'clip';
+      body.style.overflowY = 'scroll';
+    }
+
+    body.dataset.modalScrollLockCount = String(lockCount + 1);
+
     return () => {
-      document.body.style.overflow = prev;
+      const currentCount = Number(body.dataset.modalScrollLockCount ?? '1');
+      const nextCount = Math.max(0, currentCount - 1);
+
+      if (nextCount > 0) {
+        body.dataset.modalScrollLockCount = String(nextCount);
+        return;
+      }
+
+      const scrollY = Number(body.dataset.modalScrollLockScrollY ?? '0');
+      const prevOverflow = body.dataset.modalScrollLockOverflow ?? '';
+      const prevOverflowX = body.dataset.modalScrollLockOverflowX ?? '';
+      const prevOverflowY = body.dataset.modalScrollLockOverflowY ?? '';
+      const prevPosition = body.dataset.modalScrollLockPosition ?? '';
+      const prevTop = body.dataset.modalScrollLockTop ?? '';
+      const prevWidth = body.dataset.modalScrollLockWidth ?? '';
+
+      body.style.overflow = prevOverflow;
+      body.style.overflowX = prevOverflowX;
+      body.style.overflowY = prevOverflowY;
+      body.style.position = prevPosition;
+      body.style.top = prevTop;
+      body.style.width = prevWidth;
+
+      delete body.dataset.modalScrollLockCount;
+      delete body.dataset.modalScrollLockScrollY;
+      delete body.dataset.modalScrollLockOverflow;
+      delete body.dataset.modalScrollLockOverflowX;
+      delete body.dataset.modalScrollLockOverflowY;
+      delete body.dataset.modalScrollLockPosition;
+      delete body.dataset.modalScrollLockTop;
+      delete body.dataset.modalScrollLockWidth;
+
+      window.requestAnimationFrame(() => {
+        window.scrollTo(0, scrollY);
+      });
     };
   }, [isOpen, disableScrollLock]);
 

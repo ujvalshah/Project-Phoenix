@@ -4,6 +4,12 @@ import { Article, FilterState, SortOrder } from '@/types';
 
 export type { PaginatedArticlesResponse };
 
+const isErrorWithMessage = (error: unknown): error is { message: string } =>
+  typeof error === 'object' &&
+  error !== null &&
+  'message' in error &&
+  typeof (error as { message: unknown }).message === 'string';
+
 export const articleService = {
   getArticles: async (filters: FilterState, page: number = 1): Promise<PaginatedArticlesResponse> => {
     // Backend pagination is the single source of truth
@@ -50,9 +56,9 @@ export const articleService = {
         page,
         limit
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Re-throw with context if it's an adapter capability error
-      if (error.message && error.message.includes('not supported')) {
+      if (isErrorWithMessage(error) && error.message.includes('not supported')) {
         throw new Error(`Pagination not available: ${error.message}`);
       }
       // Propagate API errors as-is
@@ -60,7 +66,7 @@ export const articleService = {
     }
   },
 
-  getArticleById: async (id: string): Promise<Article | undefined> => {
+  getArticleById: (id: string): Promise<Article | undefined> => {
     return storageService.getArticleById(id);
   }
 };

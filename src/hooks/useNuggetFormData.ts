@@ -21,7 +21,7 @@ export const nuggetFormKeys = {
     [...nuggetFormKeys.all, 'collections', type || 'all'] as const,
 };
 
-async function fetchAllCollectionsByType(type?: 'public' | 'private'): Promise<Collection[]> {
+function fetchAllCollectionsByType(type?: 'public' | 'private'): Promise<Collection[]> {
   return fetchAllCollectionsPaged(storageService.getCollections.bind(storageService), {
     type,
     limit: 100,
@@ -108,7 +108,7 @@ export function useCreateTag() {
 export function useCollections(type?: 'public' | 'private') {
   return useQuery({
     queryKey: nuggetFormKeys.collections(type),
-    queryFn: async () => fetchAllCollectionsByType(type),
+    queryFn: () => fetchAllCollectionsByType(type),
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 30, // Keep in cache for 30 minutes
     refetchOnWindowFocus: false,

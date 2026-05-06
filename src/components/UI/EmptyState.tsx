@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface EmptyStateProps {
-  icon: React.ReactElement<any>;
+  icon: React.ReactElement<{ size?: number }>;
   title: string;
   description: string;
   action?: React.ReactNode;

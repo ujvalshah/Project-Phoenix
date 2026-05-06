@@ -119,7 +119,7 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
   onArticleClick,
   onCategoryClick,
   currentUserId,
-  onTagClick,
+  onTagClick: _onTagClick,
   // Infinite Scroll Props
   hasNextPage = false,
   isFetchingNextPage = false,

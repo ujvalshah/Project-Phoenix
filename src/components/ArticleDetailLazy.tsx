@@ -4,9 +4,23 @@ import React, { lazy } from 'react';
  * Lazy `ArticleDetail` (+ react-markdown stack) loaded only when a surface mounts it:
  * drawer, modal, or lightbox sidebar — avoids pulling the chunk on initial feed/grid paint.
  */
+let articleDetailModulePromise: Promise<typeof import('./ArticleDetail')> | null = null;
+
+function loadArticleDetailModule(): Promise<typeof import('./ArticleDetail')> {
+  if (!articleDetailModulePromise) {
+    articleDetailModulePromise = import('./ArticleDetail');
+  }
+  return articleDetailModulePromise;
+}
+
 export const ArticleDetailLazy = lazy(() =>
-  import('./ArticleDetail').then((m) => ({ default: m.ArticleDetail })),
+  loadArticleDetailModule().then((m) => ({ default: m.ArticleDetail })),
 );
+
+/** Opportunistic preload for instant drawer/modal shell handoff on CTA click. */
+export function preloadArticleDetail(): Promise<void> {
+  return loadArticleDetailModule().then(() => undefined);
+}
 
 /** Narrow rails (lightbox sidebar). */
 export function ArticleDetailSidebarFallback(): React.ReactElement {

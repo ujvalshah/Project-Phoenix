@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import type { Article } from '@/types';
 import { NewsCard } from '@/components/NewsCard';
@@ -448,7 +448,7 @@ export const HomeGridVirtualized: React.FC<HomeGridVirtualizedProps> = ({
     return () => {
       apiRef.current = null;
     };
-  }, [apiRef, scrollToFlatArticleIndex]);
+  }, [apiRef, scrollToFlatArticleIndex, measureVisibleVirtualRows]);
 
   useLayoutEffect(() => {
     virtualizer.measure();

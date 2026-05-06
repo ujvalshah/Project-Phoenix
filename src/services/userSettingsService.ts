@@ -4,29 +4,29 @@ import { ProfileFormData, UserPreferences } from '../types/settings';
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 class UserSettingsService {
-  async updateProfile(userId: string, data: ProfileFormData): Promise<void> {
+  async updateProfile(_userId: string, _data: ProfileFormData): Promise<void> {
     await delay(1000);
     // In a real app, verify username uniqueness here
   }
 
-  async updateAccountInfo(userId: string, data: { email: string }): Promise<void> {
+  async updateAccountInfo(_userId: string, _data: { email: string }): Promise<void> {
     await delay(1000);
   }
 
-  async resendVerificationEmail(email: string): Promise<void> {
+  async resendVerificationEmail(_email: string): Promise<void> {
     await delay(800);
   }
 
-  async updatePassword(userId: string, current: string, next: string): Promise<void> {
+  async updatePassword(_userId: string, current: string, _next: string): Promise<void> {
     await delay(1500);
     if (current === 'wrong') throw new Error("Incorrect current password");
   }
 
-  async updatePreferences(userId: string, prefs: UserPreferences): Promise<void> {
+  async updatePreferences(_userId: string, _prefs: UserPreferences): Promise<void> {
     await delay(600);
   }
 
-  async deleteAccount(userId: string): Promise<void> {
+  async deleteAccount(_userId: string): Promise<void> {
     await delay(2000);
   }
 }

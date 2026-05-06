@@ -18,6 +18,7 @@ import { prepareArticleForNewsCard } from '@/utils/errorHandler';
 import { CardSkeleton } from '@/components/card/CardSkeleton';
 import { CardError } from '@/components/card/CardError';
 import { ArticleDrawer } from '@/components/ArticleDrawer';
+import { preloadArticleDetail } from '@/components/ArticleDetailLazy';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useHomeGridColumnCount } from '@/hooks/useHomeGridColumnCount';
 import {
@@ -417,7 +418,7 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
           const newParams = new URLSearchParams(prev);
           newParams.delete('expanded');
           return newParams;
-        }, { replace: true });
+        }, { replace: true, preventScrollReset: true });
       }
     } else {
       if (drawerOpen || expandedArticleId) {
@@ -486,9 +487,42 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
   }, [isLoading, articles.length, shouldAnimate]);
 
   useEffect(() => {
-    if (!isMultiColumnGrid || displayArticles.length === 0) return;
-    void import('@/components/ArticleDetail');
-  }, [isMultiColumnGrid, displayArticles.length]);
+    if (displayArticles.length === 0) return;
+
+    let cancelled = false;
+    let idleHandle: number | null = null;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const preload = () => {
+      if (cancelled) return;
+      void preloadArticleDetail();
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleHandle = (
+        window as Window & {
+          requestIdleCallback: (
+            cb: (deadline: IdleDeadline) => void,
+            opts?: { timeout?: number },
+          ) => number;
+        }
+      ).requestIdleCallback(() => {
+        preload();
+      }, { timeout: 1200 });
+    } else {
+      timeoutHandle = globalThis.setTimeout(preload, 180);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleHandle !== null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle !== null) {
+        globalThis.clearTimeout(timeoutHandle);
+      }
+    };
+  }, [displayArticles.length]);
 
   const isLoadMoreLockedRef = useRef(false);
   const appendPerfPendingRef = useRef(false);
@@ -539,15 +573,14 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
     (article: Article) => {
       if (isMultiColumnGridRef.current) {
         isUpdatingFromUrlRef.current = true;
-
+        void preloadArticleDetail();
         setExpandedArticleId(article.id);
         setDrawerOpen(true);
-
         setSearchParamsRef.current((prev) => {
           const newParams = new URLSearchParams(prev);
           newParams.set('expanded', article.id);
           return newParams;
-        }, { replace: true });
+        }, { replace: true, preventScrollReset: true });
 
         setTimeout(() => {
           isUpdatingFromUrlRef.current = false;
@@ -573,20 +606,17 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
       }
 
       isUpdatingFromUrlRef.current = true;
-
       setDrawerOpen(false);
-
+      setExpandedArticleId(null);
       setSearchParamsRef.current((prev) => {
         const newParams = new URLSearchParams(prev);
         newParams.delete('expanded');
         return newParams;
-      }, { replace: true });
+      }, { replace: true, preventScrollReset: true });
 
       setTimeout(() => {
         isUpdatingFromUrlRef.current = false;
       }, 100);
-
-      setExpandedArticleId(null);
     },
     [],
   );
@@ -600,14 +630,12 @@ export const HomeArticleFeed: React.FC<HomeArticleFeedProps> = ({
         const newArticle = displayArticles[newIndex];
 
         isUpdatingFromUrlRef.current = true;
-
         setExpandedArticleId(newArticle.id);
-
         setSearchParamsRef.current((prev) => {
           const newParams = new URLSearchParams(prev);
           newParams.set('expanded', newArticle.id);
           return newParams;
-        }, { replace: true });
+        }, { replace: true, preventScrollReset: true });
 
         setTimeout(() => {
           isUpdatingFromUrlRef.current = false;

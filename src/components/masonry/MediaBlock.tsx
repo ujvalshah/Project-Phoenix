@@ -115,7 +115,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
   article,
   mediaItemId,
   prefetchedAllMasonryItems,
-  onCategoryClick,
+  onCategoryClick: _onCategoryClick,
   onArticleClick,
   priorityImageLoading = false,
 }) => {
@@ -141,7 +141,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
 
   const [showLightbox, setShowLightbox] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
-  const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+  const [, setLightboxImages] = useState<string[]>([]);
 
   const allImageUrls = useMemo(() => {
     return allMediaItems.filter((item) => item.type === 'image').map((item) => item.url);
@@ -159,7 +159,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
    * - If image: open carousel viewer (stops propagation to prevent parent click)
    * - If YouTube/other: open Article Detail drawer (stops propagation to prevent parent click)
    */
-  const handleMediaClick = (e: React.MouseEvent, item: MasonryMediaItem, index: number) => {
+  const handleMediaClick = (e: React.MouseEvent, item: MasonryMediaItem, _index: number) => {
     // Stop event bubbling from image tiles so closing the carousel
     // does not trigger the masonry tile drawer click handler.
     e.stopPropagation(); // Prevent parent click handler from firing
@@ -190,7 +190,7 @@ export const MediaBlock: React.FC<MediaBlockProps> = ({
   /**
    * Handle keyboard navigation (Enter/Space)
    */
-  const handleKeyDown = (e: React.KeyboardEvent, item: MasonryMediaItem, index: number) => {
+  const handleKeyDown = (e: React.KeyboardEvent, item: MasonryMediaItem, _index: number) => {
     // If focus is on an interactive child (e.g., the overlay link button),
     // do not trigger the tile's open behavior.
     const target = e.target as HTMLElement | null;

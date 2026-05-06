@@ -2,13 +2,11 @@ import React, { useMemo } from 'react';
 import { NewsCardLogic } from '@/hooks/useNewsCard';
 import { useDisclaimerConfig, resolveDisclaimer } from '@/hooks/useDisclaimerConfig';
 import { CardMedia } from '../atoms/CardMedia';
-import { CardTitle } from '../atoms/CardTitle';
 import { CardMeta } from '../atoms/CardMeta';
 import { CardTags } from '../atoms/CardTags';
 import { CardActions } from '../atoms/CardActions';
 import { CardContent } from '../atoms/CardContent';
 import { CardContributor } from '../atoms/CardContributor';
-import { CardBadge } from '../atoms/CardBadge';
 import { CardGradientFallback } from '../atoms/CardGradientFallback';
 
 interface FeedVariantProps {

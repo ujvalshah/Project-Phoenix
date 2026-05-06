@@ -36,12 +36,12 @@ export function TagSelector({
   // Track pending API calls to prevent race conditions
   const pendingCreationsRef = useRef<Set<string>>(new Set());
 
-  const validateTags = (): string | null => {
+  const validateTags = useCallback((): string | null => {
     if (selected.length === 0) {
       return "Please add at least one tag. Tags enable smarter news discovery.";
     }
     return null;
-  };
+  }, [selected]);
 
   // Validate tags when selected changes (if touched)
   useEffect(() => {
@@ -49,7 +49,7 @@ export function TagSelector({
       const error = validateTags();
       onErrorChange(error);
     }
-  }, [selected, touched, onErrorChange]);
+  }, [selected, touched, onErrorChange, validateTags]);
 
   // CATEGORY PHASE-OUT: availableCategories prop represents tags
   const tagOptions: SelectableDropdownOption[] = availableCategories
@@ -59,10 +59,10 @@ export function TagSelector({
   /**
    * Checks if a tag already exists (case-insensitive comparison)
    */
-  const isDuplicate = (tag: string): boolean => {
+  const isDuplicate = useCallback((tag: string): boolean => {
     const normalizedTag = tag.toLowerCase().trim();
     return selected.some(selectedTag => selectedTag.toLowerCase().trim() === normalizedTag);
-  };
+  }, [selected]);
 
   const handleSelect = useCallback(async (optionId: string) => {
     const normalized = normalizeCategoryLabel(optionId);
@@ -109,7 +109,7 @@ export function TagSelector({
         pendingCreationsRef.current.delete(cleanCat.toLowerCase());
       }
     }
-  }, [selected, availableCategories, touched, error, onSelectedChange, onTouchedChange, onErrorChange, onAvailableCategoriesChange]);
+  }, [selected, availableCategories, touched, error, onSelectedChange, onTouchedChange, onErrorChange, onAvailableCategoriesChange, isDuplicate, validateTags]);
 
   const handleDeselect = useCallback((optionId: string) => {
     // Use case-insensitive removal to handle rawName casing differences
@@ -120,7 +120,7 @@ export function TagSelector({
       const newError = validateTags();
       onErrorChange(newError);
     }
-  }, [selected, touched, onSelectedChange, onTouchedChange, onErrorChange]);
+  }, [selected, touched, onSelectedChange, onTouchedChange, onErrorChange, validateTags]);
 
   const handleCreateNew = useCallback(async (searchValueInput: string) => {
     // Trim and validate: ignore empty or 1-char values
@@ -146,7 +146,7 @@ export function TagSelector({
     } finally {
       setIsCreating(false);
     }
-  }, [isCreating, handleSelect]);
+  }, [isCreating, handleSelect, isDuplicate]);
 
   const filterOptions = useCallback((options: SelectableDropdownOption[], search: string): SelectableDropdownOption[] => {
     return options.filter(opt =>
@@ -172,13 +172,13 @@ export function TagSelector({
     const existsInSelected = isDuplicate(cleanCat);
 
     return !existsInOptions && !existsInSelected;
-  }, [selected]); // Re-compute when selected changes
+  }, [isDuplicate]); // Re-compute when selected changes
 
   const handleBlur = useCallback(() => {
     if (!touched) onTouchedChange(true);
     const newError = validateTags();
     onErrorChange(newError);
-  }, [touched, onTouchedChange, onErrorChange]);
+  }, [touched, onTouchedChange, onErrorChange, validateTags]);
 
   // Format tag labels with # prefix for display in badges
   const formatTagLabel = useCallback((label: string) => `#${label}`, []);

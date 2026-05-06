@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { User } from '@/types/user';
 import type { User as LegacyApiUserFields } from '@/types';
-import { MapPin, Link as LinkIcon, Twitter, Linkedin, Github, Camera, Save, Edit3, Calendar, Loader2, Youtube } from 'lucide-react';
+import { MapPin, Link as LinkIcon, Twitter, Linkedin, Camera, Save, Edit3, Calendar, Youtube } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { storageService } from '@/services/storageService';
 import { Avatar } from '../shared/Avatar';
@@ -36,7 +36,7 @@ const formatJoinDate = (isoString: string): string => {
     const month = date.toLocaleString('en-US', { month: 'short' });
     const year = date.getFullYear();
     return `${month} ${year}`;
-  } catch (e) {
+  } catch {
     return '';
   }
 };

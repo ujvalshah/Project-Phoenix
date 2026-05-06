@@ -278,7 +278,6 @@ export const TaxonomySidebar: React.FC<TaxonomySidebarProps> = ({
 
   // Lock body scroll only while the sheet is logically open. The sheet stays mounted
   // during its exit animation, but the page must regain native scroll immediately.
-  const sheetMounted = animState !== 'closed';
   useEffect(() => {
     if (!isMobileOpen) return;
     const previous = document.body.style.overflow;

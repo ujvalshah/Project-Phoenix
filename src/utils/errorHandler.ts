@@ -3,42 +3,53 @@
  * 
  * Provides consistent error handling across the application
  */
+import type { Article } from '@/types';
 
 export interface AppError {
   message: string;
   code?: string;
   field?: string;
-  originalError?: any;
+  originalError?: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 /**
  * Format validation errors from backend (Zod or Mongoose)
  */
-export function formatValidationError(error: any): AppError {
+export function formatValidationError(error: unknown): AppError {
+  const recordError = isRecord(error) ? error : {};
+  const message =
+    typeof recordError.message === 'string' ? recordError.message : 'Validation error';
+  const path = recordError.path;
+  const code = typeof recordError.code === 'string' ? recordError.code : 'UNKNOWN_ERROR';
+
   // Handle Zod errors (array path)
-  if (Array.isArray(error.path)) {
+  if (Array.isArray(path)) {
     return {
-      message: error.message || 'Validation error',
+      message,
       code: 'VALIDATION_ERROR',
-      field: error.path.join('.'),
+      field: path.join('.'),
       originalError: error,
     };
   }
   
   // Handle Mongoose errors (string path)
-  if (typeof error.path === 'string') {
+  if (typeof path === 'string') {
     return {
-      message: error.message || 'Validation error',
+      message,
       code: 'VALIDATION_ERROR',
-      field: error.path,
+      field: path,
       originalError: error,
     };
   }
   
   // Handle generic errors
   return {
-    message: error.message || 'An error occurred',
-    code: error.code || 'UNKNOWN_ERROR',
+    message: message || 'An error occurred',
+    code,
     originalError: error,
   };
 }
@@ -46,18 +57,20 @@ export function formatValidationError(error: any): AppError {
 /**
  * Format API errors consistently
  */
-export function formatApiError(error: any): AppError {
+export function formatApiError(error: unknown): AppError {
+  const recordError = isRecord(error) ? error : {};
   // Handle validation errors from backend
-  if (error?.errors && Array.isArray(error.errors)) {
-    const firstError = error.errors[0];
+  const nestedErrors = recordError.errors;
+  if (Array.isArray(nestedErrors) && nestedErrors.length > 0) {
+    const firstError = nestedErrors[0];
     return formatValidationError(firstError);
   }
   
   // Handle error objects with message
-  if (error?.message) {
+  if (typeof recordError.message === 'string') {
     return {
-      message: error.message,
-      code: error.code || 'API_ERROR',
+      message: recordError.message,
+      code: typeof recordError.code === 'string' ? recordError.code : 'API_ERROR',
       originalError: error,
     };
   }
@@ -127,10 +140,11 @@ export function getUserFriendlyMessage(error: AppError): string {
 /**
  * Type guard: Check if Article has required author data
  */
-export function hasValidAuthor(article: any): article is { author: { id: string; name: string } } {
+export function hasValidAuthor(article: unknown): article is { author: { id: string; name: string } } {
+  if (!isRecord(article) || !isRecord(article.author)) {
+    return false;
+  }
   return (
-    article &&
-    article.author &&
     typeof article.author.id === 'string' &&
     typeof article.author.name === 'string'
   );
@@ -139,13 +153,15 @@ export function hasValidAuthor(article: any): article is { author: { id: string;
 /**
  * Type guard: Check if Article is valid
  */
-export function isValidArticle(article: any): article is {
+export function isValidArticle(article: unknown): article is {
   id: string;
   title?: string;
   author: { id: string; name: string };
 } {
+  if (!isRecord(article)) {
+    return false;
+  }
   return (
-    article &&
     typeof article.id === 'string' &&
     (article.title === undefined || typeof article.title === 'string') &&
     hasValidAuthor(article)
@@ -155,30 +171,59 @@ export function isValidArticle(article: any): article is {
 /**
  * Sanitize article data - ensure all required fields exist
  */
-export function sanitizeArticle(article: any): any {
+export function sanitizeArticle(article: unknown): Article | null {
   if (!article) {
     return null;
   }
+  if (!isRecord(article)) {
+    return null;
+  }
   
+  const recordArticle = article as Record<string, unknown>;
+  const authorRecord = isRecord(recordArticle.author)
+    ? (recordArticle.author as Record<string, unknown>)
+    : {};
+
   return {
     ...article,
-    id: article.id || article._id?.toString() || '',
-    title: article.title || undefined, // Preserve empty titles (no fallback)
-    content: article.content || '',
-    excerpt: article.excerpt || '',
+    id:
+      (typeof recordArticle.id === 'string' && recordArticle.id) ||
+      (isRecord(recordArticle._id) && typeof recordArticle._id.toString === 'function'
+        ? recordArticle._id.toString()
+        : '') ||
+      '',
+    title: (typeof recordArticle.title === 'string' && recordArticle.title) || undefined, // Preserve empty titles (no fallback)
+    content: (typeof recordArticle.content === 'string' && recordArticle.content) || '',
+    excerpt: (typeof recordArticle.excerpt === 'string' && recordArticle.excerpt) || '',
     author: {
-      id: article.author?.id || article.authorId || '',
-      name: article.author?.name || article.authorName || 'Unknown',
-      avatar_url: article.author?.avatar_url || article.author?.avatarUrl,
+      id:
+        (typeof authorRecord.id === 'string' && authorRecord.id) ||
+        (typeof recordArticle.authorId === 'string' && recordArticle.authorId) ||
+        '',
+      name:
+        (typeof authorRecord.name === 'string' && authorRecord.name) ||
+        (typeof recordArticle.authorName === 'string' && recordArticle.authorName) ||
+        'Unknown',
+      avatar_url:
+        authorRecord.avatar_url ??
+        authorRecord.avatarUrl,
     },
     // CATEGORY PHASE-OUT: Removed categories field - tags are now the only classification field
-    tags: Array.isArray(article.tags) ? article.tags : [],
-    images: Array.isArray(article.images) ? article.images : [],
-    publishedAt: article.publishedAt || new Date().toISOString(),
-    visibility: article.visibility || 'public',
-    source_type: article.source_type || 'text',
-    media: article.media || null,
-  };
+    tags: Array.isArray(recordArticle.tags) ? recordArticle.tags : [],
+    images: Array.isArray(recordArticle.images) ? recordArticle.images : [],
+    publishedAt:
+      (typeof recordArticle.publishedAt === 'string' && recordArticle.publishedAt) ||
+      new Date().toISOString(),
+    visibility:
+      (typeof recordArticle.visibility === 'string' && recordArticle.visibility) ||
+      'public',
+    source_type:
+      (typeof recordArticle.source_type === 'string' && recordArticle.source_type) ||
+      'text',
+    media: recordArticle.media ?? null,
+    readTime:
+      typeof recordArticle.readTime === 'number' ? recordArticle.readTime : 1,
+  } as Article;
 }
 
 /**
@@ -186,29 +231,28 @@ export function sanitizeArticle(article: any): any {
  * then guarantee author fields match {@link hasValidAuthor} expectations.
  * Call once per article before `NewsCard` when using `skipArticlePrepare` in `useNewsCard`.
  */
-export function prepareArticleForNewsCard(article: unknown): any {
+export function prepareArticleForNewsCard(article: unknown): Article | null {
   const s = sanitizeArticle(article);
   if (!s) return null;
-  if (!hasValidAuthor(s)) {
-    s.author = {
-      id: s.author?.id || '',
-      name: s.author?.name || 'Unknown',
-      avatar_url: s.author?.avatar_url,
-    };
-  }
   return s;
 }
 
 /**
  * Safe error logging (prevents console spam in production)
  */
-export function logError(context: string, error: any, details?: Record<string, any>) {
+export function logError(context: string, error: unknown, details?: Record<string, unknown>) {
+  const errorCode =
+    isRecord(error) && typeof error.code === 'string' ? error.code : undefined;
+  const errorMessage =
+    isRecord(error) && typeof error.message === 'string'
+      ? error.message
+      : String(error ?? '');
   if (process.env.NODE_ENV === 'development') {
     console.error(`[${context}]`, error, details || '');
   } else {
     // In production, only log critical errors
-    if (error?.code === 'VALIDATION_ERROR' || error?.code === 'API_ERROR') {
-      console.error(`[${context}]`, error.message, details || '');
+    if (errorCode === 'VALIDATION_ERROR' || errorCode === 'API_ERROR') {
+      console.error(`[${context}]`, errorMessage, details || '');
     }
   }
 }

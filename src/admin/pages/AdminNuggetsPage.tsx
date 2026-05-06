@@ -19,11 +19,16 @@ import { adminCollectionsService } from '../services/adminCollectionsService';
 import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
 import { WORKSPACE_GRID_CARD_IMAGE_SIZES } from '@/constants/feedImageLayout';
 import { getPriorityThumbnailCount } from '@/constants/aboveFoldPriority';
+import { getErrorMessage, isRequestCancelled, parseEnumValue } from '../utils/adminTypeGuards';
 
 const NUGGETS_VIEW_MODE_STORAGE_KEY = 'admin_nuggets_view_mode';
 const ADMIN_BATCH_ADD_CAP = 200;
 /** Card grid uses `md:grid-cols-2 xl:grid-cols-3` — match feed priority budget. */
 const ADMIN_CARD_GRID_COLUMNS = 3;
+const NUGGET_STATUS_FILTERS = ['all', 'active', 'hidden', 'flagged'] as const;
+const NUGGET_SOURCE_FILTERS = ['all', 'link', 'video', 'document', 'twitter'] as const;
+const NUGGET_YOUTUBE_FILTERS = ['all', 'youtube', 'non-youtube'] as const;
+const NUGGET_STREAM_FILTERS = ['all', 'standard', 'pulse', 'both'] as const;
 
 function getYouTubeThumbnail(url?: string): string | undefined {
   if (!url) return undefined;
@@ -103,7 +108,7 @@ export const AdminNuggetsPage: React.FC = () => {
 
   useEffect(() => {
     setPageHeader("Content Management", "Review, moderate, and manage nuggets.");
-  }, []);
+  }, [setPageHeader]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -187,12 +192,13 @@ export const AdminNuggetsPage: React.FC = () => {
       setTotalPages(Math.max(1, Math.ceil(nuggetsData.total / nuggetsData.limit)));
       setStats(statsData);
       setErrorMessage(null);
-    } catch (e: any) {
-      if (e.message !== 'Request cancelled') {
+    } catch (e: unknown) {
+      if (!isRequestCancelled(e)) {
         if (process.env.NODE_ENV === 'development') {
           console.error('[AdminNuggetsPage] Error loading data:', e);
         }
-        setErrorMessage(`Could not load nuggets: ${e.message || 'Unknown error'}. Please retry.`);
+        const message = getErrorMessage(e, 'Unknown error');
+        setErrorMessage(`Could not load nuggets: ${message}. Please retry.`);
       }
     } finally {
       setIsLoading(false);
@@ -245,8 +251,8 @@ export const AdminNuggetsPage: React.FC = () => {
 
     // Sort
     result.sort((a, b) => {
-      let valA: any = a[sortKey as keyof AdminNugget] || '';
-      let valB: any = b[sortKey as keyof AdminNugget] || '';
+      let valA: unknown = a[sortKey as keyof AdminNugget] ?? '';
+      let valB: unknown = b[sortKey as keyof AdminNugget] ?? '';
 
       if (sortKey === 'author.name') {
         valA = (a.author?.name || '').toLowerCase();
@@ -256,8 +262,13 @@ export const AdminNuggetsPage: React.FC = () => {
         valB = new Date(b.createdAt).getTime();
       }
 
-      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      const normalizedA =
+        typeof valA === 'number' ? valA : typeof valA === 'string' ? valA.toLowerCase() : String(valA);
+      const normalizedB =
+        typeof valB === 'number' ? valB : typeof valB === 'string' ? valB.toLowerCase() : String(valB);
+
+      if (normalizedA < normalizedB) return sortDirection === 'asc' ? -1 : 1;
+      if (normalizedA > normalizedB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
 
@@ -306,11 +317,11 @@ export const AdminNuggetsPage: React.FC = () => {
             setArticleLoadError('Article not found');
             setArticleToEdit(null);
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           // Don't show error for cancelled requests (they're expected during cleanup)
-          if (error?.message !== 'Request cancelled') {
+          if (!isRequestCancelled(error)) {
             console.error('[AdminNuggetsPage] Error fetching article:', error);
-            setArticleLoadError(error?.message || 'Failed to load nugget data for editing');
+            setArticleLoadError(getErrorMessage(error, 'Failed to load nugget data for editing'));
             setArticleToEdit(null);
           } else {
             // Request was cancelled - clear error state
@@ -336,13 +347,13 @@ export const AdminNuggetsPage: React.FC = () => {
       const newStats = await adminNuggetsService.getStats();
       setStats(newStats);
       toast.success(newStatus === 'active' ? 'Nugget Approved' : 'Nugget Hidden');
-    } catch (e) {
+    } catch {
       toast.error("Action failed");
     }
   };
 
-  const handleDelete = async () => {
-    if (!itemToDelete) return;
+  const handleDelete = (): Promise<void> => {
+    if (!itemToDelete) return Promise.resolve();
     const nugget = itemToDelete;
     // Optimistic remove; commit after 5s unless undone
     setNuggets(prev => prev.filter(n => n.id !== nugget.id));
@@ -354,7 +365,7 @@ export const AdminNuggetsPage: React.FC = () => {
         setStats(newStats);
         setPendingDelete(null);
         toast.success("Nugget deleted");
-      } catch (e) {
+      } catch {
         // rollback on failure
         setNuggets(prev => [...prev, nugget]);
         setPendingDelete(null);
@@ -362,6 +373,7 @@ export const AdminNuggetsPage: React.FC = () => {
       }
     }, 5000);
     setPendingDelete({ nugget, timeoutId });
+    return Promise.resolve();
   };
 
   const handleCreateCollection = useCallback(async () => {
@@ -384,8 +396,8 @@ export const AdminNuggetsPage: React.FC = () => {
       setNewCollectionDescription('');
       setNewCollectionParentId('');
       toast.success('Collection created');
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to create collection');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to create collection'));
     } finally {
       setIsCreatingCollection(false);
     }
@@ -409,8 +421,8 @@ export const AdminNuggetsPage: React.FC = () => {
       await adminCollectionsService.addNuggetsToCollection(targetCollectionId, selectedIds);
       setSelectedIds([]);
       toast.success(`Added ${selectedIds.length} nugget(s) to collection`);
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to add nuggets to collection');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to add nuggets to collection'));
     } finally {
       setIsAssigning(false);
     }
@@ -630,7 +642,7 @@ export const AdminNuggetsPage: React.FC = () => {
       </div>
 
       <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(parseEnumValue(e.target.value, NUGGET_STATUS_FILTERS, 'all'))} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="hidden">Hidden</option>
@@ -649,7 +661,7 @@ export const AdminNuggetsPage: React.FC = () => {
       </div>
 
       <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
-        <select value={sourceTypeFilter} onChange={(e) => setSourceTypeFilter(e.target.value as any)} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
+        <select value={sourceTypeFilter} onChange={(e) => setSourceTypeFilter(parseEnumValue(e.target.value, NUGGET_SOURCE_FILTERS, 'all'))} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
             <option value="all">All Sources</option>
             <option value="link">Link</option>
             <option value="video">Video</option>
@@ -659,7 +671,7 @@ export const AdminNuggetsPage: React.FC = () => {
       </div>
 
       <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
-        <select value={youtubeFilter} onChange={(e) => setYoutubeFilter(e.target.value as any)} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
+        <select value={youtubeFilter} onChange={(e) => setYoutubeFilter(parseEnumValue(e.target.value, NUGGET_YOUTUBE_FILTERS, 'all'))} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
             <option value="all">All Media</option>
             <option value="youtube">YouTube Only</option>
             <option value="non-youtube">Non-YouTube</option>
@@ -667,7 +679,7 @@ export const AdminNuggetsPage: React.FC = () => {
       </div>
 
       <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg flex">
-        <select value={streamFilter} onChange={(e) => setStreamFilter(e.target.value as any)} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
+        <select value={streamFilter} onChange={(e) => setStreamFilter(parseEnumValue(e.target.value, NUGGET_STREAM_FILTERS, 'all'))} className="text-[10px] bg-transparent font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer px-2 py-1">
             <option value="all">All Streams</option>
             <option value="standard">Standard</option>
             <option value="pulse">Pulse</option>

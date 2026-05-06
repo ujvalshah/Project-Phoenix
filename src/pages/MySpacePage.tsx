@@ -213,10 +213,6 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     queryFn: async () => {
       if (import.meta.env.DEV) {
         requestCountersRef.current.profile += 1;
-        console.debug('[MySpace] profile query', {
-          userId: targetUserId,
-          count: requestCountersRef.current.profile,
-        });
       }
       const user = await storageService.getUserById(targetUserId);
       return user ?? null;
@@ -229,10 +225,6 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     queryFn: async () => {
       if (import.meta.env.DEV) {
         requestCountersRef.current.collections += 1;
-        console.debug('[MySpace] collections query', {
-          userId: targetUserId,
-          count: requestCountersRef.current.collections,
-        });
       }
       const result = await storageService.getCollections({
         type: 'public',
@@ -252,10 +244,6 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     queryFn: () => {
       if (import.meta.env.DEV) {
         requestCountersRef.current.counts += 1;
-        console.debug('[MySpace] owner counts query', {
-          userId: targetUserId,
-          count: requestCountersRef.current.counts,
-        });
       }
       return storageService.getMyArticleCounts();
     },
@@ -265,15 +253,9 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
 
   const infiniteArticlesQuery = useInfiniteQuery<PaginatedArticlesResponse>({
     queryKey: myspaceArticlesKey,
-    queryFn: async ({ pageParam = 1 }) => {
+    queryFn: ({ pageParam = 1 }) => {
       if (import.meta.env.DEV) {
         requestCountersRef.current.articles += 1;
-        console.debug('[MySpace] articles page query', {
-          userId: targetUserId,
-          status: nuggetListStatus,
-          page: pageParam,
-          count: requestCountersRef.current.articles,
-        });
       }
       const queryParams = new URLSearchParams();
       queryParams.set('authorId', targetUserId);
@@ -328,7 +310,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   }, [editingArticle, isOwner, myspaceArticlesBaseKey, myspaceCountsKey]);
 
   const profileUser = profileUserQuery.data as ProfilePageUser | null;
-  const publicCollections = collectionsQuery.data ?? [];
+  const publicCollections = useMemo(() => collectionsQuery.data ?? [], [collectionsQuery.data]);
   const ownerCounts = articleCountsQuery.data;
   const visitorPublicCount = infiniteArticlesQuery.data?.pages?.[0]?.total ?? 0;
 
@@ -340,24 +322,31 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
     return Date.now() - d.getTime() <= ms;
   };
 
-  const sourceTypeOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const a of infiniteArticles) {
-      const t = a.source_type?.trim();
-      if (t) s.add(t);
-    }
-    return [...s].sort((a, b) => a.localeCompare(b));
-  }, [infiniteArticles]);
+  const articleDerivedStats = useMemo(() => {
+    let loadedPublishedCount = 0;
+    let loadedDraftCount = 0;
+    const tagSet = new Set<string>();
 
-  const tagOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const a of infiniteArticles) {
-      for (const t of a.tags ?? []) {
-        const x = t.trim();
-        if (x) s.add(x);
+    for (const article of infiniteArticles) {
+      if (getStatus(article) === 'draft') {
+        loadedDraftCount += 1;
+      } else {
+        loadedPublishedCount += 1;
+      }
+
+      for (const tag of article.tags ?? []) {
+        const normalizedTag = tag.trim();
+        if (normalizedTag) {
+          tagSet.add(normalizedTag);
+        }
       }
     }
-    return [...s].sort((a, b) => a.localeCompare(b));
+
+    return {
+      loadedPublishedCount,
+      loadedDraftCount,
+      tagOptions: [...tagSet].sort((a, b) => a.localeCompare(b)),
+    };
   }, [infiniteArticles]);
 
   const filteredNuggets = useMemo(() => {
@@ -419,10 +408,8 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
   }, [publicCollections, searchQuery, collectionSort]);
 
   const contentTabs: ContentTabItem[] = useMemo(() => {
-    const loadedPublished = infiniteArticles.filter((a) => getStatus(a) === 'published').length;
-    const loadedDrafts = infiniteArticles.filter((a) => getStatus(a) === 'draft').length;
-    const ownerPublished = ownerCounts?.published ?? loadedPublished;
-    const ownerDrafts = ownerCounts?.draft ?? loadedDrafts;
+    const ownerPublished = ownerCounts?.published ?? articleDerivedStats.loadedPublishedCount;
+    const ownerDrafts = ownerCounts?.draft ?? articleDerivedStats.loadedDraftCount;
     const tabs: ContentTabItem[] = [
       {
         id: 'library',
@@ -443,13 +430,21 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
       count: publicCollections.length,
     });
     return tabs;
-  }, [isOwner, ownerCounts?.published, ownerCounts?.draft, visitorPublicCount, publicCollections.length, infiniteArticles]);
+  }, [
+    articleDerivedStats.loadedDraftCount,
+    articleDerivedStats.loadedPublishedCount,
+    isOwner,
+    ownerCounts?.draft,
+    ownerCounts?.published,
+    visitorPublicCount,
+    publicCollections.length,
+  ]);
 
   const publishedCount = isOwner
-    ? (ownerCounts?.published ?? infiniteArticles.filter((a) => getStatus(a) === 'published').length)
+    ? (ownerCounts?.published ?? articleDerivedStats.loadedPublishedCount)
     : visitorPublicCount;
   const draftsCount = isOwner
-    ? (ownerCounts?.draft ?? infiniteArticles.filter((a) => getStatus(a) === 'draft').length)
+    ? (ownerCounts?.draft ?? articleDerivedStats.loadedDraftCount)
     : 0;
   // "Total" mirrors the connected set shown in the header row:
   // Published + Drafts (+ Collections for this workspace).
@@ -900,7 +895,7 @@ export const MySpacePage: React.FC<MySpacePageProps> = ({ currentUserId }) => {
                       sourceTypeOptions={[]}
                       tagFilter={tagFilter}
                       onTagChange={setTagFilter}
-                      tagOptions={tagOptions}
+                      tagOptions={articleDerivedStats.tagOptions}
                       tagTaxonomy={taxonomyForTagPicker}
                       enableGroupedTagPicker
                       datePreset={datePreset}

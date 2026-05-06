@@ -32,7 +32,7 @@ const DEFAULT_OPTIONS: Required<CompressionOptions> = {
  * @param options - Compression options
  * @returns Compressed File object
  */
-export async function compressImage(
+export function compressImage(
   file: File,
   options: CompressionOptions = {}
 ): Promise<File> {
@@ -157,14 +157,15 @@ export function formatFileSize(bytes: number): string {
  * Compress image if it's an image file, otherwise return original
  * This is a convenience function that handles both images and other files
  */
-export async function optimizeFileForUpload(
+export function optimizeFileForUpload(
   file: File,
   options?: CompressionOptions
 ): Promise<File> {
   if (isImageFile(file)) {
     return compressImage(file, options);
   }
-  return file;
+  // Preserve async-function semantics: always return a Promise.
+  return Promise.resolve(file);
 }
 
 

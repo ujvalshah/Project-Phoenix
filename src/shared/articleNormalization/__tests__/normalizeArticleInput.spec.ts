@@ -13,10 +13,38 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Use node environment for these tests (no DOM needed)
 // @vitest-environment node
 import { normalizeArticleInput } from '../normalizeArticleInput';
-import type { ArticleInputData, NormalizedArticleInput } from '../normalizeArticleInput';
-import type { NuggetMedia, MasonryMediaItem } from '@/types';
+import type { ArticleInputData, EnrichMediaItemInput, NormalizedArticleInput } from '../normalizeArticleInput';
+import type { Article, NuggetMedia, MasonryMediaItem, SupportingMediaItem } from '@/types';
 import { detectProviderFromUrl } from '@/utils/urlUtils';
 import { getPrimaryUrl } from '@/utils/processNuggetUrl';
+
+type OrderedSupportingMediaItem = SupportingMediaItem & {
+  order?: number;
+  position?: number;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toArticle(overrides: Partial<Article>): Article {
+  return {
+    id: 'test-id',
+    excerpt: '',
+    content: '',
+    author: { id: 'user-1', name: 'Test User' },
+    tags: [],
+    readTime: 1,
+    ...overrides,
+  };
+}
+
+function stripOrderMeta<T extends { supportingMedia?: OrderedSupportingMediaItem[] }>(obj: T): T {
+  return {
+    ...obj,
+    supportingMedia: obj.supportingMedia?.map(({ order: _order, position: _position, ...rest }) => rest),
+  };
+}
 
 /**
  * Legacy CREATE mode normalization logic (reconstructed from comments)
@@ -24,7 +52,7 @@ import { getPrimaryUrl } from '@/utils/processNuggetUrl';
  */
 async function legacyCreateNormalization(
   input: ArticleInputData,
-  enrichMediaItemIfNeeded?: (mediaItem: any) => Promise<any>
+  enrichMediaItemIfNeeded?: (mediaItem: EnrichMediaItemInput) => Promise<NuggetMedia>
 ): Promise<NormalizedArticleInput> {
   const {
     title,
@@ -34,7 +62,7 @@ async function legacyCreateNormalization(
     urls,
     detectedLink,
     linkMetadata,
-    imageUrls,
+    imageUrls: _imageUrls,
     uploadedImageUrls,
     mediaIds,
     uploadedDocs,
@@ -155,7 +183,7 @@ async function legacyCreateNormalization(
   }
 
   // 8. Build supportingMedia (CREATE mode logic from lines 1894-1945)
-  let supportingMedia: any[] | undefined;
+  let supportingMedia: SupportingMediaItem[] | undefined;
   if (masonryMediaItems.length > 0) {
     const nonPrimaryItems = masonryMediaItems.filter(
       item => item.source !== 'primary' && item.showInMasonry === true
@@ -236,8 +264,8 @@ async function legacyCreateNormalization(
  * Deep equality comparison helper with detailed diff reporting
  */
 function deepEqualWithDiff(
-  actual: any,
-  expected: any,
+  actual: unknown,
+  expected: unknown,
   path: string = ''
 ): { equal: boolean; diff?: string } {
   if (actual === expected) {
@@ -274,7 +302,7 @@ function deepEqualWithDiff(
     return { equal: true };
   }
 
-  if (typeof actual === 'object' && typeof expected === 'object') {
+  if (isRecord(actual) && isRecord(expected)) {
     const actualKeys = Object.keys(actual).sort();
     const expectedKeys = Object.keys(expected).sort();
 
@@ -313,7 +341,7 @@ function deepEqualWithDiff(
 
 describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
   // Mock enrichMediaItemIfNeeded - returns media item as-is (no enrichment for tests)
-  const mockEnrichMediaItemIfNeeded = vi.fn(async (mediaItem: any) => {
+  const mockEnrichMediaItemIfNeeded = vi.fn(async (mediaItem: EnrichMediaItemInput): Promise<NuggetMedia> => {
     return {
       ...mediaItem,
       previewMetadata: mediaItem.previewMetadata || {
@@ -354,14 +382,6 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      // Order metadata was added as a non-breaking extension.
-      const stripOrderMeta = (obj: any) => ({
-        ...obj,
-        supportingMedia: obj.supportingMedia?.map((item: any) => {
-          const { order, position, ...rest } = item;
-          return rest;
-        }),
-      });
       const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
@@ -405,13 +425,6 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const stripOrderMeta = (obj: any) => ({
-        ...obj,
-        supportingMedia: obj.supportingMedia?.map((item: any) => {
-          const { order, position, ...rest } = item;
-          return rest;
-        }),
-      });
       const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
@@ -457,13 +470,6 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const stripOrderMeta = (obj: any) => ({
-        ...obj,
-        supportingMedia: obj.supportingMedia?.map((item: any) => {
-          const { order, position, ...rest } = item;
-          return rest;
-        }),
-      });
       const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
@@ -505,13 +511,6 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const stripOrderMeta = (obj: any) => ({
-        ...obj,
-        supportingMedia: obj.supportingMedia?.map((item: any) => {
-          const { order, position, ...rest } = item;
-          return rest;
-        }),
-      });
       const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
@@ -564,13 +563,6 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const stripOrderMeta = (obj: any) => ({
-        ...obj,
-        supportingMedia: obj.supportingMedia?.map((item: any) => {
-          const { order, position, ...rest } = item;
-          return rest;
-        }),
-      });
       const diff = deepEqualWithDiff(stripOrderMeta(normalized), stripOrderMeta(legacy));
       expect(diff.equal, diff.diff).toBe(true);
     });
@@ -912,8 +904,8 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
         mode: 'create',
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
-      const normalizedSupporting = (normalized.supportingMedia || []).map((item: any) => {
-        const { order, position, ...rest } = item;
+      const normalizedSupporting = (normalized.supportingMedia || []).map((item: OrderedSupportingMediaItem) => {
+        const { order: _order, position: _position, ...rest } = item;
         return rest;
       });
       const diff = deepEqualWithDiff(normalizedSupporting, legacy.supportingMedia, 'supportingMedia');
@@ -1112,7 +1104,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
   // Rule: "Primary media is rebuilt ONLY when the source URL changes."
   // ============================================================================
   describe('Primary Media Semantics - URL Change Detection', () => {
-    const mockEnrichMediaItemIfNeeded = async (mediaItem: any): Promise<any> => {
+    const mockEnrichMediaItemIfNeeded = async (mediaItem: EnrichMediaItemInput): Promise<NuggetMedia> => {
       return {
         ...mediaItem,
         previewMetadata: mediaItem.previewMetadata || {
@@ -1161,7 +1153,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
             titleFetchedAt: '2024-01-01T00:00:00.000Z',
           },
         },
-        initialData: {
+        initialData: toArticle({
           id: 'test-id',
           title: 'Test Article',
           content: 'Test content',
@@ -1177,7 +1169,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
               title: 'Old Video Title',
             },
           },
-        } as any,
+        }),
       };
 
       const normalized = await normalizeArticleInput(input, {
@@ -1232,7 +1224,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
             titleFetchedAt: '2024-01-01T00:00:00.000Z',
           },
         },
-        initialData: {
+        initialData: toArticle({
           id: 'test-id',
           title: 'Test Article',
           content: 'Test content',
@@ -1248,7 +1240,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
               title: 'Original Video Title',
             },
           },
-        } as any,
+        }),
       };
 
       const normalized = await normalizeArticleInput(input, {
@@ -1308,7 +1300,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
             titleFetchedAt: '2024-01-01T00:00:00.000Z',
           },
         },
-        initialData: {
+        initialData: toArticle({
           id: 'test-id',
           title: 'Test Article',
           content: 'Test content',
@@ -1325,7 +1317,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
               titleSource: 'youtube-oembed',
             },
           },
-        } as any,
+        }),
       };
 
       const normalized = await normalizeArticleInput(input, {
@@ -1388,7 +1380,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
             titleFetchedAt: '2024-01-01T00:00:00.000Z',
           },
         },
-        initialData: {
+        initialData: toArticle({
           id: 'test-id',
           title: 'Test Article',
           content: 'Test content',
@@ -1405,7 +1397,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
               titleSource: 'youtube-oembed',
             },
           },
-        } as any,
+        }),
       };
 
       const normalized = await normalizeArticleInput(input, {
@@ -1423,7 +1415,7 @@ describe('normalizeArticleInput - CREATE Mode Parity Tests', () => {
 });
 
 describe('normalizeArticleInput - Masonry Behavior Tests', () => {
-  const mockEnrichMediaItemIfNeeded = vi.fn(async (mediaItem: any) => {
+  const mockEnrichMediaItemIfNeeded = vi.fn(async (mediaItem: EnrichMediaItemInput): Promise<NuggetMedia> => {
     return {
       ...mediaItem,
       previewMetadata: mediaItem.previewMetadata || {
@@ -1461,7 +1453,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         },
       ];
 
-      const initialData = {
+      const initialData = toArticle({
         id: 'test-article',
         title: 'Test Article',
         content: 'Test content',
@@ -1470,7 +1462,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         tags: ['Tech'],
         visibility: 'public',
         supportingMedia: existingSupportingMedia,
-      } as any;
+      });
 
       // Toggle 1: Set both to true
       const input1: ArticleInputData = {
@@ -1568,7 +1560,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
 
     it('should persist legacy image masonry overrides in supportingMedia while keeping images[] intact', async () => {
       const existingImages = ['https://example.com/legacy-image.jpg'];
-      const initialData = {
+      const initialData = toArticle({
         id: 'test-article',
         title: 'Test Article',
         content: 'Test content',
@@ -1577,7 +1569,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         tags: ['Tech'],
         visibility: 'public',
         images: existingImages,
-      } as any;
+      });
 
       // Toggle masonry ON for legacy image (should NOT move it to supportingMedia)
       const input: ArticleInputData = {
@@ -1626,7 +1618,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         'https://example.com/legacy-2.jpg',
         'https://example.com/legacy-3.jpg',
       ];
-      const initialData = {
+      const initialData = toArticle({
         id: 'test-article',
         title: 'Test Article',
         content: 'Test content',
@@ -1635,7 +1627,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         tags: ['Tech'],
         visibility: 'public',
         images: existingImages,
-      } as any;
+      });
 
       const input: ArticleInputData = {
         title: 'Test Article',
@@ -1719,7 +1711,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         },
       ];
 
-      const initialData = {
+      const initialData = toArticle({
         id: 'test-article',
         title: 'Test Article',
         content: 'Test content',
@@ -1728,7 +1720,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         tags: ['Tech'],
         visibility: 'public',
         supportingMedia: existingSupportingMedia,
-      } as any;
+      });
 
       const input: ArticleInputData = {
         title: 'Test Article',
@@ -1801,7 +1793,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         },
       ];
 
-      const initialData = {
+      const initialData = toArticle({
         id: 'test-article',
         title: 'Test Article',
         content: 'Test content',
@@ -1810,7 +1802,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         tags: ['Tech'],
         visibility: 'public',
         supportingMedia: existingSupportingMedia,
-      } as any;
+      });
 
       // Toggle: image1 to true, image2 to false
       const input: ArticleInputData = {
@@ -1943,10 +1935,10 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
       expect(normalized.images).toEqual([primaryUrl, urlC, urlB]);
 
       // supportingMedia should reflect the new order with reindexed positions.
-      const supportingUrls = (normalized.supportingMedia || []).map((m: any) => m.url);
+      const supportingUrls = (normalized.supportingMedia || []).map((m) => m.url);
       expect(supportingUrls).toEqual([urlC, urlB]);
 
-      const positions = (normalized.supportingMedia || []).map((m: any) => m.position);
+      const positions = (normalized.supportingMedia || []).map((m) => m.position);
       expect(positions).toEqual([0, 1]);
     });
 
@@ -1985,7 +1977,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
   });
 
   describe('Edit deletion semantics - explicitlyDeletedImages', () => {
-    const mockEnrichMediaItemIfNeeded = async (mediaItem: any): Promise<any> => {
+    const mockEnrichMediaItemIfNeeded = async (mediaItem: EnrichMediaItemInput): Promise<NuggetMedia> => {
       return {
         ...mediaItem,
         previewMetadata: mediaItem.previewMetadata || {
@@ -2022,14 +2014,14 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
           { type: 'image', url: keptUrl, showInMasonry: true },
         ],
         explicitlyDeletedImages: new Set([deletedUrl.toLowerCase()]),
-        initialData: {
+        initialData: toArticle({
           id: 'test-article',
           title: 'Test',
           content: 'Test content',
           author: { id: 'u1', name: 'User' },
           publishedAt: new Date().toISOString(),
           tags: ['Tech'],
-        } as any,
+        }),
       };
 
       const normalized = await normalizeArticleInput(input, {
@@ -2037,7 +2029,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
         enrichMediaItemIfNeeded: mockEnrichMediaItemIfNeeded,
       });
 
-      const urls = (normalized.supportingMedia || []).map((item: any) => item.url);
+      const urls = (normalized.supportingMedia || []).map((item) => item.url);
       expect(urls).toContain(keptUrl);
       expect(urls).not.toContain(deletedUrl);
     });
@@ -2060,7 +2052,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
           url: deletedPrimaryUrl,
         },
         explicitlyDeletedImages: new Set([deletedPrimaryUrl.toLowerCase()]),
-        initialData: {
+        initialData: toArticle({
           id: 'test-article',
           title: 'Test',
           content: 'Test content',
@@ -2071,7 +2063,7 @@ describe('normalizeArticleInput - Masonry Behavior Tests', () => {
             type: 'image',
             url: deletedPrimaryUrl,
           },
-        } as any,
+        }),
       };
 
       const normalized = await normalizeArticleInput(input, {

@@ -334,7 +334,7 @@ export function SelectableDropdown<T extends SelectableDropdownOption>({
               } else if (selectedLabelsCache.current.has(selectedId)) {
                 // Not in options but cached - use cached label
                 // This prevents items from disappearing during loading
-                displayLabel = selectedLabelsCache.current.get(selectedId)!;
+                displayLabel = selectedLabelsCache.current.get(selectedId) ?? selectedId;
               } else {
                 // Fallback: use the ID itself as label (better than disappearing)
                 displayLabel = selectedId;

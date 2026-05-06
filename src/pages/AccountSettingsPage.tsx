@@ -10,12 +10,11 @@ import { ConfirmActionModal } from '../components/settings/ConfirmActionModal';
 import { Input } from '../components/UI/Input';
 import { TextArea } from '../components/UI/TextArea';
 import { getInitials } from '../utils/formatters';
-import { User, Mail, Shield, Check, Loader2, Camera, Eye, EyeOff, LayoutTemplate, AlertTriangle, ChevronDown, Bell, BellOff, Scale, ExternalLink, Clock, Tag } from 'lucide-react';
+import { User, Mail, Shield, Check, Loader2, Camera, Eye, EyeOff, AlertTriangle, ChevronDown, Bell, BellOff, Scale, ExternalLink, Clock, Tag } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import type { NotificationFrequency } from '@/types/user';
 import { ProfileFormData, AVATAR_COLORS } from '../types/settings';
 import { userToProfileForm } from '../models/userFormMappers';
-import { Avatar } from '../components/shared/Avatar';
 import { HeaderSpacer } from '../components/layouts/HeaderSpacer';
 import { LAYOUT_CLASSES } from '../constants/layout';
 import { Z_INDEX } from '../constants/zIndex';
@@ -43,7 +42,6 @@ const NotificationPreferencesSection: React.FC = () => {
     isUpdatingPreferences,
     subscribe,
     unsubscribe,
-    isSubscribed,
     permissionStatus,
     isPushSupported,
     isSubscriptionDesynced,
@@ -257,7 +255,7 @@ const NotificationPreferencesSection: React.FC = () => {
 };
 
 
-export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) => {
+export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId: _userId }) => {
   const { modularUser, currentUser } = useAuth();
   const toast = useToast();
   
@@ -331,7 +329,7 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
     try {
       await userSettingsService.updateProfile(currentUser.id, profileData);
       toast.success("Profile updated successfully");
-    } catch (e) {
+    } catch {
       toast.error("Failed to update profile");
     } finally {
       setIsSavingProfile(false);
@@ -340,16 +338,17 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) return;
     if (securityData.newPassword !== securityData.confirmPassword) {
       toast.error("New passwords do not match");
       return;
     }
     setIsSavingSecurity(true);
     try {
-      await userSettingsService.updatePassword(currentUser!.id, securityData.currentPassword, securityData.newPassword);
+      await userSettingsService.updatePassword(currentUser.id, securityData.currentPassword, securityData.newPassword);
       toast.success("Password updated");
       setSecurityData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (e) {
+    } catch {
       toast.error("Incorrect current password");
     } finally {
       setIsSavingSecurity(false);
@@ -358,7 +357,8 @@ export const AccountSettingsPage: React.FC<{ userId: string }> = ({ userId }) =>
 
 
   const handleDeleteAccount = async () => {
-    await userSettingsService.deleteAccount(currentUser!.id);
+    if (!currentUser) return;
+    await userSettingsService.deleteAccount(currentUser.id);
     toast.error("Account deleted. Redirecting...");
     setTimeout(() => window.location.href = '/', 2000);
   };

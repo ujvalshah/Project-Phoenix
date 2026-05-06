@@ -27,6 +27,13 @@ export interface UseMediaUploadReturn {
   abort: () => void;
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && typeof error.message === 'string' && error.message.trim()) {
+    return error.message;
+  }
+  return 'Failed to upload media';
+}
+
 /**
  * Unified media upload hook for Cloudinary
  *
@@ -41,6 +48,7 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const { purpose, entityType, entityId, onProgress } = options;
 
   const abort = useCallback(() => {
     if (abortControllerRef.current) {
@@ -109,14 +117,14 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
       // Create FormData
       const formData = new FormData();
       formData.append('file', file);
-      if (options.purpose) {
-        formData.append('purpose', options.purpose);
+      if (purpose) {
+        formData.append('purpose', purpose);
       }
-      if (options.entityType) {
-        formData.append('entityType', options.entityType);
+      if (entityType) {
+        formData.append('entityType', entityType);
       }
-      if (options.entityId) {
-        formData.append('entityId', options.entityId);
+      if (entityId) {
+        formData.append('entityId', entityId);
       }
 
       const apiBase = getNormalizedApiBase();
@@ -144,12 +152,12 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
 
       setProgress(100);
       return result;
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
         setError(null); // Don't show error for aborted uploads
         return null;
       }
-      const errorMessage = err.message || 'Failed to upload media';
+      const errorMessage = getErrorMessage(err);
       setError(errorMessage);
       return null;
     } finally {
@@ -157,7 +165,7 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
       setProgress(0);
       abortControllerRef.current = null;
     }
-  }, [options.purpose, options.entityType, options.entityId]);
+  }, [purpose, entityType, entityId]);
 
   const uploadMultiple = useCallback(async (
     files: File[]
@@ -166,8 +174,8 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (options.onProgress) {
-        options.onProgress((i / files.length) * 100);
+      if (onProgress) {
+        onProgress((i / files.length) * 100);
       }
 
       const result = await upload(file);
@@ -176,12 +184,12 @@ export function useMediaUpload(options: UseMediaUploadOptions = {}): UseMediaUpl
       }
     }
 
-    if (options.onProgress) {
-      options.onProgress(100);
+    if (onProgress) {
+      onProgress(100);
     }
 
     return results;
-  }, [upload, options.onProgress]);
+  }, [upload, onProgress]);
 
   return {
     upload,

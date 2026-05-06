@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AdminTable, Column } from '../components/AdminTable';
 import { AdminSummaryBar } from '../components/AdminSummaryBar';
 import { AdminCollection } from '../types/admin';
@@ -13,6 +13,7 @@ import { useAdminPermissions } from '../hooks/useAdminPermissions';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { getErrorMessage, isRequestCancelled } from '../utils/adminTypeGuards';
 export const AdminCollectionsPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
   const [collections, setCollections] = useState<AdminCollection[]>([]);
@@ -46,7 +47,7 @@ export const AdminCollectionsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const loadData = async (q?: string) => {
+  const loadData = useCallback(async (q?: string) => {
     setIsLoading(true);
     try {
       const [colsData, statsData] = await Promise.all([
@@ -56,19 +57,19 @@ export const AdminCollectionsPage: React.FC = () => {
       setCollections(colsData);
       setStats(statsData);
       setErrorMessage(null);
-    } catch (e: any) {
-      if (e.message !== 'Request cancelled') {
+    } catch (e: unknown) {
+      if (!isRequestCancelled(e)) {
         setErrorMessage("Could not load collections. Please retry.");
       }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     setPageHeader("Collections", "Review and manage user collections.");
     loadData();
-  }, []);
+  }, [loadData, setPageHeader]);
 
   // Initialize filters from URL
   useEffect(() => {
@@ -136,7 +137,7 @@ export const AdminCollectionsPage: React.FC = () => {
       const newStats = await adminCollectionsService.getStats();
       setStats(newStats);
       toast.success("Collection deleted successfully");
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Revert optimistic update on error
       setCollections(prev => {
         // Only add back if not already present
@@ -149,19 +150,25 @@ export const AdminCollectionsPage: React.FC = () => {
       
       // Provide more detailed error message
       let errorMessage = "Delete failed. Please try again.";
-      if (e?.status === 403) {
+      const status = typeof e === 'object' && e !== null ? (e as { status?: unknown }).status : undefined;
+      const requestId = typeof e === 'object' && e !== null ? (e as { requestId?: unknown }).requestId : undefined;
+      if (status === 403) {
         // Preserve backend 403 details (e.g. EMAIL_NOT_VERIFIED) instead of always showing permission denied
-        errorMessage = e?.message || "You do not have permission to delete this collection.";
-      } else if (e?.status === 404) {
+        errorMessage = getErrorMessage(e, "You do not have permission to delete this collection.");
+      } else if (status === 404) {
         errorMessage = "Collection not found. It may have already been deleted.";
-      } else if (e?.status === 401) {
+      } else if (status === 401) {
         errorMessage = "Authentication required. Please refresh the page and try again.";
-      } else if (e?.message) {
-        errorMessage = e.message;
+      } else {
+        errorMessage = getErrorMessage(e, errorMessage);
       }
       
       toast.error(errorMessage, {
-        description: e?.requestId ? `Request ID: ${e.requestId}` : e?.status ? `Status: ${e.status}` : undefined
+        description: typeof requestId === 'string'
+          ? `Request ID: ${requestId}`
+          : typeof status === 'number'
+            ? `Status: ${status}`
+            : undefined
       });
     } finally {
       setIsDeleting(false);
@@ -180,7 +187,7 @@ export const AdminCollectionsPage: React.FC = () => {
       // Invalidate the featured collections cache so the category toolbar updates immediately
       queryClient.invalidateQueries({ queryKey: ['collections', 'featured'] });
       toast.success(newFeatured ? 'Added to category toolbar' : 'Removed from category toolbar');
-    } catch (e) {
+    } catch {
       // Revert
       setCollections(prev => prev.map(c => c.id === col.id ? { ...c, isFeatured: col.isFeatured } : c));
       if (selectedCollection?.id === col.id) {
@@ -250,8 +257,8 @@ export const AdminCollectionsPage: React.FC = () => {
             .filter((c): c is AdminCollection => Boolean(c)),
         ]);
 
-        const firstErr: any = failures[0]?.error;
-        toast.error(firstErr?.message || 'Bulk delete failed.');
+        const firstErr = failures[0]?.error;
+        toast.error(getErrorMessage(firstErr, 'Bulk delete failed.'));
         return;
       }
 
@@ -303,8 +310,8 @@ export const AdminCollectionsPage: React.FC = () => {
 
       toast.success('Collection updated');
       setIsEditing(false);
-    } catch (e: any) {
-      const errorMessage = e?.message || 'Failed to update collection';
+    } catch (e: unknown) {
+      const errorMessage = getErrorMessage(e, 'Failed to update collection');
       toast.error(errorMessage);
     } finally {
       setIsSaving(false);

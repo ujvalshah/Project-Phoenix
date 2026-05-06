@@ -99,8 +99,10 @@ const makeArticle = (opts: {
 };
 
 describe('Masonry MediaBlock thumbnail overlay', () => {
+  let openSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
-    (window as any).open = vi.fn();
+    openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
   });
 
   it('renders a "Source" button when primary externalLinks exists', () => {
@@ -124,7 +126,7 @@ describe('Masonry MediaBlock thumbnail overlay', () => {
     expect(button).toHaveTextContent('Source');
 
     fireEvent.click(button);
-    expect((window as any).open).toHaveBeenCalledWith(externalUrl, '_blank', 'noopener,noreferrer');
+    expect(openSpy).toHaveBeenCalledWith(externalUrl, '_blank', 'noopener,noreferrer');
 
     // Click isolation: should not open lightbox just by clicking overlay
     expect(screen.queryByTestId('image-lightbox')).toBeNull();
@@ -149,7 +151,7 @@ describe('Masonry MediaBlock thumbnail overlay', () => {
     expect(button).toBeTruthy();
 
     fireEvent.click(button);
-    expect((window as any).open).toHaveBeenCalledWith(previewUrl, '_blank', 'noopener,noreferrer');
+    expect(openSpy).toHaveBeenCalledWith(previewUrl, '_blank', 'noopener,noreferrer');
 
     // Click isolation: should not open lightbox just by clicking overlay
     expect(screen.queryByTestId('image-lightbox')).toBeNull();

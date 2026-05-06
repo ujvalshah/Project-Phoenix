@@ -9,6 +9,9 @@ import { formatDate } from '@/utils/formatters';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { useSearchParams } from 'react-router-dom';
 import { ReportContentPreview } from '../components/ReportContentPreview';
+import { getErrorMessage, isRequestCancelled } from '../utils/adminTypeGuards';
+
+const MODERATION_FILTERS = ['open', 'resolved', 'dismissed'] as const;
 
 export const AdminModerationPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
@@ -34,10 +37,10 @@ export const AdminModerationPage: React.FC = () => {
       "Moderation Queue", 
       "Review and resolve user reports.",
       <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-          {['open', 'resolved', 'dismissed'].map((status) => (
+          {MODERATION_FILTERS.map((status) => (
               <button 
                   key={status}
-                  onClick={() => setFilter(status as any)}
+                  onClick={() => setFilter(status)}
                   className={`px-3 py-1.5 text-xs font-bold rounded-lg capitalize transition-all ${filter === status ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
               >
                   {status}
@@ -45,7 +48,7 @@ export const AdminModerationPage: React.FC = () => {
           ))}
       </div>
     );
-  }, [filter]);
+  }, [filter, setPageHeader]);
 
   // ONE-TIME URL → STATE HYDRATION: Read URL params ONCE on mount only
   useEffect(() => {
@@ -94,14 +97,14 @@ export const AdminModerationPage: React.FC = () => {
 
       setReports(filteredReports);
       setStats(statsData);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Only handle errors if this is still the latest request and component is mounted
       if (currentVersion !== requestVersionRef.current || !isMountedRef.current) {
         return;
       }
       
       // Silently ignore cancellation errors - they're expected when filters change or component unmounts
-      if (e.message === 'Request cancelled') {
+      if (isRequestCancelled(e)) {
         // Don't log as error - cancellation is expected behavior
         return;
       }
@@ -189,12 +192,12 @@ export const AdminModerationPage: React.FC = () => {
       if (filter === action && isMountedRef.current) {
         loadData();
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Rollback on failure
       setReports(prevReports);
       setStats(prevStats);
       
-      const errorMessage = e.message || (e.response?.data?.message) || "Action failed. Changes reverted.";
+      const errorMessage = getErrorMessage(e, "Action failed. Changes reverted.");
       toast.error(errorMessage);
     } finally {
       setPendingActions(prev => {
@@ -384,10 +387,10 @@ export const AdminModerationPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status:</span>
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-            {['open', 'resolved', 'dismissed'].map((status) => (
+            {MODERATION_FILTERS.map((status) => (
               <button 
                 key={status}
-                onClick={() => setFilter(status as any)}
+                onClick={() => setFilter(status)}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg capitalize transition-all ${
                   filter === status 
                     ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' 

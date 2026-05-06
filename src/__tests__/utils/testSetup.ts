@@ -38,7 +38,7 @@ export function setupIntersectionObserver() {
   });
 
   // Replace global IntersectionObserver
-  global.IntersectionObserver = MockIntersectionObserver as any;
+  global.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
 
   /**
    * Trigger intersection observer callback

@@ -4,14 +4,63 @@ import { apiClient } from '@/services/apiClient';
 import { buildFeedImageResponsiveProps } from '@/utils/feedImageResponsive';
 import { Loader2, FileText, User, Layers, ExternalLink } from 'lucide-react';
 import { formatDate } from '@/utils/formatters';
+import { getErrorMessage, isRequestCancelled } from '../utils/adminTypeGuards';
 
 interface ReportContentPreviewProps {
   targetId: string;
   targetType: 'nugget' | 'user' | 'collection';
 }
 
+interface ModerationCollectionContent {
+  name?: string;
+  description?: string;
+  validEntriesCount?: number;
+  entries?: unknown[];
+  createdAt?: string;
+}
+
+interface ModerationUserContent {
+  profile?: {
+    avatarUrl?: string;
+    displayName?: string;
+    username?: string;
+  };
+  auth?: {
+    email?: string;
+  };
+}
+
+interface ModerationContentResponse {
+  content: unknown;
+  exists: boolean;
+  deleted: boolean;
+  targetType: string;
+  targetId: string;
+}
+
+type PreviewContent =
+  | { targetType: 'nugget'; content: Article }
+  | { targetType: 'collection'; content: ModerationCollectionContent }
+  | { targetType: 'user'; content: ModerationUserContent };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isArticleContent(value: unknown): value is Article {
+  return isRecord(value) && typeof value.content === 'string' && 'author' in value;
+}
+
+function isModerationCollectionContent(value: unknown): value is ModerationCollectionContent {
+  return isRecord(value);
+}
+
+function isModerationUserContent(value: unknown): value is ModerationUserContent {
+  return isRecord(value);
+}
+
 export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targetId, targetType }) => {
-  const [content, setContent] = useState<any>(null);
+  const [previewContent, setPreviewContent] = useState<PreviewContent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,13 +76,11 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
         // This endpoint is admin-only and bypasses normal visibility filters
         // Use unique cancelKey to prevent interference with other requests
         const cancelKey = `reportContentPreview.${targetType}.${targetId}`;
-        const response = await apiClient.get<{
-          content: any;
-          exists: boolean;
-          deleted: boolean;
-          targetType: string;
-          targetId: string;
-        }>(`/moderation/content/${targetType}/${targetId}`, {}, cancelKey);
+        const response = await apiClient.get<ModerationContentResponse>(
+          `/moderation/content/${targetType}/${targetId}`,
+          {},
+          cancelKey,
+        );
         
         // Check if component is still mounted before updating state
         if (!isMounted) return;
@@ -41,9 +88,29 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
         if (response.exists && response.content) {
           // Handle different content types
           if (targetType === 'nugget') {
-            setContent(response.content as Article);
+            if (isArticleContent(response.content)) {
+              setPreviewContent({ targetType: 'nugget', content: response.content });
+            } else {
+              setError('Nugget content is unavailable.');
+            }
+          } else if (targetType === 'collection') {
+            if (isModerationCollectionContent(response.content)) {
+              setPreviewContent({
+                targetType: 'collection',
+                content: response.content,
+              });
+            } else {
+              setError('Collection content is unavailable.');
+            }
           } else {
-            setContent(response.content);
+            if (isModerationUserContent(response.content)) {
+              setPreviewContent({
+                targetType: 'user',
+                content: response.content,
+              });
+            } else {
+              setError('User content is unavailable.');
+            }
           }
         } else {
           // Content doesn't exist or was deleted
@@ -52,24 +119,35 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
             : 'Content not found'
           );
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         // Don't update state if component is unmounted
         if (!isMounted) return;
         
         // Ignore cancellation errors - these are expected when component unmounts or re-renders
-        if (e.message === 'Request cancelled') {
+        if (isRequestCancelled(e)) {
           // Silently ignore cancelled requests - don't update state
           setIsLoading(false);
           return;
         }
-        
-        // Handle error response from backend
-        // apiClient attaches response data to error.response.data
-        const errorData = e.response?.data || {};
-        const status = e.response?.status;
+
+        const responseData = isRecord(e) && isRecord(e.response) && isRecord(e.response.data)
+          ? e.response.data
+          : null;
+        const status = isRecord(e) && isRecord(e.response) && typeof e.response.status === 'number'
+          ? e.response.status
+          : undefined;
+        const responseMessage =
+          responseData && typeof responseData.message === 'string' ? responseData.message : '';
+        const wasDeleted =
+          responseData && typeof responseData.deleted === 'boolean' ? responseData.deleted : false;
         
         // Handle 404 specifically - content was deleted or doesn't exist
-        if (status === 404 || errorData.deleted || errorData.message?.includes('deleted') || errorData.message?.includes('not found')) {
+        if (
+          status === 404 ||
+          wasDeleted ||
+          responseMessage.includes('deleted') ||
+          responseMessage.includes('not found')
+        ) {
           setError(`This ${targetType} was deleted and is no longer available.`);
           setIsLoading(false);
           return;
@@ -83,10 +161,11 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
         }
         
         // Handle other errors
-        if (errorData.message) {
-          setError(errorData.message);
-        } else if (e.message && e.message !== 'Request cancelled') {
-          setError(e.message);
+        const message = getErrorMessage(e, '');
+        if (responseMessage) {
+          setError(responseMessage);
+        } else if (message) {
+          setError(message);
         } else {
           setError(`Failed to load ${targetType} content. The resource may have been deleted.`);
         }
@@ -126,7 +205,7 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
     );
   }
 
-  if (!content) {
+  if (!previewContent) {
     return (
       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
         <p className="text-sm text-slate-500">Content not found</p>
@@ -135,8 +214,8 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
   }
 
   // Render based on target type
-  if (targetType === 'nugget') {
-    const article = content as Article;
+  if (previewContent.targetType === 'nugget') {
+    const article = previewContent.content;
     const previewUrl = article.media?.previewMetadata?.imageUrl;
     const previewResponsive = previewUrl ? buildFeedImageResponsiveProps(previewUrl) : null;
     return (
@@ -187,7 +266,8 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
     );
   }
 
-  if (targetType === 'collection') {
+  if (previewContent.targetType === 'collection') {
+    const content = previewContent.content;
     return (
       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg space-y-2">
         <div className="flex items-center gap-2">
@@ -211,7 +291,8 @@ export const ReportContentPreview: React.FC<ReportContentPreviewProps> = ({ targ
     );
   }
 
-  if (targetType === 'user') {
+  if (previewContent.targetType === 'user') {
+    const content = previewContent.content;
     return (
       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
         <div className="flex items-center gap-3">

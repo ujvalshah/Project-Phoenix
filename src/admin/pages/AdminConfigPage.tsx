@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Megaphone, Save, Info, AlertTriangle, XCircle, CheckCircle2, Clock, ToggleLeft, ToggleRight, HardDrive, Bell, FileText, Zap } from 'lucide-react';
 import { getNotificationSystemStatus, toggleNotificationSystem } from '@/services/notificationService';
 import { useToast } from '@/hooks/useToast';
@@ -15,6 +15,7 @@ interface SystemAnnouncement {
   message: string;
   expiresAt: string;
 }
+const ANNOUNCEMENT_TYPES: SystemAnnouncement['type'][] = ['info', 'warning', 'error', 'success'];
 
 export const AdminConfigPage: React.FC = () => {
   const { setPageHeader } = useAdminHeader();
@@ -33,7 +34,7 @@ export const AdminConfigPage: React.FC = () => {
   const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
 
   // --- Config State ---
-  const [mediaLimits, setMediaLimits] = useState<MediaLimits | null>(null);
+  const [, setMediaLimits] = useState<MediaLimits | null>(null);
   const [mediaLimitsDraft, setMediaLimitsDraft] = useState<MediaLimits | null>(null);
   const [isSavingMediaLimits, setIsSavingMediaLimits] = useState(false);
 
@@ -52,12 +53,7 @@ export const AdminConfigPage: React.FC = () => {
   const [marketPulseMicroHeaderLoadError, setMarketPulseMicroHeaderLoadError] = useState<string | null>(null);
   const [isReloadingMarketPulseMicroHeader, setIsReloadingMarketPulseMicroHeader] = useState(false);
 
-  useEffect(() => {
-    setPageHeader("System Configuration", "Manage global settings and system alerts.");
-    loadConfig();
-  }, []);
-
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       const [limitsData, notifStatus, disclaimerData, homeMicroHeaderData, marketPulseMicroHeaderData] =
         await Promise.all([
@@ -102,10 +98,15 @@ export const AdminConfigPage: React.FC = () => {
         setMarketPulseMicroHeaderDraft(pulseHeaderFallback);
         setMarketPulseMicroHeaderLoadError('Could not load saved Market Pulse micro-header copy. Showing fallback text; save to persist changes.');
       }
-    } catch (e) {
+    } catch {
       toast.error("Failed to load configuration");
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    setPageHeader("System Configuration", "Manage global settings and system alerts.");
+    loadConfig();
+  }, [loadConfig, setPageHeader]);
 
   const handleReloadHomeMicroHeader = async () => {
     setIsReloadingHomeMicroHeader(true);
@@ -139,7 +140,7 @@ export const AdminConfigPage: React.FC = () => {
       setMediaLimits(result.limits);
       setMediaLimitsDraft(result.limits);
       toast.success(result.message || "Media limits updated");
-    } catch (e) {
+    } catch {
       toast.error("Failed to update media limits");
     } finally {
       setIsSavingMediaLimits(false);
@@ -157,7 +158,7 @@ export const AdminConfigPage: React.FC = () => {
       setDisclaimerConfig(result.config);
       setDisclaimerDraft(result.config);
       toast.success(result.message || "Disclaimer config updated");
-    } catch (e) {
+    } catch {
       toast.error("Failed to update disclaimer config");
     } finally {
       setIsSavingDisclaimer(false);
@@ -176,7 +177,7 @@ export const AdminConfigPage: React.FC = () => {
       setHomeMicroHeaderDraft(result.config);
       setHomeMicroHeaderLoadError(null);
       toast.success(result.message || 'Homepage micro-header copy updated');
-    } catch (e) {
+    } catch {
       toast.error('Failed to update homepage micro-header copy');
     } finally {
       setIsSavingHomeMicroHeader(false);
@@ -211,7 +212,7 @@ export const AdminConfigPage: React.FC = () => {
       setMarketPulseMicroHeaderDraft(result.config);
       setMarketPulseMicroHeaderLoadError(null);
       toast.success(result.message || 'Market Pulse micro-header copy updated');
-    } catch (e) {
+    } catch {
       toast.error('Failed to update Market Pulse micro-header copy');
     } finally {
       setIsSavingMarketPulseMicroHeader(false);
@@ -552,10 +553,10 @@ export const AdminConfigPage: React.FC = () => {
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Message Type</label>
                         <div className="flex gap-2">
-                            {['info', 'warning', 'error', 'success'].map((t) => (
+                            {ANNOUNCEMENT_TYPES.map((t) => (
                             <button
                                 key={t}
-                                onClick={() => setAnnouncement(p => ({ ...p, type: t as any }))}
+                                onClick={() => setAnnouncement(p => ({ ...p, type: t }))}
                                 className={`px-3 py-2 rounded-lg text-xs font-bold capitalize border transition-all ${announcement.type === t ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
                             >
                                 {t}

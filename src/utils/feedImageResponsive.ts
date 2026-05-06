@@ -6,8 +6,6 @@
  * transformation chains after `upload/`, non-HTTP(S), or parse failures — callers keep plain `src`.
  */
 
-import { FEED_CARD_GRID_CELL_IMAGE_SIZES, FEED_CARD_HERO_IMAGE_SIZES } from '@/constants/feedImageLayout';
-
 /** Width descriptors aligned with `sizes` in feedImageLayout (logical px; DPR handled by browser). */
 export const FEED_IMAGE_SRCSET_WIDTHS = [320, 480, 640, 960] as const;
 

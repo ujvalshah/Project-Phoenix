@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AdminTable, Column } from '../components/AdminTable';
 import { AdminContactMessage } from '../types/admin';
@@ -45,9 +45,9 @@ export const AdminContactPage: React.FC = () => {
         />
       </div>
     );
-  }, [filter, dateFilter]);
+  }, [filter, dateFilter, setPageHeader]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await adminContactService.listMessages(filter);
@@ -67,11 +67,11 @@ export const AdminContactPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filter, dateFilter]);
 
   useEffect(() => {
     loadData();
-  }, [filter, dateFilter]);
+  }, [filter, dateFilter, loadData]);
 
   // Initialize filters from URL
   useEffect(() => {

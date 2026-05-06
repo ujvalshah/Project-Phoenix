@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, Suspense, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, Suspense, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Article } from '@/types';
 import { getOverlayHost } from '@/utils/overlayHosts';
@@ -53,8 +53,8 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
     });
   }, [isOpen]);
 
-  // Lock body scroll only while open; restore exactly once in cleanup when leaving open.
-  useEffect(() => {
+  // Lock before paint so the background does not flash at the wrong scroll offset.
+  useLayoutEffect(() => {
     if (!isOpen) return;
 
     scrollPositionRef.current = window.scrollY;
@@ -94,6 +94,8 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
 
   const handleClose = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation();
+    e?.preventDefault();
+    if (isClosing) return;
     if (closeTimeoutRef.current !== null) {
       window.clearTimeout(closeTimeoutRef.current);
       closeTimeoutRef.current = null;
@@ -132,11 +134,11 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
       requestAnimationFrame(() => {
         const el = previousFocusRef.current;
         if (el && document.body.contains(el)) {
-          el.focus();
+          el.focus({ preventScroll: true });
         }
       });
     }, delayMs);
-  }, [onClose]);
+  }, [isClosing, onClose]);
 
   // Keyboard handlers
   useEffect(() => {
@@ -168,7 +170,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
     );
 
     if (focusableElements.length > 0) {
-      (focusableElements[0] as HTMLElement).focus();
+      (focusableElements[0] as HTMLElement).focus({ preventScroll: true });
     }
 
     // Trap focus within drawer
@@ -201,7 +203,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 flex justify-end isolation-auto ${isClosing ? 'pointer-events-none' : 'pointer-events-auto'}`}
+      className="fixed inset-0 flex justify-end isolation-auto pointer-events-auto"
       role="dialog"
       aria-modal="true"
       aria-label="Article details drawer"
@@ -212,7 +214,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
         className={`
           absolute inset-0 bg-black/40 backdrop-blur-sm
           transition-opacity duration-200 ease-out motion-reduce:transition-none
-          ${isClosing ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'}
+          ${isClosing ? 'opacity-0' : 'opacity-100'}
         `}
         onClick={handleClose}
         aria-hidden="true"

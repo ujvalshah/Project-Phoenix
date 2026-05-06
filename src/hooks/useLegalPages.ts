@@ -51,7 +51,10 @@ export function useLegalPages() {
 export function useLegalPageFull(slug: string | undefined) {
   return useQuery({
     queryKey: ['legal-page', slug],
-    queryFn: () => legalService.getBySlug(slug!),
+    queryFn: () =>
+      slug
+        ? legalService.getBySlug(slug)
+        : Promise.reject(new Error('Legal page slug is required')),
     enabled: !!slug,
     staleTime: LEGAL_STALE_TIME,
   });

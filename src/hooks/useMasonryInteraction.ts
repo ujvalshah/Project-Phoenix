@@ -23,7 +23,6 @@ interface UseMasonryInteractionProps {
 export const useMasonryInteraction = ({
   article,
   onArticleClick,
-  currentUserId,
 }: UseMasonryInteractionProps) => {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -57,7 +56,7 @@ export const useMasonryInteraction = ({
     [handleActionClick]
   );
 
-  const handleReport = useCallback(async () => {
+  const handleReport = useCallback(() => {
     // Report logic can be added here
     setShowReportModal(true);
   }, []);
@@ -73,7 +72,7 @@ export const useMasonryInteraction = ({
         await invalidateArticleListCaches(queryClient);
         await queryClient.invalidateQueries({ queryKey: articleKeys.detail(article.id), exact: true });
         toast.success('Nugget deleted');
-      } catch (error) {
+      } catch {
         toast.error('Failed to delete nugget');
       }
     }
@@ -91,7 +90,7 @@ export const useMasonryInteraction = ({
       }
       await invalidateArticleListCaches(queryClient);
       toast.success(`Made ${newVisibility}`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update visibility');
     }
   }, [article.id, article.visibility, queryClient, toast]);

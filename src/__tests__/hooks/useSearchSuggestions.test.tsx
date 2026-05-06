@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { ReactNode, ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSearchSuggestions } from '@/hooks/useSearchSuggestions';
+import type { SearchSuggestionsResponse } from '@/services/searchService';
 
 vi.mock('@/services/searchService', () => ({
   searchService: {
@@ -37,8 +38,8 @@ describe('useSearchSuggestions', () => {
   });
 
   it('does not let stale async response overwrite latest query results', async () => {
-    const oldDeferred = createDeferred<any>();
-    const latestDeferred = createDeferred<any>();
+    const oldDeferred = createDeferred<SearchSuggestionsResponse>();
+    const latestDeferred = createDeferred<SearchSuggestionsResponse>();
 
     vi.mocked(searchService.getSuggestions)
       .mockReturnValueOnce(oldDeferred.promise)

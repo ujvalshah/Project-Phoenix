@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { X, Check, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { X, Check, Upload, Loader2 } from 'lucide-react';
 import { AvatarColor, AVATAR_COLORS } from '@/types/settings';
 import { getInitials } from '@/utils/formatters';
 import { useMediaUpload } from '@/hooks/useMediaUpload';

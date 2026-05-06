@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DropdownPortal } from '@/components/UI/DropdownPortal';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AdminTable, Column } from '../components/AdminTable';
@@ -14,6 +14,7 @@ import { ConfirmActionModal } from '@/components/settings/ConfirmActionModal';
 import { AdminDrawer } from '../components/AdminDrawer';
 import { useAdminHeader } from '../layout/AdminLayout';
 import { getSafeUsernameHandle } from '@/utils/userIdentity';
+import { isRequestCancelled, parseEnumValue } from '../utils/adminTypeGuards';
 
 interface ProfileFieldProps {
   label: string;
@@ -44,6 +45,7 @@ const ProfileField: React.FC<ProfileFieldProps> = ({ label, value, onChange, mul
 );
 
 export const AdminUsersPage: React.FC = () => {
+  const ROLE_FILTERS = ['all', 'admin', 'user'] as const;
   const { setPageHeader } = useAdminHeader();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [stats, setStats] = useState({ total: 0, active: 0, suspended: 0, banned: 0, newToday: 0, admins: 0 });
@@ -98,7 +100,7 @@ export const AdminUsersPage: React.FC = () => {
 
   useEffect(() => {
     setPageHeader("User Management", "Overview of all registered users.");
-  }, []);
+  }, [setPageHeader]);
 
   // Initialize filters from URL
   useEffect(() => {
@@ -123,7 +125,7 @@ export const AdminUsersPage: React.FC = () => {
     setSearchParams(params, { replace: true });
   }, [searchQuery, roleFilter, dateFilter, showInactiveOnly, setSearchParams]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [usersData, statsData] = await Promise.all([
@@ -133,20 +135,22 @@ export const AdminUsersPage: React.FC = () => {
       setUsers(usersData);
       setStats(statsData);
       setErrorMessage(null);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Don't show error for cancelled requests
-      if (e.message !== 'Request cancelled') {
+      if (!isRequestCancelled(e)) {
         setErrorMessage("Could not load users. Please retry.");
       }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [searchQuery]);
 
   useEffect(() => {
-    const timer = setTimeout(loadData, 300);
+    const timer = setTimeout(() => {
+      void loadData();
+    }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [loadData]);
 
   // Derived state for sorting and filtering
   const processedUsers = useMemo(() => {
@@ -174,8 +178,8 @@ export const AdminUsersPage: React.FC = () => {
 
     // Sort
     result.sort((a, b) => {
-      let valA: any = a[sortKey as keyof AdminUser] || '';
-      let valB: any = b[sortKey as keyof AdminUser] || '';
+      let valA: unknown = a[sortKey as keyof AdminUser] ?? '';
+      let valB: unknown = b[sortKey as keyof AdminUser] ?? '';
 
       if (sortKey === 'name') {
         valA = (a.name || '').toLowerCase();
@@ -192,8 +196,13 @@ export const AdminUsersPage: React.FC = () => {
         valB = b.stats[key];
       }
 
-      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      const normalizedA =
+        typeof valA === 'number' ? valA : typeof valA === 'string' ? valA.toLowerCase() : String(valA);
+      const normalizedB =
+        typeof valB === 'number' ? valB : typeof valB === 'string' ? valB.toLowerCase() : String(valB);
+
+      if (normalizedA < normalizedB) return sortDirection === 'asc' ? -1 : 1;
+      if (normalizedA > normalizedB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
 
@@ -266,7 +275,7 @@ export const AdminUsersPage: React.FC = () => {
                   : u
           ));
           if (edits.displayName !== undefined) {
-              setSelectedUser(prev => prev ? { ...prev, name: edits.displayName! } : prev);
+              setSelectedUser(prev => prev ? { ...prev, name: edits.displayName } : prev);
           }
           toast.success('Profile updated');
           setIsEditingProfile(false);
@@ -335,7 +344,7 @@ export const AdminUsersPage: React.FC = () => {
       await adminUsersService.updateUserRole(roleChangeCandidate.user.id, roleChangeCandidate.newRole);
       toast.success(`Role updated to ${roleChangeCandidate.newRole}`);
       setRoleChangeCandidate(null);
-    } catch (e) {
+    } catch {
       // rollback
       setUsers(prevUsers);
       toast.error("Role update failed. Changes reverted.");
@@ -581,7 +590,7 @@ export const AdminUsersPage: React.FC = () => {
         {['all', 'admin', 'user'].map((role) => (
             <button
                 key={role}
-                onClick={() => setRoleFilter(role as any)}
+                onClick={() => setRoleFilter(parseEnumValue(role, ROLE_FILTERS, 'all'))}
                 className={`px-3 py-1.5 text-[10px] font-bold capitalize rounded-md transition-all ${roleFilter === role ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
             >
                 {role}

@@ -54,7 +54,10 @@ export function detectDuplicateImages(images: string[]): {
 
     // Check case-insensitive match
     if (seen.has(lowerCase)) {
-      const existing = seen.get(lowerCase)!;
+      const existing = seen.get(lowerCase);
+      if (!existing) {
+        continue;
+      }
       if (!existing.includes(trimmed)) {
         duplicates.push({
           original: trimmed,
@@ -91,12 +94,6 @@ export function detectDuplicateImages(images: string[]): {
  * - Preserves original casing of first occurrence
  * - Prevents storing exact duplicates
  */
-/** Skip verbose dedup logs during Vitest runs (keeps CI output readable). */
-function shouldLogImageDedupDiag(): boolean {
-  if (typeof process !== 'undefined' && process.env.VITEST === 'true') return false;
-  return typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
-}
-
 export function dedupeImagesForCreate(images: string[]): {
   deduplicated: string[];
   removed: string[];
@@ -105,7 +102,6 @@ export function dedupeImagesForCreate(images: string[]): {
   const imageMap = new Map<string, string>();
   const removed: string[] = [];
   const logs: Array<{ action: string; reason: string; url?: string }> = [];
-  const beforeCount = images.length;
 
   for (const img of images) {
     if (img && typeof img === 'string' && img.trim()) {
@@ -125,15 +121,6 @@ export function dedupeImagesForCreate(images: string[]): {
   }
 
   const deduplicated = Array.from(imageMap.values());
-  const afterCount = deduplicated.length;
-
-  if (shouldLogImageDedupDiag()) {
-    if (beforeCount !== afterCount) {
-      console.log(`[IMAGE_DEDUP] mode=create, action=removed, reason=duplicate, before=${beforeCount}, after=${afterCount}, removed=${removed.length}`);
-    } else if (deduplicated.length > 0) {
-      console.log(`[IMAGE_DEDUP] mode=create, action=preserved, reason=none, before=${beforeCount}, after=${afterCount}`);
-    }
-  }
 
   return { deduplicated, removed, logs };
 }
@@ -152,7 +139,7 @@ export function dedupeImagesForCreate(images: string[]): {
 export function dedupeImagesForEdit(
   existingImages: string[],
   newImages: string[],
-  supportingMedia?: any[], // Unused - kept for backward compatibility
+  supportingMedia?: unknown[], // Unused - kept for backward compatibility
   imagesBackup?: Set<string>, // Unused - kept for backward compatibility
   explicitlyDeletedImages?: Set<string>
 ): {
@@ -176,8 +163,7 @@ export function dedupeImagesForEdit(
   
   // Combine existing and new images
   const allImages = [...existingImages, ...newImages];
-  const beforeCount = allImages.length;
-  
+
   for (const img of allImages) {
     if (img && typeof img === 'string' && img.trim()) {
       const normalized = img.toLowerCase().trim();
@@ -228,15 +214,6 @@ export function dedupeImagesForEdit(
   // MASONRY REFACTOR: No longer pruning images based on supportingMedia
   // Images remain in images[] array regardless of masonry selection
   const deduplicated = Array.from(imageMap.values());
-  const afterCount = deduplicated.length;
-
-  if (shouldLogImageDedupDiag()) {
-    if (removed.length > 0 || beforeCount !== afterCount) {
-      console.log(`[IMAGE_DEDUP] mode=edit, action=${removed.length > 0 ? 'removed' : 'preserved'}, reason=duplicate, before=${beforeCount}, after=${afterCount}, removed=${removed.length}`);
-    } else if (deduplicated.length > 0) {
-      console.log(`[IMAGE_DEDUP] mode=edit, action=preserved, reason=none, before=${beforeCount}, after=${afterCount}`);
-    }
-  }
 
   return {
     deduplicated,

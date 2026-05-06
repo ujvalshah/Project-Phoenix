@@ -36,7 +36,6 @@ interface MasonryMediaToggleProps {
  */
 const MASONRY_TITLE_MAX_LENGTH = 80;
 const MASONRY_TITLE_DISPLAY_DESKTOP = 40;
-const MASONRY_TITLE_DISPLAY_MOBILE = 28;
 
 /**
  * Normalize masonry title input

@@ -67,7 +67,20 @@
 
 import { detectProviderFromUrl, isImageUrl } from '@/utils/urlUtils';
 import { getPrimaryUrl } from '@/utils/processNuggetUrl';
-import type { NuggetMedia, Article } from '@/types';
+import type { NuggetMedia, Article, Document, PrimaryMedia, SupportingMediaItem } from '@/types';
+import type { MasonryMediaItem } from '@/utils/masonryMediaHelper';
+
+/**
+ * Lightweight attachment rows from the composer shell (not necessarily full persisted {@link Document}).
+ */
+export interface ComposerUploadDoc {
+  url: string;
+  name: string;
+  type: string;
+}
+
+/** Masonry rows may carry canonical `order` / `position` during reorder passes. */
+export type MasonryMediaItemInput = MasonryMediaItem & { order?: number; position?: number };
 import { normalizeTags } from './normalizeTags';
 import {
   detectDuplicateImages,
@@ -85,6 +98,13 @@ import {
 /**
  * Input data for normalization
  */
+/** Shapes passed into optional `enrichMediaItemIfNeeded` from create/edit pipelines. */
+export type EnrichMediaItemInput =
+  | NuggetMedia
+  | PrimaryMedia
+  | SupportingMediaItem
+  | MasonryMediaItem;
+
 export interface ArticleInputData {
   title: string;
   content: string;
@@ -96,9 +116,9 @@ export interface ArticleInputData {
   imageUrls: string[];
   uploadedImageUrls: string[];
   mediaIds: string[];
-  uploadedDocs?: any[];
+  uploadedDocs?: ComposerUploadDoc[];
   customDomain?: string | null;
-  masonryMediaItems: any[]; // MasonryMediaItem[]
+  masonryMediaItems: MasonryMediaItemInput[];
   customCreatedAt?: string | null;
   isAdmin?: boolean;
   
@@ -107,7 +127,7 @@ export interface ArticleInputData {
   existingMediaIds?: string[];
   initialData?: Article;
   existingMedia?: NuggetMedia | null;
-  existingSupportingMedia?: any[];
+  existingSupportingMedia?: SupportingMediaItem[];
   
   // Image preservation invariant tracking
   imagesBackup?: Set<string>; // Internal field: tracks images promoted from images[] to supportingMedia[]
@@ -126,8 +146,8 @@ export interface ArticleInputData {
  */
 export interface NormalizeArticleInputOptions {
   mode: 'create' | 'edit';
-  enrichMediaItemIfNeeded?: (mediaItem: any) => Promise<any>;
-  classifyArticleMedia?: (article: Article) => { primaryMedia?: any };
+  enrichMediaItemIfNeeded?: (mediaItem: EnrichMediaItemInput) => Promise<NuggetMedia>;
+  classifyArticleMedia?: (article: Article) => { primaryMedia?: PrimaryMedia | null };
 }
 
 /**
@@ -142,9 +162,10 @@ export interface NormalizedArticleInput {
   visibility: 'public' | 'private';
   images?: string[];
   mediaIds?: string[];
-  documents?: any[];
+  /** Composer may supply partial rows; persisted shape remains {@link Document}. */
+  documents?: Document[];
   media?: NuggetMedia | null;
-  supportingMedia?: any[];
+  supportingMedia?: SupportingMediaItem[];
   source_type?: string;
   customCreatedAt?: string;
   primaryUrl?: string | null;
@@ -252,17 +273,10 @@ ${entry.normalizedPairs.length > 0 ? `### Normalized Pairs\n${entry.normalizedPa
 
       // Append to log file
       fs.appendFileSync(logFile, logEntry, 'utf-8');
-      console.log(`[IMAGE_DEDUP_AUDIT] ✅ Audit log entry written to ${logFile}`);
-      console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved}`);
     } catch (error) {
       // File writing failed, just log to console
       console.warn('[IMAGE_DEDUP_AUDIT] Failed to write log file (browser environment or file system unavailable):', error);
-      // Still log summary to console
-      console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved}`);
     }
-  } else {
-    // Browser environment - just log summary to console
-    console.log(`[IMAGE_DEDUP_AUDIT] Summary: ${entry.mode} mode | Input: ${entry.totalInputImages} | Output: ${entry.totalOutputImages} | Duplicates: ${entry.duplicatesDetected} | Removed: ${entry.imagesRemoved}`);
   }
 }
 
@@ -295,10 +309,10 @@ function separateImageUrls(urls: string[]): { imageUrls: string[]; linkUrls: str
  * Build media object for CREATE mode
  * Matches exact logic from CreateNuggetModal.tsx lines 1824-1891
  */
-async function buildMediaObjectCreate(
+function buildMediaObjectCreate(
   input: ArticleInputData,
   _options: NormalizeArticleInputOptions
-): Promise<NuggetMedia | null> {
+): NuggetMedia | null {
   const { linkMetadata, urls, detectedLink, customDomain, title, masonryMediaItems } = input;
   const primaryUrl = getPrimaryUrl(urls) || detectedLink || null;
   const primaryItem = masonryMediaItems.find(item => item.source === 'primary');
@@ -599,7 +613,7 @@ async function buildMediaObjectEdit(
 async function buildSupportingMediaCreate(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
-): Promise<any[] | undefined> {
+): Promise<SupportingMediaItem[] | undefined> {
   const { masonryMediaItems } = input;
   const { enrichMediaItemIfNeeded } = options;
 
@@ -622,9 +636,6 @@ async function buildSupportingMediaCreate(
     // Check for duplicate URL
     const normalizedUrl = normalizeUrl(item.url);
     if (addedUrls.has(normalizedUrl)) {
-      if (shouldDiagLogNormalizeArticleInput()) {
-        console.log('[normalizeArticleInput] CREATE: Skipping duplicate masonry item:', { url: item.url });
-      }
       return false;
     }
     addedUrls.add(normalizedUrl);
@@ -710,7 +721,7 @@ async function buildSupportingMediaCreate(
 async function buildSupportingMediaEdit(
   input: ArticleInputData,
   options: NormalizeArticleInputOptions
-): Promise<{ supportingMedia?: any[] }> {
+): Promise<{ supportingMedia?: SupportingMediaItem[] }> {
   const { masonryMediaItems, existingSupportingMedia, explicitlyDeletedImages } = input;
   const { enrichMediaItemIfNeeded } = options;
 
@@ -726,21 +737,16 @@ async function buildSupportingMediaEdit(
   const addedUrls = new Set<string>();
 
   // First, deduplicate existingSupportingMedia itself (in case it already has duplicates)
-  const deduplicatedExisting: any[] = [];
+  const deduplicatedExisting: SupportingMediaItem[] = [];
   for (const media of existingSupportingMedia || []) {
     if (media.url) {
       const normalizedUrl = normalizeImageUrl(media.url);
       if (explicitlyDeletedImages?.has(normalizedUrl)) {
-        if (shouldDiagLogNormalizeArticleInput()) {
-          console.log('[normalizeArticleInput] Skipping explicitly deleted supportingMedia item:', { url: media.url });
-        }
         continue;
       }
       if (!addedUrls.has(normalizedUrl)) {
         addedUrls.add(normalizedUrl);
         deduplicatedExisting.push(media);
-      } else if (shouldDiagLogNormalizeArticleInput()) {
-        console.log('[normalizeArticleInput] Skipping duplicate in existingSupportingMedia:', { url: media.url });
       }
     }
   }
@@ -766,16 +772,6 @@ async function buildSupportingMediaEdit(
       // Twitter/X images (pbs.twimg.com) were previously classified as 'link' instead of 'image'
       // This ensures getAllImageUrls includes them from supportingMedia (respecting order)
       const correctedType = mediaUrl && isImageUrl(mediaUrl) ? 'image' : enriched.type;
-
-      // DEBUG: Log type correction
-      if (correctedType !== enriched.type && shouldDiagLogNormalizeArticleInput()) {
-        console.log('[TYPE_CORRECTION] Fixed type:', {
-          url: mediaUrl?.slice(-40),
-          oldType: enriched.type,
-          newType: correctedType,
-          isImageUrl: isImageUrl(mediaUrl || ''),
-        });
-      }
 
       if (item) {
         // Update showInMasonry flag from masonryMediaItems state
@@ -806,7 +802,8 @@ async function buildSupportingMediaEdit(
   //   so those fields survive edit save/reload.
   // DEDUPLICATION FIX: Also check against addedUrls to prevent duplicates
   const newMasonryItems = masonryMediaItems.filter(item => {
-    if (item.source === 'primary' || item.source === 'legacy') return false;
+    const source = item.source as string;
+    if (source === 'primary' || source === 'legacy') return false;
 
     const legacyImageHasPersistedOverrides = item.source === 'legacy-image' && (
       item.showInMasonry === true || // default legacy behavior is false
@@ -836,9 +833,6 @@ async function buildSupportingMediaEdit(
 
         // Double-check to prevent race condition duplicates
         if (addedUrls.has(normalizedUrl)) {
-          if (shouldDiagLogNormalizeArticleInput()) {
-            console.log('[normalizeArticleInput] Skipping duplicate new masonry item:', { url: item.url });
-          }
           return null;
         }
         addedUrls.add(normalizedUrl);
@@ -876,14 +870,14 @@ async function buildSupportingMediaEdit(
   // Apply user's drag-and-drop reordering from masonryMediaItems so the saved
   // supportingMedia array matches what the user sees in the carousel.
   if (masonryMediaItems.length > 0 && normalizedSupportingMedia.length > 0) {
-    const mediaByUrl = new Map<string, any>();
+    const mediaByUrl = new Map<string, SupportingMediaItem>();
     for (const media of normalizedSupportingMedia) {
       if (media.url) {
         mediaByUrl.set(normalizeImageUrl(media.url), media);
       }
     }
 
-    const reorderedMedia: any[] = [];
+    const reorderedMedia: SupportingMediaItem[] = [];
     const addedToReordered = new Set<string>();
 
     for (const item of masonryMediaItems) {
@@ -1011,7 +1005,7 @@ export async function normalizeArticleInput(
   }
 
   // Build supportingMedia (EDIT mode only updates flags, no structural changes)
-  let supportingMedia: any[] | undefined;
+  let supportingMedia: SupportingMediaItem[] | undefined;
   if (mode === 'create') {
     supportingMedia = await buildSupportingMediaCreate(input, options);
   } else {
@@ -1223,7 +1217,10 @@ export async function normalizeArticleInput(
     visibility,
     images: allImages.length > 0 ? allImages : undefined,
     mediaIds: finalMediaIds,
-    documents: uploadedDocs && uploadedDocs.length > 0 ? uploadedDocs : undefined,
+    documents:
+      uploadedDocs && uploadedDocs.length > 0
+        ? (uploadedDocs as unknown as Document[])
+        : undefined,
     media,
     supportingMedia,
     source_type,

@@ -1,7 +1,22 @@
 import { IAdapter, PaginatedArticlesResponse, ArticleCountsResponse } from './IAdapter';
-import { Article, User, Collection } from '@/types';
+import { Article, User, Collection, Tag, TagTaxonomy } from '@/types';
 import type { PublicUserView } from '@/types/user';
 import { apiClient } from '@/services/apiClient';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return '';
+}
+
+function tagListEntryToName(tag: unknown): string {
+  if (typeof tag === 'string') return tag;
+  if (isRecord(tag) && typeof tag.name === 'string') return tag.name;
+  return '';
+}
 
 /**
  * Calculate SHA256 hash of images array for deduplication drift detection
@@ -156,10 +171,9 @@ export class RestAdapter implements IAdapter {
       return Promise.reject(new Error('At least one classification tag is required to create a nugget'));
     }
     
-    // CATEGORY PHASE-OUT: categoryIds is never sent - silently ignored if present in article object
-    const { categoryIds, ...articleWithoutCategoryIds } = article as any;
-    
-    const payload: any = {
+    // CATEGORY PHASE-OUT: categoryIds is never sent (legacy clients may still attach it; it is not copied into payload)
+
+    const payload: Record<string, unknown> = {
       title: article.title,
       content: article.content,
       excerpt: article.excerpt,
@@ -184,23 +198,25 @@ export class RestAdapter implements IAdapter {
       ...(article.source_type && { source_type: article.source_type }),
       ...(article.displayAuthor && { displayAuthor: article.displayAuthor }),
       // Admin-only: Custom creation date (if provided)
-      ...((article as any).customCreatedAt && { customCreatedAt: (article as any).customCreatedAt }),
+      ...(article.customCreatedAt && { customCreatedAt: article.customCreatedAt }),
       // External links for card "Link" button (separate from media URLs)
-      ...((article as any).externalLinks && { externalLinks: (article as any).externalLinks }),
+      ...(article.externalLinks && { externalLinks: article.externalLinks }),
       // Layout visibility configuration
-      ...((article as any).layoutVisibility && { layoutVisibility: (article as any).layoutVisibility }),
+      ...(article.layoutVisibility && { layoutVisibility: article.layoutVisibility }),
       // Dimension tag IDs (format, domain, subtopic)
       ...(article.tagIds && article.tagIds.length > 0 && { tagIds: article.tagIds }),
       // Disclaimer fields
-      ...((article as any).showDisclaimer !== undefined && { showDisclaimer: (article as any).showDisclaimer }),
-      ...((article as any).disclaimerText !== undefined && { disclaimerText: (article as any).disclaimerText }),
+      ...(article.showDisclaimer !== undefined && { showDisclaimer: article.showDisclaimer }),
+      ...(article.disclaimerText !== undefined && { disclaimerText: article.disclaimerText }),
       // Content stream routing
       ...(article.contentStream && { contentStream: article.contentStream }),
     };
 
     // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
     // Frontend is canonical deduplication pass - backend will compute but not mutate
-    const imagesHash = await calculateImagesHash(payload.images);
+    const imagesHash = await calculateImagesHash(
+      Array.isArray(payload.images) ? (payload.images as string[]) : undefined
+    );
     const headers: HeadersInit = imagesHash ? { 'x-images-hash': imagesHash } : {};
     
     return apiClient.post('/articles', payload, headers);
@@ -208,10 +224,14 @@ export class RestAdapter implements IAdapter {
 
   async updateArticle(id: string, updates: Partial<Article>): Promise<Article | null> {
     // Transform Article format to backend API format
-    const payload: any = {};
-    
+    const payload: Record<string, unknown> = {};
+
     // CATEGORY PHASE-OUT: Remove categoryIds and categories from updates (silently ignored)
-    const { categoryIds, categories, ...updatesWithoutCategoryIds } = updates as any;
+    type ArticlePatchInput = Partial<Article> & { categoryIds?: unknown; categories?: unknown };
+    const { categoryIds: _categoryIds, categories: _categories, ...updatesWithoutCategoryIds } =
+      updates as ArticlePatchInput;
+    void _categoryIds;
+    void _categories;
     
     // Map editable fields
     if (updatesWithoutCategoryIds.title !== undefined) payload.title = updatesWithoutCategoryIds.title;
@@ -261,7 +281,9 @@ export class RestAdapter implements IAdapter {
 
     // IMAGE DEDUPLICATION MIGRATION: Add x-images-hash header for drift detection
     // Frontend is canonical deduplication pass - backend will compute but not mutate
-    const imagesHash = await calculateImagesHash(payload.images);
+    const imagesHash = await calculateImagesHash(
+      Array.isArray(payload.images) ? (payload.images as string[]) : undefined
+    );
     const headers: HeadersInit = imagesHash ? { 'x-images-hash': imagesHash } : {};
     
     // Use PATCH for partial updates (more RESTful)
@@ -299,7 +321,7 @@ export class RestAdapter implements IAdapter {
     await this.updateUser(userId, { lastFeedVisit: new Date().toISOString() });
   }
 
-  async getPersonalizedFeed(userId: string): Promise<{ articles: Article[], newCount: number }> {
+  getPersonalizedFeed(userId: string): Promise<{ articles: Article[]; newCount: number }> {
     return apiClient.get(`/users/${userId}/feed`);
   }
 
@@ -308,24 +330,29 @@ export class RestAdapter implements IAdapter {
    * Phase 2: Get full tag objects with IDs
    * Returns array of Tag objects for stable ID-based matching
    */
-  async getCategoriesWithIds(): Promise<import('@/types').Tag[]> {
+  async getCategoriesWithIds(): Promise<Tag[]> {
     try {
-      const response = await apiClient.get<any>('/categories?format=full', undefined, 'restAdapter.getCategoriesWithIds');
-      
+      const response = await apiClient.get<unknown>(
+        '/categories?format=full',
+        undefined,
+        'restAdapter.getCategoriesWithIds'
+      );
+
       // Handle paginated response: extract data array
-      if (response && typeof response === 'object' && 'data' in response) {
-        return response.data || [];
+      if (isRecord(response) && 'data' in response) {
+        const data = response.data;
+        return Array.isArray(data) ? (data as Tag[]) : [];
       }
-      
+
       // Legacy: handle plain array response
       if (Array.isArray(response)) {
-        return response;
+        return response as Tag[];
       }
-      
+
       return [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle cancelled requests gracefully
-      if (error?.message === 'Request cancelled') {
+      if (getErrorMessage(error) === 'Request cancelled') {
         return [];
       }
       throw error;
@@ -341,30 +368,33 @@ export class RestAdapter implements IAdapter {
     // Use ?format=simple to get array of tag names in data field
     // Add cancelKey to prevent duplicate simultaneous requests
     try {
-      const response = await apiClient.get<any>('/categories?format=simple', undefined, 'restAdapter.getCategories');
-      
+      const response = await apiClient.get<unknown>(
+        '/categories?format=simple',
+        undefined,
+        'restAdapter.getCategories'
+      );
+
       // Handle paginated response: extract data array
-      if (response && typeof response === 'object' && 'data' in response) {
+      if (isRecord(response) && 'data' in response) {
         const tags = response.data;
-        // If backend returns Tag objects, extract names
-        if (tags && tags.length > 0 && typeof tags[0] === 'object') {
-          return tags.map((tag: any) => tag.name || tag);
+        if (Array.isArray(tags) && tags.length > 0 && typeof tags[0] === 'object') {
+          return tags.map(tagListEntryToName);
         }
-        return tags || [];
+        return Array.isArray(tags) ? tags.filter((t): t is string => typeof t === 'string') : [];
       }
-      
+
       // Legacy: handle plain array response
       if (Array.isArray(response)) {
         if (response.length > 0 && typeof response[0] === 'object') {
-          return response.map((tag: any) => tag.name || tag);
+          return response.map(tagListEntryToName);
         }
-        return response;
+        return response.filter((t): t is string => typeof t === 'string');
       }
-      
+
       return [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle cancelled requests gracefully - return empty array instead of throwing
-      if (error?.message === 'Request cancelled') {
+      if (getErrorMessage(error) === 'Request cancelled') {
         return [];
       }
       // Re-throw other errors
@@ -381,8 +411,8 @@ export class RestAdapter implements IAdapter {
   }
 
   // Tag Taxonomy (two-axis: format + domain)
-  async getTagTaxonomy(): Promise<import('@/types').TagTaxonomy> {
-    return apiClient.get<import('@/types').TagTaxonomy>('/categories/taxonomy');
+  getTagTaxonomy(): Promise<TagTaxonomy> {
+    return apiClient.get<TagTaxonomy>('/categories/taxonomy');
   }
 
   // --- Collections ---
@@ -420,24 +450,27 @@ export class RestAdapter implements IAdapter {
     if (params?.rootOnly) queryParams.set('rootOnly', 'true');
     
     const endpoint = queryParams.toString() ? `/collections?${queryParams}` : '/collections';
-    return apiClient.get<any>(endpoint)
-      .then(response => {
+    return apiClient
+      .get<unknown>(endpoint)
+      .then((response: unknown) => {
         // Handle paginated response: { data: Collection[], total, page, limit, hasMore }
-        if (response && typeof response === 'object' && 'data' in response && Array.isArray(response.data)) {
+        if (isRecord(response) && 'data' in response && Array.isArray(response.data)) {
+          const data = response.data as Collection[];
           if (params?.includeCount) {
             return {
-              data: response.data,
-              count: typeof response.total === 'number' ? response.total : response.data.length,
+              data,
+              count: typeof response.total === 'number' ? response.total : data.length,
             };
           }
-          return response.data;
+          return data;
         }
         // Handle legacy array response
         if (Array.isArray(response)) {
+          const data = response as Collection[];
           if (params?.includeCount) {
-            return { data: response, count: response.length };
+            return { data, count: data.length };
           }
-          return response;
+          return data;
         }
         return params?.includeCount ? { data: [], count: 0 } : [];
       });
@@ -458,8 +491,12 @@ export class RestAdapter implements IAdapter {
 
   getCollectionById(id: string, options?: { includeEntries?: boolean }): Promise<Collection | undefined> {
     const query = options?.includeEntries === false ? '?includeEntries=false' : '';
-    return apiClient.get<Collection>(`/collections/${id}${query}`).catch((error: any) => {
-      if (error?.response?.status === 404) return undefined;
+    return apiClient.get<Collection>(`/collections/${id}${query}`).catch((error: unknown) => {
+      const status =
+        isRecord(error) && isRecord(error.response) && typeof error.response.status === 'number'
+          ? error.response.status
+          : undefined;
+      if (status === 404) return undefined;
       throw error;
     });
   }
@@ -485,7 +522,7 @@ export class RestAdapter implements IAdapter {
     await apiClient.post(`/collections/${collectionId}/entries`, { articleId, userId });
   }
 
-  async removeArticleFromCollection(collectionId: string, articleId: string, userId: string): Promise<void> {
+  async removeArticleFromCollection(collectionId: string, articleId: string, _userId: string): Promise<void> {
     await apiClient.delete(`/collections/${collectionId}/entries/${articleId}`);
   }
 

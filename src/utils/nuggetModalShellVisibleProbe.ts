@@ -29,7 +29,7 @@ export function scheduleNuggetModalShellVisibleProbe(): () => void {
         const entry = performance.getEntriesByName(measureName, 'measure').pop() as
           | PerformanceMeasure
           | undefined;
-        const ms = entry?.duration ?? 0;
+        void entry?.duration;
         performance.clearMarks(markStart);
         performance.clearMarks(markEnd);
         performance.clearMeasures(measureName);
